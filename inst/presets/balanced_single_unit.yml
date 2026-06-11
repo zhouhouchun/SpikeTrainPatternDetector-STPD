@@ -1,0 +1,14 @@
+
+name: balanced_single_unit
+notes: Balanced starting point for single-unit recordings. Review refractory-suspect candidates manually.
+detector:
+  min_valid_isi_sec: 0.001
+  refractory_suspect_sec: 0.0015
+  refractory_suspect_action: demote_to_possible
+burst:
+  local_compression_local_ratio_min: 2.20
+  local_compression_candidate_class: possible_burst
+  final_tonic_like_action: demote_to_possible
+pause:
+  global_median_guard: true
+  global_median_factor: 2.5

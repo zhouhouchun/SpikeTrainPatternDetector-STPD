@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+
+# R session and IDE files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# R build/check artifacts
+*.tar.gz
+*.Rcheck/
+Rplots.pdf
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+src/symbols.rds
+
+# Python/render intermediates
+__pycache__/
+*.pyc
+
+# Generated manuscript binaries and render outputs
+manuscript/*.docx
+manuscript/*.pdf
+manuscript/*.png
+manuscript/frontiers_template/*.zip
+manuscript/frontiers_template/Frontiers_Word_Templates/
+manuscript/docx_render_check/
+manuscript/docx_render_check_zh/
+manuscript/docx_quicklook_check/
+manuscript/rendered_*/
+
+# Local render output folders
+docx_*_render/
+rendered_*/
+
+# Generated reproducibility outputs with vendored HTML dependencies
+reproducibility/test_manifold_run/
+
+# Private or raw neurophysiology data should not be committed publicly
+data_private/
+patient_data/
+MER_raw/
+DBS_raw/
+*.nev
+*.ns*
+*.mat

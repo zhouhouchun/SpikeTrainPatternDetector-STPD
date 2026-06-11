@@ -1,0 +1,13 @@
+docx=/Users/zark/Desktop/Code/SpikeTrainPatternDetector_1_1/manuscript/neuroinformatics_software_original_article_top_draft.docx
+preset=standard_business_brief with Neuroinformatics manuscript override
+page=US Letter, 1 inch margins, line numbering per page, centered page numbers
+base_font=Times New Roman
+base_size_pt=10
+equations_expected=32
+equations_found=32
+references_expected=15
+headings_found=38
+tables_found=1
+highlighted_action_items_found=13
+title_border_present=False
+raw_latex_command_like_tokens=0

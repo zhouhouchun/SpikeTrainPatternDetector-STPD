@@ -1,0 +1,10 @@
+docx=/Users/zark/Desktop/Code/SpikeTrainPatternDetector_1_1/manuscript/neuroinformatics_software_original_article_top_draft.zh.docx
+language=Chinese
+target=Neuroinformatics Software Original Article review draft
+equations_found=32
+references_expected=15
+reference_links_found=15
+tables_found=1
+highlighted_action_items_found=12
+has_information_sharing=True
+raw_latex_command_like_tokens=0

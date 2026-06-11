@@ -1,0 +1,7 @@
+"train","pattern","expected_n_isi","n_isi","pass"
+"Train_1_Time_s","burst",38,38,TRUE
+"Train_1_Time_s","pause",5,5,TRUE
+"Train_1_Time_s","tonic",30,30,TRUE
+"Train_2_Time_s","burst",38,38,TRUE
+"Train_2_Time_s","pause",1,1,TRUE
+"Train_2_Time_s","tonic",40,40,TRUE

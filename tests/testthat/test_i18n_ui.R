@@ -1,0 +1,26 @@
+test_that("UI language switch assets are generated", {
+  expect_equal(stpd_i18n_exact_dictionary()[["\u4E2D\u6587"]], "Chinese")
+  expect_equal(stpd_i18n_exact_dictionary()[["\u539F\u59CB\u6587\u4EF6\u65F6\u95F4\u5355\u4F4D"]], "raw file time unit")
+  expect_equal(stpd_i18n_exact_dictionary()[["burst \u68C0\u6D4B\u4E2D\u7591\u4F3C\u4E0D\u5E94\u671F ISI \u7684\u5904\u7406\u65B9\u5F0F"]], "handling strategy for suspected refractory-period ISIs during burst detection")
+  expect_equal(stpd_i18n_exact_dictionary()[["Seed / Bridge \u8BCA\u65AD"]], "Seed / Bridge diagnostics")
+  expect_equal(stpd_i18n_exact_dictionary()[["\u8BF7\u81F3\u5C11\u4E0A\u4F20\u4E00\u4E2A\u6570\u636E\u96C6\u3002"]], "Please upload at least one dataset.")
+  expect_equal(stpd_i18n_exact_dictionary()[["\u795E\u7ECF\u6D41\u5F62"]], "Neural Manifold")
+  expect_equal(stpd_i18n_exact_dictionary()[["Isomap 3D X \u8F74"]], "Isomap 3D X axis")
+  expect_equal(stpd_i18n_exact_dictionary()[["Isomap 3D Z \u8F74"]], "Isomap 3D Z axis")
+  expect_equal(stpd_i18n_phrase_dictionary()[["\u5BFC\u5165\u6570\u636E"]], "import data")
+
+  js <- paste(as.character(stpd_i18n_assets()), collapse = "\n")
+  expect_match(js, "stpd_ui_language", fixed = TRUE)
+  expect_match(js, "ui_language", fixed = TRUE)
+  expect_match(js, "MutationObserver", fixed = TRUE)
+  expect_match(js, "replacePhraseWithContext", fixed = TRUE)
+  ui_txt <- paste(as.character(ui), collapse = "\n")
+  expect_match(ui_txt, "\u795E\u7ECF\u6D41\u5F62", fixed = TRUE)
+  expect_no_match(ui_txt, "Neural Manifold\uFF08\u795E\u7ECF\u6D41\u5F62\uFF09", fixed = TRUE)
+})
+
+test_that("i18n JSON encoding escapes generated script values", {
+  encoded <- stpd_i18n_json_object(c("a\"b" = "c\\d"))
+  expect_match(encoded, "\\\"a\\\\\\\"b\\\"", perl = TRUE)
+  expect_match(encoded, "\\\"c\\\\\\\\d\\\"", perl = TRUE)
+})

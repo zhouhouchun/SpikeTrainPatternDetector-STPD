@@ -1,0 +1,481 @@
+% Neuroinformatics / Springer Nature Software Original Article draft
+% Compile with the Springer Nature sn-jnl class if available.
+% Suggested class from Springer Nature author support.
+% Neuroinformatics asks for name-year citations; sn-apa is the closest
+% Springer Nature template option for this purpose.
+%   \documentclass[pdflatex,sn-apa]{sn-jnl}
+% If sn-jnl.cls is not available locally, replace the documentclass with article
+% for internal editing only.
+
+\documentclass[pdflatex,sn-apa]{sn-jnl}
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{listings}
+
+\lstset{basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible}
+
+\newcommand{\stpd}{\textsc{SpikeTrainPatternDetector}}
+\newcommand{\isi}{\mathrm{ISI}}
+\newcommand{\TODOFIG}[1]{\par\medskip\noindent\textbf{\textcolor{red}{[FIGURE PLACEHOLDER: #1]}}\par\medskip}
+\newcommand{\TODOTAB}[1]{\par\medskip\noindent\textbf{\textcolor{red}{[TABLE PLACEHOLDER: #1]}}\par\medskip}
+\newcommand{\TODONOTE}[1]{\par\medskip\noindent\textbf{\textcolor{red}{[AUTHOR ACTION REQUIRED: #1]}}\par\medskip}
+
+\begin{document}
+
+\title[Auditable spike-train event review]{SpikeTrainPatternDetector: an auditable R/Shiny software framework for spike-train event review and validation}
+
+\author*[1]{\fnm{Houchun} \sur{Zhou}}\email{zhouhouchun@outlook.com}
+\affil*[1]{\orgdiv{Department to be completed}, \orgname{Institution to be completed}, \orgaddress{\city{City}, \country{Country}}}
+
+\abstract{
+Spike-train pattern annotation links neuronal discharge dynamics to circuit state, behavior, pathology and stimulation, but labels such as burst, pause, tonic firing and high-frequency spiking are sensitive to timestamp artifacts, spike-sorting quality, operational thresholds and manual review practice. We present \stpd, an auditable R/Shiny framework for quality-controlled spike-train event review. The software imports raw or annotated spike timestamps, recomputes inter-spike intervals from timestamps, blocks accidental re-analysis of derived outputs, performs pre-detection quality control, resolves detector thresholds from user input, manual labels, histogram structure or defaults, and exports parameter-hashed run metadata. Its core detector is a physiologically motivated event grammar that generates reviewable burst-family, pause, tonic, high-frequency tonic and high-frequency spiking candidates using short inter-spike-interval seeds, bridge intervals, flank contrast, local regularity, pause context and weighted interval selection. Mean inter-spike-interval and logarithmic inter-spike-interval histogram support modules are provided as separate threshold-evidence layers rather than hidden sources of final labels. Each automatic event can be traced through candidate ledgers, diagnostic audits, eventness features, threshold tables, final decision records and manual-label validation metrics. Optional state-space, neural manifold, event-aligned activity and slice tensor workflows support exploratory analysis while preserving the distinction between visualization and biological validation. A bundled smoke-test dataset demonstrates the end-to-end workflow and export structure. \stpd{} is designed as a transparent candidate-generation and validation platform, not as a universal ground-truth classifier.
+}
+
+\keywords{spike train, burst detection, event grammar, R/Shiny, reproducible neuroinformatics, manual validation}
+
+\maketitle
+
+\section{Introduction}
+
+Action potentials are discrete events, but many neuroscientific questions are asked at the level of firing-pattern episodes or states. Investigators describe burst firing, pauses, tonic discharge, high-frequency packets and transitions between these regimes because such descriptions connect spike timing to synaptic drive, circuit state, pathological dynamics, stimulation effects and behavior. In basal ganglia physiology, motor systems, cortical network recordings and extracellular single-unit studies, these labels can be scientifically useful. They are also methodologically fragile. The same spike train can support different labels depending on the minimum inter-spike interval considered physiologically valid, whether duplicate timestamps or refractory-suspect intervals are present, whether a global threshold is applied to a nonstationary train, and whether an algorithm is designed for permissive candidate review or conservative final inference.
+
+Several established methods address components of this problem. Classical spike-train statistics such as the coefficient of variation, local variation and the adjacent-interval coefficient of variation (CV2) summarize complementary aspects of firing irregularity and local timing structure \citep{Holt1996,Shinomoto2005}. Burst-threshold support methods such as mean inter-spike interval (Mean-ISI) and logarithmic inter-spike-interval histogram/new burst detection (logISIH/newBD) provide adaptive threshold evidence grounded in published algorithms \citep{Chen2009,Pasquale2010}. Population methods add another layer: principal component analysis (PCA) and factor analysis provide transparent linear baselines, Gaussian-process factor analysis (GPFA) links smoothing and dimensionality reduction in a probabilistic single-trial framework, and nonlinear embeddings such as Isomap, diffusion maps, t-distributed stochastic neighbor embedding (t-SNE), Uniform Manifold Approximation and Projection (UMAP) and Potential of Heat-diffusion for Affinity-based Transition Embedding (PHATE) can reveal neighborhood structure or continuous transitions when interpreted with appropriate controls \citep{Tenenbaum2000,Coifman2006,VanDerMaaten2008,McInnes2018,Moon2019,Yu2009,Cunningham2014}. Recent approaches including CEBRA and slice tensor component analysis (sliceTCA) further emphasize behavior-linked embeddings and tensor decompositions for neural population data \citep{Schneider2023,Pellegrino2024}.
+
+Despite this methodological landscape, everyday spike-train review still faces a practical gap. Investigators need software that can import raw timestamp data, prevent accidental re-analysis of derived outputs, perform quality control before detection, generate interpretable candidate labels, preserve manual annotations, expose failure modes, document parameter choices, compare automatic calls with manual labels and export reproducible evidence. A useful tool for this setting should not pretend that all biological states have universal formulas. It should distinguish literature-defined statistics and support methods from project-defined event grammar, make both inspectable, and produce validation artifacts that allow scientific users to judge whether the rules are appropriate for their preparation, cell type, recording quality and hypothesis.
+
+\stpd{} was developed for this purpose. It is a modular R/Shiny package for spike-train candidate-event generation and audit-oriented analysis. Its main detector is a literature-informed, engineering-calibrated event grammar: it uses compact short-ISI seeds, bridge intervals, flank contrast, pause gaps, tonic regularity and high-frequency episodes, but it does not claim to reproduce a single canonical burst formula. In contrast, its Mean-ISI and logISIH/newBD support layers are implemented as literature-linked threshold-evidence modules. This separation is deliberate. It enables the main workflow to serve as a transparent review engine while keeping classical support methods available for comparison, reporting and parameter calibration.
+
+Here we describe the software architecture, mathematical event representation, quality-control policy, event-grammar detector, validation outputs, optional exploratory modules and reproducibility artifacts of \stpd. We frame the contribution as a Software Original Article: a full scientific description of a software product, clearly distinct from a user manual and supported by references, method definitions and validation-oriented reporting.
+
+\TODOFIG{Figure 1 should appear near the end of the Introduction. Suggested content: a graphical overview of the pipeline from raw timestamps to QC, threshold resolution, event grammar, candidate ledgers, validation reports and optional exploratory modules.}
+
+\TODONOTE{Figure artwork must follow Neuroinformatics/Springer requirements before submission: use consecutive file names such as Fig1.eps; prefer EPS for vector art and TIFF for halftones; embed fonts in vector files; use at least 1200 dpi for line art, 600 dpi for combination art and 300 dpi for halftones; submit color as RGB, 8 bits per channel; use Helvetica or Arial at 8--12 pt; avoid figure titles inside artwork; use patterns in addition to colors and maintain at least 4.5:1 lettering contrast.}
+
+\section{Methods}
+
+\subsection{Software implementation and design principles}
+
+\stpd{} is implemented primarily in R with a Shiny graphical interface and Plotly-based interactive visualizations. A native C backend accelerates repeated low-level operations, including per-train ISI percentile calculation, local-median cache calculation, short-ISI run scanning, structural candidate scanning and interval-overlap calculations. The package exposes version-neutral public entry points, including functions to build datasets from timestamp files, run the detector, export results and compute event-level validation summaries. Detector parameters are materialized from a YAML-backed parameter contract that defines default values, public and internal parameter namespaces, validation constraints and user-interface metadata.
+
+The design follows five principles. First, raw spike timing integrity is checked before any pattern evidence is computed. Second, candidate generation and public event calls are separated: diagnostic windows, rejected candidates and profile-only summaries are retained for audit but not counted as accepted biological events. Third, thresholds are resolved at the dataset entry point and frozen for a run, so that event calls can be reproduced from exported threshold tables and parameter hashes. Fourth, the main detector is described as an operational event grammar rather than as a universal truth classifier. Fifth, manual labels, benchmarks and parameter sensitivity analyses are treated as essential evidence for performance claims.
+
+\subsection{Installation and minimal execution}
+
+The package is intended to be installed as a standard R package from a versioned source repository or archived release. A minimal programmatic workflow imports raw spike timestamps, materializes the default parameter contract, runs the detector and exports the audit tables required for review:
+
+\begin{lstlisting}[language=R]
+library(SpikeTrainPatternDetector)
+
+params <- default_params()
+ds <- build_spike_dataset("spikes.csv", mode = "raw", unit_in = "s")
+ds <- stpd_detect(ds, params,
+                  lock_manual = TRUE,
+                  collect_diagnostics = TRUE)
+stpd_export_results(ds, params, out_dir = "results")
+\end{lstlisting}
+
+For graphical review, the Shiny application provides the same import, quality-control, threshold review, candidate inspection, manual-label validation and export workflow. Formal analyses should report the package version, source-code commit or release tag, R version, operating system, parameter hash, threshold table, quality-control table and any optional Python backend versions used for exploratory tensor or manifold modules.
+
+\subsection{Input data model}
+
+The primary input is a table of spike timestamps. In raw CSV mode, each non-empty numeric column is interpreted as one spike train. Timestamps may be supplied in seconds or milliseconds and are converted internally to seconds. The importer removes missing values, sorts timestamps within each train, records whether the input order was non-monotonic and recomputes all inter-spike intervals from timestamp differences. For a train with ordered timestamps
+\begin{equation}
+    t_1 < t_2 < \cdots < t_n,
+\end{equation}
+the detector defines
+\begin{equation}
+    \Delta_i = t_i - t_{i-1}, \qquad i=2,\ldots,n,
+\end{equation}
+with $\Delta_1$ undefined. All event candidates are represented as contiguous ISI-indexed intervals
+\begin{equation}
+    c=[a,b], \qquad 2 \le a \le b \le n.
+\end{equation}
+This convention makes event boundaries explicit and enables automatic and manual events to be compared by interval overlap.
+
+In annotated input mode, timestamp columns and manual-label columns can be imported together. External ISI columns, if present, are retained for quality-control checks but are not treated as authoritative; timestamp-derived ISIs are used for detection. Files or columns that resemble derived detector outputs, such as candidate ledgers, eventness audits, final-event tables, threshold tables or diagnostic candidate tables, are blocked by default during raw import. This guardrail reduces the risk of recursively treating detector output as raw spike data.
+
+\subsection{Pre-detection quality control}
+
+Quality control (QC) is performed before burst, pause, tonic or high-frequency evidence is computed. For each train, the QC table reports spike count, recording duration, firing rate, raw minimum ISI, minimum valid ISI, exact duplicate timestamps, zero or negative timestamp steps, zero or negative ISIs, hard artifact ISIs, refractory-suspect ISIs, timestamp--ISI mismatch status and stationarity diagnostics. The default hard artifact threshold is $0.0009$ s. A second refractory-suspect threshold, default $0.001$ s, flags intervals that are above the hard artifact cutoff but remain suspicious for single-unit refractory physiology.
+
+Let $\theta_{\mathrm{art}}$ denote the hard artifact threshold and $\theta_{\mathrm{ref}}$ the refractory-suspect threshold. A valid positive ISI for detector evidence satisfies
+\begin{equation}
+    \Delta_i \ge \theta_{\mathrm{art}},
+\end{equation}
+whereas a refractory-suspect ISI satisfies
+\begin{equation}
+    \theta_{\mathrm{art}} \le \Delta_i < \theta_{\mathrm{ref}}.
+\end{equation}
+By default, duplicate timestamps, zero or negative ISIs and hard artifact ISIs stop detection before pattern labels are generated. Exploratory runs may explicitly allow continuation after QC errors, but formal analyses should collapse exact duplicates at import or report their prevalence and sensitivity effects. Stationarity warnings are exported as interpretive risks rather than hard errors, because nonstationary firing can make global pause thresholds, train-level percentiles and tonic-state assumptions unreliable.
+
+\subsection{Parameter materialization and threshold resolution}
+
+Detector parameters are stored in a YAML-backed contract. The public parameter namespace is \texttt{spiketrainpattern}, whereas internal namespaces such as \texttt{event\_core}, \texttt{event\_grammar}, \texttt{highfreq}, \texttt{tonic}, \texttt{pause} and \texttt{classification} are derived before detection. Each run records a parameter hash and exports parameter reports.
+
+Thresholds used by the event grammar are resolved once for the selected dataset and then frozen for all selected trains. For each pattern family $p$, candidate threshold values can come from four sources: user settings, manual-label-derived summaries, histogram-derived suggestions or defaults. The active threshold value for field $f$ can be written as
+\begin{equation}
+    \theta_{p,f}^{\ast}
+    =
+    \operatorname{first\_finite}
+    \left(
+    \theta_{p,f}^{\mathrm{user}},
+    \theta_{p,f}^{\mathrm{manual}},
+    \theta_{p,f}^{\mathrm{hist}},
+    \theta_{p,f}^{\mathrm{default}}
+    \right),
+\end{equation}
+with the source order determined by the configured threshold-source policy. After source selection, geometry constraints are imposed:
+\begin{equation}
+    0 \le \theta_{p,\mathrm{lower}}^{\ast}
+    < \theta_{p,\mathrm{upper}}^{\ast}
+    \le \theta_{p,\mathrm{bridge}}^{\ast}.
+\end{equation}
+The exported threshold table records, for each pattern and threshold field, all candidate values, the selected effective value and the source. This table is central to reproducibility, because it documents exactly which threshold policy generated the run.
+
+\TODOTAB{Table 1 should appear here. Suggested content: software metadata, implementation language, license, operating-system notes, dependencies, public API functions, example dataset and repository/DOI fields to be completed before submission.}
+
+\subsection{Event-grammar detector}
+
+The core detector is a deterministic event grammar over ISI-indexed candidate intervals. For a candidate $c=[a,b]$, define the within-candidate ISI set
+\begin{equation}
+    \mathcal{D}(c)=\{\Delta_a,\Delta_{a+1},\ldots,\Delta_b\},
+\end{equation}
+the number of ISIs
+\begin{equation}
+    N_{\isi}(c)=b-a+1,
+\end{equation}
+the number of spikes
+\begin{equation}
+    N_{\mathrm{spk}}(c)=b-a+2,
+\end{equation}
+and the duration, when timestamps are available, as
+\begin{equation}
+    T(c)=t_b-t_{a-1}.
+\end{equation}
+The detector computes an evidence vector
+\begin{equation}
+    E(c)=
+    \left[
+    Q_{10}(c),Q_{50}(c),Q_{90}(c),Q_{95}(c),
+    \mathrm{CV}(c),\mathrm{LV}(c),\mathrm{MM}(c),
+    B(c),F_B(c),S_{\min}(c),R(c)
+    \right],
+\end{equation}
+where $Q_q(c)$ is the $q$th within-candidate ISI quantile, $\mathrm{CV}$ is the coefficient of variation, $\mathrm{LV}$ is local variation, $\mathrm{MM}$ is the maximum-to-mean ratio, $B(c)$ is bridge count, $F_B(c)$ is bridge fraction, $S_{\min}(c)$ is minimum flank contrast and $R(c)$ summarizes regularity or state-family evidence.
+
+For valid positive ISIs in candidate $c$,
+\begin{equation}
+    \mathrm{CV}(c)=
+    \frac{\operatorname{sd}(\mathcal{D}(c))}
+    {\operatorname{mean}(\mathcal{D}(c))},
+\end{equation}
+\begin{equation}
+    \mathrm{LV}(c)=
+    \frac{1}{m-1}
+    \sum_{j=1}^{m-1}
+    \frac{3(\delta_j-\delta_{j+1})^2}
+    {(\delta_j+\delta_{j+1})^2},
+\end{equation}
+where $\delta_1,\ldots,\delta_m$ are the valid ISIs in order, and
+\begin{equation}
+    \mathrm{MM}(c)=
+    \frac{\max(\mathcal{D}(c))}
+    {\operatorname{mean}(\mathcal{D}(c))}.
+\end{equation}
+
+\subsubsection{Burst-family candidates}
+
+Burst-family detection starts with compact seed runs. An ISI is seed-supporting if
+\begin{equation}
+    \theta_{\mathrm{seed,low}}^{\ast}
+    \le \Delta_i \le
+    \theta_{\mathrm{seed,high}}^{\ast}.
+\end{equation}
+Consecutive seed-supporting intervals form a seed run, and a run must contain at least the configured minimum number of seed ISIs. Seed runs are expanded left and right through a limited number of bridge intervals, where bridge intervals satisfy
+\begin{equation}
+    \theta_{\mathrm{seed,high}}^{\ast}
+    < \Delta_i \le
+    \theta_{\mathrm{bridge}}^{\ast}.
+\end{equation}
+Expansion is constrained by maximum bridge count, bridge fraction and maximum expansion steps. Bridge fraction is
+\begin{equation}
+    F_B(c)=\frac{B(c)}{N_{\isi}(c)}.
+\end{equation}
+
+Candidate burst-family intervals are evaluated against flanking ISIs. When both flanks are observed,
+\begin{equation}
+    S_{\mathrm{pre}}(c)=
+    \frac{\Delta_{a-1}}{Q_{90}(c)},\qquad
+    S_{\mathrm{post}}(c)=
+    \frac{\Delta_{b+1}}{Q_{90}(c)},
+\end{equation}
+and
+\begin{equation}
+    S_{\min}(c)=\min\{S_{\mathrm{pre}}(c),S_{\mathrm{post}}(c)\}.
+\end{equation}
+A canonical two-sided burst-family pass requires both flank ratios to exceed the resolved contrast threshold and requires bridge burden and intra-event compactness to remain within their configured limits. One-sided or edge-limited candidates can be retained as \texttt{possible\_burst} rather than discarded. A soft $Q_{95}$ bridge policy penalizes modest $Q_{95}$ overflow without necessarily rejecting the candidate, while severe overflow can block acceptance.
+
+Spike-count criteria determine burst-family subtype. In the default product schema, 3--10 spikes define classical burst scale, 11--15 spikes define long-burst scale and longer compact structures are treated conservatively as prolonged burst-like candidates unless study-specific criteria justify promotion. This policy avoids conflating long high-rate epochs with discrete burst events.
+
+\subsubsection{High-frequency spiking}
+
+High-frequency spiking is modeled as a sustained state or epoch rather than as a burst-family event. A candidate high-frequency spiking epoch is built from sustained support runs in which most ISIs are short while a limited number of moderate gaps are tolerated. Candidate evidence includes $Q_{50}$, $Q_{80}$, $Q_{90}$, $Q_{95}$, the short-ISI fraction, the bridge fraction, the tolerated-gap fraction, the large-ISI fraction and the maximum number of consecutive large ISIs. The short-ISI fraction is
+\begin{equation}
+    F_{\mathrm{short}}(c)=
+    \frac{1}{N_{\isi}(c)}
+    \sum_{i=a}^{b}
+    \mathbf{1}\{\Delta_i \le \theta_{\mathrm{short}}\}.
+\end{equation}
+Acceptance can occur through a strict $Q_{90}$ route or a robust $Q_{80}$/majority route, reflecting the fact that sustained high-frequency states can include occasional moderate intervals. Long high-frequency states receive span-aware priority during interval selection, but putative high-frequency spiking states dominated by many embedded burst packets can be rejected so that packetized bursting remains visible.
+
+\subsubsection{High-frequency tonic and tonic states}
+
+High-frequency tonic and tonic candidates represent relatively regular firing regimes. High-frequency tonic detection uses a high-frequency upper bound while applying a lower floor to avoid labeling extreme burst-core intervals as tonic-like high-frequency discharge. Tonic detection uses a mid-ISI band and regularity constraints. Both layers check variability using CV, LV and maximum-to-mean ratio and apply safeguards against burst-core dominance.
+
+\subsubsection{Pause candidates}
+
+Pause candidates represent long-gap intervals. The effective pause floor combines an absolute threshold, train-level upper ISI distribution and tonic-state guardrails. Long intervals are evaluated against local and global median ISI context. This relative design reduces the chance that ordinary slow firing is labeled as pause while preserving isolated long gaps as reviewable events.
+
+\TODOTAB{Table 2 should appear here. Suggested content: default event-grammar parameters, units, biological rationale, formula class and exported audit field.}
+
+\TODOFIG{Figure 2 should appear here. Suggested content: schematic ISI train showing burst seed, bridge intervals, flanking contrast, possible\_burst edge case, HF-spiking epoch and pause gap.}
+
+\subsection{Weighted interval selection and manual-label policy}
+
+Candidate generation can produce overlapping intervals from different layers. To construct a single public automatic label track, the detector applies weighted interval selection. Each candidate receives a value $V(c)$ determined by label family, explicit priority, score and span. The selected candidate set $\mathcal{C}^{\ast}$ solves
+\begin{equation}
+    \mathcal{C}^{\ast}
+    =
+    \arg\max_{\mathcal{C}}
+    \sum_{c\in\mathcal{C}} V(c),
+    \qquad
+    c_i\cap c_j=\emptyset \;\; \forall i\ne j.
+\end{equation}
+This dynamic-programming interval selection avoids arbitrary first-come selection and makes competition among burst, possible burst, high-frequency, tonic and pause candidates deterministic.
+
+Manual labels are handled separately from automatic evidence. When manual locking is enabled, manually labeled intervals remain final-label dominant and automatic labels are not written over those ISIs. Automatic evidence can still be generated and audited in diagnostic layers. Negative manual labels, such as explicit not-burst annotations, can veto candidate acceptance, and such vetoes are retained in the diagnostic audit.
+
+\subsection{Candidate ledgers and eventness audit}
+
+Accepted selected intervals are exported to public event and candidate ledgers. Rejected, blocked, profile-only, suppressed or not-selected windows remain in the diagnostic candidate audit. This separation prevents exploratory windows from inflating public biological counts while preserving failure-mode evidence.
+
+After selected candidates are obtained, the software computes candidate features and final decision records. Eventness audit summarizes whether a candidate is more event-like or state-like by combining edge contrast, context contrast, return-to-baseline evidence and regularity. Let $C_{\mathrm{edge}}(c)$ be a clipped edge-contrast component, $C_{\mathrm{ctx}}(c)$ a clipped context-contrast component and $C_{\mathrm{return}}(c)$ a return-to-baseline score. The eventness score is represented as
+\begin{equation}
+    \mathrm{Eventness}(c)
+    =
+    \operatorname{mean}
+    \left[
+    \min\{C_{\mathrm{edge}}(c),C_{\mathrm{ctx}}(c)\},
+    C_{\mathrm{return}}(c)
+    \right],
+\end{equation}
+with unavailable components omitted. Regularity is computed from normalized CV, LV and $Q_{90}/Q_{10}$ evidence:
+\begin{equation}
+    \mathrm{Regularity}(c)=
+    \frac{1}{3}
+    \left[
+    1-\operatorname{clip}_{[0,1]}\frac{\mathrm{CV}(c)}{r_{\mathrm{CV}}}
+    +
+    1-\operatorname{clip}_{[0,1]}\frac{\mathrm{LV}(c)}{r_{\mathrm{LV}}}
+    +
+    1-\operatorname{clip}_{[0,1]}\frac{Q_{90}(c)/Q_{10}(c)-1}{r_Q-1}
+    \right],
+\end{equation}
+where $r_{\mathrm{CV}}$, $r_{\mathrm{LV}}$ and $r_Q$ are configurable reference values. Eventness is an audit feature, not an independent biological truth measure.
+
+\subsection{Literature-linked support methods}
+
+The main event grammar is project-defined, but \stpd{} includes literature-linked support layers for threshold evidence. The Mean-ISI support layer follows Chen et al. \citep{Chen2009}. Given valid ISIs $T_i$, the global mean ISI is $\bar{T}$ and the Mean-ISI threshold is
+\begin{equation}
+    \mathrm{ML}
+    =
+    \frac{1}{|\mathcal{I}_{<}|}
+    \sum_{i\in \mathcal{I}_{<}} T_i,
+    \qquad
+    \mathcal{I}_{<}=\{i:T_i<\bar{T}\}.
+\end{equation}
+Candidate burst windows are identified when the mean of consecutive ISIs in the window does not exceed $\mathrm{ML}$. The threshold principle is literature-linked; exhaustive window enumeration, budget controls and merging rules are implementation choices.
+
+The logISIH/newBD support layer implements a Pasquale-style logISI threshold-evidence workflow \citep{Pasquale2010}. ISIs are transformed as
+\begin{equation}
+    z_i = \log_{10}(1000T_i),
+\end{equation}
+where $T_i$ is in seconds and $1000T_i$ is in milliseconds. A logISI histogram is constructed, smoothed and searched for peaks and valleys. Void-parameter evidence supports threshold resolution, and unresolved thresholds are explicitly reported as unresolved rather than converted into final labels.
+
+\subsection{Event-level validation against manual labels}
+
+When manual labels are available, automatic events are compared with manual events using ISI-indexed intersection-over-union. For automatic interval $A=[a_1,a_2]$ and manual interval $M=[m_1,m_2]$,
+\begin{equation}
+    |A\cap M|
+    =
+    \max\left(0,\min(a_2,m_2)-\max(a_1,m_1)+1\right),
+\end{equation}
+\begin{equation}
+    |A\cup M|
+    =
+    (a_2-a_1+1)+(m_2-m_1+1)-|A\cap M|,
+\end{equation}
+and
+\begin{equation}
+    \operatorname{IoU}(A,M)
+    =
+    \frac{|A\cap M|}{|A\cup M|}.
+\end{equation}
+Candidate/manual pairs are greedily matched in descending IoU subject to a minimum overlap criterion. Precision, recall and F1 are computed as
+\begin{equation}
+    \operatorname{Precision}
+    =
+    \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}},
+    \qquad
+    \operatorname{Recall}
+    =
+    \frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}},
+\end{equation}
+\begin{equation}
+    F_1 =
+    \frac{2\,\operatorname{Precision}\,\operatorname{Recall}}
+    {\operatorname{Precision}+\operatorname{Recall}}.
+\end{equation}
+Strict high-confidence evaluation preserves specific labels, whereas candidate-family evaluation groups related labels, such as burst and possible\_burst, to assess event-family retrieval. Parameter sensitivity scanning perturbs Basic-layer parameters and recomputes event-level agreement, thereby documenting how precision, recall, F1, IoU, boundary error and confusion structure depend on threshold choices.
+
+\TODOFIG{Figure 3 should appear here. Suggested content: validation schema showing manual intervals, automatic intervals, IoU matching, strict mode and candidate-family mode.}
+
+\subsection{State-space and population exploratory modules}
+
+\stpd{} includes optional exploratory modules for ISI state-space analysis, neural manifold visualization, event-aligned activity and slice tensor construction. These modules are not required for the core detector and should not be used alone as evidence that detected events are biological ground truth.
+
+For single-train state-space analysis, the package computes features including logISI, local median ISI, local mean ISI, CV, LV, CV2, lagged ISI features and local context summaries. CV2 is computed as
+\begin{equation}
+    \mathrm{CV2}
+    =
+    \frac{1}{m-1}
+    \sum_{j=1}^{m-1}
+    \frac{2|\delta_j-\delta_{j+1}|}{\delta_j+\delta_{j+1}},
+\end{equation}
+over adjacent valid ISI pairs. Linear and nonlinear embeddings, including PCA, Isomap, diffusion-map-style embeddings, PHATE, UMAP and t-SNE, are provided as visualization tools and should be reported with settings, random seeds where relevant and stability controls.
+
+For population-level exploration, selected spike trains can be binned into a time-by-neuron matrix using counts or rates. Transformations such as $\log(1+x)$ or $\sqrt{x+3/8}$ can be applied before dimensionality reduction. Event labels are overlaid as annotations rather than used as hidden inputs to define the embedding, avoiding circular inference. Event-state centroid distances, dispersions, permutation tests, event-triggered trajectories, latent velocity, curvature and decoding analyses can be used to ask whether event labels explain structure beyond visual separation.
+
+The optional sliceTCA workflow constructs trial-by-neuron-by-time tensors from selected spike trains and task events. When the required Python environment is available through reticulate, the package can call the official Python sliceTCA backend. Studies using this module should report tensor dimensions, bin width, event windows, rank settings, optimization settings, reconstruction metrics and backend versions.
+
+\TODOFIG{Figure 4 should appear here if population data are included. Suggested content: optional population manifold/event-geometry workflow, clearly labeled as exploratory unless validated by held-out decoding or behavior.}
+
+\section{Results}
+
+\subsection{Software workflow and exported audit artifacts}
+
+\stpd{} implements a reproducible workflow from raw timestamps to reviewable event labels and validation reports. A typical run proceeds through raw or annotated import, QC, duplicate handling, threshold resolution, event-grammar candidate generation, candidate feature extraction, final decision audit, event-level validation when manual labels are available and export of public and diagnostic tables.
+
+The stable public result fields include the effective threshold table, pre-detection quality table, candidate diagnostic audit, candidate ledger, event table, candidate feature table, final decision audit, eventness audit, parameter report, parameter-validation report, run metadata and manual-label validation summaries when labels are available. This organization allows a reviewer to trace a final event label back to the candidate window, threshold policy, feature evidence and parameter hash that produced it.
+
+\TODOTAB{Table 3 should appear here. Suggested content: list of exported files and what scientific question each file answers. Include Events\_final.csv, Candidate\_ledger.csv, Candidate\_diagnostic\_audit.csv, Eventness\_audit.csv, Threshold\_table.csv, Detector\_run\_metadata.csv and validation exports.}
+
+\subsection{Smoke-test demonstration on bundled data}
+
+To verify the package-level workflow, we ran \stpd{} version 1.2.1 on the bundled raw CSV file \texttt{inst/extdata/Grechishnikova\_STN\_2017\_subset.csv}. This example is a software smoke test and should not be interpreted as a clinical or disease-physiology result. The dataset contains four spike trains with 120 spikes each. Pre-detection QC generated four train-level QC rows. The detector produced 116 public automatic candidate events: 67 burst events, 43 pause events and 6 possible\_burst events. The public candidate ledger contained 116 rows, the diagnostic candidate audit contained 185 rows and the candidate-feature table contained 116 rows.
+
+\begin{table}[t]
+\caption{Smoke-test output summary for the bundled example dataset. This table demonstrates end-to-end software execution and export structure; it is not a performance benchmark.}
+\label{tab:smoketest}
+\centering
+\begin{tabular}{ll}
+\toprule
+Item & Value \\
+\midrule
+Package version & 1.2.1 \\
+Input file & \texttt{inst/extdata/Grechishnikova\_STN\_2017\_subset.csv} \\
+Number of spike trains & 4 \\
+Spikes per train & 120, 120, 120, 120 \\
+QC rows & 4 \\
+Public AUTO events & 116 \\
+Burst events & 67 \\
+Pause events & 43 \\
+\texttt{possible\_burst} events & 6 \\
+Candidate ledger rows & 116 \\
+Diagnostic candidate-audit rows & 185 \\
+Candidate-feature rows & 116 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The smoke test illustrates two features of the software. First, the analysis chain produces public event tables and diagnostic audit tables as separate outputs. Second, QC warnings remain visible and must be interpreted before biological conclusions are drawn. A software smoke test can establish that the workflow runs and exports the expected artifacts, but it does not establish detector accuracy on a gold-standard benchmark.
+
+\subsection{Validation-oriented outputs}
+
+The package exports both strict and candidate-family validation modes. Strict validation is appropriate when manually labeled intervals are intended to define high-confidence ground truth for particular event classes. Candidate-family validation is useful when the question is whether the detector retrieves intervals belonging to a broader biological family, even if final subtype labels differ. Parameter sensitivity scanning addresses a common weakness in spike-train event analysis: reporting one parameter set without showing whether conclusions depend on narrow threshold choices.
+
+\TODOTAB{Table 4 should appear here before final submission. Suggested content: benchmark validation matrix. Rows: synthetic ground truth, expert manual subset, classical support comparison, artifact stress test, parameter sensitivity. Columns: dataset, primary metric, expected output, current status.}
+
+\TODOFIG{Figure 5 should appear here after benchmark data are added. Suggested content: precision--recall/F1 curves, IoU distributions and boundary-error plots for manual or synthetic validation.}
+
+\section{Discussion}
+
+\stpd{} contributes an auditable neuroinformatics framework for spike-train event review. Its main strength is not a claim of universal automatic truth. Its strength is that it makes a normally fragile analysis chain explicit. Raw data are checked before detection. Thresholds are resolved and frozen. Candidate windows are separated from public calls. Manual labels can be protected. Literature-linked support methods are kept distinct from the project-defined event grammar. Parameter reports and validation artifacts are exported so that users and reviewers can inspect the basis of each label.
+
+This design matches how spike-train analysis is often conducted in practice. Expert reviewers may recognize meaningful patterns, but manuscripts require reproducible definitions. Conversely, a purely automatic detector may be reproducible but biologically brittle if it ignores spike sorting, cell type, stationarity and context. \stpd{} places a reviewable grammar between these extremes: it proposes candidate events, exposes the evidence and requires validation before strong claims are made.
+
+\subsection{Biological interpretation}
+
+The event grammar should be interpreted operationally. A burst call indicates a compact short-ISI structure with sufficient local contrast under the chosen threshold policy. A pause call indicates a long-gap interval under the chosen pause and context rules. Tonic and high-frequency calls indicate state-like temporal regimes defined by local rate and regularity evidence. These labels can be scientifically useful, but their meaning depends on experimental preparation, spike sorting quality, cell type, brain region, disease or stimulation state and behavior. The software therefore encourages manual review, support-method comparison, parameter sensitivity and, where possible, behavioral or physiological validation.
+
+\subsection{Relationship to classical burst-detection methods}
+
+Mean-ISI and logISIH/newBD support methods are important because they provide literature-linked threshold evidence. They also illustrate why no single detector should be treated as universally definitive. Mean-ISI adapts to intrinsic ISI statistics, but can be affected by nonstationarity and long silent intervals. logISIH/newBD uses histogram structure and valley evidence, but binning, smoothing and peak-valley selection can influence threshold resolution. \stpd{} exposes these methods as support layers so that investigators can compare them with the main grammar instead of silently mixing assumptions.
+
+\subsection{Comparison with related software}
+
+\stpd{} is complementary to existing neuroinformatics software rather than a replacement for broad electrophysiology data models or synchrony libraries. Neo provides a mature Python object model for representing electrophysiology data across many file formats \citep{Garcia2014}; its central contribution is interoperable data handling, whereas \stpd{} focuses on quality-controlled, event-level spike-train review with frozen threshold tables, candidate ledgers and manual-label validation artifacts. PySpike provides efficient Python routines for spike-train synchrony and distance analysis \citep{Mulansky2016}; its goal is comparative spike-train metrics, whereas \stpd{} is organized around single-train and multi-train event annotation, audit trails and reviewer-facing exports. The practical advantage of \stpd{} for the present use case is therefore workflow-level accountability: every public event can be traced to input quality checks, resolved thresholds, candidate evidence, interval competition, final decision state and optional manual-label overlap.
+
+\subsection{Limitations}
+
+Several limitations should be considered. First, the core event grammar is an engineering-calibrated rule system. It is interpretable and auditable, but not a strict formula from a single publication. Second, manual labels or independent endpoints remain necessary for performance claims. Without expert annotation, synthetic ground truth or behavior-linked validation, outputs should be treated as candidate events. Third, QC warnings can alter interpretation; duplicate timestamps, refractory-suspect intervals, nonstationarity and derived-file import errors can affect burst and pause evidence. Fourth, optional manifold and tensor modules should remain exploratory unless supported by population recordings, behavior variables, held-out decoding, shuffle controls and embedding-stability analyses.
+
+\subsection{Future work}
+
+Future work should focus on four directions. First, parameter metadata should be expanded so that every parameter is tagged with method class, citation key, formula reference, unit convention and validation status. Second, benchmark validation should be added as first-class evidence, including synthetic event injection, expert manual labels, inter-rater agreement, classical-method comparisons, artifact stress tests and parameter-sensitivity curves. Third, additional golden tests should cover boundary bursts, refractory doublets, high-frequency tonic states, pause-near-burst conflicts, long bursts, candidate-ledger separation and export consistency. Fourth, publication-grade population workflows should integrate full GPFA and official CEBRA backends with held-out behavior decoding, held-out neuron prediction and cross-session embedding stability.
+
+\section{Conclusion}
+
+\stpd{} provides an auditable R/Shiny framework for spike-train pattern analysis. It combines QC-first data handling, reviewable event-grammar candidate generation, literature-linked Mean-ISI and logISIH/newBD support layers, manual-label protection, validation exports, state-space analysis, population exploratory tools and optional slice tensor workflows. The package is best understood as a transparent candidate-generation and validation platform. Its scientific value lies in making spike-train pattern analysis inspectable, reproducible and testable rather than in claiming universal automatic ground truth.
+
+\section*{Statements and Declarations}
+
+\subsection*{Ethics approval}
+
+This manuscript describes software and a bundled smoke-test dataset. It does not report new human or animal experimental results. If submitted together with patient recordings, intraoperative data, animal experiments or unpublished laboratory datasets, the final manuscript must include the relevant ethics committee approval, consent statement, protocol identifier and data-use restrictions.
+
+\subsection*{Competing interests}
+
+The author declares no competing interests. \TODONOTE{Confirm or revise before submission.}
+
+\subsection*{Funding}
+
+\TODONOTE{Insert funding information. If no specific funding supported the work, state: The author received no specific funding for this work.}
+
+\subsection*{Author contributions}
+
+HZ designed and implemented the software, developed the algorithmic workflow, performed code-level checks and prepared the manuscript draft. \TODONOTE{Revise if additional contributors are added.}
+
+\subsection*{Use of artificial intelligence tools}
+
+A large language model was used to assist with manuscript organization, drafting and language editing. The author reviewed and revised the content, verified the scientific claims, checked the cited literature and accepts full responsibility for the final manuscript. \TODONOTE{Retain, revise or remove this statement according to the actual final drafting process and current journal policy.}
+
+\section*{Information Sharing Statement}
+
+\stpd{} version 1.2.1 is an R/Shiny package with native C components and optional Python integration through reticulate. At submission, the source code, installation instructions, parameter files, bundled example data, smoke-test script, dependency versions and the scripts used to generate manuscript figures and tables will be made available to reviewers through a versioned repository. At publication, the software and associated reproducibility materials will be publicly available through a release tag and persistent archive identifier, such as a Zenodo DOI. The bundled example CSV file used for the smoke test is distributed with the package at \texttt{inst/extdata/Grechishnikova\_STN\_2017\_subset.csv}; it demonstrates software execution and is not presented as a clinical or disease-physiology dataset. No resources required to reproduce the reported software workflow will be available only upon request.
+
+\TODONOTE{Before submission, insert the final GitHub repository URL, release tag, Zenodo DOI or equivalent archive identifier, exact package dependency versions and figure/table generation script paths.}
+
+\section*{Acknowledgements}
+
+\TODONOTE{Add acknowledgements for scientific feedback, data contributors, institutions or open-source dependencies if appropriate.}
+
+\bibliography{references_neuroinformatics}
+
+\end{document}

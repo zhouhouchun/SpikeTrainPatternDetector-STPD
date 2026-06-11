@@ -1,0 +1,16 @@
+Package: SpikeTrainPatternDetector
+Type: Package
+Title: Spike Train Pattern Detector
+Version: 1.2.1
+Authors@R: person(given = "Houchun", family = "Zhou", role = c("aut", "cre"), email = "zhouhouchun@outlook.com")
+Author: Houchun Zhou [aut, cre]
+Maintainer: Houchun Zhou <zhouhouchun@outlook.com>
+Description: Productized Shiny-based spike train pattern detector and semi-supervised review platform. The package provides quality control, rule-based candidate detection, eventness audit, Mean-ISI and Pasquale logISIH/newBD threshold support layers, train-wise threshold suggestions, and reproducible export reports without treating support-layer results as final ground truth.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports: shiny, plotly, htmlwidgets, dplyr, tidyr, purrr, DT, digest, tibble, yaml, graphics, grDevices, grid, stats, utils
+Suggests: testthat, ggplot2, nnet, data.table, lme4, phateR, Rtsne, uwot, reticulate
+NeedsCompilation: yes
+Collate: '00_utils.R' '00a_parameter_schema.R' '01_default_params.R' '02_qc_interval_guards.R' '03_data_io.R' '04_param_suggestion.R' '05_isi_context_features.R' '06_events_intervals.R' '07_manual_param_estimation.R' '08_detector_helpers.R' '09_burst_seed_bridge.R' '10_structure_layer.R' '11_near_miss.R' '12_ml_features.R' '13_dataset_api_evaluation.R' '14_audit_presets.R' '15_governance.R' '16_semantic_consistency.R' '17_critical_overrides.R' '20_final_classification.R' '21_candidate_features.R' '32_eventness_audit.R' '33_support_misi.R' '34_support_logisi.R' '35_physiology_gated_arbitration.R' '36_seed_bridge_classicity.R' '37_dataset_isi_band_burst_kernel.R' '38_event_grammar_core.R' '39_threshold_resolved_event_grammar.R' '40_burst_consistency_optimization.R' '41_hf_spiking_state_fix.R' '42_hfspiking_protection_and_manual_coexistence.R' '43_nn_event_grammar_guardrails.R' '44_public_api_audit_integrity_fixes.R' '22_schema_ui.R' '23_native_wrappers.R' '24_clean_api.R' '25_canonical_api.R' '26_parameter_registry.R' '27_engine.R' '28_validation.R' '29_shiny_modules.R' '30_native_prefilters.R' '31_scientific_validation.R' '45_public_schema_hardening.R' '46_derived_csv_guardrails.R' '47_public_candidate_filtering.R' '48_release_hardening.R' '49_spiketrainpattern_product_schema.R' '50_internal_api.R' '51_server_modules.R' '52_parameter_yaml_io.R' '53_parameter_delta_preview.R' '54_parameter_sensitivity_validation.R' '55_state_space_pca.R' '57_state_dynamics.R' '56_i18n.R' '58_possible_burst_promotion.R' '59_dbs_track_figure.R' '60_state_trajectory.R' '61_neural_manifold.R' '62_slicetca.R' '63_distributional_evidence.R' '64_event_aligned_activity.R' '18_ui.R' '19_server.R' '99_launch.R'
+URL: https://www.spiketrain.studio
+BugReports: https://www.spiketrain.studio

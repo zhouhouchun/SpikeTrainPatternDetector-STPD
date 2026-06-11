@@ -1,0 +1,5 @@
+"pattern","expected_n_events","n_events","pass"
+"burst",33,33,TRUE
+"pause",23,23,TRUE
+"possible_burst",2,2,TRUE
+"tonic",17,17,TRUE
