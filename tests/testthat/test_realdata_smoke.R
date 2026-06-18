@@ -43,3 +43,18 @@ test_that("Grechishnikova RT2D03.89 burst packets are not swallowed by HF spikin
   hf_events <- extract_events_for_train(hf_dat, source = "auto", train = hf_train, min_isi_sec = 0.001)
   expect_true(any(hf_events$pattern == "high_frequency_spiking" & hf_events$n_isi >= 200L))
 })
+
+test_that("bundled subset runs the full native-path detector without crashing", {
+  # Regression for a segfault in the native stpd_local_median_cache_c kernel:
+  # exercises the C path (percentiles, local-median cache, structure scan)
+  # end-to-end on the dataset that previously crashed. A broken native build
+  # aborts the test process, so the suite catches it.
+  path <- system.file("extdata", "Grechishnikova_STN_2017_subset.csv", package = "SpikeTrainPatternDetector")
+  skip_if(!file.exists(path))
+  ds <- build_spike_dataset(path, mode = "raw", unit_in = "s")
+  res <- stpd_detect(ds, default_params(), selected_trains = names(ds$trains))
+  expect_equal(length(res$trains), length(ds$trains))
+  expect_true(all(vapply(res$trains, function(t) length(t$pattern_auto) == nrow(t), logical(1))))
+  labels <- unlist(lapply(res$trains, function(t) t$pattern_auto[nzchar(t$pattern_auto)]))
+  expect_true(length(labels) > 0)
+})

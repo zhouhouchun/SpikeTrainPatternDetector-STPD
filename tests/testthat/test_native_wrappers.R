@@ -100,3 +100,44 @@ test_that("native wrappers reject mismatched paired vector lengths", {
     "target_start and target_end"
   )
 })
+
+test_that("native local-median cache matches an independent R reference", {
+  # Regression for the native stpd_local_median_cache_c segfault/divergence:
+  # the C result must equal a from-scratch R median (excluding the first ISI and
+  # the focal index, finite and >= min_isi). A crash aborts the process; a wrong
+  # value fails the comparison.
+  ref_local_median <- function(isi, window, min_isi = 0.001) {
+    if (window %% 2 == 0) window <- window + 1
+    n <- length(isi); half <- window %/% 2; out <- rep(NA_real_, n)
+    for (i in seq_len(n)) {
+      idx <- setdiff(max(2L, i - half):min(n, i + half), i)
+      v <- isi[idx]; v <- v[is.finite(v) & v >= min_isi]
+      if (length(v)) out[i] <- stats::median(v)
+    }
+    out
+  }
+  inputs <- list(
+    c(NA, rep(c(.01, .02, .03, .2, .005, .006, .15, .02), 4)),
+    c(NA, rep(c(.002, .2), 30)),
+    c(NA, rep(.005, 40))
+  )
+  path <- system.file("extdata", "Grechishnikova_STN_2017_subset.csv", package = "SpikeTrainPatternDetector")
+  if (file.exists(path)) {
+    ds <- build_spike_dataset(path, mode = "raw", unit_in = "s")
+    inputs <- c(inputs, lapply(ds$trains, function(t) as.numeric(t$ISI_sec)))
+  }
+  for (isi in inputs) {
+    for (w in c(3L, 5L, 11L)) {  # all <= length, so the wrapper does not shrink them
+      got <- compute_local_median_cache(isi, window = w, min_isi_sec = 0.001)
+      expect_equal(length(got), length(isi))
+      expect_equal(got, ref_local_median(isi, w), tolerance = 1e-9)
+    }
+  }
+})
+
+test_that("native local-median cache handles degenerate sizes without crashing", {
+  for (isi in list(numeric(0), NA_real_, c(NA, .01), c(NA, .01, .02))) {
+    res <- compute_local_median_cache(as.numeric(isi), window = 11L)
+    expect_equal(length(res), length(isi))
+  }
+})

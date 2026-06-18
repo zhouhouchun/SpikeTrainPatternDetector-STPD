@@ -15,6 +15,24 @@ stpd_parameter_config_path <- function(path = NULL) {
   stop("Parameter YAML config not found: inst/config/parameters.yml", call. = FALSE)
 }
 
+# Read a YAML file as UTF-8 regardless of the session locale. Opening a
+# connection with encoding = "UTF-8" still re-encodes to the native charset on
+# read, which in a non-UTF-8 locale (e.g. LC_CTYPE=C) raises "invalid input
+# found on input connection" and silently truncates the file at the first
+# multibyte (e.g. Chinese) byte -- dropping trailing config sections such as
+# eventness_schema and parameter_contract. Reading the raw bytes and marking
+# them UTF-8 avoids any locale-dependent re-encoding.
+stpd_read_yaml_utf8 <- function(path, eval.expr = FALSE) {
+  if (!requireNamespace("yaml", quietly = TRUE)) {
+    stop("Package 'yaml' is required to read SpikeTrainPatternDetector YAML.", call. = FALSE)
+  }
+  size <- file.info(path)$size
+  if (is.na(size)) stop("YAML file not found: ", path, call. = FALSE)
+  txt <- rawToChar(readBin(path, what = "raw", n = size))
+  Encoding(txt) <- "UTF-8"
+  yaml::yaml.load(txt, eval.expr = eval.expr)
+}
+
 stpd_parameter_config <- function(path = NULL, reload = FALSE) {
   cfg_path <- stpd_parameter_config_path(path)
   cfg_info <- file.info(cfg_path)
@@ -29,7 +47,7 @@ stpd_parameter_config <- function(path = NULL, reload = FALSE) {
   if (!requireNamespace("yaml", quietly = TRUE)) {
     stop("Package 'yaml' is required to load SpikeTrainPatternDetector parameter config.", call. = FALSE)
   }
-  cfg <- yaml::read_yaml(cfg_path, eval.expr = FALSE)
+  cfg <- stpd_read_yaml_utf8(cfg_path, eval.expr = FALSE)
   required <- c("runtime_defaults", "product_defaults", "key_schema", "eventness_schema", "parameter_contract")
   missing <- required[!vapply(required, function(nm) !is.null(cfg[[nm]]), logical(1))]
   if (length(missing) > 0) {

@@ -180,7 +180,7 @@ stpd_read_params_yaml <- function(file, baseline = default_params_sec(), strict 
   if (!requireNamespace("yaml", quietly = TRUE)) {
     stop("Package 'yaml' is required to read SpikeTrainPatternDetector parameter YAML.", call. = FALSE)
   }
-  obj <- yaml::read_yaml(file, eval.expr = FALSE)
+  obj <- if (is.character(file)) stpd_read_yaml_utf8(file, eval.expr = FALSE) else yaml::read_yaml(file, eval.expr = FALSE)
   imported <- stpd_extract_params_from_yaml_object(obj)
   input_issues <- stpd_validate_raw_yaml_params(imported)
   raw <- stpd_prepare_params_for_yaml(imported, baseline = baseline, coerce = TRUE, productize = FALSE)
