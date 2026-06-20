@@ -17,6 +17,10 @@ src/*.dll
 src/*.dylib
 src/symbols.rds
 
+# Swift/macOS build artifacts
+dist/
+macos/SpikeTrainPatternDetectorMac/.build/
+
 # Python/render intermediates
 __pycache__/
 *.pyc

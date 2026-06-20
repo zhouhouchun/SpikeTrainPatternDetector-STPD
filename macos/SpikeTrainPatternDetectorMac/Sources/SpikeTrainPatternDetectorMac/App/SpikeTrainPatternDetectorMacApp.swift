@@ -1,0 +1,138 @@
+import AppKit
+import SwiftUI
+
+@MainActor
+@main
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static var retainedDelegate: AppDelegate?
+
+    private let document = RasterDocument()
+    private var mainWindow: NSWindow?
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        retainedDelegate = delegate
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        app.finishLaunching()
+        app.run()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        installMenus()
+        document.loadBundledSampleIfNeeded()
+        DispatchQueue.main.async {
+            self.showMainWindow()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            self.showMainWindow()
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    @objc private func openCSV() {
+        showMainWindow()
+        document.openCSVWithPanel()
+    }
+
+    @objc private func loadSample() {
+        document.loadBundledSample()
+        showMainWindow()
+    }
+
+    private func showMainWindow() {
+        let window = mainWindow ?? makeMainWindow()
+        mainWindow = window
+        placeOnVisibleScreenIfNeeded(window)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func makeMainWindow() -> NSWindow {
+        let rootView = ContentView(document: document)
+            .frame(minWidth: 1240, minHeight: 700)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1420, height: 820),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Spike Train Pattern Detector"
+        window.contentViewController = NSHostingController(rootView: rootView)
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 1240, height: 700)
+        return window
+    }
+
+    private func placeOnVisibleScreenIfNeeded(_ window: NSWindow) {
+        guard let screen = preferredVisibleScreen() else {
+            return
+        }
+
+        let visibleFrame = screen.visibleFrame
+        let currentFrame = window.frame
+        let targetContainsWindow = visibleFrame.intersects(currentFrame) &&
+            currentFrame.minX >= visibleFrame.minX &&
+            currentFrame.maxX <= visibleFrame.maxX &&
+            currentFrame.minY >= visibleFrame.minY &&
+            currentFrame.maxY <= visibleFrame.maxY
+
+        guard !targetContainsWindow || currentFrame.width < 100 || currentFrame.height < 100 else {
+            return
+        }
+
+        let width = min(max(currentFrame.width, 1360), visibleFrame.width * 0.92)
+        let height = min(max(currentFrame.height, 760), visibleFrame.height * 0.88)
+        let x = visibleFrame.minX + max(40, (visibleFrame.width - width) / 2)
+        let y = visibleFrame.minY + max(40, (visibleFrame.height - height) / 2)
+        window.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+    }
+
+    private func preferredVisibleScreen() -> NSScreen? {
+        NSScreen.screens.first { screen in
+            screen.visibleFrame.minX >= 0 && screen.visibleFrame.minY >= 0
+        } ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private func installMenus() {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(
+            withTitle: "Quit Spike Train Pattern Detector",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+
+        let fileMenuItem = NSMenuItem()
+        mainMenu.addItem(fileMenuItem)
+        let fileMenu = NSMenu(title: "File")
+        fileMenuItem.submenu = fileMenu
+        fileMenu.addItem(
+            withTitle: "Open CSV...",
+            action: #selector(openCSV),
+            keyEquivalent: "o"
+        ).target = self
+        fileMenu.addItem(
+            withTitle: "Load Sample",
+            action: #selector(loadSample),
+            keyEquivalent: "r"
+        ).target = self
+
+        NSApp.mainMenu = mainMenu
+    }
+}

@@ -13,6 +13,9 @@
 ^Rplots[.]pdf$
 ^src/.*[.](o|so|dll|dylib)$
 ^src/symbols[.]rds$
+^SpikeTrainPatternDetector_RStudio_App/
+^macos/
+^script/
 ^manuscript/
 ^docx_.*_render/
 ^rendered_.*/
