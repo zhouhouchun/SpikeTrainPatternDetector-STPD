@@ -63,6 +63,7 @@ public enum ClassicAnchorCandidateArbitrator {
 
         var selectedStatusByID: [String: String] = [:]
         var unselectedStatusByID: [String: String] = [:]
+        var hfBurstPacketIDs: Set<String> = []
         let grouped = Dictionary(grouping: candidates, by: \.trainID)
 
         for trainCandidates in grouped.values {
@@ -70,6 +71,13 @@ public enum ClassicAnchorCandidateArbitrator {
             let gapCandidates = trainCandidates.filter { $0.arbitrationTrack == .gap }
             let stateCandidates = trainCandidates.filter { $0.arbitrationTrack == .state }
             let reviewCandidates = trainCandidates.filter { $0.arbitrationTrack == .review }
+
+            // Strong, long, non-burst-dominated high-frequency states. Embedded classic/tonic
+            // windows fully inside such an envelope are part of the HF state, not competitors,
+            // so they are demoted before weighted-interval selection (otherwise many small
+            // tonic fragments out-value one long HF state). Local burst-family events inside
+            // the envelope stay burst events but are tagged as hf_burst_packet (audit only).
+            let strongHFStates = stateCandidates.filter { isStrongHighFrequencyState($0) }
 
             let eventSelectionIDs = weightedSelectionIDs(for: eventCandidates)
             let selectedEvents = eventCandidates.filter { eventSelectionIDs.contains($0.id) }
@@ -95,11 +103,26 @@ public enum ClassicAnchorCandidateArbitrator {
                 selectedStatusByID[id] = "selected_by_review_track_weighted_interval_grammar"
             }
 
+            if !strongHFStates.isEmpty {
+                for event in eventCandidates where event.finalLabel.isBurstEventFamily {
+                    if strongHFStates.contains(where: { fullyContains($0, event) }) {
+                        hfBurstPacketIDs.insert(event.id)
+                    }
+                }
+            }
+
             var compatibleStateCandidates: [ClassicAnchorCandidate] = []
             var compatibleStateStatusByID: [String: String] = [:]
             for state in stateCandidates {
                 guard state.isEligibleForAutoSelection else {
                     unselectedStatusByID[state.id] = "not_selected__state_candidate_ineligible"
+                    continue
+                }
+                // An embedded tonic window fully contained inside a strong HF state belongs to
+                // the HF envelope; demote it so it cannot out-vote the long HF state.
+                if state.finalLabel == .tonic,
+                   strongHFStates.contains(where: { $0.id != state.id && fullyContains($0, state) }) {
+                    unselectedStatusByID[state.id] = "not_selected__contained_in_strong_hf_state"
                     continue
                 }
                 let status = stateSelectionStatus(
@@ -134,13 +157,19 @@ public enum ClassicAnchorCandidateArbitrator {
             }
             if !selectedHFSStates.isEmpty {
                 for hfs in selectedHFSStates {
+                    // Only a burst-dominated HFS is unselected here. A non-dominated HFS that
+                    // merely overlaps internal selected burst packets is retained as an
+                    // overlay (its packetization-overlay status was set in stateSelectionStatus).
+                    guard hfs.hfSpikingBurstDominated == true else {
+                        continue
+                    }
                     guard selectedEvents.contains(where: {
                         $0.finalLabel.isBurstEventFamily && overlapCount(hfs, $0) > 0
                     }) else {
                         continue
                     }
                     selectedStatusByID.removeValue(forKey: hfs.id)
-                    unselectedStatusByID[hfs.id] = "not_selected__hfs_state_overlaps_selected_burst_event"
+                    unselectedStatusByID[hfs.id] = "not_selected__hfs_burst_packet_dominance"
                 }
             }
 
@@ -159,19 +188,59 @@ public enum ClassicAnchorCandidateArbitrator {
             }
         }
 
-        return candidates.map { candidate in
-            guard let selectionStatus = selectedStatusByID[candidate.id] else {
-                return candidate.withAutoSelection(
+        return candidates.map { candidate -> ClassicAnchorCandidate in
+            let resolved: ClassicAnchorCandidate
+            if let selectionStatus = selectedStatusByID[candidate.id] {
+                resolved = candidate.withAutoSelection(
+                    selectedForAuto: true,
+                    selectionStatus: selectionStatus
+                )
+            } else {
+                resolved = candidate.withAutoSelection(
                     selectedForAuto: false,
                     selectionStatus: unselectedStatusByID[candidate.id] ?? "not_selected"
                 )
             }
-
-            return candidate.withAutoSelection(
-                selectedForAuto: true,
-                selectionStatus: selectionStatus
-            )
+            // Audit-only: a burst event inside a strong HF envelope is an HF burst packet. It
+            // stays a burst event (finalLabel unchanged); only the additive subtype is set.
+            guard hfBurstPacketIDs.contains(candidate.id), resolved.stateHighFrequencySubtype == nil else {
+                return resolved
+            }
+            var tagged = resolved
+            tagged.stateHighFrequencySubtype = "hf_burst_packet"
+            return tagged
         }
+    }
+
+    /// A high-frequency state strong and long enough to dominate embedded tonic windows.
+    /// These are arbitration-selection thresholds (not detection thresholds): an eligible,
+    /// non-burst-dominated, state-level HFS run that is genuinely high-frequency (absolute
+    /// q90 cap, so a slow ~28 Hz irregular-tonic run is never treated as a dominating HFS)
+    /// with strong short-ISI and bridge evidence.
+    private static let strongHighFrequencyStateMinISI = 20
+    private static let strongHighFrequencyStateQ90MaxSec = 0.030
+    private static let strongHighFrequencyStateShortFractionMin = 0.7
+    private static let strongHighFrequencyStateBridgeFractionMin = 0.6
+
+    private static func isStrongHighFrequencyState(_ candidate: ClassicAnchorCandidate) -> Bool {
+        candidate.finalLabel == .highFrequencySpiking &&
+            candidate.isEligibleForAutoSelection &&
+            candidate.hfSpikingBurstDominated != true &&
+            candidate.nISI >= strongHighFrequencyStateMinISI &&
+            (candidate.intraQ90Sec ?? .infinity) <= strongHighFrequencyStateQ90MaxSec &&
+            (candidate.hfSpikingShortFraction ?? 0) >= strongHighFrequencyStateShortFractionMin &&
+            (candidate.hfSpikingBridgeFraction ?? 0) >= strongHighFrequencyStateBridgeFractionMin
+    }
+
+    private static func fullyContains(
+        _ container: ClassicAnchorCandidate,
+        _ inner: ClassicAnchorCandidate
+    ) -> Bool {
+        let containerStart = min(container.startISIIndex, container.endISIIndex)
+        let containerEnd = max(container.startISIIndex, container.endISIIndex)
+        let innerStart = min(inner.startISIIndex, inner.endISIIndex)
+        let innerEnd = max(inner.startISIIndex, inner.endISIIndex)
+        return containerStart <= innerStart && containerEnd >= innerEnd
     }
 
     private struct WeightedCandidate {
@@ -433,7 +502,14 @@ public enum ClassicAnchorCandidateArbitrator {
                 return (false, "not_selected__hfs_burst_packet_dominance")
             }
             if !burstEventOverlaps.isEmpty {
-                return (false, "not_selected__hfs_state_overlaps_selected_burst_event")
+                // Not burst-dominated, but selected burst packets overlap internally:
+                // retain the sustained HFS state as a packetization overlay instead of
+                // letting any overlap erase it. Dominance (above) is the only burst-driven
+                // rejection; pause/gap boundaries still split HFS upstream.
+                return (
+                    true,
+                    "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
+                )
             }
             if state.hfSpikingBurstPacketLike == true {
                 return (
@@ -701,7 +777,6 @@ public extension ClassicAnchorCandidate {
             cv: cv,
             cv2: cv2,
             lv: lv,
-            mm: mm,
             preGapSec: preGapSec,
             postGapSec: postGapSec,
             preRatioQ90: preRatioQ90,
@@ -763,6 +838,8 @@ public extension ClassicAnchorCandidate {
             stateLowTailFraction: stateLowTailFraction,
             stateLocalStabilityScore: stateLocalStabilityScore,
             stateCoreBurstRunLength: stateCoreBurstRunLength,
+            stateTonicSubtype: stateTonicSubtype,
+            stateHighFrequencySubtype: stateHighFrequencySubtype,
             stateTrainPercentileMedian: stateTrainPercentileMedian,
             stateLocalPercentileMedian: stateLocalPercentileMedian,
             stateLocalPercentileQ90: stateLocalPercentileQ90,
@@ -846,7 +923,6 @@ public extension ClassicAnchorCandidate {
             cv: cv,
             cv2: cv2,
             lv: lv,
-            mm: mm,
             preGapSec: preGapSec,
             postGapSec: postGapSec,
             preRatioQ90: preRatioQ90,
@@ -908,6 +984,159 @@ public extension ClassicAnchorCandidate {
             stateLowTailFraction: stateLowTailFraction,
             stateLocalStabilityScore: stateLocalStabilityScore,
             stateCoreBurstRunLength: stateCoreBurstRunLength,
+            stateTonicSubtype: stateTonicSubtype,
+            stateHighFrequencySubtype: stateHighFrequencySubtype,
+            stateTrainPercentileMedian: stateTrainPercentileMedian,
+            stateLocalPercentileMedian: stateLocalPercentileMedian,
+            stateLocalPercentileQ90: stateLocalPercentileQ90,
+            stateLocalRobustZMedian: stateLocalRobustZMedian,
+            stateLocalRobustZAbsQ80: stateLocalRobustZAbsQ80,
+            stateLocalRobustZQ10: stateLocalRobustZQ10,
+            burstSeedRunStartISI: burstSeedRunStartISI,
+            burstSeedRunEndISI: burstSeedRunEndISI,
+            burstSeedBandLowerSec: burstSeedBandLowerSec,
+            burstSeedBandUpperSec: burstSeedBandUpperSec,
+            burstBridgeBandUpperSec: burstBridgeBandUpperSec,
+            burstContrastRequired: burstContrastRequired,
+            burstPossibleContrastRequired: burstPossibleContrastRequired,
+            burstRequiredGapSec: burstRequiredGapSec,
+            burstPossibleRequiredGapSec: burstPossibleRequiredGapSec,
+            burstBoundaryFloorSec: burstBoundaryFloorSec,
+            burstBoundaryFloorHard: burstBoundaryFloorHard,
+            burstStrictBoundaryPass: burstStrictBoundaryPass,
+            burstPossibleBoundaryPass: burstPossibleBoundaryPass,
+            burstBridgeCountPass: burstBridgeCountPass,
+            burstBridgeFractionPass: burstBridgeFractionPass,
+            burstQ90BridgePass: burstQ90BridgePass,
+            burstSizeLabelBeforeReview: burstSizeLabelBeforeReview,
+            thresholdMode: thresholdMode,
+            hardThreshold: hardThreshold,
+            hardThresholdPattern: hardThresholdPattern,
+            hardBurstSeedUpperSec: hardBurstSeedUpperSec,
+            hardBurstBridgeUpperSec: hardBurstBridgeUpperSec,
+            hardBurstCoreISICount: hardBurstCoreISICount,
+            hardThresholdSource: hardThresholdSource,
+            localBackgroundQ75Sec: localBackgroundQ75Sec,
+            localCompressionQ90Ratio: localCompressionQ90Ratio,
+            eventLocalMedianSec: eventLocalMedianSec,
+            eventLocalPercentileMedian: eventLocalPercentileMedian,
+            eventLocalPercentileQ90: eventLocalPercentileQ90,
+            eventLocalRobustZMedian: eventLocalRobustZMedian,
+            eventLocalRobustZAbsQ80: eventLocalRobustZAbsQ80,
+            eventLocalRobustZQ10: eventLocalRobustZQ10
+        )
+    }
+
+    /// Copy this candidate with a recomputed sub-span geometry: a narrower span and the span's RECOMPUTED interval
+    /// metrics, preserving every semantic/diagnostic field (id, finalLabel, score, priority, selection, locks,
+    /// profile/hf/state provenance). The span-derived metric fields (quantiles, cv/lv, edge contrasts, gaps, counts)
+    /// come from the new sub-span; `cv2`, local-context, and all anchor/profile fields are kept from the original (a
+    /// single-edge change does not meaningfully move them, and the canonicalization verdict recomputes its own
+    /// q/coverage from the slice). The caller supplies the recomputed metrics (e.g. from `spanMetrics`).
+    func withGeometry(
+        startISIIndex: Int, endISIIndex: Int, startSpikeIndex: Int, endSpikeIndex: Int,
+        nISI: Int, nValidISI: Int, nSpikes: Int, durationSec: Double?,
+        intraQ10Sec: Double?, intraQ40Sec: Double?, intraQ50Sec: Double?, intraQ90Sec: Double?, intraQ95Sec: Double?,
+        maxIntraISISec: Double?, meanIntraISISec: Double?, cv: Double?, lv: Double?,
+        preGapSec: Double?, postGapSec: Double?, preRatioQ90: Double?, postRatioQ90: Double?,
+        edgeContrastMinQ90: Double?, edgeContrastGeomQ90: Double?,
+        decisionPath: String
+    ) -> ClassicAnchorCandidate {
+        ClassicAnchorCandidate(
+            id: id,
+            trainID: trainID,
+            trainName: trainName,
+            candidateLayer: candidateLayer,
+            candidateClass: candidateClass,
+            finalLabel: finalLabel,
+            gateStatus: gateStatus,
+            decisionPath: decisionPath,
+            action: action,
+            score: score,
+            priority: priority,
+            selectedForAuto: selectedForAuto,
+            selectionStatus: selectionStatus,
+            startISIIndex: startISIIndex,
+            endISIIndex: endISIIndex,
+            startSpikeIndex: startSpikeIndex,
+            endSpikeIndex: endSpikeIndex,
+            nISI: nISI,
+            nValidISI: nValidISI,
+            nSpikes: nSpikes,
+            durationSec: durationSec,
+            intraQ10Sec: intraQ10Sec,
+            intraQ40Sec: intraQ40Sec,
+            intraQ50Sec: intraQ50Sec,
+            intraQ90Sec: intraQ90Sec,
+            intraQ95Sec: intraQ95Sec,
+            maxIntraISISec: maxIntraISISec,
+            meanIntraISISec: meanIntraISISec,
+            cv: cv,
+            cv2: cv2,
+            lv: lv,
+            preGapSec: preGapSec,
+            postGapSec: postGapSec,
+            preRatioQ90: preRatioQ90,
+            postRatioQ90: postRatioQ90,
+            edgeContrastMinQ90: edgeContrastMinQ90,
+            edgeContrastGeomQ90: edgeContrastGeomQ90,
+            anchorFamily: anchorFamily,
+            anchorLockLevel: anchorLockLevel,
+            anchorBandLowerSec: anchorBandLowerSec,
+            anchorBandUpperSec: anchorBandUpperSec,
+            anchorBandSource: anchorBandSource,
+            anchorContrastMinRequired: anchorContrastMinRequired,
+            anchorContrastGeomRequired: anchorContrastGeomRequired,
+            refractorySuspectCount: refractorySuspectCount,
+            refractorySuspectAction: refractorySuspectAction,
+            profileSeedLowPercentileInTrain: profileSeedLowPercentileInTrain,
+            profileSeedHighPercentileInTrain: profileSeedHighPercentileInTrain,
+            profileSeedBandFraction: profileSeedBandFraction,
+            profileSeedRunCount: profileSeedRunCount,
+            profileMaxSeedRunLength: profileMaxSeedRunLength,
+            profileMedianISISec: profileMedianISISec,
+            profileQ10ISISec: profileQ10ISISec,
+            profileQ25ISISec: profileQ25ISISec,
+            profileQ90ISISec: profileQ90ISISec,
+            profilePauseFraction: profilePauseFraction,
+            profilePhenotypePrior: profilePhenotypePrior,
+            profileBridgeUpperSec: profileBridgeUpperSec,
+            profileBoundaryFloorSec: profileBoundaryFloorSec,
+            profileBoundaryFloorHard: profileBoundaryFloorHard,
+            profileBurstContrastS: profileBurstContrastS,
+            profilePossibleContrastS: profilePossibleContrastS,
+            hfSpikingQ80Sec: hfSpikingQ80Sec,
+            hfSpikingQ80MaxSec: hfSpikingQ80MaxSec,
+            hfSpikingQ90MaxSec: hfSpikingQ90MaxSec,
+            hfSpikingShortUpperSec: hfSpikingShortUpperSec,
+            hfSpikingEpochBridgeSec: hfSpikingEpochBridgeSec,
+            hfSpikingToleratedGapSec: hfSpikingToleratedGapSec,
+            hfSpikingPatternMaxISISec: hfSpikingPatternMaxISISec,
+            hfSpikingPauseBreakSec: hfSpikingPauseBreakSec,
+            hfSpikingShortFraction: hfSpikingShortFraction,
+            hfSpikingQ90ShortFraction: hfSpikingQ90ShortFraction,
+            hfSpikingBridgeFraction: hfSpikingBridgeFraction,
+            hfSpikingLargeFraction: hfSpikingLargeFraction,
+            hfSpikingToleratedFraction: hfSpikingToleratedFraction,
+            hfSpikingMaxConsecutiveLargeISI: hfSpikingMaxConsecutiveLargeISI,
+            hfSpikingMinSpikesRequired: hfSpikingMinSpikesRequired,
+            hfSpikingAcceptanceRoute: hfSpikingAcceptanceRoute,
+            hfSpikingBurstDominated: hfSpikingBurstDominated,
+            hfSpikingEmbeddedBurstCount: hfSpikingEmbeddedBurstCount,
+            hfSpikingEmbeddedBurstGroupCount: hfSpikingEmbeddedBurstGroupCount,
+            hfSpikingEmbeddedBurstCoverage: hfSpikingEmbeddedBurstCoverage,
+            hfSpikingBurstPacketLike: hfSpikingBurstPacketLike,
+            hfSpikingBurstPacketNeighbor: hfSpikingBurstPacketNeighbor,
+            suppressedByHFSpikingState: suppressedByHFSpikingState,
+            suppressedOriginalLabel: suppressedOriginalLabel,
+            hfSpikingSuppressorID: hfSpikingSuppressorID,
+            stateRegularityScore: stateRegularityScore,
+            stateBurstSeedFraction: stateBurstSeedFraction,
+            stateLowTailFraction: stateLowTailFraction,
+            stateLocalStabilityScore: stateLocalStabilityScore,
+            stateCoreBurstRunLength: stateCoreBurstRunLength,
+            stateTonicSubtype: stateTonicSubtype,
+            stateHighFrequencySubtype: stateHighFrequencySubtype,
             stateTrainPercentileMedian: stateTrainPercentileMedian,
             stateLocalPercentileMedian: stateLocalPercentileMedian,
             stateLocalPercentileQ90: stateLocalPercentileQ90,

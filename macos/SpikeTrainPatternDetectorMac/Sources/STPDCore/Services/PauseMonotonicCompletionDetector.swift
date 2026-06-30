@@ -45,6 +45,21 @@ public enum PauseMonotonicCompletionDetector {
             }
         )
 
+        // R parity: a completing ISI must be a pause RELATIVE to the local and global background, not
+        // merely above the calibrated floor. Mirrors the formal PauseDetector / R `event_core_pause_gap`
+        // (R/38_event_grammar_core.R:835-846): flag an ISI only when it also exceeds the local median by
+        // `eventCoreLocalFactor` (R `pause_relative_local_factor`, 1.55) and the global median by
+        // `eventCoreGlobalFactor` (R `pause_relative_global_factor`, 1.25). Without this guard a uniform
+        // tonic baseline that merely sits above a low pause floor — seeded by short pre-burst transition
+        // ISIs whose gap is long versus the burst but shorter than the baseline — is wrongly completed as
+        // pause (PAUSE-1: the leading baseline ISIs of burst_response_2_s were labeled pause).
+        let globalMedian = median(validTrainISIs(train, settings: settings))
+        let globalThreshold = globalMedian.map { $0 * settings.eventCoreGlobalFactor }
+        let baseLongIndices = Set(train.isiSec.indices.filter { index in
+            index > 0 && (finiteValidISI(train.isiSec[index], settings: settings)
+                .map { $0 >= pauseFloor - tolerance(for: pauseFloor) } ?? false)
+        })
+
         var completions: [ClassicAnchorCandidate] = []
         for index in train.isiSec.indices where index > 0 {
             guard !existingFormalPauseIndices.contains(index),
@@ -52,6 +67,14 @@ public enum PauseMonotonicCompletionDetector {
                   !additionalBlockedISIIndices.contains(index),
                   let isi = finiteValidISI(train.isiSec[index], settings: settings),
                   isi >= pauseFloor - tolerance(for: pauseFloor),
+                  exceedsLocalAndGlobalBackground(
+                    isi: isi,
+                    centerIndex: index,
+                    train: train,
+                    baseLongIndices: baseLongIndices,
+                    globalThreshold: globalThreshold,
+                    settings: settings
+                  ),
                   let candidate = completionCandidate(
                     train: train,
                     index: index,
@@ -184,7 +207,6 @@ public enum PauseMonotonicCompletionDetector {
             meanIntraISISec: isi,
             cv: nil,
             lv: nil,
-            mm: nil,
             preGapSec: finiteValidISI(index > 1 ? train.isiSec[index - 1] : nil, settings: settings),
             postGapSec: finiteValidISI(index < train.isiSec.count - 1 ? train.isiSec[index + 1] : nil, settings: settings),
             preRatioQ90: nil,
@@ -210,6 +232,72 @@ public enum PauseMonotonicCompletionDetector {
             return nil
         }
         return value
+    }
+
+    /// R `event_core_pause_gap` relative criteria (R/38_event_grammar_core.R:843-845): an ISI is a pause
+    /// only when it exceeds the local median by `eventCoreLocalFactor` and the global median by
+    /// `eventCoreGlobalFactor`. The local median excludes the floor-exceeding ISIs (R `exclude_idx`) so it
+    /// reflects the surrounding baseline, with a fallback excluding only the center index.
+    private static func exceedsLocalAndGlobalBackground(
+        isi: Double,
+        centerIndex: Int,
+        train: SpikeTrain,
+        baseLongIndices: Set<Int>,
+        globalThreshold: Double?,
+        settings: PauseDetectorSettings
+    ) -> Bool {
+        let localMedian = localMedianISI(
+            train.isiSec,
+            centerIndex: centerIndex,
+            window: settings.localWindow,
+            excluding: baseLongIndices,
+            settings: settings
+        ) ?? localMedianISI(
+            train.isiSec,
+            centerIndex: centerIndex,
+            window: settings.localWindow,
+            excluding: [centerIndex],
+            settings: settings
+        )
+        let localOK = localMedian.map {
+            isi >= $0 * settings.eventCoreLocalFactor - tolerance(for: $0 * settings.eventCoreLocalFactor)
+        } ?? true
+        let globalOK = globalThreshold.map { isi >= $0 - tolerance(for: $0) } ?? true
+        return localOK && globalOK
+    }
+
+    private static func validTrainISIs(_ train: SpikeTrain, settings: PauseDetectorSettings) -> [Double] {
+        train.isiSec.indices.compactMap { index in
+            index > 0 ? finiteValidISI(train.isiSec[index], settings: settings) : nil
+        }
+    }
+
+    private static func localMedianISI(
+        _ values: [Double?],
+        centerIndex: Int,
+        window: Int,
+        excluding excludedIndices: Set<Int>,
+        settings: PauseDetectorSettings
+    ) -> Double? {
+        guard !values.isEmpty else {
+            return nil
+        }
+        let lower = max(1, centerIndex - window)
+        let upper = min(values.count - 1, centerIndex + window)
+        guard lower <= upper else {
+            return nil
+        }
+        let localValues = (lower...upper).compactMap { index -> Double? in
+            guard !excludedIndices.contains(index) else {
+                return nil
+            }
+            return finiteValidISI(values[index], settings: settings)
+        }
+        return median(localValues)
+    }
+
+    private static func median(_ values: [Double]) -> Double? {
+        quantile(values, probability: 0.5)
     }
 
     private static func format(_ value: Double) -> String {

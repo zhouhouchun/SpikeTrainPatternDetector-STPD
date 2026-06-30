@@ -127,6 +127,59 @@ public struct SpikeTrain: Identifiable, Hashable, Sendable {
         }
     }
 
+    private init(
+        id: String,
+        name: String,
+        timestampsSec: [Double],
+        alignedTimestampsSec: [Double],
+        isiSec: [Double?],
+        duplicateTimestampPolicy: DuplicateTimestampPolicy,
+        inputWasUnsorted: Bool,
+        inputOrderIndices: [Int],
+        droppedDuplicateTimestampCount: Int,
+        sortedDuplicateTimestampCountBeforePolicy: Int,
+        inputDuplicateTimestampStepCount: Int,
+        inputNonmonotonicStepCount: Int,
+        inputZeroOrNegativeStepCount: Int
+    ) {
+        self.id = id
+        self.name = name
+        self.timestampsSec = timestampsSec
+        self.alignedTimestampsSec = alignedTimestampsSec
+        self.isiSec = isiSec
+        self.duplicateTimestampPolicy = duplicateTimestampPolicy
+        self.inputWasUnsorted = inputWasUnsorted
+        self.inputOrderIndices = inputOrderIndices
+        self.droppedDuplicateTimestampCount = droppedDuplicateTimestampCount
+        self.sortedDuplicateTimestampCountBeforePolicy = sortedDuplicateTimestampCountBeforePolicy
+        self.inputDuplicateTimestampStepCount = inputDuplicateTimestampStepCount
+        self.inputNonmonotonicStepCount = inputNonmonotonicStepCount
+        self.inputZeroOrNegativeStepCount = inputZeroOrNegativeStepCount
+    }
+
+    /// Returns a copy with a different stable identity while preserving the
+    /// user-facing `name`, all parsed timestamps, and QC diagnostics. Used to
+    /// keep train IDs unique when display names (e.g. duplicate CSV headers)
+    /// collide; recomputing via the public initializer would discard the
+    /// original duplicate/sort diagnostics, so a field-preserving copy is used.
+    func withID(_ newID: String) -> SpikeTrain {
+        SpikeTrain(
+            id: newID,
+            name: name,
+            timestampsSec: timestampsSec,
+            alignedTimestampsSec: alignedTimestampsSec,
+            isiSec: isiSec,
+            duplicateTimestampPolicy: duplicateTimestampPolicy,
+            inputWasUnsorted: inputWasUnsorted,
+            inputOrderIndices: inputOrderIndices,
+            droppedDuplicateTimestampCount: droppedDuplicateTimestampCount,
+            sortedDuplicateTimestampCountBeforePolicy: sortedDuplicateTimestampCountBeforePolicy,
+            inputDuplicateTimestampStepCount: inputDuplicateTimestampStepCount,
+            inputNonmonotonicStepCount: inputNonmonotonicStepCount,
+            inputZeroOrNegativeStepCount: inputZeroOrNegativeStepCount
+        )
+    }
+
     public var spikeCount: Int {
         timestampsSec.count
     }
@@ -156,12 +209,49 @@ public struct SpikeDataset: Identifiable, Hashable, Sendable {
     public let name: String
     public let sourceDescription: String
     public let trains: [SpikeTrain]
+    /// External task/stimulus event timestamps (annotation layer only; never spike trains). Defaulted so
+    /// existing call sites keep compiling.
+    public let taskEvents: [TaskEvent]
 
-    public init(name: String, sourceDescription: String, trains: [SpikeTrain]) {
+    public init(
+        name: String,
+        sourceDescription: String,
+        trains: [SpikeTrain],
+        taskEvents: [TaskEvent] = []
+    ) {
         self.id = UUID()
         self.name = name
         self.sourceDescription = sourceDescription
-        self.trains = trains
+        self.trains = SpikeDataset.trainsWithUniqueIDs(trains)
+        self.taskEvents = taskEvents
+    }
+
+    /// Guarantees unique `SpikeTrain.id` values even when display names (e.g.
+    /// duplicate CSV headers) collide, so any downstream
+    /// `Dictionary(uniqueKeysWithValues:)` keyed on train ID cannot trap.
+    /// The first occurrence keeps its ID; later collisions get a stable `#N`
+    /// suffix. Display `name` is never changed.
+    private static func trainsWithUniqueIDs(_ trains: [SpikeTrain]) -> [SpikeTrain] {
+        var usedIDs = Set<String>()
+        usedIDs.reserveCapacity(trains.count)
+        var result: [SpikeTrain] = []
+        result.reserveCapacity(trains.count)
+        for train in trains {
+            if !usedIDs.contains(train.id) {
+                usedIDs.insert(train.id)
+                result.append(train)
+                continue
+            }
+            var suffix = 2
+            var disambiguatedID = "\(train.id)#\(suffix)"
+            while usedIDs.contains(disambiguatedID) {
+                suffix += 1
+                disambiguatedID = "\(train.id)#\(suffix)"
+            }
+            usedIDs.insert(disambiguatedID)
+            result.append(train.withID(disambiguatedID))
+        }
+        return result
     }
 
     public var totalSpikeCount: Int {
@@ -198,7 +288,8 @@ public struct SpikeDataset: Identifiable, Hashable, Sendable {
                     timestampsSec: train.timestampsSec,
                     duplicateTimestampPolicy: policy
                 )
-            }
+            },
+            taskEvents: taskEvents
         )
     }
 }

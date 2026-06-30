@@ -45,6 +45,20 @@ public struct SpikeQualitySettings: Hashable, Sendable {
         self.refractorySuspectThresholdSec = max(refractorySuspectThresholdSec, artifactThresholdSec)
         self.displayUnit = displayUnit
     }
+
+    public init(
+        artifactThresholdMilliseconds: Double,
+        refractorySuspectThresholdMilliseconds: Double,
+        displayUnit: QualityDisplayUnit = .milliseconds
+    ) {
+        let artifactSec = max(0, artifactThresholdMilliseconds) / 1000
+        let refractorySec = max(artifactThresholdMilliseconds, refractorySuspectThresholdMilliseconds) / 1000
+        self.init(
+            artifactThresholdSec: artifactSec,
+            refractorySuspectThresholdSec: refractorySec,
+            displayUnit: displayUnit
+        )
+    }
 }
 
 public struct SpikeDatasetQualityReport: Hashable, Sendable {

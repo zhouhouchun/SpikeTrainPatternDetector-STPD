@@ -492,9 +492,8 @@ public enum PauseDetector {
             intraQ95Sec: q95,
             maxIntraISISec: maxValue,
             meanIntraISISec: meanValue,
-            cv: coefficientOfVariation(values),
-            lv: localVariation(values),
-            mm: maxMeanRatio(values),
+            cv: STPDStatistics.coefficientOfVariation(values),
+            lv: STPDStatistics.localVariation(values),
             preGapSec: finiteValidISI(run.start > 1 ? train.isiSec[run.start - 1] : nil, settings: settings),
             postGapSec: finiteValidISI(run.end < train.isiSec.count - 1 ? train.isiSec[run.end + 1] : nil, settings: settings),
             preRatioQ90: nil,
@@ -601,9 +600,8 @@ public enum PauseDetector {
             intraQ95Sec: q95,
             maxIntraISISec: maxValue,
             meanIntraISISec: meanValue,
-            cv: coefficientOfVariation(values),
-            lv: localVariation(values),
-            mm: maxMeanRatio(values),
+            cv: STPDStatistics.coefficientOfVariation(values),
+            lv: STPDStatistics.localVariation(values),
             preGapSec: finiteValidISI(run.start > 1 ? train.isiSec[run.start - 1] : nil, settings: settings),
             postGapSec: finiteValidISI(run.end < train.isiSec.count - 1 ? train.isiSec[run.end + 1] : nil, settings: settings),
             preRatioQ90: nil,
@@ -796,50 +794,11 @@ public enum PauseDetector {
         return String(format: "%.12g", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
-    private static func coefficientOfVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2,
-              let meanValue = mean(finite),
-              meanValue > 0 else {
-            return nil
-        }
-        let variance = finite.reduce(0) { partial, value in
-            let delta = value - meanValue
-            return partial + delta * delta
-        } / Double(finite.count)
-        return sqrt(variance) / meanValue
-    }
-
-    private static func localVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2 else {
-            return nil
-        }
-        let terms = zip(finite, finite.dropFirst()).compactMap { previous, next -> Double? in
-            let denominator = previous + next
-            guard denominator > 0 else {
-                return nil
-            }
-            let numerator = 3 * pow(next - previous, 2)
-            return numerator / pow(denominator, 2)
-        }
-        return mean(terms)
-    }
-
-    private static func maxMeanRatio(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard let meanValue = mean(finite),
-              meanValue > 0,
-              let maxValue = finite.max() else {
-            return nil
-        }
-        return maxValue / meanValue
-    }
 
     private static func antiTonicVeto(_ values: [Double], settings: PauseDetectorSettings) -> Bool {
         guard settings.antiTonicVeto,
               values.count >= 2,
-              let lv = localVariation(values),
+              let lv = STPDStatistics.localVariation(values),
               let meanValue = mean(values) else {
             return false
         }

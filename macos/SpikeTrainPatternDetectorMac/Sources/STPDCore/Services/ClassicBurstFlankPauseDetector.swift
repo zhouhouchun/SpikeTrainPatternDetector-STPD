@@ -194,7 +194,6 @@ public enum ClassicBurstFlankPauseDetector {
             meanIntraISISec: gap,
             cv: nil,
             lv: nil,
-            mm: nil,
             preGapSec: finiteValidISI(isiIndex > 1 ? train.isiSec[isiIndex - 1] : nil, settings: settings),
             postGapSec: finiteValidISI(isiIndex < train.isiSec.count - 1 ? train.isiSec[isiIndex + 1] : nil, settings: settings),
             preRatioQ90: nil,

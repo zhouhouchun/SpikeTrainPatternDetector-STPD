@@ -427,14 +427,13 @@ private extension ClassicAnchorCandidate {
         candidate.hfSpikingBurstDominated = burstDominated
         candidate.hfSpikingBurstPacketLike = packetLike
         candidate.hfSpikingBurstPacketNeighbor = packetNeighbor
+        // Keep the HF-family subtype consistent with the protection verdict: a state the
+        // selected canonical events show to be burst-dominated is hf_burst_dominant; otherwise
+        // it remains a sustained irregular HF state. finalLabel is untouched here.
+        if candidate.finalLabel == .highFrequencySpiking {
+            candidate.stateHighFrequencySubtype = burstDominated ? "hf_burst_dominant" : "hf_irregular_spiking"
+        }
         return candidate
-    }
-
-    var isVariableHFSpikingState: Bool {
-        (cv.map { $0 >= 0.65 } ?? false) ||
-            (lv.map { $0 >= 0.45 } ?? false) ||
-            (mm.map { $0 >= 3.0 } ?? false) ||
-            (hfSpikingLargeFraction.map { $0 >= 0.08 } ?? false)
     }
 
     var isStrongHFSpikingState: Bool {
@@ -508,5 +507,16 @@ private extension ClassicAnchorCandidate {
             return "NA"
         }
         return String(format: "%.4g", value)
+    }
+}
+
+// `isVariableHFSpikingState` is exposed at module-internal level (rather than fileprivate)
+// solely so the MM-removal regression test can assert it is driven by CV / LV / HFS
+// large-fraction evidence and no longer by the removed max/mean (MM) term.
+extension ClassicAnchorCandidate {
+    var isVariableHFSpikingState: Bool {
+        (cv.map { $0 >= 0.65 } ?? false) ||
+            (lv.map { $0 >= 0.45 } ?? false) ||
+            (hfSpikingLargeFraction.map { $0 >= 0.08 } ?? false)
     }
 }

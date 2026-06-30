@@ -472,7 +472,6 @@ private extension ClassicAnchorCandidate {
             "cv=\(formatAuditNumber(cv))",
             "cv2=\(formatAuditNumber(cv2))",
             "lv=\(formatAuditNumber(lv))",
-            "mm=\(formatAuditNumber(mm))",
             "state_regularity=\(formatAuditNumber(stateRegularityScore))",
             "local_stability=\(formatAuditNumber(stateLocalStabilityScore))"
         ].joined(separator: ";")
@@ -484,7 +483,6 @@ private extension ClassicAnchorCandidate {
             "cv=\(formatAuditNumber(cv))",
             "cv2=\(formatAuditNumber(cv2))",
             "lv=\(formatAuditNumber(lv))",
-            "mm=\(formatAuditNumber(mm))",
             "state_regularity=\(formatAuditNumber(stateRegularityScore))",
             "local_stability=\(formatAuditNumber(stateLocalStabilityScore))",
             "train_percentile_median=\(formatAuditNumber(stateTrainPercentileMedian))",

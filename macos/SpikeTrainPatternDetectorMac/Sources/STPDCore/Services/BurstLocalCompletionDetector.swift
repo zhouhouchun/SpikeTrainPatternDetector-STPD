@@ -227,9 +227,8 @@ public enum BurstLocalCompletionDetector {
             intraQ95Sec: q95,
             maxIntraISISec: maxISI,
             meanIntraISISec: mean,
-            cv: coefficientOfVariation(values),
-            lv: localVariation(values),
-            mm: nil,
+            cv: STPDStatistics.coefficientOfVariation(values),
+            lv: STPDStatistics.localVariation(values),
             preGapSec: preGap,
             postGapSec: postGap,
             preRatioQ90: ratio(preGap, over: q90),
@@ -306,43 +305,6 @@ public enum BurstLocalCompletionDetector {
         }
         let fraction = position - Double(lower)
         return sorted[lower] * (1 - fraction) + sorted[upper] * fraction
-    }
-
-    private static func coefficientOfVariation(_ values: [Double]) -> Double? {
-        guard values.count >= 2 else {
-            return nil
-        }
-        let mean = values.reduce(0, +) / Double(values.count)
-        guard mean > 0, mean.isFinite else {
-            return nil
-        }
-        let variance = values.reduce(0) { partial, value in
-            let delta = value - mean
-            return partial + delta * delta
-        } / Double(values.count)
-        return sqrt(max(0, variance)) / mean
-    }
-
-    private static func localVariation(_ values: [Double]) -> Double? {
-        guard values.count >= 2 else {
-            return nil
-        }
-        var terms: [Double] = []
-        terms.reserveCapacity(values.count - 1)
-        for index in 1..<values.count {
-            let previous = values[index - 1]
-            let current = values[index]
-            let denominator = previous + current
-            guard denominator > 0 else {
-                continue
-            }
-            let delta = current - previous
-            terms.append(3 * delta * delta / (denominator * denominator))
-        }
-        guard !terms.isEmpty else {
-            return nil
-        }
-        return terms.reduce(0, +) / Double(terms.count)
     }
 
     private static func ratio(_ value: Double?, over denominator: Double?) -> Double? {

@@ -132,7 +132,6 @@ public struct HFSBurstArbitrationAuditRow: Identifiable, Codable, Hashable, Send
     public let hfsLargeFraction: Double?
     public let hfsCV: Double?
     public let hfsLV: Double?
-    public let hfsMM: Double?
     public let burstPacketLike: Bool
     public let burstDominated: Bool
 
@@ -175,7 +174,7 @@ public struct HFSBurstArbitrationAuditRow: Identifiable, Codable, Hashable, Send
             "seed_band_lower_sec", "seed_band_upper_sec", "bridge_band_upper_sec",
             "seed_fraction", "bridge_fraction",
             "hfs_short_fraction", "hfs_bridge_fraction", "hfs_large_fraction",
-            "hfs_cv", "hfs_lv", "hfs_mm", "burst_packet_like", "burst_dominated",
+            "hfs_cv", "hfs_lv", "burst_packet_like", "burst_dominated",
             "final_decision", "final_selected_event_subtypes", "requires_review",
             "decision_reason"
         ]
@@ -201,7 +200,7 @@ public struct HFSBurstArbitrationAuditRow: Identifiable, Codable, Hashable, Send
             Self.format(seedBandLowerSec), Self.format(seedBandUpperSec),
             Self.format(bridgeBandUpperSec), Self.format(seedFraction), Self.format(bridgeFraction),
             Self.format(hfsShortFraction), Self.format(hfsBridgeFraction),
-            Self.format(hfsLargeFraction), Self.format(hfsCV), Self.format(hfsLV), Self.format(hfsMM),
+            Self.format(hfsLargeFraction), Self.format(hfsCV), Self.format(hfsLV),
             String(burstPacketLike), String(burstDominated), finalDecision.rawValue,
             finalSelectedEventSubtypes.joined(separator: "|"), String(requiresReview), decisionReason
         ]
@@ -421,7 +420,6 @@ public enum HFSBurstArbitrationAudit {
                 hfsLargeFraction: hfsBefore.hfSpikingLargeFraction,
                 hfsCV: hfsBefore.cv,
                 hfsLV: hfsBefore.lv,
-                hfsMM: hfsBefore.mm,
                 burstPacketLike: packetLike,
                 burstDominated: burstDominated,
                 finalDecision: decision,

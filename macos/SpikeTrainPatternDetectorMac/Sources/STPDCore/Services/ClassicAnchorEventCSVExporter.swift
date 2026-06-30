@@ -14,6 +14,12 @@ public enum ClassicAnchorEventCSVExporter {
             result[annotation.candidateID] = result[annotation.candidateID] ?? annotation
         }
         let resolutionsByTrainID = Dictionary(uniqueKeysWithValues: run.resolutions.map { ($0.trainID, $0) })
+        // Phase 2B: per-candidate diagnostic ISI temporal-profile evidence (read-only; never gates).
+        let isiEvidenceByCandidateID = ISITemporalProfileEvidenceBuilder.evidenceByCandidateID(run: run, dataset: dataset)
+        // Phase 2C: per-candidate eventness audit (read-only; never gates).
+        let eventnessByCandidateID = ISICandidateEventnessAuditor.auditByCandidateID(run: run, dataset: dataset)
+        // Phase 2D: per-candidate near-miss audit of existing candidates (read-only; never gates).
+        let nearMissByCandidateID = ISINearMissAuditor.auditByCandidateID(run: run, dataset: dataset)
         let exportedAtText = ISO8601DateFormatter().string(from: exportedAt)
         let exportCandidates = run.candidates.filter { candidate in
             guard includeEvidenceOnlyCandidates || !candidate.isStructuralPausePriorEvidence else {
@@ -39,6 +45,9 @@ public enum ClassicAnchorEventCSVExporter {
                 datasetSummary: run.datasetStructuralSeedSummary,
                 dataset: dataset,
                 reviewStatus: reviewStatuses[candidate.id] ?? "unreviewed",
+                isiEvidence: isiEvidenceByCandidateID[candidate.id] ?? .undefined(),
+                eventness: eventnessByCandidateID[candidate.id] ?? .undefined(),
+                nearMiss: nearMissByCandidateID[candidate.id] ?? .ineligible(candidateRef: "candidate:\(candidate.id)"),
                 exportedAtText: exportedAtText
             )
         }
@@ -178,6 +187,7 @@ public enum ClassicAnchorEventCSVExporter {
         "state_low_tail_fraction",
         "state_local_stability_score",
         "state_core_burst_run_length",
+        "state_tonic_subtype",
         "state_train_percentile_median",
         "state_local_percentile_median",
         "state_local_percentile_q90",
@@ -245,7 +255,6 @@ public enum ClassicAnchorEventCSVExporter {
         "cv",
         "cv2",
         "lv",
-        "mm",
         "pre_gap_sec",
         "post_gap_sec",
         "pre_ratio_q90",
@@ -257,7 +266,57 @@ public enum ClassicAnchorEventCSVExporter {
         "refractory_suspect_count",
         "refractory_suspect_action",
         "pipeline_stages",
-        "decision_path"
+        "decision_path",
+        // Additive, audit-only HF-family subtype (one of hf_tonic_spiking, hf_irregular_spiking,
+        // hf_burst_dominant, hf_burst_packet; empty when not in the HF family). Appended at the
+        // end so no existing column position shifts; finalLabel and selection are unchanged.
+        "state_high_frequency_subtype",
+        // Phase 2B: diagnostic ISI temporal-profile evidence (ISITemporalProfileEvidence). Evidence
+        // only — these never participate in detection. Appended last so no existing column shifts.
+        "isi_edge_contrast_min",
+        "isi_edge_contrast_geom",
+        "isi_pre_edge_ratio",
+        "isi_post_edge_ratio",
+        "isi_flank_count",
+        "isi_core_q_pct",
+        "isi_percentile_reliable",
+        "isi_local_median_sec",
+        "isi_local_compression_ratio",
+        // Phase 2C: candidate eventness audit (ISICandidateEventnessAudit). Audit only — never gates
+        // detection. Appended after the Phase 2B isi_* block so no existing column shifts.
+        "eventness_q10_isi_sec",
+        "eventness_q50_isi_sec",
+        "eventness_q90_isi_sec",
+        "eventness_q90_q10_ratio",
+        "eventness_distant_context_median_sec",
+        "eventness_context_contrast",
+        "eventness_return_to_baseline_score",
+        "eventness_edge_component",
+        "eventness_context_component",
+        "eventness_score",
+        "eventness_regularity_score",
+        "eventness_zone",
+        "eventness_medium_review",
+        "eventness_audit_recommendation",
+        "eventness_audit_note",
+        // Phase 2D: near-miss review of existing candidates (ISINearMissAudit). Audit only — never
+        // gates detection. Appended after the Phase 2C eventness_* block so no existing column shifts.
+        "near_miss_eligible",
+        "near_miss_is_near_miss",
+        "near_miss_category",
+        "near_miss_parameter",
+        "near_miss_direction",
+        "near_miss_current_value",
+        "near_miss_required_value",
+        "near_miss_absolute_change",
+        "near_miss_relative_change",
+        "near_miss_failure_count",
+        "near_miss_score",
+        "near_miss_eventness_score",
+        "near_miss_eventness_zone",
+        "near_miss_candidate_ref",
+        "near_miss_reason",
+        "near_miss_details"
     ]
 
     private static func row(
@@ -267,6 +326,9 @@ public enum ClassicAnchorEventCSVExporter {
         datasetSummary: StructuralDatasetSeedSummary,
         dataset: SpikeDataset,
         reviewStatus: String,
+        isiEvidence: ISITemporalProfileEvidence,
+        eventness: ISICandidateEventnessAudit,
+        nearMiss: ISINearMissAudit,
         exportedAtText: String
     ) -> [String] {
         let candidateBand = resolution?.band(for: adaptiveBandPattern(for: candidate.finalLabel))
@@ -390,6 +452,7 @@ public enum ClassicAnchorEventCSVExporter {
             number(candidate.stateLowTailFraction),
             number(candidate.stateLocalStabilityScore),
             integer(candidate.stateCoreBurstRunLength),
+            candidate.stateTonicSubtype ?? "",
             number(candidate.stateTrainPercentileMedian),
             number(candidate.stateLocalPercentileMedian),
             number(candidate.stateLocalPercentileQ90),
@@ -457,7 +520,6 @@ public enum ClassicAnchorEventCSVExporter {
             number(candidate.cv),
             number(candidate.cv2),
             number(candidate.lv),
-            number(candidate.mm),
             number(candidate.preGapSec),
             number(candidate.postGapSec),
             number(candidate.preRatioQ90),
@@ -469,7 +531,48 @@ public enum ClassicAnchorEventCSVExporter {
             integer(candidate.refractorySuspectCount),
             candidate.refractorySuspectAction?.rawValue ?? "",
             candidate.pipelineStageSummary,
-            candidate.decisionPath
+            candidate.decisionPath,
+            candidate.stateHighFrequencySubtype ?? "",
+            number(isiEvidence.edgeContrastMin),
+            number(isiEvidence.edgeContrastGeom),
+            number(isiEvidence.preEdgeRatio),
+            number(isiEvidence.postEdgeRatio),
+            integer(isiEvidence.flankCount),
+            number(isiEvidence.coreQPct),
+            bool(isiEvidence.percentileReliable),
+            number(isiEvidence.localMedianISISec),
+            number(isiEvidence.localCompressionRatio),
+            number(eventness.q10ISISec),
+            number(eventness.q50ISISec),
+            number(eventness.q90ISISec),
+            number(eventness.q90Q10Ratio),
+            number(eventness.distantContextMedianSec),
+            number(eventness.contextContrast),
+            number(eventness.returnToBaselineScore),
+            number(eventness.eventnessEdgeComponent),
+            number(eventness.eventnessContextComponent),
+            number(eventness.eventnessScore),
+            number(eventness.regularityScore),
+            eventness.eventnessZone,
+            bool(eventness.mediumEventnessReview),
+            eventness.auditRecommendation,
+            eventness.auditNote,
+            bool(nearMiss.eligible),
+            bool(nearMiss.isNearMiss),
+            nearMiss.bestCategory,
+            nearMiss.bestParameter ?? "",
+            nearMiss.bestDirection,
+            number(nearMiss.bestCurrentValue),
+            number(nearMiss.bestRequiredValue),
+            number(nearMiss.bestAbsoluteChange),
+            number(nearMiss.bestRelativeChange),
+            integer(nearMiss.failureCount),
+            number(nearMiss.nearMissScore),
+            number(nearMiss.eventnessScore),
+            nearMiss.eventnessZone,
+            nearMiss.candidateRef,
+            nearMiss.reason,
+            nearMiss.details
         ]
     }
 

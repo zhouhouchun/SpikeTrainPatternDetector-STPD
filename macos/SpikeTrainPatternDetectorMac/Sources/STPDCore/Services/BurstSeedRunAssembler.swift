@@ -363,7 +363,12 @@ public enum BurstSeedRunAssembler {
             end: run.end,
             settings: settings
         )
-        if refCount > 0 {
+        let effectiveRefAction = STPDRefractoryEvidencePolicy.effectiveAction(
+            refCount: refCount,
+            nISI: metrics.nISI,
+            requestedAction: settings.refractoryAction
+        )
+        if STPDRefractoryEvidencePolicy.shouldApplyAction(refCount: refCount, nISI: metrics.nISI) {
             switch settings.refractoryAction {
             case .excludeCandidate, .reject:
                 return nil
@@ -437,7 +442,6 @@ public enum BurstSeedRunAssembler {
             meanIntraISISec: metrics.mean,
             cv: metrics.cv,
             lv: metrics.lv,
-            mm: nil,
             preGapSec: metrics.preGap,
             postGapSec: metrics.postGap,
             preRatioQ90: metrics.preRatioQ90,
@@ -452,7 +456,7 @@ public enum BurstSeedRunAssembler {
             anchorContrastMinRequired: 1,
             anchorContrastGeomRequired: 1,
             refractorySuspectCount: refCount,
-            refractorySuspectAction: refCount > 0 ? settings.refractoryAction : nil
+            refractorySuspectAction: effectiveRefAction
         )
         candidate.burstSeedRunStartISI = run.seedStart
         candidate.burstSeedRunEndISI = run.seedEnd
@@ -555,11 +559,10 @@ public enum BurstSeedRunAssembler {
         let nISI = end - start + 1
         let duration = train.timestampsSec[end] - train.timestampsSec[start - 1]
         let mean = values.reduce(0, +) / Double(values.count)
-        let sd: Double? = values.count > 1
-            ? sqrt(values.reduce(0) { $0 + pow($1 - mean, 2) } / Double(values.count - 1))
-            : nil
-        let cv = sd.flatMap { mean > 0 ? $0 / mean : nil }
-        let lv = localVariation(values)
+        // CV is standardized on the shared sample-variance estimator (n - 1),
+        // matching the R/Shiny calc_CV / stats::sd() convention.
+        let cv = STPDStatistics.coefficientOfVariation(values)
+        let lv = STPDStatistics.localVariation(values)
         let sample = SortedFiniteSample(values)
         let q90 = sample.quantile(0.90)
         let pre = start > 1 ? finiteValidISI(train.isiSec[start - 1], minValidISISec: settings.minValidISISec) : nil
@@ -656,26 +659,6 @@ public enum BurstSeedRunAssembler {
         }
         let fraction = position - Double(lower)
         return sorted[lower] * (1 - fraction) + sorted[upper] * fraction
-    }
-
-    private static func localVariation(_ values: [Double]) -> Double? {
-        guard values.count > 1 else {
-            return nil
-        }
-        var sum = 0.0
-        var count = 0
-        for pair in zip(values, values.dropFirst()) {
-            let denominator = pair.0 + pair.1
-            guard denominator > 0 else {
-                continue
-            }
-            sum += 3 * pow(pair.0 - pair.1, 2) / pow(denominator, 2)
-            count += 1
-        }
-        guard count > 0 else {
-            return nil
-        }
-        return sum / Double(count)
     }
 
     private static func ratio(_ numerator: Double?, over denominator: Double?) -> Double? {

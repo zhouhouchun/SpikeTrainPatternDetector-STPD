@@ -355,7 +355,6 @@ public enum StructuralBridgeExpansionResolver {
             meanIntraISISec: metrics.mean,
             cv: metrics.cv,
             lv: metrics.lv,
-            mm: nil,
             preGapSec: metrics.preGap,
             postGapSec: metrics.postGap,
             preRatioQ90: metrics.preRatioQ90,
@@ -370,7 +369,11 @@ public enum StructuralBridgeExpansionResolver {
             anchorContrastMinRequired: detectorSettings.possibleBurstContrastMin,
             anchorContrastGeomRequired: detectorSettings.possibleBurstContrastGeomMin,
             refractorySuspectCount: metrics.refractorySuspectCount,
-            refractorySuspectAction: metrics.refractorySuspectCount > 0 ? detectorSettings.refractoryAction : nil
+            refractorySuspectAction: STPDRefractoryEvidencePolicy.effectiveAction(
+                refCount: metrics.refractorySuspectCount,
+                nISI: metrics.nISI,
+                requestedAction: detectorSettings.refractoryAction
+            )
         )
         candidate.burstSeedRunStartISI = left.burstSeedRunStartISI ?? left.startISIIndex
         candidate.burstSeedRunEndISI = right.burstSeedRunEndISI ?? right.endISIIndex
@@ -695,8 +698,8 @@ public enum StructuralBridgeExpansionResolver {
         let q90 = sample.quantile(0.90)
         let q95 = sample.quantile(0.95)
         let mean = values.reduce(0, +) / Double(values.count)
-        let cv = coefficientOfVariation(values: values, mean: mean)
-        let lv = localVariation(values: values)
+        let cv = STPDStatistics.coefficientOfVariation(values)
+        let lv = STPDStatistics.localVariation(values)
         let preGap = validISI(train: train, index: start - 1, minValidISISec: detectorSettings.minValidISISec)
         let postGap = validISI(train: train, index: end + 1, minValidISISec: detectorSettings.minValidISISec)
         let preRatio = ratio(preGap, over: q90)
@@ -749,35 +752,6 @@ public enum StructuralBridgeExpansionResolver {
             return nil
         }
         return value
-    }
-
-    private static func coefficientOfVariation(values: [Double], mean: Double) -> Double? {
-        guard values.count > 1, mean.isFinite, mean > 0 else {
-            return nil
-        }
-        let variance = values.reduce(0) { partial, value in
-            let delta = value - mean
-            return partial + delta * delta
-        } / Double(values.count - 1)
-        return sqrt(variance) / mean
-    }
-
-    private static func localVariation(values: [Double]) -> Double? {
-        guard values.count > 1 else {
-            return nil
-        }
-        let terms = zip(values, values.dropFirst()).compactMap { previous, current -> Double? in
-            let denominator = previous + current
-            guard denominator.isFinite, denominator > 0 else {
-                return nil
-            }
-            let delta = current - previous
-            return 3 * delta * delta / (denominator * denominator)
-        }
-        guard !terms.isEmpty else {
-            return nil
-        }
-        return terms.reduce(0, +) / Double(terms.count)
     }
 
     private static func quantile(_ values: [Double], probability: Double) -> Double? {

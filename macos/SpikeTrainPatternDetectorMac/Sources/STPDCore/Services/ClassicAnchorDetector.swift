@@ -305,7 +305,6 @@ public struct ClassicAnchorCandidate: Identifiable, Hashable, Sendable {
     public let cv: Double?
     public var cv2: Double? = nil
     public let lv: Double?
-    public let mm: Double?
     public let preGapSec: Double?
     public let postGapSec: Double?
     public let preRatioQ90: Double?
@@ -367,6 +366,18 @@ public struct ClassicAnchorCandidate: Identifiable, Hashable, Sendable {
     public var stateLowTailFraction: Double? = nil
     public var stateLocalStabilityScore: Double? = nil
     public var stateCoreBurstRunLength: Int? = nil
+    /// Tonic-family subtype for state candidates whose `finalLabel` is `.tonic` or
+    /// `.highFrequencyTonic`: one of `"classic"`, `"irregular"`, `"high_frequency"`.
+    /// Auditable only — `finalLabel` is unchanged, so arbitration/UI/CSV consumers keep
+    /// working; this field exposes the biological tonic-family distinction.
+    public var stateTonicSubtype: String? = nil
+    /// High-frequency family subtype, additive and `finalLabel`-preserving. One of:
+    /// `"hf_tonic_spiking"` (sustained regular HF, i.e. `.highFrequencyTonic`),
+    /// `"hf_irregular_spiking"` (sustained irregular HF state, i.e. non-burst-dominated
+    /// `.highFrequencySpiking`), `"hf_burst_dominant"` (HF state dominated by burst packets),
+    /// or `"hf_burst_packet"` (a local burst-family event inside a high-frequency envelope —
+    /// it stays a burst event; this is audit/provenance only). `nil` for non-HF candidates.
+    public var stateHighFrequencySubtype: String? = nil
     public var stateTrainPercentileMedian: Double? = nil
     public var stateLocalPercentileMedian: Double? = nil
     public var stateLocalPercentileQ90: Double? = nil
@@ -512,6 +523,22 @@ public enum ClassicAnchorDetector {
         runs.reserveCapacity(seedRuns.count)
 
         guard canUseSeedBand else {
+            // No usable burst seed band (source=none / collapsed band). The seed-centred routes
+            // cannot run, but the adaptive local HF burst-packet route still can: it falls back to
+            // a local-background-derived core ceiling (see adaptiveLocalHFBurstPacketCandidates), so
+            // the screenshot false negatives in no-structure trains are recovered.
+            candidates.append(
+                contentsOf: adaptiveLocalHFBurstPacketCandidates(
+                    train: train,
+                    settings: settings,
+                    validFlag: validFlag,
+                    seenRuns: &seenRuns,
+                    lower: lower,
+                    upper: upper,
+                    bridgeUpper: bridgeUpper,
+                    startingCandidateIndex: candidates.count + 1
+                )
+            )
             return candidates
         }
 
@@ -1001,7 +1028,12 @@ public enum ClassicAnchorDetector {
             }
 
             let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
-            if refCount > 0 {
+            let effectiveRefAction = STPDRefractoryEvidencePolicy.effectiveAction(
+                refCount: refCount,
+                nISI: metrics.nISI,
+                requestedAction: settings.refractoryAction
+            )
+            if STPDRefractoryEvidencePolicy.shouldApplyAction(refCount: refCount, nISI: metrics.nISI) {
                 switch settings.refractoryAction {
                 case .excludeCandidate, .reject:
                     continue
@@ -1041,7 +1073,7 @@ public enum ClassicAnchorDetector {
                     edgeGeom: acceptedEdgeGeom,
                     candidateIndex: candidateIndex,
                     refCount: refCount,
-                    refractoryAction: refCount > 0 ? settings.refractoryAction : nil,
+                    refractoryAction: effectiveRefAction,
                     candidateLayer: "event_grammar_burst_event",
                     candidateClass: candidateClass,
                     seedRunStart: run.seedStart,
@@ -1070,6 +1102,18 @@ public enum ClassicAnchorDetector {
             )
         }
 
+        candidates.append(
+            contentsOf: adaptiveLocalHFBurstPacketCandidates(
+                train: train,
+                settings: settings,
+                validFlag: validFlag,
+                seenRuns: &seenRuns,
+                lower: lower,
+                upper: upper,
+                bridgeUpper: bridgeUpper,
+                startingCandidateIndex: candidates.count + 1
+            )
+        )
         candidates.append(
             contentsOf: oneSidedPossibleBurstRescueCandidates(
                 train: train,
@@ -1111,6 +1155,267 @@ public enum ClassicAnchorDetector {
             )
         )
 
+        return candidates
+    }
+
+    /// Band-relative headroom for the adaptive HF burst-packet core ceiling: in the structure-band
+    /// path the packet core (intra-q90) may sit at most this multiple of the learned burst band. It
+    /// is a relative factor on an adaptive band (in the spirit of `burstEpisodeBridgeFactor`), never
+    /// a hard ms constant. `band * headroom` is used directly (rather than `min(bridge, band *
+    /// headroom)`): the bridge is not a useful lower cap here — when a structure bridge collapses to
+    /// ≈ the band it wrongly rejects genuine ~1.2-1.5x-band packets such as the real screenshot
+    /// packets. NOTE: `band * headroom` alone does NOT reject a slow-tonic cluster when the learned
+    /// band itself is slow (≥ ~15 ms, so band*2 ≥ ~30 ms); the slow-tonic guard is held by the
+    /// MANDATORY local-compression self-gate (see `adaptiveLocalHFBurstPacketLocalCeilingFraction`),
+    /// which applies in this path too, not by this headroom.
+    private static let adaptiveLocalHFBurstPacketCoreBandHeadroom = 2.0
+
+    /// Fraction of the packet's local-background q75 used as a MANDATORY local-compression self-gate
+    /// (and, when the burst band has collapsed, as the sole HF core ceiling). It is a relative factor
+    /// on a measured local quantile (in the spirit of `burstEpisodeBackgroundFraction`), never a hard
+    /// ms constant: a packet is admitted only when its core q90 is at most this fraction of its own
+    /// neighbourhood background, i.e. at least `1 / fraction ≈ 1.47` times faster than the background.
+    /// That self-gates out slow tonic-like clusters (core ≈ background, ratio ≈ 1) in BOTH the
+    /// structure-band and collapsed-band paths, even when their boundary contrast is high, while
+    /// admitting genuinely fast packets in a slower local background (the real screenshot packets sit
+    /// at local-background/q90 ≈ 1.57-1.67, comfortably above the ≈1.47 threshold).
+    private static let adaptiveLocalHFBurstPacketLocalCeilingFraction = 0.68
+
+    /// Adaptive local high-frequency burst packets.
+    ///
+    /// A short, locally compressed run bounded on BOTH sides by ISIs several-fold larger than its
+    /// own core is a visually burst-like high-frequency packet. In a high-frequency background the
+    /// train-global compactness ceiling (`burstCompactnessUpper`, a fraction of the train q80)
+    /// collapses below such a packet's intra-q90, so `structureFirstClassicBurstCandidates`
+    /// rejects it; and once the learned burst band falls below the packet ISIs the seed-centred
+    /// routes never seed it. This recovers those false negatives WITHOUT lowering any classic
+    /// burst threshold, using a high-frequency core ceiling learned adaptively (never a hard
+    /// 2-4 / 1-10 / 1-15 ms constant). The ceiling combines:
+    ///   - a MANDATORY local-compression self-gate (both paths): intra-q90 <= a fraction of the
+    ///     packet's own radius-12 local-background q75, so the core must be several-fold faster than
+    ///     its neighbourhood. This rejects slow tonic-like clusters (core ≈ background) regardless of
+    ///     band width, and is what recovers the `source=none` screenshot trains (where it is the sole
+    ///     ceiling, the collapsed band being ≈ minValidISISec);
+    ///   - plus, when the train HAS a usable burst band, an additional `band * headroom` cap keeping
+    ///     the core within the learned burst regime.
+    /// A span is admitted only on strong, LOCAL, two-sided evidence:
+    ///   - short enough to be a packet, not a sustained state (<= highFrequencyBurstMaxSpikes);
+    ///   - intra-q90 within the resolved adaptive HF ceiling, so a genuinely slow run is excluded;
+    ///   - both immediate boundary ISIs >= `burstContrastMin` * the packet core median (median
+    ///     scaled so a tight cluster whose q90 understates its compression is not lost) AND
+    ///     >= the existing possible-burst q90 contrast floor;
+    ///   - the structural background (max of the local q75 background and the two boundary gaps)
+    ///     >= `burstStructuralRescueCompressionMin` * the packet core median.
+    /// Spans already claimed by a stronger route are skipped via the shared `seenRuns`. The
+    /// emitted candidate keeps a canonical burst-family `finalLabel` and additionally carries the
+    /// additive, audit-only `stateHighFrequencySubtype = "hf_burst_packet"`; `finalLabel`, export
+    /// columns and existing routes are otherwise unchanged. The decision path records which adaptive
+    /// ceiling source admitted each packet.
+    private static func adaptiveLocalHFBurstPacketCandidates(
+        train: SpikeTrain,
+        settings: ClassicAnchorSettings,
+        validFlag: [Bool],
+        seenRuns: inout Set<String>,
+        lower: Double,
+        upper: Double,
+        bridgeUpper: Double,
+        startingCandidateIndex: Int
+    ) -> [ClassicAnchorCandidate] {
+        guard settings.enabledLabels.contains(.burst) ||
+                settings.enabledLabels.contains(.highFrequencyBurst),
+              train.isiSec.count == validFlag.count,
+              train.isiSec.count > 2 else {
+            return []
+        }
+
+        let minSpanISI = max(settings.burstCoreMinISI, settings.minSpikes - 1)
+        let maxSpanISI = max(minSpanISI, settings.highFrequencyBurstMaxSpikes - 1)
+        guard minSpanISI > 0, maxSpanISI >= minSpanISI else {
+            return []
+        }
+
+        // The adaptive HF core ceiling combines two relative gates (never a hard ms constant):
+        //
+        //  1. Local-compression self-gate (MANDATORY, both paths): intra-q90 <= a fraction of the
+        //     packet's own radius-12 local-background q75. A packet is admitted only when its core is
+        //     ≈1.47x faster than its neighbourhood, so a slow tonic-like cluster (core ≈ background,
+        //     ratio ≈ 1) is rejected even with high boundary contrast — independently of band width.
+        //     This is what keeps the slow-tonic guard intact in the STRUCTURE path (where the band
+        //     alone could be slow), not just the collapsed path.
+        //  2. Band ceiling (structure path only): intra-q90 <= learned band * headroom. When the band
+        //     has collapsed (source=none, ceiling ≈ minValidISISec) it is dropped and the local
+        //     self-gate is the sole ceiling, so genuine 5-10 ms packets in no-structure trains are
+        //     recovered. The bridge is deliberately not used (a structure bridge that collapses to ≈
+        //     the band would reject genuine ~1.2-1.5x-band packets; band * headroom plus the local
+        //     self-gate already bound the core safely).
+        let bandCeiling = settings.effectiveBurstBandUpperSec * adaptiveLocalHFBurstPacketCoreBandHeadroom
+        let bandIsCollapsed = !settings.canUseBurstSeedBandForDetection
+        let compressionMin = settings.burstStructuralRescueCompressionMin
+
+        var candidates: [ClassicAnchorCandidate] = []
+        for start in train.isiSec.indices where start > 0 {
+            for spanLength in minSpanISI...maxSpanISI {
+                let end = start + spanLength - 1
+                guard train.isiSec.indices.contains(end) else {
+                    break
+                }
+                let key = "\(start)_\(end)"
+                guard !seenRuns.contains(key) else {
+                    continue
+                }
+                guard (start...end).allSatisfy({ index in
+                    validFlag.indices.contains(index) && validFlag[index]
+                }) else {
+                    continue
+                }
+                guard let metrics = spanMetrics(train: train, start: start, end: end, settings: settings),
+                      let intraQ90 = metrics.intraQ90Sec, intraQ90.isFinite, intraQ90 > 0,
+                      let intraMedian = metrics.intraQ50Sec, intraMedian.isFinite, intraMedian > 0,
+                      let preGap = metrics.preGapSec, preGap.isFinite,
+                      let postGap = metrics.postGapSec, postGap.isFinite else {
+                    continue
+                }
+
+                let spikeCount = end - start + 2
+                guard spikeCount >= settings.minSpikes,
+                      spikeCount <= settings.highFrequencyBurstMaxSpikes else {
+                    continue
+                }
+                // Local background scale: radius-12 q75 of the flanking ISIs (excludes the packet).
+                let localBackground = localBackgroundQ75(
+                    train: train,
+                    validFlag: validFlag,
+                    start: start,
+                    end: end
+                )
+                // Resolve the adaptive HF core ceiling and record which adaptive source admitted it.
+                // The local-compression self-gate (intra-q90 <= localBackground q75 * fraction) is
+                // MANDATORY in both paths (a packet must be faster than its own neighbourhood); the
+                // band ceiling additionally applies only when the band has not collapsed.
+                guard let localBackground, localBackground.isFinite, localBackground > 0 else {
+                    continue
+                }
+                let localCeiling = localBackground * adaptiveLocalHFBurstPacketLocalCeilingFraction
+                let coreCeiling: Double
+                let coreCeilingSource: String
+                if bandIsCollapsed {
+                    coreCeiling = localCeiling
+                    coreCeilingSource = "local_background_q75_fraction"
+                } else {
+                    coreCeiling = min(bandCeiling, localCeiling)
+                    coreCeilingSource = "min_burst_band_headroom_and_local_background"
+                }
+                // Core regime: the packet core sits within the adaptive HF ceiling. The local term
+                // requires the core to be several-fold faster than its own neighbourhood, excluding
+                // slow tonic-like clusters; the band term keeps it within the learned burst regime.
+                guard intraQ90 <= coreCeiling + tolerance(for: coreCeiling) else {
+                    continue
+                }
+                // Two-sided q90 boundary floor (not weaker than the existing possible-burst gate).
+                let preRatioQ90 = metrics.preRatioQ90 ?? -.infinity
+                let postRatioQ90 = metrics.postRatioQ90 ?? -.infinity
+                guard preRatioQ90 >= settings.possibleBurstContrastMin,
+                      postRatioQ90 >= settings.possibleBurstContrastMin else {
+                    continue
+                }
+                // Discrete-packet evidence: both boundaries are several-fold the packet core median.
+                let preMedianRatio = preGap / intraMedian
+                let postMedianRatio = postGap / intraMedian
+                guard preMedianRatio >= settings.burstContrastMin,
+                      postMedianRatio >= settings.burstContrastMin else {
+                    continue
+                }
+                // Local compression: structural background (local q75 OR the boundary gaps) is
+                // several-fold the packet core median.
+                let structuralBackground = finiteMax(localBackground, preGap, postGap)
+                    ?? max(preGap, postGap)
+                let structuralMedianRatio = structuralBackground / intraMedian
+                guard structuralMedianRatio.isFinite,
+                      structuralMedianRatio >= compressionMin else {
+                    continue
+                }
+                let structuralQ90Ratio = ratio(structuralBackground, over: intraQ90)
+                let localBackgroundQ90Ratio = ratio(localBackground, over: intraQ90)
+
+                guard seenRuns.insert(key).inserted else {
+                    continue
+                }
+
+                // Strong two-sided + local-compression evidence: a confirmed discrete packet, not a
+                // merely "possible" one, so a possible-burst fallback is promoted to canonical burst.
+                var label = burstFamilyLabel(spikeCount: spikeCount, metrics: metrics, settings: settings)
+                if label == .possibleBurst {
+                    label = .burst
+                }
+                label = enabledBurstFamilyLabel(label, settings: settings)
+
+                let decisionPath = [
+                    "adaptive_local_hf_burst_packet",
+                    "source=local_flank_compression",
+                    "band_collapsed=\(bandIsCollapsed)",
+                    "core_ceiling_source=\(coreCeilingSource)",
+                    "core_ceiling_sec=\(formatRatio(coreCeiling))",
+                    "intra_q90_sec=\(formatRatio(intraQ90))",
+                    "intra_median_sec=\(formatRatio(intraMedian))",
+                    "local_background_q75_sec=\(formatRatio(localBackground))",
+                    "local_background_q90_ratio=\(formatRatio(localBackgroundQ90Ratio))",
+                    "pre_boundary_median_ratio=\(formatRatio(preMedianRatio))",
+                    "post_boundary_median_ratio=\(formatRatio(postMedianRatio))",
+                    "structural_background_median_ratio=\(formatRatio(structuralMedianRatio))",
+                    "structural_compression_required=\(formatRatio(compressionMin))",
+                    "two_sided=true",
+                    "hf_burst_packet=true"
+                ].joined(separator: ";")
+
+                var candidate = burstCandidate(
+                    train: train,
+                    metrics: metrics,
+                    settings: settings,
+                    label: label,
+                    gateStatus: "adaptive_local_hf_burst_packet_local_compression_pass",
+                    decisionPath: decisionPath,
+                    action: "accept",
+                    score: 1 + log1p(structuralMedianRatio),
+                    priority: 2_680,
+                    start: start,
+                    end: end,
+                    bridgeCount: 0,
+                    lower: lower,
+                    upper: upper,
+                    lockLevel: .strongCandidate,
+                    edgeGeom: metrics.edgeContrastGeomQ90,
+                    candidateIndex: startingCandidateIndex + candidates.count,
+                    refCount: 0,
+                    candidateLayer: "adaptive_local_hf_burst_packet",
+                    candidateClass: "adaptive_two_sided_local_compression_hf_packet",
+                    bridgeBandUpper: bridgeUpper,
+                    requiredGapSec: requiredGapSec(
+                        intraQ90Sec: intraQ90,
+                        contrast: settings.burstContrastMin
+                    ),
+                    possibleRequiredGapSec: requiredGapSec(
+                        intraQ90Sec: intraQ90,
+                        contrast: settings.possibleBurstContrastMin
+                    ),
+                    strictBoundaryPass: true,
+                    possibleBoundaryPass: true,
+                    bridgeCountPass: true,
+                    bridgeFractionPass: true,
+                    q90BridgePass: true,
+                    sizeLabelBeforeReview: sizeLabelBeforeReview(
+                        spikeCount: spikeCount,
+                        settings: settings
+                    ),
+                    localBackgroundQ75Sec: localBackground,
+                    localCompressionQ90Ratio: structuralQ90Ratio
+                )
+                candidate.stateHighFrequencySubtype = "hf_burst_packet"
+                candidates.append(candidate)
+                // One packet per start: emit the smallest qualifying two-sided span (the tightest
+                // bilateral boundary match) and stop, so a start cannot spawn nested duplicates.
+                break
+            }
+        }
         return candidates
     }
 
@@ -1161,13 +1466,8 @@ public enum ClassicAnchorDetector {
                 ) else {
                     continue
                 }
-                guard burstCompactnessPass(
-                    intraQ90Sec: metrics.maxIntraISISec,
-                    compactUpperSec: trainCompactUpper
-                ) else {
-                    continue
-                }
-
+                // Flank contrast is computed first so the max-internal-ISI compactness gate can
+                // tolerate a fractional tail when the cluster is strongly two-sided.
                 let hasPreGap = metrics.preGapSec?.isFinite == true
                 let hasPostGap = metrics.postGapSec?.isFinite == true
                 let prePass = (metrics.preRatioQ90 ?? -.infinity) >= settings.burstContrastMin
@@ -1177,6 +1477,40 @@ public enum ClassicAnchorDetector {
                 let startBoundaryPass = !hasPreGap && hasPostGap && start == 1 && postPass
                 let endBoundaryPass = hasPreGap && !hasPostGap && end == train.isiSec.count - 1 && prePass
                 let boundaryPass = startBoundaryPass || endBoundaryPass
+
+                // Max-internal-ISI compactness, with a tolerated-tail rescue for strongly
+                // two-sided packets. A compact cluster must not be erased because one internal
+                // ISI is fractionally above the adaptive compactness upper, provided the bulk
+                // (intraQ90) is compact (already gated above) AND even the largest internal ISI
+                // stays >= the burst flank contrast below BOTH boundary gaps. Boundary/one-sided
+                // clusters get no tail tolerance, so a weak/missing opposite boundary cannot be
+                // rescued.
+                let maxIntraStrictPass = burstCompactnessPass(
+                    intraQ90Sec: metrics.maxIntraISISec,
+                    compactUpperSec: trainCompactUpper
+                )
+                let maxIntraSec = metrics.maxIntraISISec ?? .infinity
+                let maxIntraExcessRatio: Double = {
+                    guard let upper = trainCompactUpper, upper > 0, maxIntraSec.isFinite else {
+                        return .infinity
+                    }
+                    return maxIntraSec / upper
+                }()
+                let preFlankToMaxIntra: Double? = metrics.preGapSec.flatMap { gap in
+                    maxIntraSec > 0 && maxIntraSec.isFinite ? gap / maxIntraSec : nil
+                }
+                let postFlankToMaxIntra: Double? = metrics.postGapSec.flatMap { gap in
+                    maxIntraSec > 0 && maxIntraSec.isFinite ? gap / maxIntraSec : nil
+                }
+                let maxIntraToleratedTailPass = !maxIntraStrictPass &&
+                    twoSidedPass &&
+                    maxIntraExcessRatio <= maxIntraToleratedTailRatio &&
+                    (preFlankToMaxIntra ?? -.infinity) >= settings.burstContrastMin &&
+                    (postFlankToMaxIntra ?? -.infinity) >= settings.burstContrastMin
+                guard maxIntraStrictPass || maxIntraToleratedTailPass else {
+                    continue
+                }
+
                 guard twoSidedPass || boundaryPass else {
                     continue
                 }
@@ -1199,7 +1533,12 @@ public enum ClassicAnchorDetector {
                     end: end,
                     settings: settings
                 )
-                if refCount > 0 {
+                let effectiveRefAction = STPDRefractoryEvidencePolicy.effectiveAction(
+                    refCount: refCount,
+                    nISI: metrics.nISI,
+                    requestedAction: settings.refractoryAction
+                )
+                if STPDRefractoryEvidencePolicy.shouldApplyAction(refCount: refCount, nISI: metrics.nISI) {
                     switch settings.refractoryAction {
                     case .excludeCandidate, .reject:
                         continue
@@ -1215,6 +1554,14 @@ public enum ClassicAnchorDetector {
                 guard settings.enabledLabels.contains(label) else {
                     continue
                 }
+                let gateStatus: String
+                if maxIntraToleratedTailPass {
+                    gateStatus = "structure_first_two_sided_classic_burst_i_pass_with_tolerated_internal_tail"
+                } else if boundaryPass {
+                    gateStatus = "structure_first_endpoint_classic_burst_i_pass"
+                } else {
+                    gateStatus = "structure_first_two_sided_classic_burst_i_pass"
+                }
                 let decisionPath = [
                     "structure_first_classic_burst_i",
                     "no_default_burst_seed_band_used=true",
@@ -1225,8 +1572,15 @@ public enum ClassicAnchorDetector {
                     "edge_min_required=\(formatRatio(settings.burstContrastMin))",
                     "edge_geom_required=\(formatRatio(settings.burstContrastGeomMin))",
                     "intra_q90_sec=\(formatRatio(intraQ90))",
+                    "max_intra_isi_sec=\(formatRatio(metrics.maxIntraISISec))",
                     "train_compact_upper_sec=\(formatRatio(trainCompactUpper))",
-                    "train_adaptive_compactness_pass=true"
+                    "train_adaptive_compactness_pass=true",
+                    "max_intra_strict_compactness_pass=\(maxIntraStrictPass)",
+                    "max_intra_tolerated_tail=\(maxIntraToleratedTailPass)",
+                    "max_intra_excess_ratio=\(formatRatio(maxIntraExcessRatio))",
+                    "max_intra_excess_ratio_max=\(formatRatio(maxIntraToleratedTailRatio))",
+                    "max_intra_pre_flank_ratio=\(formatRatio(preFlankToMaxIntra))",
+                    "max_intra_post_flank_ratio=\(formatRatio(postFlankToMaxIntra))"
                 ].joined(separator: ";")
 
                 candidates.append(
@@ -1235,9 +1589,7 @@ public enum ClassicAnchorDetector {
                         metrics: metrics,
                         settings: settings,
                         label: label,
-                        gateStatus: boundaryPass
-                            ? "structure_first_endpoint_classic_burst_i_pass"
-                            : "structure_first_two_sided_classic_burst_i_pass",
+                        gateStatus: gateStatus,
                         decisionPath: decisionPath,
                         action: action,
                         score: score,
@@ -1251,7 +1603,7 @@ public enum ClassicAnchorDetector {
                         edgeGeom: edgeGeom,
                         candidateIndex: startingCandidateIndex + candidates.count,
                         refCount: refCount,
-                        refractoryAction: refCount > 0 ? settings.refractoryAction : nil,
+                        refractoryAction: effectiveRefAction,
                         candidateLayer: "structure_first_classic_burst_anchor",
                         candidateClass: boundaryPass
                             ? "structure_first_endpoint_classic_burst_i"
@@ -1345,9 +1697,14 @@ public enum ClassicAnchorDetector {
             }
 
             let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
+            let effectiveRefAction = STPDRefractoryEvidencePolicy.effectiveAction(
+                refCount: refCount,
+                nISI: metrics.nISI,
+                requestedAction: settings.refractoryAction
+            )
             var action = label == .possibleBurst ? "demote_to_possible" : "accept"
             var lockLevel: ClassicAnchorLockLevel = strict && label != .possibleBurst ? .lockedClassic : .strongCandidate
-            if refCount > 0 {
+            if STPDRefractoryEvidencePolicy.shouldApplyAction(refCount: refCount, nISI: metrics.nISI) {
                 switch settings.refractoryAction {
                 case .excludeCandidate, .reject:
                     continue
@@ -1397,7 +1754,7 @@ public enum ClassicAnchorDetector {
                     edgeGeom: acceptedEdgeGeom,
                     candidateIndex: candidates.count + 1,
                     refCount: refCount,
-                    refractoryAction: refCount > 0 ? settings.refractoryAction : nil
+                    refractoryAction: effectiveRefAction
                 )
             )
         }
@@ -1640,8 +1997,13 @@ public enum ClassicAnchorDetector {
                 0.20 * seedPurity -
                 0.04 * max(0, (metrics.cv ?? 0) - 1)
             let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
+            let effectiveRefAction = STPDRefractoryEvidencePolicy.effectiveAction(
+                refCount: refCount,
+                nISI: metrics.nISI,
+                requestedAction: settings.refractoryAction
+            )
             var action = "demote_to_possible"
-            if refCount > 0 {
+            if STPDRefractoryEvidencePolicy.shouldApplyAction(refCount: refCount, nISI: metrics.nISI) {
                 switch settings.refractoryAction {
                 case .excludeCandidate, .reject:
                     continue
@@ -1671,7 +2033,7 @@ public enum ClassicAnchorDetector {
                     edgeGeom: oneSidedContrast,
                     candidateIndex: startingCandidateIndex + candidates.count,
                     refCount: refCount,
-                    refractoryAction: refCount > 0 ? settings.refractoryAction : nil,
+                    refractoryAction: effectiveRefAction,
                     candidateLayer: "event_grammar_one_sided_possible_burst_rescue",
                     candidateClass: "event_grammar_bridge_run_possible_burst",
                     seedRunStart: seedIndices.first,
@@ -1716,6 +2078,7 @@ public enum ClassicAnchorDetector {
         guard burstSeedUpper.isFinite, burstSeedUpper > 0 else {
             return []
         }
+        // Mirrors R `bridge_high = max(bmax, vp$bridge_high, bmax * 1.25)` (R/38_event_grammar_core.R).
         let bridgeUpper = max(
             burstSeedUpper,
             settings.effectiveBurstBridgeUpperSec,
@@ -1745,82 +2108,115 @@ public enum ClassicAnchorDetector {
         let minSpikes = max(2, settings.minSpikes)
 
         for run in runs {
-            let start = run.start
-            let end = run.end
-            let coreCount = (start...end).filter { seedFlag[$0] }.count
-            let spikeCount = end - start + 2
-            guard coreCount >= minCore, spikeCount >= minSpikes else {
-                continue
-            }
-            guard let metrics = spanMetrics(train: train, start: start, end: end, settings: settings) else {
-                continue
+            let runStart = run.start
+            let runEnd = run.end
+            // R `bridge_isi_count` / `bridge_fraction` validation (`burstBridgeMaxCount` = R `n_count`,
+            // `burstBridgeFractionMax` = R `n_fraction`; R/38_event_grammar_core.R). Every other burst
+            // route applies these limits; this hard-threshold route did not. A compact seed cluster
+            // embedded in a moderate tonic baseline whose ISIs still fall under `bmax * 1.25` (e.g. a
+            // 40 ms cluster flanked by a 120 ms baseline under a 100 ms seed max) was therefore emitted
+            // as one oversized whole-train span whose bridge fraction is far above the limit. That span
+            // exceeds the band and is rejected, leaving the real cluster labeled "others". When a run
+            // violates the bridge limits, contract it to its continuous seed-bounded cores so each
+            // emitted burst is tight to a cluster; runs within the limits (the R event-core parity case)
+            // are emitted exactly as R emits them, including their adjacent in-band bridge ISIs.
+            let runBridgeCount = (runStart...runEnd).filter { bridgeFlag[$0] && !seedFlag[$0] }.count
+            let runSpan = runEnd - runStart + 1
+            let runBridgeFraction = runSpan > 0 ? Double(runBridgeCount) / Double(runSpan) : 0
+            let candidateSpans: [(start: Int, end: Int)]
+            if runBridgeCount > settings.burstBridgeMaxCount || runBridgeFraction > settings.burstBridgeFractionMax {
+                var seedOnlyFlag = Array(repeating: false, count: seedFlag.count)
+                for index in runStart...runEnd {
+                    seedOnlyFlag[index] = seedFlag[index]
+                }
+                candidateSpans = boolRuns(seedOnlyFlag).map { (start: $0.start, end: $0.end) }
+            } else {
+                candidateSpans = [(start: runStart, end: runEnd)]
             }
 
-            var label = burstFamilyLabel(spikeCount: spikeCount, metrics: metrics, settings: settings)
-            label = enabledBurstFamilyLabel(label, settings: settings)
-            if !settings.enabledLabels.contains(label) {
-                continue
-            }
+            for span in candidateSpans {
+                let start = span.start
+                let end = span.end
+                let coreCount = (start...end).filter { seedFlag[$0] }.count
+                let spikeCount = end - start + 2
+                guard coreCount >= minCore, spikeCount >= minSpikes else {
+                    continue
+                }
+                guard let metrics = spanMetrics(train: train, start: start, end: end, settings: settings) else {
+                    continue
+                }
 
-            let status = switch label {
-            case .burst:
-                "isi_profile_hard_threshold_burst_pass"
-            case .highFrequencyBurst:
-                "isi_profile_hard_threshold_high_frequency_burst_pass"
-            case .longBurst:
-                "isi_profile_hard_threshold_long_burst_review"
-            default:
-                "isi_profile_hard_threshold_oversized_burst_review"
-            }
-            let decision = switch label {
-            case .burst:
-                "hard_threshold_direct_seed_bridge_without_flank_contrast_gate"
-            case .highFrequencyBurst:
-                "hard_threshold_core_fast_limited_extent_high_frequency_burst"
-            case .longBurst:
-                "hard_threshold_long_burst_requires_flank_contrast_gate"
-            default:
-                "hard_threshold_burst_family_size_review"
-            }
-            let bridgeNonSeedCount = (start...end).filter { bridgeFlag[$0] && !seedFlag[$0] }.count
-            let score = 30 +
-                Double(coreCount) +
-                0.05 * Double(spikeCount) -
-                0.25 * Double(bridgeNonSeedCount)
+                var label = burstFamilyLabel(spikeCount: spikeCount, metrics: metrics, settings: settings)
+                label = enabledBurstFamilyLabel(label, settings: settings)
+                if !settings.enabledLabels.contains(label) {
+                    continue
+                }
 
-            var candidate = burstCandidate(
-                train: train,
-                metrics: metrics,
-                settings: settings,
-                label: label,
-                gateStatus: status,
-                decisionPath: decision,
-                action: "accept",
-                score: score,
-                priority: burstFamilyPriority(label: label, classic: 1_450, highFrequency: 1_420, long: 1_310),
-                start: start,
-                end: end,
-                bridgeCount: bridgeNonSeedCount,
-                lower: settings.effectiveBurstBandLowerSec,
-                upper: burstSeedUpper,
-                lockLevel: label.isCanonicalBurstFamily ? .lockedClassic : .strongCandidate,
-                edgeGeom: metrics.edgeContrastGeomQ90,
-                candidateIndex: startingCandidateIndex + candidates.count,
-                refCount: refractorySuspectCount(train: train, start: start, end: end, settings: settings),
-                refractoryAction: nil,
-                candidateLayer: "isi_profile_hard_threshold_burst",
-                candidateClass: "isi_profile_hard_threshold_burst",
-                bridgeBandUpper: bridgeUpper,
-                sizeLabelBeforeReview: label.rawValue
-            )
-            candidate.thresholdMode = "hard_threshold"
-            candidate.hardThreshold = true
-            candidate.hardThresholdPattern = "burst"
-            candidate.hardBurstSeedUpperSec = burstSeedUpper
-            candidate.hardBurstBridgeUpperSec = bridgeUpper
-            candidate.hardBurstCoreISICount = coreCount
-            candidate.hardThresholdSource = settings.burstHardThresholdSource
-            candidates.append(candidate)
+                let status = switch label {
+                case .burst:
+                    "isi_profile_hard_threshold_burst_pass"
+                case .highFrequencyBurst:
+                    "isi_profile_hard_threshold_high_frequency_burst_pass"
+                case .longBurst:
+                    "isi_profile_hard_threshold_long_burst_review"
+                default:
+                    "isi_profile_hard_threshold_oversized_burst_review"
+                }
+                let decision = switch label {
+                case .burst:
+                    "hard_threshold_direct_seed_bridge_without_flank_contrast_gate"
+                case .highFrequencyBurst:
+                    "hard_threshold_core_fast_limited_extent_high_frequency_burst"
+                case .longBurst:
+                    "hard_threshold_long_burst_requires_flank_contrast_gate"
+                default:
+                    "hard_threshold_burst_family_size_review"
+                }
+                let bridgeNonSeedCount = (start...end).filter { bridgeFlag[$0] && !seedFlag[$0] }.count
+                let score = 30 +
+                    Double(coreCount) +
+                    0.05 * Double(spikeCount) -
+                    0.25 * Double(bridgeNonSeedCount)
+
+                let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
+                var candidate = burstCandidate(
+                    train: train,
+                    metrics: metrics,
+                    settings: settings,
+                    label: label,
+                    gateStatus: status,
+                    decisionPath: decision,
+                    action: "accept",
+                    score: score,
+                    priority: burstFamilyPriority(label: label, classic: 1_450, highFrequency: 1_420, long: 1_310),
+                    start: start,
+                    end: end,
+                    bridgeCount: bridgeNonSeedCount,
+                    lower: settings.effectiveBurstBandLowerSec,
+                    upper: burstSeedUpper,
+                    lockLevel: label.isCanonicalBurstFamily ? .lockedClassic : .strongCandidate,
+                    edgeGeom: metrics.edgeContrastGeomQ90,
+                    candidateIndex: startingCandidateIndex + candidates.count,
+                    refCount: refCount,
+                    refractoryAction: STPDRefractoryEvidencePolicy.effectiveAction(
+                        refCount: refCount,
+                        nISI: metrics.nISI,
+                        requestedAction: settings.refractoryAction
+                    ),
+                    candidateLayer: "isi_profile_hard_threshold_burst",
+                    candidateClass: "isi_profile_hard_threshold_burst",
+                    bridgeBandUpper: bridgeUpper,
+                    sizeLabelBeforeReview: label.rawValue
+                )
+                candidate.thresholdMode = "hard_threshold"
+                candidate.hardThreshold = true
+                candidate.hardThresholdPattern = "burst"
+                candidate.hardBurstSeedUpperSec = burstSeedUpper
+                candidate.hardBurstBridgeUpperSec = bridgeUpper
+                candidate.hardBurstCoreISICount = coreCount
+                candidate.hardThresholdSource = settings.burstHardThresholdSource
+                candidates.append(candidate)
+            }
         }
 
         return candidates
@@ -1926,7 +2322,7 @@ public enum ClassicAnchorDetector {
             let bridgeFraction = fraction(values, matching: { $0 <= bridgeUpper })
             let lowISIFraction = fraction(values, matching: { $0 <= episodeUpper })
             let q90 = quantile(values, probability: 0.90)
-            let cv = coefficientOfVariation(values)
+            let cv = STPDStatistics.coefficientOfVariation(values)
             let compression = ratio(trainBackgroundQ75, over: q90)
 
             let seedEntryPass = seedCount >= settings.burstEpisodeMinSeedISI &&
@@ -1993,6 +2389,7 @@ public enum ClassicAnchorDetector {
                     !seedFlag[index] &&
                     (train.isiSec[index] ?? .infinity) <= bridgeUpper
             }.count
+            let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
 
             candidates.append(
                 burstCandidate(
@@ -2013,7 +2410,12 @@ public enum ClassicAnchorDetector {
                     lockLevel: lockLevel,
                     edgeGeom: metrics.edgeContrastGeomQ90,
                     candidateIndex: startingCandidateIndex + candidates.count,
-                    refCount: refractorySuspectCount(train: train, start: start, end: end, settings: settings),
+                    refCount: refCount,
+                    refractoryAction: STPDRefractoryEvidencePolicy.effectiveAction(
+                        refCount: refCount,
+                        nISI: metrics.nISI,
+                        requestedAction: settings.refractoryAction
+                    ),
                     candidateLayer: "event_grammar_burst_episode",
                     candidateClass: "event_grammar_dense_short_isi_episode"
                 )
@@ -2247,6 +2649,7 @@ public enum ClassicAnchorDetector {
                 priority = 0
             }
 
+            let refCount = refractorySuspectCount(train: train, start: start, end: end, settings: settings)
             mergedCandidates.append(
                 burstCandidate(
                     train: train,
@@ -2268,7 +2671,12 @@ public enum ClassicAnchorDetector {
                     lockLevel: finalLabel == .possibleBurst ? .strongCandidate : .lockedClassic,
                     edgeGeom: metrics.edgeContrastGeomQ90,
                     candidateIndex: startingCandidateIndex + mergedCandidates.count,
-                    refCount: refractorySuspectCount(train: train, start: start, end: end, settings: settings),
+                    refCount: refCount,
+                    refractoryAction: STPDRefractoryEvidencePolicy.effectiveAction(
+                        refCount: refCount,
+                        nISI: metrics.nISI,
+                        requestedAction: settings.refractoryAction
+                    ),
                     candidateLayer: "event_grammar_burst_episode",
                     candidateClass: "event_grammar_burst_family_merge",
                     seedRunStart: firstStart,
@@ -2370,7 +2778,6 @@ public enum ClassicAnchorDetector {
             meanIntraISISec: metrics.meanIntraISISec,
             cv: metrics.cv,
             lv: metrics.lv,
-            mm: metrics.mm,
             preGapSec: metrics.preGapSec,
             postGapSec: metrics.postGapSec,
             preRatioQ90: metrics.preRatioQ90,
@@ -2543,6 +2950,16 @@ public enum ClassicAnchorDetector {
             : "classic_anchor_continuous_burst_band_with_partial_contrast"
     }
 
+    /// Maximum fraction by which the largest internal ISI of a strongly two-sided compact
+    /// cluster may exceed the adaptive compactness upper and still be rescued as a classic
+    /// burst (the "tolerated internal tail"). This is NOT a global burst threshold: it only
+    /// loosens the per-span max-internal-ISI compactness gate, and only when the bulk
+    /// (intraQ90) is already compact AND even the largest internal ISI stays >= the burst
+    /// flank contrast below both boundary gaps. It exists so a clearly two-sided packet is not
+    /// erased because one internal ISI is fractionally above the adaptive compactness upper,
+    /// without admitting moderate tonic runs (which lack strong two-sided gaps).
+    private static let maxIntraToleratedTailRatio = 1.25
+
     private static func burstCompactnessUpper(
         train: SpikeTrain,
         validFlag: [Bool],
@@ -2630,7 +3047,6 @@ public enum ClassicAnchorDetector {
         let meanIntraISISec: Double?
         let cv: Double?
         let lv: Double?
-        let mm: Double?
         let preGapSec: Double?
         let postGapSec: Double?
         let preRatioQ90: Double?
@@ -2712,9 +3128,8 @@ public enum ClassicAnchorDetector {
             intraQ95Sec: q95,
             maxIntraISISec: values.max(),
             meanIntraISISec: mean(values),
-            cv: coefficientOfVariation(values),
-            lv: localVariation(values),
-            mm: maxMeanRatio(values),
+            cv: STPDStatistics.coefficientOfVariation(values),
+            lv: STPDStatistics.localVariation(values),
             preGapSec: pre,
             postGapSec: post,
             preRatioQ90: preRatio,
@@ -3258,49 +3673,4 @@ public enum ClassicAnchorDetector {
         return finite.reduce(0, +) / Double(finite.count)
     }
 
-    private static func coefficientOfVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2,
-              let mean = mean(finite),
-              mean > 0 else {
-            return nil
-        }
-        let variance = finite.reduce(0) { partial, value in
-            let delta = value - mean
-            return partial + delta * delta
-        } / Double(finite.count - 1)
-        return sqrt(variance) / mean
-    }
-
-    private static func localVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2 else {
-            return nil
-        }
-
-        var terms: [Double] = []
-        terms.reserveCapacity(finite.count - 1)
-        for pair in zip(finite, finite.dropFirst()) {
-            let denominator = pair.0 + pair.1
-            guard denominator > 0 else {
-                continue
-            }
-            let value = (pair.0 - pair.1) / denominator
-            terms.append(value * value)
-        }
-        guard let mean = mean(terms) else {
-            return nil
-        }
-        return 3 * mean
-    }
-
-    private static func maxMeanRatio(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard let mean = mean(finite),
-              mean > 0,
-              let maxValue = finite.max() else {
-            return nil
-        }
-        return maxValue / mean
-    }
 }

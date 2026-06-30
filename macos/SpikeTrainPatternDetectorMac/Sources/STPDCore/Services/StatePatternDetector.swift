@@ -23,8 +23,12 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     public var tonicCVMax: Double
     public var tonicCV2Max: Double
     public var tonicLVMax: Double
-    public var tonicMMMin: Double
-    public var tonicMMMax: Double
+    /// Relaxed regularity bands for the irregular-tonic subtype (only used after classic
+    /// regularity fails and tonic-family structural eligibility passes). Classic tonic
+    /// defaults are unchanged; these are strictly wider and are explicit/auditable.
+    public var irregularTonicCVMax: Double
+    public var irregularTonicCV2Max: Double
+    public var irregularTonicLVMax: Double
     public var tonicBurstSeedFractionMax: Double
     public var highFrequencyTonicFloorSec: Double
     public var highFrequencyTonicUpperSec: Double
@@ -33,7 +37,6 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     public var highFrequencyTonicCVMax: Double
     public var highFrequencyTonicCV2Max: Double
     public var highFrequencyTonicLVMax: Double
-    public var highFrequencyTonicMMMax: Double
     public var highFrequencyTonicBurstCoreVetoMinISI: Int
     public var highFrequencySpikingShortUpperSec: Double
     public var highFrequencySpikingQ80MaxSec: Double
@@ -65,8 +68,9 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         tonicCVMax: Double = 0.30,
         tonicCV2Max: Double = 0.30,
         tonicLVMax: Double = 0.35,
-        tonicMMMin: Double = 0.85,
-        tonicMMMax: Double = 1.25,
+        irregularTonicCVMax: Double = 0.60,
+        irregularTonicCV2Max: Double = 0.60,
+        irregularTonicLVMax: Double = 0.80,
         tonicBurstSeedFractionMax: Double = 0.20,
         highFrequencyTonicFloorSec: Double = 0,
         highFrequencyTonicUpperSec: Double = 0,
@@ -75,7 +79,6 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         highFrequencyTonicCVMax: Double = 0.30,
         highFrequencyTonicCV2Max: Double = 0.30,
         highFrequencyTonicLVMax: Double = 0.35,
-        highFrequencyTonicMMMax: Double = 1.25,
         highFrequencyTonicBurstCoreVetoMinISI: Int = 2,
         highFrequencySpikingShortUpperSec: Double = 0.020,
         highFrequencySpikingQ80MaxSec: Double? = nil,
@@ -107,8 +110,11 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         self.tonicCVMax = positive(tonicCVMax, fallback: 0.30)
         self.tonicCV2Max = positive(tonicCV2Max, fallback: 0.30)
         self.tonicLVMax = positive(tonicLVMax, fallback: 0.35)
-        self.tonicMMMin = positive(tonicMMMin, fallback: 0.85)
-        self.tonicMMMax = max(self.tonicMMMin, positive(tonicMMMax, fallback: 1.25))
+        // Irregular bands clamp to be no tighter than the classic bands, so the irregular
+        // subtype can only ever be a superset of classic acceptance, never stricter.
+        self.irregularTonicCVMax = max(self.tonicCVMax, positive(irregularTonicCVMax, fallback: 0.60))
+        self.irregularTonicCV2Max = max(self.tonicCV2Max, positive(irregularTonicCV2Max, fallback: 0.60))
+        self.irregularTonicLVMax = max(self.tonicLVMax, positive(irregularTonicLVMax, fallback: 0.80))
         self.tonicBurstSeedFractionMax = clampedFraction(tonicBurstSeedFractionMax, fallback: 0.20)
         self.highFrequencyTonicFloorSec = positive(highFrequencyTonicFloorSec, fallback: self.minValidISISec)
         self.highFrequencyTonicUpperSec = max(
@@ -120,7 +126,6 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         self.highFrequencyTonicCVMax = positive(highFrequencyTonicCVMax, fallback: self.tonicCVMax)
         self.highFrequencyTonicCV2Max = positive(highFrequencyTonicCV2Max, fallback: self.tonicCV2Max)
         self.highFrequencyTonicLVMax = positive(highFrequencyTonicLVMax, fallback: self.tonicLVMax)
-        self.highFrequencyTonicMMMax = positive(highFrequencyTonicMMMax, fallback: 1.25)
         self.highFrequencyTonicBurstCoreVetoMinISI = max(1, highFrequencyTonicBurstCoreVetoMinISI)
         self.highFrequencySpikingShortUpperSec = positive(highFrequencySpikingShortUpperSec, fallback: 0.020)
         self.highFrequencySpikingQ90MaxSec = positive(highFrequencySpikingQ90MaxSec, fallback: 0.025)
@@ -150,15 +155,15 @@ public struct StatePatternDetectorTuning: Hashable, Sendable {
     public var tonicCVMax: Double
     public var tonicCV2Max: Double
     public var tonicLVMax: Double
-    public var tonicMMMin: Double
-    public var tonicMMMax: Double
+    public var irregularTonicCVMax: Double
+    public var irregularTonicCV2Max: Double
+    public var irregularTonicLVMax: Double
     public var tonicBurstSeedFractionMax: Double
     public var highFrequencyTonicMinSpikes: Int
     public var highFrequencyTonicLowTailFractionMax: Double
     public var highFrequencyTonicCVMax: Double
     public var highFrequencyTonicCV2Max: Double
     public var highFrequencyTonicLVMax: Double
-    public var highFrequencyTonicMMMax: Double
     public var highFrequencySpikingMinSpikes: Int
     public var highFrequencySpikingShortFractionMin: Double
     public var highFrequencySpikingAllowedLargeFraction: Double
@@ -169,15 +174,15 @@ public struct StatePatternDetectorTuning: Hashable, Sendable {
         tonicCVMax: Double = 0.30,
         tonicCV2Max: Double = 0.30,
         tonicLVMax: Double = 0.35,
-        tonicMMMin: Double = 0.85,
-        tonicMMMax: Double = 1.25,
+        irregularTonicCVMax: Double = 0.60,
+        irregularTonicCV2Max: Double = 0.60,
+        irregularTonicLVMax: Double = 0.80,
         tonicBurstSeedFractionMax: Double = 0.20,
         highFrequencyTonicMinSpikes: Int = 6,
         highFrequencyTonicLowTailFractionMax: Double = 0.05,
         highFrequencyTonicCVMax: Double = 0.30,
         highFrequencyTonicCV2Max: Double = 0.30,
         highFrequencyTonicLVMax: Double = 0.35,
-        highFrequencyTonicMMMax: Double = 1.25,
         highFrequencySpikingMinSpikes: Int = 30,
         highFrequencySpikingShortFractionMin: Double = 0.70,
         highFrequencySpikingAllowedLargeFraction: Double = 0.25,
@@ -187,15 +192,15 @@ public struct StatePatternDetectorTuning: Hashable, Sendable {
         self.tonicCVMax = positive(tonicCVMax, fallback: 0.30)
         self.tonicCV2Max = positive(tonicCV2Max, fallback: 0.30)
         self.tonicLVMax = positive(tonicLVMax, fallback: 0.35)
-        self.tonicMMMin = positive(tonicMMMin, fallback: 0.85)
-        self.tonicMMMax = max(self.tonicMMMin, positive(tonicMMMax, fallback: 1.25))
+        self.irregularTonicCVMax = max(self.tonicCVMax, positive(irregularTonicCVMax, fallback: 0.60))
+        self.irregularTonicCV2Max = max(self.tonicCV2Max, positive(irregularTonicCV2Max, fallback: 0.60))
+        self.irregularTonicLVMax = max(self.tonicLVMax, positive(irregularTonicLVMax, fallback: 0.80))
         self.tonicBurstSeedFractionMax = clampedFraction(tonicBurstSeedFractionMax, fallback: 0.20)
         self.highFrequencyTonicMinSpikes = max(3, highFrequencyTonicMinSpikes)
         self.highFrequencyTonicLowTailFractionMax = clampedFraction(highFrequencyTonicLowTailFractionMax, fallback: 0.05)
         self.highFrequencyTonicCVMax = positive(highFrequencyTonicCVMax, fallback: 0.30)
         self.highFrequencyTonicCV2Max = positive(highFrequencyTonicCV2Max, fallback: 0.30)
         self.highFrequencyTonicLVMax = positive(highFrequencyTonicLVMax, fallback: 0.35)
-        self.highFrequencyTonicMMMax = positive(highFrequencyTonicMMMax, fallback: 1.25)
         self.highFrequencySpikingMinSpikes = max(3, highFrequencySpikingMinSpikes)
         self.highFrequencySpikingShortFractionMin = clampedFraction(highFrequencySpikingShortFractionMin, fallback: 0.70)
         self.highFrequencySpikingAllowedLargeFraction = clampedFraction(highFrequencySpikingAllowedLargeFraction, fallback: 0.25)
@@ -265,6 +270,306 @@ public enum StatePatternDetector {
             settings: settings,
             localContext: localContext,
             splitByCandidateIDs: splitByCandidateIDs
+        )
+    }
+
+    /// Conservatively merge adjacent selectable irregular-tonic state fragments of the same
+    /// train across a tiny, non-event, non-pause gap. State-level continuity only — not a
+    /// threshold relaxation. The merged span is re-validated through the same tonic-family
+    /// structural-eligibility and irregular regularity gates; the child fragments are consumed
+    /// (removed) so the merged state is selected deterministically over them.
+    ///
+    /// A large gap is never bridged just because the neighbors are irregular tonic: selected
+    /// pauses, selected burst-family events, and HFS / HF-tonic regions inside the gap block
+    /// the merge, and the gap must also satisfy the adaptive micro-gap cap.
+    public static func mergeIrregularTonicMicroGaps(
+        train: SpikeTrain,
+        candidates: [ClassicAnchorCandidate],
+        selectedEvents: [ClassicAnchorCandidate],
+        selectedGaps: [ClassicAnchorCandidate],
+        settings: StatePatternDetectorSettings
+    ) -> [ClassicAnchorCandidate] {
+        let fragments = candidates
+            .filter {
+                $0.trainID == train.id &&
+                    $0.finalLabel == .tonic &&
+                    $0.stateTonicSubtype == "irregular" &&
+                    $0.isEligibleForAutoSelection
+            }
+            .sorted {
+                if $0.startISIIndex != $1.startISIIndex {
+                    return $0.startISIIndex < $1.startISIIndex
+                }
+                return $0.endISIIndex < $1.endISIIndex
+            }
+        guard fragments.count >= 2 else {
+            return candidates
+        }
+
+        let localContext = SpikeISILocalContextTable.build(
+            for: train,
+            settings: SpikeISILocalContextSettings(
+                minValidISISec: settings.minValidISISec,
+                halfWindow: max(3, settings.tonicMinSpikes)
+            )
+        )
+        let bounds = tonicStructuralSearchBounds(train: train, settings: settings)
+        let strictFlags = train.isiSec.indices.map { index -> Bool in
+            guard index > 0,
+                  let value = finiteValidISI(train.isiSec[index], settings: settings) else {
+                return false
+            }
+            return isTonicStructuralSupport(index: index, value: value, bounds: bounds, localContext: localContext)
+        }
+
+        var consumed = Set<String>()
+        var mergedCandidates: [ClassicAnchorCandidate] = []
+
+        var i = 0
+        while i < fragments.count {
+            let first = fragments[i]
+            var accStart = min(first.startISIIndex, first.endISIIndex)
+            var accEnd = max(first.startISIIndex, first.endISIIndex)
+            var childIDs = [first.id]
+            var gapISIs: [Double] = []
+            var bestMerge: ClassicAnchorCandidate?
+
+            var j = i + 1
+            while j < fragments.count {
+                let next = fragments[j]
+                let nextStart = min(next.startISIIndex, next.endISIIndex)
+                let nextEnd = max(next.startISIIndex, next.endISIIndex)
+                guard nextStart > accEnd else { break }
+
+                let gapLower = accEnd + 1
+                let gapUpper = nextStart - 1
+                let hasGap = gapLower <= gapUpper
+                let gapISIValues = hasGap
+                    ? (gapLower...gapUpper).compactMap { idx -> Double? in
+                        guard train.isiSec.indices.contains(idx) else { return nil }
+                        return finiteValidISI(train.isiSec[idx], settings: settings)
+                    }
+                    : []
+                let gapCount = hasGap ? (gapUpper - gapLower + 1) : 0
+
+                if hasGap, microGapBlockedByBoundary(
+                    gapLower: gapLower,
+                    gapUpper: gapUpper,
+                    selectedEvents: selectedEvents,
+                    selectedGaps: selectedGaps,
+                    candidates: candidates
+                ) {
+                    break
+                }
+
+                let cap = microGapCap(
+                    train: train,
+                    leftStart: accStart, leftEnd: accEnd,
+                    rightStart: nextStart, rightEnd: nextEnd,
+                    settings: settings
+                )
+                let maxGap = gapISIValues.max() ?? 0
+                // Respect tonicMaxBridgeISI exactly: 0 disables bridging entirely (only directly
+                // adjacent fragments with no intervening gap may merge), and never allows more
+                // intervening ISIs than the setting permits.
+                guard gapCount <= settings.tonicMaxBridgeISI,
+                      maxGap <= cap + tolerance(for: cap) else {
+                    break
+                }
+
+                guard let merged = revalidatedIrregularTonicMerge(
+                    train: train,
+                    start: accStart, end: nextEnd,
+                    settings: settings, localContext: localContext,
+                    bounds: bounds, strictFlags: strictFlags,
+                    childIDs: childIDs + [next.id],
+                    gapISIs: gapISIs + gapISIValues,
+                    gapCount: gapISIs.count + gapCount,
+                    cap: cap
+                ) else {
+                    break
+                }
+
+                bestMerge = merged
+                accEnd = nextEnd
+                childIDs.append(next.id)
+                gapISIs.append(contentsOf: gapISIValues)
+                j += 1
+            }
+
+            if let merged = bestMerge, childIDs.count >= 2 {
+                mergedCandidates.append(merged)
+                consumed.formUnion(childIDs)
+                i = j
+            } else {
+                i += 1
+            }
+        }
+
+        guard !mergedCandidates.isEmpty else {
+            return candidates
+        }
+        return candidates.filter { !consumed.contains($0.id) } + mergedCandidates
+    }
+
+    private static func microGapBlockedByBoundary(
+        gapLower: Int,
+        gapUpper: Int,
+        selectedEvents: [ClassicAnchorCandidate],
+        selectedGaps: [ClassicAnchorCandidate],
+        candidates: [ClassicAnchorCandidate]
+    ) -> Bool {
+        guard gapLower <= gapUpper else { return false }
+        func overlapsGap(_ candidate: ClassicAnchorCandidate) -> Bool {
+            let start = min(candidate.startISIIndex, candidate.endISIIndex)
+            let end = max(candidate.startISIIndex, candidate.endISIIndex)
+            return start <= gapUpper && end >= gapLower
+        }
+        if selectedGaps.contains(where: { $0.finalLabel == .pause && overlapsGap($0) }) {
+            return true
+        }
+        if selectedEvents.contains(where: { $0.finalLabel.isBurstEventFamily && overlapsGap($0) }) {
+            return true
+        }
+        if candidates.contains(where: {
+            ($0.finalLabel == .highFrequencySpiking || $0.finalLabel == .highFrequencyTonic) &&
+                $0.isEligibleForAutoSelection && overlapsGap($0)
+        }) {
+            return true
+        }
+        return false
+    }
+
+    private static func microGapCap(
+        train: SpikeTrain,
+        leftStart: Int, leftEnd: Int,
+        rightStart: Int, rightEnd: Int,
+        settings: StatePatternDetectorSettings
+    ) -> Double {
+        let leftValues = microGapISIValues(train: train, start: leftStart, end: leftEnd, settings: settings)
+        let rightValues = microGapISIValues(train: train, start: rightStart, end: rightEnd, settings: settings)
+        let pooled = leftValues + rightValues
+        let pooledMedian = quantile(pooled, probability: 0.50) ?? 0
+        let neighborQ90Cap = max(
+            quantile(leftValues, probability: 0.90) ?? 0,
+            quantile(rightValues, probability: 0.90) ?? 0
+        )
+        let caps = [settings.tonicBridgeUpperSec, 1.5 * pooledMedian, neighborQ90Cap]
+            .filter { $0.isFinite && $0 > 0 }
+        return caps.min() ?? settings.tonicBridgeUpperSec
+    }
+
+    private static func microGapISIValues(
+        train: SpikeTrain,
+        start: Int, end: Int,
+        settings: StatePatternDetectorSettings
+    ) -> [Double] {
+        guard start <= end else { return [] }
+        return (start...end).compactMap { idx in
+            train.isiSec.indices.contains(idx) ? finiteValidISI(train.isiSec[idx], settings: settings) : nil
+        }
+    }
+
+    private static func revalidatedIrregularTonicMerge(
+        train: SpikeTrain,
+        start: Int, end: Int,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        bounds: (lower: Double, upper: Double),
+        strictFlags: [Bool],
+        childIDs: [String],
+        gapISIs: [Double],
+        gapCount: Int,
+        cap: Double
+    ) -> ClassicAnchorCandidate? {
+        let run = (start: start, end: end)
+        guard let metrics = metrics(train: train, run: run, settings: settings, localContext: localContext),
+              metrics.nSpikes >= settings.tonicMinSpikes else {
+            return nil
+        }
+
+        let bridgeCount = tonicBridgeCount(run: run, strictFlags: strictFlags)
+        let bridgeFraction = Double(bridgeCount) / Double(max(1, metrics.nValidISI))
+        let bridgeFractionPass = bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12
+        let burstSeedFraction = fraction(metrics.values) {
+            $0 <= settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec)
+        }
+        let burstSeedFractionPass = burstSeedFraction <= effectiveTonicBurstSeedFractionMax(settings: settings) + 1e-12
+        let coreRunLength = maxBurstSeedRun(train: train, run: run, settings: settings)
+        let coreRunPass = coreRunLength <= tonicBurstCoreRunLimit(settings: settings)
+        let fastPacketCoreUpper = fastPacketCoreUpperSec(settings: settings)
+        let fastPacketFraction = fraction(metrics.values) {
+            $0 <= fastPacketCoreUpper + tolerance(for: fastPacketCoreUpper)
+        }
+        let fastPacketPass = fastPacketFraction <= fastPacketCoreOccupancyMax(settings: settings) + 1e-12
+        let structuralEligibilityPass = burstSeedFractionPass && coreRunPass && fastPacketPass && bridgeFractionPass
+        guard structuralEligibilityPass else { return nil }
+
+        let classicRegularityPass =
+            (metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true) &&
+            (metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true)
+        let irregularRegularityPass =
+            (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
+            (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
+        guard classicRegularityPass || irregularRegularityPass else { return nil }
+        let subtype = classicRegularityPass ? "classic" : "irregular"
+
+        let regularityScore = mean([
+            metrics.cv.map { 1 / (1 + $0) },
+            metrics.cv2.map { 1 / (1 + $0) },
+            metrics.lv.map { 1 / (1 + $0) }
+        ].compactMap { $0 }) ?? 0
+        let maxGap = gapISIs.max() ?? 0
+        let decisionPath = stateDecisionPath(
+            base: "irregular_tonic_micro_gap_merge_state",
+            metrics: metrics,
+            extra: [
+                "tonic_subtype=\(subtype)",
+                "irregular_tonic_micro_gap_merge=true",
+                "merge_revalidated=true",
+                "merged_fragment_count=\(childIDs.count)",
+                "merged_gap_count=\(gapCount)",
+                "max_merged_gap_sec=\(format(maxGap))",
+                "micro_gap_cap_sec=\(format(cap))",
+                "micro_gap_source=adaptive_neighbor_tonic_scale",
+                "merged_child_ids=\(childIDs.joined(separator: "|"))",
+                "cv=\(format(metrics.cv))",
+                "cv2=\(format(metrics.cv2))",
+                "lv=\(format(metrics.lv))",
+                "max_isi_sec=\(format(metrics.max))",
+                "burst_seed_fraction=\(format(burstSeedFraction))",
+                "core_burst_run_length=\(coreRunLength)",
+                "fast_packet_fraction=\(format(fastPacketFraction))",
+                "bridge_fraction=\(format(bridgeFraction))",
+                "classic_regularity_pass=\(classicRegularityPass)",
+                "irregular_regularity_pass=\(irregularRegularityPass)",
+                "tonic_family_structural_eligibility_pass=\(structuralEligibilityPass)"
+            ]
+        )
+        let score = 3 + regularityScore + localStabilityScore(metrics)
+        return candidate(
+            train: train,
+            run: run,
+            metrics: metrics,
+            label: .tonic,
+            layer: "event_core_irregular_tonic_micro_gap_merge",
+            candidateClass: "event_core_tonic",
+            gateStatus: "event_core_irregular_tonic_micro_gap_merge_pass",
+            decisionPath: decisionPath,
+            score: score,
+            priority: 1_100,
+            bandLower: bounds.lower,
+            bandUpper: bounds.upper,
+            contrastMinRequired: settings.tonicLVMax,
+            contrastGeomRequired: settings.tonicCV2Max,
+            stateRegularityScore: regularityScore,
+            stateBurstSeedFraction: burstSeedFraction,
+            stateCoreBurstRunLength: coreRunLength,
+            stateTonicSubtype: subtype,
+            index: 0,
+            id: "\(train.id)-irregular-tonic-micro-merge-\(start)-\(end)"
         )
     }
 
@@ -363,7 +668,6 @@ public enum StatePatternDetector {
         let cv: Double?
         let cv2: Double?
         let lv: Double?
-        let mm: Double?
         let preGapSec: Double?
         let postGapSec: Double?
         let trainPercentileMedian: Double?
@@ -543,6 +847,9 @@ public enum StatePatternDetector {
                 rejected.hfSpikingEmbeddedBurstCoverage = packetization.coverage
                 rejected.hfSpikingBurstDominated = packetization.burstDominated
                 rejected.hfSpikingBurstPacketLike = packetization.packetLike
+                rejected.stateHighFrequencySubtype = packetization.burstDominated
+                    ? "hf_burst_dominant"
+                    : "hf_irregular_spiking"
                 candidates.append(rejected)
                 continue
             }
@@ -622,6 +929,11 @@ public enum StatePatternDetector {
                 ? packetization.burstDominated
                 : false
             hfs.hfSpikingBurstPacketLike = packetization.packetLike
+            // HF family subtype: a sustained HF state is irregular HF spiking unless it is
+            // burst-dominated. finalLabel stays .highFrequencySpiking.
+            hfs.stateHighFrequencySubtype = (hfs.hfSpikingBurstDominated == true)
+                ? "hf_burst_dominant"
+                : "hf_irregular_spiking"
             candidates.append(hfs)
         }
 
@@ -663,8 +975,8 @@ public enum StatePatternDetector {
             coverage >= 0.30 &&
             longest <= max(8, Int(ceil(0.50 * Double(max(1, metrics.nISI)))))
         let variableContext = (metrics.cv ?? 0) >= 0.55 ||
-            (metrics.lv ?? 0) >= 0.40 ||
-            (metrics.mm ?? 0) >= 3.0
+            (metrics.cv2 ?? 0) >= 0.55 ||
+            (metrics.lv ?? 0) >= 0.40
         let burstDominated = groups.count >= 2 && coverage >= 0.45 && variableContext
         return HFSpikingPacketizationStats(
             groupCount: groups.count,
@@ -914,19 +1226,79 @@ public enum StatePatternDetector {
         return count
     }
 
+    /// Relative-baseline HF-tonic recall constants (ratio/percentile/count — never fixed ms). A
+    /// candidate ISI is "fast relative to the train background" when it is at most this fraction of
+    /// the train's own non-burst background q50. This fraction (< 1) IS the candidate-vs-background
+    /// separation guard: a uniform classic-tonic train, whose fastest ISIs are only the lower-noise
+    /// tail of the same baseline, never seeds the relative route because nothing sits below 0.6x its
+    /// own median.
+    private static let relativeHighFrequencyTonicBackgroundRatioMax = 0.6
+    /// Train-relative "fast" percentile, recorded for audit (the fastest ~35% of the train's ISIs),
+    /// the Mac analogue of R/11's percentile HF seed.
+    private static let relativeHighFrequencyTonicPercentileCeiling = 0.35
+    /// Reliability floor: the relative route stays disabled unless the non-burst background has at
+    /// least this many valid ISIs, so the percentile/background estimate is stable. Derived only from
+    /// the train's own ISIs (no cross-train leakage).
+    private static let relativeHighFrequencyTonicMinBackgroundISI = 40
+
+    /// Train-relative non-burst background used by the HF-tonic relative recall route. Returns nil
+    /// (route disabled, behavior unchanged) when the background sample is too small to be reliable.
+    private static func relativeHighFrequencyTonicBackground(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings
+    ) -> (backgroundQ50: Double, backgroundQ75: Double, percentileCeiling: Double, validCount: Int)? {
+        let nonBurst = train.isiSec.compactMap { value -> Double? in
+            guard let value = finiteValidISI(value, settings: settings),
+                  value > settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec) else {
+                return nil
+            }
+            return value
+        }
+        guard nonBurst.count >= relativeHighFrequencyTonicMinBackgroundISI else {
+            return nil
+        }
+        let sample = SortedFiniteSample(nonBurst, positiveOnly: true)
+        guard let q50 = sample.quantile(0.50), q50.isFinite, q50 > 0,
+              let q75 = sample.quantile(0.75) else {
+            return nil
+        }
+        let allValid = train.isiSec.compactMap { finiteValidISI($0, settings: settings) }
+        let percentileCeiling = quantile(allValid, probability: relativeHighFrequencyTonicPercentileCeiling) ?? q50
+        return (q50, q75, percentileCeiling, nonBurst.count)
+    }
+
     private static func detectHighFrequencyTonic(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings,
         localContext: SpikeISILocalContextTable
     ) -> [ClassicAnchorCandidate] {
         let highMax = settings.highFrequencyTonicUpperSec
-        let flags = train.isiSec.indices.map { index -> Bool in
+        // Relative-baseline recall: a per-train ceiling derived from the train's own non-burst
+        // background (ratios only, never a fixed ms). It is nil when the background sample is too
+        // small to be reliable, in which case only the fixed band is used and behavior is unchanged.
+        let relativeBackground = relativeHighFrequencyTonicBackground(train: train, settings: settings)
+        let relativeSupportCeiling = relativeBackground.map {
+            $0.backgroundQ50 * relativeHighFrequencyTonicBackgroundRatioMax
+        }
+        let fixedFlags = train.isiSec.indices.map { index -> Bool in
             guard index > 0,
                   let value = finiteValidISI(train.isiSec[index], settings: settings) else {
                 return false
             }
             return value <= highMax + tolerance(for: highMax)
         }
+        // Relatively-fast ISIs: clearly below the background ceiling AND above the burst-core floor,
+        // so burst-core packets are not seeded into a tonic state.
+        let relativeFlags = train.isiSec.indices.map { index -> Bool in
+            guard index > 0,
+                  let ceiling = relativeSupportCeiling,
+                  let value = finiteValidISI(train.isiSec[index], settings: settings),
+                  value > settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec) else {
+                return false
+            }
+            return value <= ceiling + tolerance(for: ceiling)
+        }
+        let flags = zip(fixedFlags, relativeFlags).map { $0 || $1 }
 
         var candidates: [ClassicAnchorCandidate] = []
         for run in boolRuns(flags) {
@@ -934,6 +1306,26 @@ public enum StatePatternDetector {
                   metrics.nSpikes >= settings.highFrequencyTonicMinSpikes else {
                 continue
             }
+            // A run is relative-supported only when it exists/extends because of a relatively-fast ISI
+            // the fixed band did not already include (which can only happen when the relative ceiling
+            // exceeds the fixed band). Pure fixed-band runs keep the exact previous behavior.
+            let relativeSupported = (run.start...run.end).contains { index in
+                relativeFlags.indices.contains(index) && relativeFlags[index] && !fixedFlags[index]
+            }
+            let effectiveHighMax = relativeSupported
+                ? max(highMax, relativeSupportCeiling ?? highMax)
+                : highMax
+            let relativeProvenance: [String] = relativeSupported
+                ? [
+                    "hf_tonic_recall_route=relative_baseline",
+                    "relative_hf_background_q50_sec=\(format(relativeBackground?.backgroundQ50))",
+                    "relative_hf_background_q75_sec=\(format(relativeBackground?.backgroundQ75))",
+                    "relative_hf_candidate_q90_background_ratio=\(format(relativeBackground.flatMap { bg in metrics.q90.map { $0 / bg.backgroundQ50 } }))",
+                    "relative_hf_percentile_ceiling=\(format(relativeBackground?.percentileCeiling))",
+                    "relative_hf_support_ceiling_sec=\(format(relativeSupportCeiling))",
+                    "relative_hf_valid_isi_n=\(relativeBackground?.validCount ?? 0)"
+                ]
+                : ["hf_tonic_recall_route=fixed_band"]
 
             let lowTail = fraction(metrics.values) { $0 < settings.highFrequencyTonicFloorSec - tolerance(for: settings.highFrequencyTonicFloorSec) }
             let burstSeedFraction = fraction(metrics.values) {
@@ -945,19 +1337,24 @@ public enum StatePatternDetector {
                 lowTail <= effectiveLowTailMax + 1e-12
             let burstSeedFractionMax = effectiveHighFrequencyTonicBurstSeedFractionMax(settings: settings)
             let burstSeedFractionPass = burstSeedFraction <= burstSeedFractionMax + 1e-12
-            let q90Pass = metrics.q90.map { $0 <= highMax + tolerance(for: highMax) } ?? false
+            let q90Pass = metrics.q90.map { $0 <= effectiveHighMax + tolerance(for: effectiveHighMax) } ?? false
             let burstCoreVetoPass = coreRunLength < settings.highFrequencyTonicBurstCoreVetoMinISI
+            let fastPacketCoreUpper = fastPacketCoreUpperSec(settings: settings)
+            let fastPacketFraction = fraction(metrics.values) {
+                $0 <= fastPacketCoreUpper + tolerance(for: fastPacketCoreUpper)
+            }
+            let fastPacketOccupancyMax = fastPacketCoreOccupancyMax(settings: settings)
+            let fastPacketPass = fastPacketFraction <= fastPacketOccupancyMax + 1e-12
             let cvPass = metrics.cv.map { $0 <= settings.highFrequencyTonicCVMax + 1e-12 } ?? true
             let cv2Pass = metrics.cv2.map { $0 <= settings.highFrequencyTonicCV2Max + 1e-12 } ?? true
             let lvPass = metrics.lv.map { $0 <= settings.highFrequencyTonicLVMax + 1e-12 } ?? true
-            let mmPass = metrics.mm.map { $0 <= settings.highFrequencyTonicMMMax + 1e-12 } ?? true
             let classicBoundaryPass = !hasClassicBoundary(metrics: metrics, settings: settings)
             let regularityScore = mean([
                 metrics.cv.map { 1 / (1 + $0) },
                 metrics.cv2.map { 1 / (1 + $0) },
                 metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
-            if !q90Pass || !lowTailPass || !burstSeedFractionPass || !burstCoreVetoPass || !cvPass || !cv2Pass || !lvPass || !mmPass || !classicBoundaryPass {
+            if !q90Pass || !lowTailPass || !burstSeedFractionPass || !burstCoreVetoPass || !fastPacketPass || !cvPass || !cv2Pass || !lvPass || !classicBoundaryPass {
                 var rejectReasons: [String] = []
                 if !q90Pass {
                     rejectReasons.append("reject_hf_tonic_q90_above_band")
@@ -971,6 +1368,9 @@ public enum StatePatternDetector {
                 if !burstCoreVetoPass {
                     rejectReasons.append("reject_hf_tonic_contains_burst_core_run")
                 }
+                if !fastPacketPass {
+                    rejectReasons.append("reject_hf_tonic_fast_packet_core_occupancy")
+                }
                 if !cvPass {
                     rejectReasons.append("reject_hf_tonic_cv_unstable")
                 }
@@ -980,16 +1380,13 @@ public enum StatePatternDetector {
                 if !lvPass {
                     rejectReasons.append("reject_hf_tonic_lv_unstable")
                 }
-                if !mmPass {
-                    rejectReasons.append("reject_hf_tonic_mm_outlier")
-                }
                 if !classicBoundaryPass {
                     rejectReasons.append("reject_hf_tonic_has_classic_burst_boundary")
                 }
                 let rejectDecisionPath = stateDecisionPath(
                     base: "reject_high_frequency_tonic_state_candidate",
                     metrics: metrics,
-                    extra: rejectReasons + [
+                    extra: rejectReasons + relativeProvenance + [
                         "low_tail_fraction=\(format(lowTail))",
                         "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
                         "burst_seed_fraction=\(format(burstSeedFraction))",
@@ -997,6 +1394,9 @@ public enum StatePatternDetector {
                         "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                         "core_burst_run_length=\(coreRunLength)",
                         "state_burst_packet_guard=hf_tonic_rejects_when_short_tail_forms_burst_seed_occupancy",
+                        "fast_packet_core_upper_sec=\(format(fastPacketCoreUpper))",
+                        "fast_packet_fraction=\(format(fastPacketFraction))",
+                        "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                         "regularity_score=\(format(regularityScore))"
                     ]
                 )
@@ -1014,9 +1414,9 @@ public enum StatePatternDetector {
                         score: 0,
                         priority: 0,
                         bandLower: settings.highFrequencyTonicFloorSec,
-                        bandUpper: highMax,
+                        bandUpper: effectiveHighMax,
                         contrastMinRequired: settings.highFrequencyTonicLVMax,
-                        contrastGeomRequired: settings.highFrequencyTonicMMMax,
+                        contrastGeomRequired: settings.highFrequencyTonicCV2Max,
                         stateRegularityScore: regularityScore,
                         stateBurstSeedFraction: burstSeedFraction,
                         stateLowTailFraction: lowTail,
@@ -1031,7 +1431,8 @@ public enum StatePatternDetector {
             let decisionPath = stateDecisionPath(
                 base: "stable_high_frequency_tonic_state_above_burst_core_floor",
                 metrics: metrics,
-                extra: [
+                extra: relativeProvenance + [
+                    "tonic_subtype=high_frequency",
                     "low_tail_fraction=\(format(lowTail))",
                     "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
                     "burst_seed_fraction=\(format(burstSeedFraction))",
@@ -1039,6 +1440,9 @@ public enum StatePatternDetector {
                     "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                     "core_burst_run_length=\(coreRunLength)",
                     "state_burst_packet_guard=pass",
+                    "fast_packet_core_upper_sec=\(format(fastPacketCoreUpper))",
+                    "fast_packet_fraction=\(format(fastPacketFraction))",
+                    "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                     "regularity_score=\(format(regularityScore))"
                 ]
             )
@@ -1055,13 +1459,15 @@ public enum StatePatternDetector {
                     score: score,
                     priority: 1_120,
                     bandLower: settings.highFrequencyTonicFloorSec,
-                    bandUpper: highMax,
+                    bandUpper: effectiveHighMax,
                     contrastMinRequired: settings.highFrequencyTonicLVMax,
-                    contrastGeomRequired: settings.highFrequencyTonicMMMax,
+                    contrastGeomRequired: settings.highFrequencyTonicCV2Max,
                     stateRegularityScore: regularityScore,
                     stateBurstSeedFraction: burstSeedFraction,
                     stateLowTailFraction: lowTail,
                     stateCoreBurstRunLength: coreRunLength,
+                    stateTonicSubtype: "high_frequency",
+                    stateHighFrequencySubtype: "hf_tonic_spiking",
                     index: candidates.count + 1
                 )
             )
@@ -1114,41 +1520,81 @@ public enum StatePatternDetector {
             let cvPass = metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true
             let cv2Pass = metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true
             let lvPass = metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true
-            let mmPass = metrics.mm.map { $0 >= settings.tonicMMMin - 1e-12 && $0 <= settings.tonicMMMax + 1e-12 } ?? true
             let burstSeedFractionPass = burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12
             let coreRunPass = coreRunLength <= coreRunLimit
+            let fastPacketCoreUpper = fastPacketCoreUpperSec(settings: settings)
+            let fastPacketFraction = fraction(metrics.values) {
+                $0 <= fastPacketCoreUpper + tolerance(for: fastPacketCoreUpper)
+            }
+            let fastPacketOccupancyMax = fastPacketCoreOccupancyMax(settings: settings)
+            let fastPacketPass = fastPacketFraction <= fastPacketOccupancyMax + 1e-12
             let regularityScore = mean([
                 metrics.cv.map { 1 / (1 + $0) },
                 metrics.cv2.map { 1 / (1 + $0) },
                 metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
-            if !cvPass || !cv2Pass || !lvPass || !mmPass || !burstSeedFractionPass || !coreRunPass || !bridgeFractionPass {
+            // Tonic family subtype. finalLabel stays .tonic for classic and irregular; only
+            // the auditable subtype differs. Structural eligibility (burst-seed / core-run /
+            // fast-packet / bridge guards) is required for BOTH subtypes. Irregular only
+            // relaxes the regularity bands AFTER eligibility holds, so it can never become a
+            // backdoor for burst / fast-packet / pause-dominated runs.
+            let structuralEligibilityPass = burstSeedFractionPass && coreRunPass && fastPacketPass && bridgeFractionPass
+            let classicRegularityPass = cvPass && cv2Pass && lvPass
+            let irregularCvPass = metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true
+            let irregularCv2Pass = metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true
+            let irregularLvPass = metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true
+            let irregularRegularityPass = irregularCvPass && irregularCv2Pass && irregularLvPass
+            let tonicSubtype: String?
+            if structuralEligibilityPass && classicRegularityPass {
+                tonicSubtype = "classic"
+            } else if structuralEligibilityPass && irregularRegularityPass {
+                tonicSubtype = "irregular"
+            } else {
+                tonicSubtype = nil
+            }
+            let subtypeAudit = [
+                "cv=\(format(metrics.cv))",
+                "cv2=\(format(metrics.cv2))",
+                "lv=\(format(metrics.lv))",
+                "max_isi_sec=\(format(metrics.max))",
+                "classic_regularity_pass=\(classicRegularityPass)",
+                "irregular_regularity_pass=\(irregularRegularityPass)",
+                "tonic_family_structural_eligibility_pass=\(structuralEligibilityPass)",
+                "irregular_cv_max=\(format(settings.irregularTonicCVMax))",
+                "irregular_cv2_max=\(format(settings.irregularTonicCV2Max))",
+                "irregular_lv_max=\(format(settings.irregularTonicLVMax))"
+            ]
+
+            guard let acceptedSubtype = tonicSubtype else {
                 var rejectReasons: [String] = []
-                if !cvPass {
-                    rejectReasons.append("reject_tonic_cv_unstable")
-                }
-                if !cv2Pass {
-                    rejectReasons.append("reject_tonic_cv2_unstable")
-                }
-                if !lvPass {
-                    rejectReasons.append("reject_tonic_lv_unstable")
-                }
-                if !mmPass {
-                    rejectReasons.append("reject_tonic_mm_outside_band")
-                }
                 if !burstSeedFractionPass {
                     rejectReasons.append("reject_tonic_burst_seed_fraction_too_high")
                 }
                 if !coreRunPass {
                     rejectReasons.append("reject_tonic_contains_burst_seed_core_run")
                 }
+                if !fastPacketPass {
+                    rejectReasons.append("reject_tonic_fast_packet_core_occupancy")
+                }
                 if !bridgeFractionPass {
                     rejectReasons.append("reject_tonic_bridge_fraction_too_high")
+                }
+                // Regularity is reported as unstable only when it exceeds even the relaxed
+                // irregular bands; cv/cv2/lv between classic and irregular routes to irregular.
+                if !irregularCvPass {
+                    rejectReasons.append("reject_tonic_cv_unstable")
+                }
+                if !irregularCv2Pass {
+                    rejectReasons.append("reject_tonic_cv2_unstable")
+                }
+                if !irregularLvPass {
+                    rejectReasons.append("reject_tonic_lv_unstable")
                 }
                 let rejectDecisionPath = stateDecisionPath(
                     base: "reject_classic_tonic_state_candidate",
                     metrics: metrics,
                     extra: rejectReasons + [
+                        "tonic_subtype=rejected",
                         "bridge_count=\(bridgeCount)",
                         "bridge_fraction=\(format(bridgeFraction))",
                         "bridge_upper_sec=\(format(settings.tonicBridgeUpperSec))",
@@ -1161,9 +1607,12 @@ public enum StatePatternDetector {
                         "core_burst_run_length=\(coreRunLength)",
                         "core_burst_run_limit=\(coreRunLimit)",
                         "state_burst_packet_guard=classic_tonic_rejects_consecutive_burst_seed_core",
+                        "fast_packet_core_upper_sec=\(format(fastPacketCoreUpper))",
+                        "fast_packet_fraction=\(format(fastPacketFraction))",
+                        "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                         "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                         "regularity_score=\(format(regularityScore))"
-                    ]
+                    ] + subtypeAudit
                 )
                 candidates.append(
                     candidate(
@@ -1181,7 +1630,7 @@ public enum StatePatternDetector {
                         bandLower: lower,
                         bandUpper: upper,
                         contrastMinRequired: settings.tonicLVMax,
-                        contrastGeomRequired: settings.tonicMMMax,
+                        contrastGeomRequired: settings.tonicCV2Max,
                         stateRegularityScore: regularityScore,
                         stateBurstSeedFraction: burstSeedFraction,
                         stateCoreBurstRunLength: coreRunLength,
@@ -1192,11 +1641,14 @@ public enum StatePatternDetector {
                 continue
             }
 
+            let isIrregular = (acceptedSubtype == "irregular")
             let score = 3 + regularityScore + localStabilityScore(metrics)
             let decisionPath = stateDecisionPath(
                 base: bridgeCount > 0 ? "stable_mid_isi_tonic_state_with_short_bridge" : "stable_mid_isi_tonic_state",
                 metrics: metrics,
                 extra: [
+                    "tonic_subtype=\(acceptedSubtype)",
+                    isIrregular ? "irregular_tonic" : "classic_tonic",
                     "bridge_count=\(bridgeCount)",
                     "bridge_fraction=\(format(bridgeFraction))",
                     "bridge_upper_sec=\(format(settings.tonicBridgeUpperSec))",
@@ -1209,9 +1661,12 @@ public enum StatePatternDetector {
                     "core_burst_run_length=\(coreRunLength)",
                     "core_burst_run_limit=\(coreRunLimit)",
                     "state_burst_packet_guard=pass",
+                    "fast_packet_core_upper_sec=\(format(fastPacketCoreUpper))",
+                    "fast_packet_fraction=\(format(fastPacketFraction))",
+                    "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                     "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                     "regularity_score=\(format(regularityScore))"
-                ]
+                ] + subtypeAudit
             )
             candidates.append(
                 candidate(
@@ -1228,15 +1683,24 @@ public enum StatePatternDetector {
                     bandLower: lower,
                     bandUpper: upper,
                     contrastMinRequired: settings.tonicLVMax,
-                    contrastGeomRequired: settings.tonicMMMax,
+                    contrastGeomRequired: settings.tonicCV2Max,
                     stateRegularityScore: regularityScore,
                     stateBurstSeedFraction: burstSeedFraction,
                     stateCoreBurstRunLength: coreRunLength,
+                    stateTonicSubtype: acceptedSubtype,
                     index: nextCandidateIndex
                 )
             )
             nextCandidateIndex += 1
         }
+
+        candidates = tonicBoundaryRescuedCandidates(
+            candidates,
+            train: train,
+            settings: settings,
+            localContext: localContext,
+            bounds: bounds
+        )
 
         let acceptedRanges = candidates
             .filter { $0.finalLabel == .tonic && $0.action == "accept" }
@@ -1255,9 +1719,242 @@ public enum StatePatternDetector {
         return candidates
     }
 
+    /// Local post-pass for a narrow failure mode in the structure-first tonic detector: a stable tonic run can be
+    /// clipped by one or two immediately-adjacent ISIs that are slightly above the train-local structural upper bound,
+    /// even though the expanded run still satisfies the tonic regularity gates. This is deliberately NOT a residual
+    /// tonic fill; only neighbors of an already-accepted tonic candidate are considered, with a tight high-side
+    /// structural allowance and the same burst/fast-packet guards as the primary tonic route.
+    private static func tonicBoundaryRescuedCandidates(
+        _ candidates: [ClassicAnchorCandidate],
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        bounds: (lower: Double, upper: Double)
+    ) -> [ClassicAnchorCandidate] {
+        candidates.map { candidate in
+            guard candidate.finalLabel == .tonic,
+                  candidate.action == "accept",
+                  candidate.startISIIndex <= candidate.endISIIndex else {
+                return candidate
+            }
+
+            var current = candidate
+            var rescuedLeft = 0
+            var rescuedRight = 0
+            var changed = false
+
+            while rescuedLeft < tonicBoundaryRescueMaxISI {
+                let nextStart = current.startISIIndex - 1
+                guard tonicBoundaryRescueEdgeIsEligible(
+                    index: nextStart,
+                    reference: current,
+                    train: train,
+                    settings: settings,
+                    bounds: bounds
+                ),
+                      let expanded = rebuildTonicBoundaryRescueCandidate(
+                        train: train,
+                        parent: current,
+                        original: candidate,
+                        run: (nextStart, current.endISIIndex),
+                        leftRescued: rescuedLeft + 1,
+                        rightRescued: rescuedRight,
+                        settings: settings,
+                        localContext: localContext,
+                        bounds: bounds
+                      ) else {
+                    break
+                }
+                current = expanded
+                rescuedLeft += 1
+                changed = true
+            }
+
+            while rescuedRight < tonicBoundaryRescueMaxISI {
+                let nextEnd = current.endISIIndex + 1
+                guard tonicBoundaryRescueEdgeIsEligible(
+                    index: nextEnd,
+                    reference: current,
+                    train: train,
+                    settings: settings,
+                    bounds: bounds
+                ),
+                      let expanded = rebuildTonicBoundaryRescueCandidate(
+                        train: train,
+                        parent: current,
+                        original: candidate,
+                        run: (current.startISIIndex, nextEnd),
+                        leftRescued: rescuedLeft,
+                        rightRescued: rescuedRight + 1,
+                        settings: settings,
+                        localContext: localContext,
+                        bounds: bounds
+                      ) else {
+                    break
+                }
+                current = expanded
+                rescuedRight += 1
+                changed = true
+            }
+
+            return changed ? current : candidate
+        }
+    }
+
+    private static let tonicBoundaryRescueMaxISI = 2
+    private static let tonicBoundaryRescueUpperSlack = 0.05
+    /// TONIC-BND-1: low-side "stable neighbor" slack. A rescued neighbor must be ≥ the candidate's own q10 × (1 − slack),
+    /// i.e. CONSISTENT with the candidate's firing rate — not merely inside the wide tonic band. This is what prevents a
+    /// faster pre-burst TRANSITION ISI (≈half the tonic baseline, but still ≥ the band lower) from being swallowed as tonic.
+    private static let tonicBoundaryRescueNeighborSlack = 0.10
+
+    private static func tonicBoundaryRescueEdgeIsEligible(
+        index: Int,
+        reference: ClassicAnchorCandidate,
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        bounds: (lower: Double, upper: Double)
+    ) -> Bool {
+        guard train.isiSec.indices.contains(index),
+              let value = finiteValidISI(train.isiSec[index], settings: settings) else {
+            return false
+        }
+        // Never a burst-seed or fast-packet ISI (the burst-side guard).
+        let fastPacketCoreUpper = fastPacketCoreUpperSec(settings: settings)
+        guard value > settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec),
+              value > fastPacketCoreUpper + tolerance(for: fastPacketCoreUpper) else {
+            return false
+        }
+        // High side: within the train-local tonic structural upper + a tight slack (admits a slightly-slow stable
+        // neighbor; a pause-length ISI is far above this and is rejected).
+        let highSideCeiling = bounds.upper * (1 + tonicBoundaryRescueUpperSlack)
+        guard highSideCeiling.isFinite, highSideCeiling > 0,
+              value <= highSideCeiling + tolerance(for: highSideCeiling) else {
+            return false
+        }
+        // Low side: STABLE-NEIGHBOR, candidate-relative (NOT the wide band lower). The neighbor must be ≥ the candidate's
+        // own q10 × (1 − slack), so a faster pre-burst transition ISI inside the band is not swallowed. Falls back to the
+        // band lower only when the candidate carries no quantiles (should not happen for an accepted tonic candidate).
+        let lowSide: Double = {
+            if let q10 = reference.intraQ10Sec, q10.isFinite, q10 > 0 {
+                return q10 * (1 - tonicBoundaryRescueNeighborSlack)
+            }
+            return bounds.lower
+        }()
+        return value >= lowSide - tolerance(for: lowSide)
+    }
+
+    private static func rebuildTonicBoundaryRescueCandidate(
+        train: SpikeTrain,
+        parent: ClassicAnchorCandidate,
+        original: ClassicAnchorCandidate,
+        run: (start: Int, end: Int),
+        leftRescued: Int,
+        rightRescued: Int,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        bounds: (lower: Double, upper: Double)
+    ) -> ClassicAnchorCandidate? {
+        guard let metrics = metrics(train: train, run: run, settings: settings, localContext: localContext),
+              metrics.nSpikes >= settings.tonicMinSpikes else {
+            return nil
+        }
+
+        let strictFlags = metrics.values.map {
+            $0 >= bounds.lower - tolerance(for: bounds.lower) &&
+                $0 <= bounds.upper + tolerance(for: bounds.upper)
+        }
+        let bridgeCount = strictFlags.filter { !$0 }.count
+        let bridgeFraction = Double(bridgeCount) / Double(max(1, metrics.nValidISI))
+        let burstSeedFraction = fraction(metrics.values) {
+            $0 <= settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec)
+        }
+        let effectiveBurstSeedFractionMax = effectiveTonicBurstSeedFractionMax(settings: settings)
+        let coreRunLength = maxBurstSeedRun(train: train, run: run, settings: settings)
+        let coreRunLimit = tonicBurstCoreRunLimit(settings: settings)
+        let fastPacketCoreUpper = fastPacketCoreUpperSec(settings: settings)
+        let fastPacketFraction = fraction(metrics.values) {
+            $0 <= fastPacketCoreUpper + tolerance(for: fastPacketCoreUpper)
+        }
+        let fastPacketOccupancyMax = fastPacketCoreOccupancyMax(settings: settings)
+        let structuralPass =
+            bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12 &&
+            burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12 &&
+            coreRunLength <= coreRunLimit &&
+            fastPacketFraction <= fastPacketOccupancyMax + 1e-12
+        guard structuralPass else { return nil }
+
+        let classicRegularityPass =
+            (metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true) &&
+            (metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true)
+        let irregularRegularityPass =
+            (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
+            (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
+        guard classicRegularityPass || irregularRegularityPass else { return nil }
+        let subtype = classicRegularityPass ? "classic" : "irregular"
+
+        let regularityScore = mean([
+            metrics.cv.map { 1 / (1 + $0) },
+            metrics.cv2.map { 1 / (1 + $0) },
+            metrics.lv.map { 1 / (1 + $0) }
+        ].compactMap { $0 }) ?? 0
+        let score = 3 + regularityScore + localStabilityScore(metrics) - 0.5 * bridgeFraction
+        let decisionPath = stateDecisionPath(
+            base: bridgeCount > 0 ? "stable_mid_isi_tonic_state_boundary_rescue_with_short_bridge" : "stable_mid_isi_tonic_state_boundary_rescue",
+            metrics: metrics,
+            extra: [
+                "tonic_subtype=\(subtype)",
+                subtype == "irregular" ? "irregular_tonic" : "classic_tonic",
+                "tonic_boundary_rescue=true",
+                "original_isi_span=\(original.startISIIndex)-\(original.endISIIndex)",
+                "rescued_left_isi=\(leftRescued)",
+                "rescued_right_isi=\(rightRescued)",
+                "bridge_count=\(bridgeCount)",
+                "bridge_fraction=\(format(bridgeFraction))",
+                "structural_search_lower_sec=\(format(bounds.lower))",
+                "structural_search_upper_sec=\(format(bounds.upper))",
+                "boundary_rescue_upper_slack=\(format(tonicBoundaryRescueUpperSlack))",
+                "candidate_seed_policy=structure_first_boundary_rescue_cv_cv2_lv_not_default_isi_band",
+                "burst_seed_fraction=\(format(burstSeedFraction))",
+                "burst_seed_fraction_max_effective=\(format(effectiveBurstSeedFractionMax))",
+                "core_burst_run_length=\(coreRunLength)",
+                "core_burst_run_limit=\(coreRunLimit)",
+                "state_burst_packet_guard=pass",
+                "fast_packet_core_upper_sec=\(format(fastPacketCoreUpper))",
+                "fast_packet_fraction=\(format(fastPacketFraction))",
+                "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
+                "regularity_score=\(format(regularityScore))"
+            ]
+        )
+        return candidate(
+            train: train,
+            run: run,
+            metrics: metrics,
+            label: .tonic,
+            layer: "\(original.candidateLayer)_boundary_rescue",
+            candidateClass: "\(original.candidateClass)_boundary_rescue",
+            gateStatus: "event_core_tonic_boundary_rescue_pass",
+            decisionPath: decisionPath,
+            score: score,
+            priority: parent.priority,
+            bandLower: bounds.lower,
+            bandUpper: bounds.upper,
+            contrastMinRequired: settings.tonicLVMax,
+            contrastGeomRequired: settings.tonicCV2Max,
+            stateRegularityScore: regularityScore,
+            stateBurstSeedFraction: burstSeedFraction,
+            stateCoreBurstRunLength: coreRunLength,
+            stateTonicSubtype: subtype,
+            index: 0,
+            id: original.id
+        )
+    }
+
     /// Secondary tonic seeds are generated from stable windows inside the
     /// train-local non-burst ISI distribution. This keeps tonic structure-driven:
-    /// CV/CV2/LV/MM remain the acceptance gates, and default/histogram bands do
+    /// CV/CV2/LV remain the acceptance gates, and default/histogram bands do
     /// not define the tonic search envelope.
     private static func detectTonicStructuralWindows(
         train: SpikeTrain,
@@ -1318,13 +2015,10 @@ public enum StatePatternDetector {
                     let cvPass = metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true
                     let cv2Pass = metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true
                     let lvPass = metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true
-                    let mmPass = metrics.mm.map {
-                        $0 >= settings.tonicMMMin - 1e-12 &&
-                            $0 <= settings.tonicMMMax + 1e-12
-                    } ?? true
                     let burstSeedFractionPass = burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12
                     let coreRunPass = coreRunLength <= coreRunLimit
-                    guard cvPass, cv2Pass, lvPass, mmPass, burstSeedFractionPass, coreRunPass else {
+                    let fastPacketPass = !fastPacketCoreExcludes(metrics, settings: settings)
+                    guard cvPass, cv2Pass, lvPass, burstSeedFractionPass, coreRunPass, fastPacketPass else {
                         continue
                     }
 
@@ -1369,10 +2063,11 @@ public enum StatePatternDetector {
                             bandLower: bounds.lower,
                             bandUpper: windowUpper,
                             contrastMinRequired: settings.tonicLVMax,
-                            contrastGeomRequired: settings.tonicMMMax,
+                            contrastGeomRequired: settings.tonicCV2Max,
                             stateRegularityScore: regularityScore,
                             stateBurstSeedFraction: burstSeedFraction,
                             stateCoreBurstRunLength: coreRunLength,
+                            stateTonicSubtype: "classic",
                             index: nextCandidateIndex
                         )
                     )
@@ -1440,12 +2135,9 @@ public enum StatePatternDetector {
             (metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true) &&
             (metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true) &&
             (metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true) &&
-            (metrics.mm.map {
-                $0 >= settings.tonicMMMin - 1e-12 &&
-                    $0 <= settings.tonicMMMax + 1e-12
-            } ?? true) &&
             burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12 &&
-            coreRunLength <= coreRunLimit
+            coreRunLength <= coreRunLimit &&
+            !fastPacketCoreExcludes(metrics, settings: settings)
         guard gatesPass else {
             return nil
         }
@@ -1483,10 +2175,11 @@ public enum StatePatternDetector {
             bandLower: lower,
             bandUpper: upper,
             contrastMinRequired: settings.tonicLVMax,
-            contrastGeomRequired: settings.tonicMMMax,
+            contrastGeomRequired: settings.tonicCV2Max,
             stateRegularityScore: regularityScore,
             stateBurstSeedFraction: burstSeedFraction,
             stateCoreBurstRunLength: coreRunLength,
+            stateTonicSubtype: "classic",
             index: 0,
             id: id
         )
@@ -1531,8 +2224,8 @@ public enum StatePatternDetector {
             (metrics.cv.map { $0 <= settings.highFrequencyTonicCVMax + 1e-12 } ?? true) &&
             (metrics.cv2.map { $0 <= settings.highFrequencyTonicCV2Max + 1e-12 } ?? true) &&
             (metrics.lv.map { $0 <= settings.highFrequencyTonicLVMax + 1e-12 } ?? true) &&
-            (metrics.mm.map { $0 <= settings.highFrequencyTonicMMMax + 1e-12 } ?? true) &&
-            !hasClassicBoundary(metrics: metrics, settings: settings)
+            !hasClassicBoundary(metrics: metrics, settings: settings) &&
+            !fastPacketCoreExcludes(metrics, settings: settings)
         guard gatesPass else {
             return nil
         }
@@ -1567,11 +2260,13 @@ public enum StatePatternDetector {
             bandLower: settings.highFrequencyTonicFloorSec,
             bandUpper: highMax,
             contrastMinRequired: settings.highFrequencyTonicLVMax,
-            contrastGeomRequired: settings.highFrequencyTonicMMMax,
+            contrastGeomRequired: settings.highFrequencyTonicCV2Max,
             stateRegularityScore: regularityScore,
             stateBurstSeedFraction: burstSeedFraction,
             stateLowTailFraction: lowTail,
             stateCoreBurstRunLength: coreRunLength,
+            stateTonicSubtype: "high_frequency",
+            stateHighFrequencySubtype: "hf_tonic_spiking",
             index: 0,
             id: id
         )
@@ -1706,6 +2401,7 @@ public enum StatePatternDetector {
         rebuilt.hfSpikingEmbeddedBurstCoverage = packetization.coverage
         rebuilt.hfSpikingBurstDominated = false
         rebuilt.hfSpikingBurstPacketLike = packetization.packetLike
+        rebuilt.stateHighFrequencySubtype = "hf_irregular_spiking"
         return rebuilt
     }
 
@@ -1733,6 +2429,8 @@ public enum StatePatternDetector {
         stateBurstSeedFraction: Double? = nil,
         stateLowTailFraction: Double? = nil,
         stateCoreBurstRunLength: Int? = nil,
+        stateTonicSubtype: String? = nil,
+        stateHighFrequencySubtype: String? = nil,
         index: Int,
         id explicitID: String? = nil
     ) -> ClassicAnchorCandidate {
@@ -1767,13 +2465,12 @@ public enum StatePatternDetector {
             meanIntraISISec: metrics.mean,
             cv: metrics.cv,
             lv: metrics.lv,
-            mm: metrics.mm,
             preGapSec: metrics.preGapSec,
             postGapSec: metrics.postGapSec,
             preRatioQ90: nil,
             postRatioQ90: nil,
             edgeContrastMinQ90: metrics.lv,
-            edgeContrastGeomQ90: metrics.mm,
+            edgeContrastGeomQ90: nil,
             anchorFamily: "state",
             anchorLockLevel: .strongCandidate,
             anchorBandLowerSec: bandLower,
@@ -1790,6 +2487,8 @@ public enum StatePatternDetector {
         candidate.stateLowTailFraction = stateLowTailFraction
         candidate.stateLocalStabilityScore = localStabilityScore(metrics)
         candidate.stateCoreBurstRunLength = stateCoreBurstRunLength
+        candidate.stateTonicSubtype = stateTonicSubtype
+        candidate.stateHighFrequencySubtype = stateHighFrequencySubtype
         candidate.stateTrainPercentileMedian = metrics.trainPercentileMedian
         candidate.stateLocalPercentileMedian = metrics.localPercentileMedian
         candidate.stateLocalPercentileQ90 = metrics.localPercentileQ90
@@ -1845,10 +2544,9 @@ public enum StatePatternDetector {
             q95: valueSample.quantile(0.95),
             mean: mean(values),
             max: values.max(),
-            cv: coefficientOfVariation(values),
-            cv2: coefficientOfVariation2(values),
-            lv: localVariation(values),
-            mm: maxMeanRatio(values),
+            cv: STPDStatistics.coefficientOfVariation(values),
+            cv2: STPDStatistics.coefficientOfVariation2(values),
+            lv: STPDStatistics.localVariation(values),
             preGapSec: finiteValidISI(run.start > 1 ? train.isiSec[run.start - 1] : nil, settings: settings),
             postGapSec: finiteValidISI(run.end < train.isiSec.count - 1 ? train.isiSec[run.end + 1] : nil, settings: settings),
             trainPercentileMedian: trainPercentileSample.quantile(0.50),
@@ -1925,6 +2623,44 @@ public enum StatePatternDetector {
 
     private static func tonicBurstCoreRunLimit(settings: StatePatternDetectorSettings) -> Int {
         settings.structuralBurstSupportWeight >= 0.50 ? 1 : 2
+    }
+
+    /// Adaptive fast structural core upper boundary. Tonic and HF tonic must live ABOVE
+    /// this boundary; ISIs at or below it are intra-burst / HFS-like fast structure.
+    ///
+    /// It is the larger of the intra-burst seed core (`burstSeedUpperSec`) and the short
+    /// (faster) sub-half of the high-frequency-spiking band (`highFrequencySpikingShortUpperSec`).
+    /// The HFS short structure is resolved independently of the classic burst band, so it
+    /// does not collapse toward `minValidISI` when no structural burst band is detected —
+    /// this keeps the fast-packet veto robust against an underestimated burst seed upper,
+    /// which is exactly the case that let stable short-ISI packets pass as tonic/HF tonic.
+    /// Fully train/dataset adaptive: both inputs scale with the recording, so no fixed
+    /// millisecond (e.g. 1-10 ms) range is assumed.
+    private static func fastPacketCoreUpperSec(settings: StatePatternDetectorSettings) -> Double {
+        max(settings.burstSeedUpperSec, 0.5 * settings.highFrequencySpikingShortUpperSec)
+    }
+
+    /// Maximum fraction of a candidate's ISIs allowed inside the adaptive fast structural
+    /// core before tonic / HF tonic is rejected. A "most ISIs" majority threshold that
+    /// tightens with structural burst support (mirroring the burst-seed-fraction veto), but
+    /// keeps a majority floor so genuine states merely straddling the core are not
+    /// over-rejected. Never relaxes the existing burst-seed-fraction protection: when the
+    /// fast core equals the burst seed upper (the non-collapsed case), this looser threshold
+    /// rejects only a subset of what the burst-seed veto already rejects.
+    private static func fastPacketCoreOccupancyMax(settings: StatePatternDetectorSettings) -> Double {
+        let support = min(1, max(0, settings.structuralBurstSupportWeight))
+        return max(0.40, 0.50 * (1 - 0.20 * support))
+    }
+
+    /// True when a candidate run is dominated by ISIs inside the adaptive fast structural
+    /// core and must therefore be excluded from tonic / HF tonic regardless of CV/CV2/LV.
+    private static func fastPacketCoreExcludes(
+        _ metrics: StateMetrics,
+        settings: StatePatternDetectorSettings
+    ) -> Bool {
+        let coreUpper = fastPacketCoreUpperSec(settings: settings)
+        let fraction = fraction(metrics.values) { $0 <= coreUpper + tolerance(for: coreUpper) }
+        return fraction > fastPacketCoreOccupancyMax(settings: settings) + 1e-12
     }
 
     private static func localStabilityScore(_ metrics: StateMetrics) -> Double {
@@ -2029,61 +2765,6 @@ public enum StatePatternDetector {
         return finite.reduce(0, +) / Double(finite.count)
     }
 
-    private static func coefficientOfVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2,
-              let meanValue = mean(finite),
-              meanValue > 0 else {
-            return nil
-        }
-        let variance = finite.reduce(0) { partial, value in
-            let delta = value - meanValue
-            return partial + delta * delta
-        } / Double(finite.count)
-        return sqrt(variance) / meanValue
-    }
-
-    private static func coefficientOfVariation2(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2 else {
-            return nil
-        }
-        let terms = zip(finite, finite.dropFirst()).compactMap { previous, next -> Double? in
-            let denominator = previous + next
-            guard denominator > 0 else {
-                return nil
-            }
-            return 2 * abs(next - previous) / denominator
-        }
-        return mean(terms)
-    }
-
-    private static func localVariation(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard finite.count >= 2 else {
-            return nil
-        }
-        let terms = zip(finite, finite.dropFirst()).compactMap { previous, next -> Double? in
-            let denominator = previous + next
-            guard denominator > 0 else {
-                return nil
-            }
-            let numerator = 3 * pow(next - previous, 2)
-            return numerator / pow(denominator, 2)
-        }
-        return mean(terms)
-    }
-
-    private static func maxMeanRatio(_ values: [Double]) -> Double? {
-        let finite = values.filter(\.isFinite)
-        guard let meanValue = mean(finite),
-              meanValue > 0,
-              let maxValue = finite.max() else {
-            return nil
-        }
-        return maxValue / meanValue
-    }
-
     private static func maxConsecutiveTrue(_ values: [Bool]) -> Int {
         var best = 0
         var current = 0
@@ -2162,8 +2843,9 @@ public extension StatePatternDetectorSettings {
             tonicCVMax: tuning.tonicCVMax,
             tonicCV2Max: tuning.tonicCV2Max,
             tonicLVMax: tuning.tonicLVMax,
-            tonicMMMin: tuning.tonicMMMin,
-            tonicMMMax: tuning.tonicMMMax,
+            irregularTonicCVMax: tuning.irregularTonicCVMax,
+            irregularTonicCV2Max: tuning.irregularTonicCV2Max,
+            irregularTonicLVMax: tuning.irregularTonicLVMax,
             tonicBurstSeedFractionMax: tuning.tonicBurstSeedFractionMax,
             highFrequencyTonicFloorSec: highFrequencyTonicFloor,
             highFrequencyTonicUpperSec: highFrequencyTonicUpper,
@@ -2172,7 +2854,6 @@ public extension StatePatternDetectorSettings {
             highFrequencyTonicCVMax: tuning.highFrequencyTonicCVMax,
             highFrequencyTonicCV2Max: tuning.highFrequencyTonicCV2Max,
             highFrequencyTonicLVMax: tuning.highFrequencyTonicLVMax,
-            highFrequencyTonicMMMax: tuning.highFrequencyTonicMMMax,
             highFrequencySpikingShortUpperSec: hfsShortUpper,
             highFrequencySpikingQ80MaxSec: hfsQ80Max,
             highFrequencySpikingQ90MaxSec: hfsQ90Max,

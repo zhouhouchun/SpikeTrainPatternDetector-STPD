@@ -125,4 +125,29 @@ public struct SpikeISITrace: Identifiable, Hashable, Sendable {
         return value >= artifactThreshold - artifactTolerance &&
             value < refractoryThreshold - refractoryTolerance
     }
+
+    /// Classify a single ISI (seconds) into the shared `SpikeISIStatePointQC`, using the exact same
+    /// artifact / refractory tolerance rules as the per-event flags above and the same precedence as
+    /// `SpikeISIStateTrace` (duplicate > artifact > refractory > ok). A zero-length ISI is a duplicate
+    /// timestamp; an ISI exactly equal to the refractory threshold is *not* refractory (strict `<`).
+    public static func qcStatus(
+        forISISec isi: Double,
+        settings: SpikeQualitySettings,
+        duplicateTolerance: Double = 1e-12
+    ) -> SpikeISIStatePointQC {
+        if isi.isFinite, abs(isi) <= max(duplicateTolerance, 0) {
+            return .duplicate
+        }
+        if isArtifactISI(isi, threshold: settings.artifactThresholdSec) {
+            return .artifact
+        }
+        if isRefractorySuspectISI(
+            isi,
+            artifactThreshold: settings.artifactThresholdSec,
+            refractoryThreshold: settings.refractorySuspectThresholdSec
+        ) {
+            return .refractory
+        }
+        return .ok
+    }
 }
