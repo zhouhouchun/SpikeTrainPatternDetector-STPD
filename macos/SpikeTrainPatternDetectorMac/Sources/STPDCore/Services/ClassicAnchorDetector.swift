@@ -106,6 +106,9 @@ public struct ClassicAnchorSettings: Hashable, Sendable {
     public var burstQ95SoftSevereRatio: Double
     public var burstHardThresholdEnabled: Bool
     public var burstHardThresholdSource: String
+    /// Automatic/structural seed upper retained as the compact-core reference even when a manual
+    /// hard gate widens the legal burst ceiling. `nil` means use `effectiveBurstBandUpperSec`.
+    public var burstCoreReferenceUpperSec: Double?
     public var structuralBurstSupportWeight: Double
     public var refractorySuspectSec: Double
     public var refractoryAction: ClassicAnchorRefractoryAction
@@ -159,6 +162,7 @@ public struct ClassicAnchorSettings: Hashable, Sendable {
         burstQ95SoftSevereRatio: Double = 1.35,
         burstHardThresholdEnabled: Bool = false,
         burstHardThresholdSource: String = "ui_isi_profile_threshold_line",
+        burstCoreReferenceUpperSec: Double? = nil,
         structuralBurstSupportWeight: Double = 0,
         refractorySuspectSec: Double = 0.001,
         refractoryAction: ClassicAnchorRefractoryAction = .warnOnly
@@ -228,6 +232,13 @@ public struct ClassicAnchorSettings: Hashable, Sendable {
         self.burstHardThresholdSource = trimmedHardThresholdSource.isEmpty
             ? "ui_isi_profile_threshold_line"
             : trimmedHardThresholdSource
+        if let burstCoreReferenceUpperSec,
+           burstCoreReferenceUpperSec.isFinite,
+           burstCoreReferenceUpperSec > 0 {
+            self.burstCoreReferenceUpperSec = max(self.minValidISISec, burstCoreReferenceUpperSec)
+        } else {
+            self.burstCoreReferenceUpperSec = nil
+        }
         self.structuralBurstSupportWeight = min(
             1,
             max(0, structuralBurstSupportWeight.isFinite ? structuralBurstSupportWeight : 0)
@@ -445,7 +456,10 @@ public enum ClassicAnchorDetector {
         ClassicAnchorDetectionResult(
             trainID: train.id,
             trainName: train.name,
-            candidates: detectBurstCandidates(train: train, settings: settings)
+            // BCB-1: core-first boundary trim runs on every generated burst candidate before arbitration (default path).
+            candidates: coreFirstBoundaryTrimmedCandidates(
+                detectBurstCandidates(train: train, settings: settings),
+                train: train, settings: settings)
         )
     }
 
@@ -3142,6 +3156,128 @@ public enum ClassicAnchorDetector {
             localRobustZMedian: localContext.localRobustZMedian,
             localRobustZAbsQ80: localContext.localRobustZAbsQ80,
             localRobustZQ10: localContext.localRobustZQ10
+        )
+    }
+
+    // BCB-1: an edge ISI outside the compact core, more than this multiple of the candidate's own CORE median, is an
+    // incompatible boundary and is trimmed. Scale-free ratio-to-core (profile-relative), NOT a fixed-ms cutoff. The two
+    // ratios are ASYMMETRIC because a burst has an abrupt onset but a gradually lengthening tail: a slow LEADING ISI
+    // (> 2× core) is almost never part of a fast-onset burst, whereas a modestly longer TRAILING ISI is usually a
+    // natural tail — only a SEVERAL-times-core trailing ISI (>= the burst flank-contrast multiple) is a pulled-in gap.
+    // A single symmetric threshold cannot do both: the 5x5 burst_response_2_s regression case needs a 2.3× leading edge trimmed while a clean
+    // simulated burst needs its ~2.5× natural trailing tail kept.
+    private static let coreFirstBoundaryLeadingEdgeRatioMax = 2.0
+    private static let coreFirstBoundaryTrailingEdgeRatioMax = 3.0
+    private static let coreFirstBoundaryMaxTrimPerSide = 2
+
+    /// BCB-1 — CORE-FIRST burst boundary trim (default path; runs regardless of the Adaptive-v2 flag). For each CANONICAL
+    /// burst candidate the COMPACT CORE — ISIs inside the automatic/structural core reference band — is the anchor; edge
+    /// ISIs outside that core are optional extensions. A leading extension > `coreFirstBoundaryLeadingEdgeRatioMax ×
+    /// coreMedian` or a trailing extension > `coreFirstBoundaryTrailingEdgeRatioMax × coreMedian` is INCOMPATIBLE and is
+    /// trimmed (≤ `coreFirstBoundaryMaxTrimPerSide` per side), walking inward from each side but NEVER crossing into the
+    /// core. Compatible extensions (inside the core reference band, or only modestly above the core) are preserved; the
+    /// core is never erased.
+    ///
+    /// Profile-relative (no fixed-ms window) and flank-agnostic. Skipped under a user hard gate or an explicit pattern-ISI
+    /// band (those express verbatim user intent and have their own boundary handling, so BCB-1 stays byte-identical there),
+    /// and for tolerated-internal-tail rescues (which deliberately accept a tail under strong two-sided boundary evidence).
+    /// The trimmed candidate keeps the original candidate's score (via `withGeometry`), so it wins de-duplication over a
+    /// narrower sibling, preserving the `core_first_boundary_trim(...)` provenance.
+    private static func coreFirstBoundaryTrimmedCandidates(
+        _ candidates: [ClassicAnchorCandidate],
+        train: SpikeTrain,
+        settings: ClassicAnchorSettings
+    ) -> [ClassicAnchorCandidate] {
+        guard !settings.burstHardThresholdEnabled,
+              settings.burstBandSource != .userPatternISILimit else { return candidates }
+        let lower = settings.effectiveBurstBandLowerSec
+        let coreReferenceUpper = settings.burstCoreReferenceUpperSec ?? settings.effectiveBurstBandUpperSec
+        let upper = min(settings.effectiveBurstBandUpperSec, coreReferenceUpper)
+        guard lower.isFinite, upper.isFinite, upper > 0, lower >= 0, upper >= lower else { return candidates }
+        func isSeed(_ index: Int) -> Bool {
+            guard train.isiSec.indices.contains(index), let v = train.isiSec[index], v.isFinite,
+                  !isArtifactISI(v, threshold: settings.minValidISISec) else { return false }
+            return v >= lower && v <= upper
+        }
+        return candidates.map { candidate in
+            guard candidate.finalLabel.isCanonicalBurstFamily,
+                  candidate.startISIIndex >= 0,
+                  candidate.endISIIndex < train.isiSec.count,
+                  candidate.endISIIndex > candidate.startISIIndex,
+                  // Do not undo the tolerated-internal-tail rescue (it accepted a tail under strong two-sided boundaries).
+                  !candidate.gateStatus.contains("tolerated_internal_tail") else { return candidate }
+            let start = candidate.startISIIndex, end = candidate.endISIIndex
+            // Core = the candidate's seed-band ISIs; we need a real core to anchor (never erase it).
+            let coreISIs: [Double] = (start...end).compactMap { isSeed($0) ? train.isiSec[$0] ?? nil : nil }
+            guard coreISIs.count >= Swift.max(1, settings.burstCoreMinISI) else { return candidate }
+            let sortedCore = coreISIs.sorted()
+            let coreMedian = sortedCore[sortedCore.count / 2]
+            guard coreMedian > 0 else { return candidate }
+            let leadingRatioLimit = coreMedian * coreFirstBoundaryLeadingEdgeRatioMax
+            let trailingRatioLimit = coreMedian * coreFirstBoundaryTrailingEdgeRatioMax
+            // Walk inward from both edges, trimming only INCOMPATIBLE non-core extensions; stop at the core or a
+            // compatible bridge. This keeps the compact core and any compatible extension intact. The leading edge uses
+            // the strict onset ratio; the trailing edge uses the lenient offset ratio so natural burst tails survive.
+            var newStart = start
+            var newEnd = end
+            var dropLeft = 0
+            var dropRight = 0
+            while newStart < end, dropLeft < coreFirstBoundaryMaxTrimPerSide, !isSeed(newStart),
+                  let v = train.isiSec[newStart], v.isFinite, v > leadingRatioLimit {
+                newStart += 1
+                dropLeft += 1
+            }
+            while newEnd > newStart, dropRight < coreFirstBoundaryMaxTrimPerSide, !isSeed(newEnd),
+                  let v = train.isiSec[newEnd], v.isFinite, v > trailingRatioLimit {
+                newEnd -= 1
+                dropRight += 1
+            }
+            guard dropLeft > 0 || dropRight > 0,
+                  newEnd >= newStart,
+                  let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return candidate }
+            let note = ";core_first_boundary_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_core)"
+            return candidate.withGeometry(
+                startISIIndex: newStart, endISIIndex: newEnd,
+                startSpikeIndex: candidate.startSpikeIndex + dropLeft, endSpikeIndex: candidate.endSpikeIndex - dropRight,
+                nISI: m.nISI, nValidISI: m.nValidISI, nSpikes: m.nSpikes, durationSec: m.durationSec,
+                intraQ10Sec: m.intraQ10Sec, intraQ40Sec: m.intraQ40Sec, intraQ50Sec: m.intraQ50Sec,
+                intraQ90Sec: m.intraQ90Sec, intraQ95Sec: m.intraQ95Sec,
+                maxIntraISISec: m.maxIntraISISec, meanIntraISISec: m.meanIntraISISec, cv: m.cv, lv: m.lv,
+                preGapSec: m.preGapSec, postGapSec: m.postGapSec, preRatioQ90: m.preRatioQ90, postRatioQ90: m.postRatioQ90,
+                edgeContrastMinQ90: m.edgeContrastMinQ90, edgeContrastGeomQ90: m.edgeContrastGeomQ90,
+                decisionPath: candidate.decisionPath + note)
+        }
+    }
+
+    /// BCB-1 core-first boundary trimming: produce a burst candidate for the sub-span obtained by dropping at most ONE ISI from the
+    /// left and/or right of `original`, with all span metrics recomputed via `spanMetrics`. Returns nil if the trimmed
+    /// span is empty or its metrics cannot be computed. The caller re-evaluates the canonicalization verdict on the
+    /// result; this function performs no eligibility decision of its own. Interior ISIs are never removed.
+    static func boundaryTrimmedBurstCandidate(
+        from original: ClassicAnchorCandidate,
+        train: SpikeTrain,
+        dropLeft: Bool,
+        dropRight: Bool,
+        settings: ClassicAnchorSettings,
+        note: String
+    ) -> ClassicAnchorCandidate? {
+        guard dropLeft || dropRight else { return nil }
+        let newStart = original.startISIIndex + (dropLeft ? 1 : 0)
+        let newEnd = original.endISIIndex - (dropRight ? 1 : 0)
+        guard newEnd >= newStart else { return nil }
+        guard let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return nil }
+        let newStartSpike = original.startSpikeIndex + (dropLeft ? 1 : 0)
+        let newEndSpike = original.endSpikeIndex - (dropRight ? 1 : 0)
+        return original.withGeometry(
+            startISIIndex: newStart, endISIIndex: newEnd,
+            startSpikeIndex: newStartSpike, endSpikeIndex: newEndSpike,
+            nISI: m.nISI, nValidISI: m.nValidISI, nSpikes: m.nSpikes, durationSec: m.durationSec,
+            intraQ10Sec: m.intraQ10Sec, intraQ40Sec: m.intraQ40Sec, intraQ50Sec: m.intraQ50Sec,
+            intraQ90Sec: m.intraQ90Sec, intraQ95Sec: m.intraQ95Sec,
+            maxIntraISISec: m.maxIntraISISec, meanIntraISISec: m.meanIntraISISec, cv: m.cv, lv: m.lv,
+            preGapSec: m.preGapSec, postGapSec: m.postGapSec, preRatioQ90: m.preRatioQ90, postRatioQ90: m.postRatioQ90,
+            edgeContrastMinQ90: m.edgeContrastMinQ90, edgeContrastGeomQ90: m.edgeContrastGeomQ90,
+            decisionPath: original.decisionPath + note
         )
     }
 

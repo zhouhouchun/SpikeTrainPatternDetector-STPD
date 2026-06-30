@@ -961,6 +961,7 @@ public extension ClassicAnchorSettings {
             burstBandSource: hasStructureBurstBand ? .structure : .none,
             burstBandIsStructureDerived: hasStructureBurstBand,
             burstContrastMin: burst?.contrastS ?? 3.0,
+            burstCoreReferenceUpperSec: hasStructureBurstBand ? burstUpper : nil,
             structuralBurstSupportWeight: resolution.structuralSeedSummary.burstSupportWeight,
             refractorySuspectSec: max(
                 qualitySettings.refractorySuspectThresholdSec,
