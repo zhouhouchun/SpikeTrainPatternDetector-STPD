@@ -19,6 +19,11 @@ public struct StructuralDatasetSeedSummary: Hashable, Sendable {
     public let pauseSeedUpperSec: Double?
     public let pausePoolSource: String
     public let source: String
+    /// True when this dataset summary was aggregated over ALL trains with no
+    /// leave-one-out exclusion, i.e. the prior it provides for any train includes
+    /// that train's own evidence. Provenance only; no detection/aggregation logic
+    /// reads this field, so it does not affect behavior.
+    public let isSelfInclusive: Bool
 
     public init(
         trainCount: Int = 0,
@@ -38,7 +43,8 @@ public struct StructuralDatasetSeedSummary: Hashable, Sendable {
         pauseSeedLowerSec: Double? = nil,
         pauseSeedUpperSec: Double? = nil,
         pausePoolSource: String = "none",
-        source: String = "none"
+        source: String = "none",
+        isSelfInclusive: Bool = false
     ) {
         self.trainCount = max(0, trainCount)
         self.seededTrainCount = max(0, seededTrainCount)
@@ -69,6 +75,7 @@ public struct StructuralDatasetSeedSummary: Hashable, Sendable {
         self.pauseSeedUpperSec = pauseSeedUpperSec.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         self.pausePoolSource = pausePoolSource
         self.source = source
+        self.isSelfInclusive = isSelfInclusive
     }
 
     public static let empty = StructuralDatasetSeedSummary()
@@ -93,12 +100,22 @@ public struct StructuralDatasetSeedSummary: Hashable, Sendable {
 
 public enum StructuralDatasetSeedAggregator {
     public static func aggregate(
-        resolutions: [TrainAdaptiveBandResolution]
+        resolutions: [TrainAdaptiveBandResolution],
+        excluding excludedTrainID: String? = nil
     ) -> StructuralDatasetSeedSummary {
-        let summaries = resolutions.map(\.structuralSeedSummary)
+        // Firewall: only train-local structural evidence is eligible for dataset seed
+        // aggregation. Dataset-applied summaries are excluded so derived/applied priors
+        // cannot re-enter the aggregate, and the optional target train is excluded for
+        // leave-one-out (so a train never contributes to the prior applied back to it).
+        let eligible = resolutions.filter { resolution in
+            resolution.structuralSeedSummary.origin == .trainLocal
+                && resolution.trainID != excludedTrainID
+        }
+        let selfInclusive = (excludedTrainID == nil)
+        let summaries = eligible.map(\.structuralSeedSummary)
         let seededSummaries = summaries.filter(\.hasAnyAnchor)
         guard !seededSummaries.isEmpty else {
-            return StructuralDatasetSeedSummary(trainCount: resolutions.count)
+            return StructuralDatasetSeedSummary(trainCount: eligible.count, isSelfInclusive: selfInclusive)
         }
 
         let burstSeedUpperValues = seededSummaries.compactMap(\.burstSeedUpperSec)
@@ -117,7 +134,7 @@ public enum StructuralDatasetSeedAggregator {
         )
 
         return StructuralDatasetSeedSummary(
-            trainCount: resolutions.count,
+            trainCount: eligible.count,
             seededTrainCount: seededSummaries.count,
             burstAnchorCount: seededSummaries.reduce(0) { $0 + $1.burstAnchorCount },
             burstSupportWeight: meanWeight(seededSummaries.map(\.burstSupportWeight)),
@@ -136,7 +153,8 @@ public enum StructuralDatasetSeedAggregator {
             pausePoolSource: combinedPausePoolSource(seededSummaries),
             source: ordered.orderingAdjusted
                 ? "structural_dataset_seed_aggregate_with_nonoverlap_ordering_audit"
-                : "structural_dataset_seed_aggregate"
+                : "structural_dataset_seed_aggregate",
+            isSelfInclusive: selfInclusive
         )
     }
 

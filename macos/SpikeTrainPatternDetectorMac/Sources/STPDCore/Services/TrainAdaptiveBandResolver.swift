@@ -120,6 +120,13 @@ public struct TrainSeedBandProfile: Hashable, Sendable {
     }
 }
 
+public enum StructuralSeedSummaryOrigin: String, Hashable, Sendable {
+    /// Structural seed prior derived solely from this train's own detected candidates.
+    case trainLocal = "train_local_structural_seed"
+    /// This train's structural seed prior after a dataset-level summary was blended in.
+    case datasetApplied = "dataset_applied_structural_seed"
+}
+
 public struct StructuralSeedBandSummary: Hashable, Sendable {
     public let burstAnchorCount: Int
     public let burstSupportWeight: Double
@@ -137,6 +144,13 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
     public let pauseSeedUpperSec: Double?
     public let pausePoolSource: String
     public let source: String
+    /// Whether this summary is purely train-local or the result of applying a
+    /// dataset-level summary. Provenance only; not read by detection logic.
+    public let origin: StructuralSeedSummaryOrigin
+    /// True when the dataset summary blended into this train's prior was computed over
+    /// a set that included this same train (self-inclusion). Always false for a
+    /// purely train-local summary. Provenance only.
+    public let datasetSummaryIncludedTargetTrain: Bool
 
     public init(
         burstAnchorCount: Int = 0,
@@ -154,7 +168,9 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
         pauseSeedLowerSec: Double? = nil,
         pauseSeedUpperSec: Double? = nil,
         pausePoolSource: String = "none",
-        source: String = "none"
+        source: String = "none",
+        origin: StructuralSeedSummaryOrigin = .trainLocal,
+        datasetSummaryIncludedTargetTrain: Bool = false
     ) {
         self.burstAnchorCount = max(0, burstAnchorCount)
         self.burstSupportWeight = Self.cleanWeight(
@@ -183,6 +199,8 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
         self.pauseSeedUpperSec = pauseSeedUpperSec.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         self.pausePoolSource = pausePoolSource
         self.source = source
+        self.origin = origin
+        self.datasetSummaryIncludedTargetTrain = datasetSummaryIncludedTargetTrain
     }
 
     public static let empty = StructuralSeedBandSummary()

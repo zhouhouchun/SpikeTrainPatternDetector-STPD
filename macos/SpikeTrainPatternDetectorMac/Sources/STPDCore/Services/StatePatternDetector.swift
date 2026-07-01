@@ -54,6 +54,13 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     public var highFrequencySpikingInternalPacketizationPolicy: HFSpikingInternalPacketizationPolicy
     public var classicBoundaryContrastMin: Double
     public var structuralBurstSupportWeight: Double
+    /// Manual tonic ISI hard-gate band (seconds). When set, the tonic structural search band is
+    /// narrowed to this range BEFORE candidate generation, so a manual tonic hard gate actually
+    /// constrains which runs can become tonic candidates (the adaptive search band ignores
+    /// `tonicLowerSec`/`tonicUpperSec` directly). Left nil by the adaptive path so default
+    /// behavior is unchanged; only the manual-threshold resolver sets these.
+    public var manualTonicHardLowerSec: Double? = nil
+    public var manualTonicHardUpperSec: Double? = nil
 
     public init(
         isEnabled: Bool = true,
@@ -1179,12 +1186,24 @@ public enum StatePatternDetector {
                 moderateTailUpper
             )
         )
-        let lower = max(
+        var lower = max(
             settings.minValidISISec,
             settings.burstSeedUpperSec * 1.25,
             min(q10, q20, adaptiveUpper)
         )
-        let upper = max(lower, adaptiveUpper)
+        var upper = max(lower, adaptiveUpper)
+        // A manual tonic ISI hard gate narrows the support band BEFORE candidate generation: the
+        // lower can only rise and the upper can only fall. If the manual band excludes the run's
+        // ISIs entirely the band becomes empty (upper < lower), and isTonicStructuralSupport then
+        // flags nothing — so every tonic code path (classic, irregular-merge, split-rebuild) is
+        // constrained uniformly. Soft anchors never set these fields, so they can only ever leave
+        // the band unchanged here (they never remove a tonic candidate).
+        if let manualLower = settings.manualTonicHardLowerSec, manualLower.isFinite, manualLower > 0 {
+            lower = max(lower, manualLower)
+        }
+        if let manualUpper = settings.manualTonicHardUpperSec, manualUpper.isFinite, manualUpper > 0 {
+            upper = min(upper, manualUpper)
+        }
         return (lower, upper)
     }
 
