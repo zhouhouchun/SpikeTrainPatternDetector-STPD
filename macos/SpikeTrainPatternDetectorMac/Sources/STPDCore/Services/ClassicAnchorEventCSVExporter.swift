@@ -271,6 +271,11 @@ public enum ClassicAnchorEventCSVExporter {
         // hf_burst_dominant, hf_burst_packet; empty when not in the HF family). Appended at the
         // end so no existing column position shifts; finalLabel and selection are unchanged.
         "state_high_frequency_subtype",
+        // Additive, audit-only manual-threshold provenance: a pipe-separated list of the
+        // `resolved_threshold[...]` tokens carried in decision_path for this candidate (empty when
+        // no manual threshold affected it / the all-automatic profile). Appended last so no
+        // existing column position shifts.
+        "resolved_thresholds",
         // Phase 2B: diagnostic ISI temporal-profile evidence (ISITemporalProfileEvidence). Evidence
         // only — these never participate in detection. Appended last so no existing column shifts.
         "isi_edge_contrast_min",
@@ -533,6 +538,7 @@ public enum ClassicAnchorEventCSVExporter {
             candidate.pipelineStageSummary,
             candidate.decisionPath,
             candidate.stateHighFrequencySubtype ?? "",
+            resolvedThresholdProvenance(candidate.decisionPath),
             number(isiEvidence.edgeContrastMin),
             number(isiEvidence.edgeContrastGeom),
             number(isiEvidence.preEdgeRatio),
@@ -574,6 +580,25 @@ public enum ClassicAnchorEventCSVExporter {
             nearMiss.reason,
             nearMiss.details
         ]
+    }
+
+    /// Project the manual-threshold provenance tokens that the pipeline appended to `decisionPath`
+    /// into a compact, pipe-separated `resolved_thresholds` column. decisionPath remains the single
+    /// source of truth; this is a name-keyed projection so existing header-based tests are safe.
+    /// Includes the resolved-threshold tokens, the Phase-1D learned-from-annotations notes, and (P10B) the
+    /// P10 `manual_threshold_scope=...` note — so a learned soft anchor AND the hard-threshold scope are auditable
+    /// in the dedicated column without parsing the full decision_path. The raw machine token is projected verbatim
+    /// (never localized); commas inside `selected_trains(count=N,train_id=...)` are CSV-quoted by `csvEscaped`.
+    static func resolvedThresholdProvenance(_ decisionPath: String) -> String {
+        decisionPath
+            .split(separator: ";")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter {
+                $0.hasPrefix("resolved_threshold[")
+                    || $0.hasPrefix("learned_from_manual_annotations(")
+                    || $0.hasPrefix("manual_threshold_scope=")
+            }
+            .joined(separator: "|")
     }
 
     private static func sortedCandidates(_ candidates: [ClassicAnchorCandidate]) -> [ClassicAnchorCandidate] {
