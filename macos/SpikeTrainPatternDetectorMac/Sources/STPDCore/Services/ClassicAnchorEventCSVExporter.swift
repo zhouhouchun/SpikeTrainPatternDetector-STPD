@@ -271,11 +271,6 @@ public enum ClassicAnchorEventCSVExporter {
         // hf_burst_dominant, hf_burst_packet; empty when not in the HF family). Appended at the
         // end so no existing column position shifts; finalLabel and selection are unchanged.
         "state_high_frequency_subtype",
-        // Additive, audit-only manual-threshold provenance: a pipe-separated list of the
-        // `resolved_threshold[...]` tokens carried in decision_path for this candidate (empty when
-        // no manual threshold affected it / the all-automatic profile). Appended last so no
-        // existing column position shifts.
-        "resolved_thresholds",
         // Phase 2B: diagnostic ISI temporal-profile evidence (ISITemporalProfileEvidence). Evidence
         // only — these never participate in detection. Appended last so no existing column shifts.
         "isi_edge_contrast_min",
@@ -321,7 +316,12 @@ public enum ClassicAnchorEventCSVExporter {
         "near_miss_eventness_zone",
         "near_miss_candidate_ref",
         "near_miss_reason",
-        "near_miss_details"
+        "near_miss_details",
+        // Additive, audit-only manual-threshold provenance: a pipe-separated list of the
+        // `resolved_threshold[...]` tokens carried in decision_path for this candidate (empty when
+        // no manual threshold affected it / the all-automatic profile). Placed at the TRUE END of the
+        // schema so no existing column position shifts.
+        "resolved_thresholds"
     ]
 
     private static func row(
@@ -538,7 +538,6 @@ public enum ClassicAnchorEventCSVExporter {
             candidate.pipelineStageSummary,
             candidate.decisionPath,
             candidate.stateHighFrequencySubtype ?? "",
-            resolvedThresholdProvenance(candidate.decisionPath),
             number(isiEvidence.edgeContrastMin),
             number(isiEvidence.edgeContrastGeom),
             number(isiEvidence.preEdgeRatio),
@@ -578,7 +577,8 @@ public enum ClassicAnchorEventCSVExporter {
             nearMiss.eventnessZone,
             nearMiss.candidateRef,
             nearMiss.reason,
-            nearMiss.details
+            nearMiss.details,
+            resolvedThresholdProvenance(candidate.decisionPath)
         ]
     }
 
