@@ -88,6 +88,22 @@ public enum StructuralSeedBandResolver {
             )
         }
 
+        // Phase 2A dataset-aggregation firewall (train-local provenance; does NOT change the
+        // train-local band, refineBands, or applyingDatasetSummary). A family's band is eligible
+        // to enter the DATASET aggregate only when it came from strong / conserved evidence:
+        //  - burst: not from the weak possibleBurst fallback (rate-relative / low-confidence);
+        //  - tonic: not from a structural-window fill (event_core_tonic_state_structural_window),
+        //    which is a non-event-driven absolute band (rate-relative);
+        //  - pause: not derived solely from audit-only structural pause prior evidence.
+        let tonicUsesStructuralWindow = tonicAnchors.contains {
+            $0.candidateLayer.lowercased().contains("structural_window")
+        }
+        let pauseIsAuditOnly = !pauseAnchors.isEmpty
+            && pauseAnchors.allSatisfy(\.isStructuralPausePriorEvidence)
+        let isBurstSeedDatasetAggregatable = !usingWeakPossibleBurstSeeds
+        let isTonicSeedDatasetAggregatable = !tonicUsesStructuralWindow
+        let isPauseSeedDatasetAggregatable = !pauseIsAuditOnly
+
         let summary = StructuralSeedBandSummary(
             burstAnchorCount: burstAnchors.count,
             burstSupportWeight: usingWeakPossibleBurstSeeds
@@ -110,7 +126,10 @@ public enum StructuralSeedBandResolver {
                 hasClassicTonicAnchors: !tonicAnchors.isEmpty,
                 tonicBurstCoreExclusionApplied: tonicBurstCoreExclusionApplied,
                 hasTonicPauseRelationship: !tonicAnchors.isEmpty && !pauseAnchors.isEmpty
-            )
+            ),
+            isBurstSeedDatasetAggregatable: isBurstSeedDatasetAggregatable,
+            isTonicSeedDatasetAggregatable: isTonicSeedDatasetAggregatable,
+            isPauseSeedDatasetAggregatable: isPauseSeedDatasetAggregatable
         )
         return summary.hasAnyAnchor ? summary : .empty
     }

@@ -151,6 +151,16 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
     /// a set that included this same train (self-inclusion). Always false for a
     /// purely train-local summary. Provenance only.
     public let datasetSummaryIncludedTargetTrain: Bool
+    /// Phase 2A dataset-aggregation firewall. Per-family eligibility of this train's
+    /// train-local band to enter the DATASET seed aggregate. Defaults to `true`, so
+    /// train-local behavior is unchanged; only `StructuralSeedBandResolver.summarize()`
+    /// sets a family `false` when its band came from non-conserved / weak evidence
+    /// (weak possibleBurst fallback, structural-window tonic fill, audit-only pause prior).
+    /// Read only by `StructuralDatasetSeedAggregator.aggregate()`; never affects the
+    /// train-local band, `refineBands`, or `applyingDatasetSummary`.
+    public let isBurstSeedDatasetAggregatable: Bool
+    public let isTonicSeedDatasetAggregatable: Bool
+    public let isPauseSeedDatasetAggregatable: Bool
 
     public init(
         burstAnchorCount: Int = 0,
@@ -170,7 +180,10 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
         pausePoolSource: String = "none",
         source: String = "none",
         origin: StructuralSeedSummaryOrigin = .trainLocal,
-        datasetSummaryIncludedTargetTrain: Bool = false
+        datasetSummaryIncludedTargetTrain: Bool = false,
+        isBurstSeedDatasetAggregatable: Bool = true,
+        isTonicSeedDatasetAggregatable: Bool = true,
+        isPauseSeedDatasetAggregatable: Bool = true
     ) {
         self.burstAnchorCount = max(0, burstAnchorCount)
         self.burstSupportWeight = Self.cleanWeight(
@@ -201,6 +214,9 @@ public struct StructuralSeedBandSummary: Hashable, Sendable {
         self.source = source
         self.origin = origin
         self.datasetSummaryIncludedTargetTrain = datasetSummaryIncludedTargetTrain
+        self.isBurstSeedDatasetAggregatable = isBurstSeedDatasetAggregatable
+        self.isTonicSeedDatasetAggregatable = isTonicSeedDatasetAggregatable
+        self.isPauseSeedDatasetAggregatable = isPauseSeedDatasetAggregatable
     }
 
     public static let empty = StructuralSeedBandSummary()

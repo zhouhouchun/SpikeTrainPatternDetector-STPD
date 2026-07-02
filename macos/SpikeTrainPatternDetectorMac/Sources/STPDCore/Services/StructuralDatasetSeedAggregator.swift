@@ -118,12 +118,22 @@ public enum StructuralDatasetSeedAggregator {
             return StructuralDatasetSeedSummary(trainCount: eligible.count, isSelfInclusive: selfInclusive)
         }
 
-        let burstSeedUpperValues = seededSummaries.compactMap(\.burstSeedUpperSec)
-        let burstBridgeValues = seededSummaries.compactMap(\.burstBridgeUpperSec)
-        let tonicLowerValues = seededSummaries.compactMap(\.tonicSeedLowerSec)
-        let tonicUpperValues = seededSummaries.compactMap(\.tonicSeedUpperSec)
-        let pauseLowerValues = seededSummaries.compactMap(\.pauseSeedLowerSec)
-        let pauseUpperValues = seededSummaries.compactMap(\.pauseSeedUpperSec)
+        // Phase 2A dataset-aggregation firewall: only bands whose train-local family is
+        // dataset-aggregatable feed the dataset quantile merge. Weak-derived burst seeds,
+        // structural-window tonic fills, and audit-only pause priors are excluded here and
+        // stay train-local. The origin/leave-one-out firewall above is unchanged; this is a
+        // per-family strength/conservation gate applied on top of it. Anchor counts and
+        // support weights below are intentionally left over all seeded summaries (metadata;
+        // strength-weighted merge is a deferred refinement).
+        let burstSeededSummaries = seededSummaries.filter(\.isBurstSeedDatasetAggregatable)
+        let tonicSeededSummaries = seededSummaries.filter(\.isTonicSeedDatasetAggregatable)
+        let pauseSeededSummaries = seededSummaries.filter(\.isPauseSeedDatasetAggregatable)
+        let burstSeedUpperValues = burstSeededSummaries.compactMap(\.burstSeedUpperSec)
+        let burstBridgeValues = burstSeededSummaries.compactMap(\.burstBridgeUpperSec)
+        let tonicLowerValues = tonicSeededSummaries.compactMap(\.tonicSeedLowerSec)
+        let tonicUpperValues = tonicSeededSummaries.compactMap(\.tonicSeedUpperSec)
+        let pauseLowerValues = pauseSeededSummaries.compactMap(\.pauseSeedLowerSec)
+        let pauseUpperValues = pauseSeededSummaries.compactMap(\.pauseSeedUpperSec)
         let ordered = orderedSeedValues(
             burstSeedUpperSec: quantile(burstSeedUpperValues, probability: 0.50),
             burstBridgeUpperSec: quantile(burstBridgeValues, probability: 0.75),
