@@ -115,6 +115,15 @@ public extension ClassicAnchorCandidate {
         let normalizedGate = gateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedPath = decisionPath.lowercased()
 
+        // Phase 3A: burst_local_completion is synthetic completion evidence. Treat it as a
+        // review/boundary-review possibleBurst so it OVERLAYS (does not carve) an overlapping
+        // tonic — it moves to the review track and loses event-track carving authority. It is
+        // still generated and reviewable; its priority, score, selectedForAuto, and decisionPath
+        // generation are unchanged (BurstLocalCompletionDetector is untouched).
+        if normalizedLayer == "burst_local_completion" {
+            return true
+        }
+
         if selectedForAuto,
            normalizedLayer == "event_grammar_burst_episode",
            normalizedPath.contains("dense_short_isi_episode_rescued_by_train_scale_compression") {

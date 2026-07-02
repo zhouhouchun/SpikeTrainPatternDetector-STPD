@@ -56,11 +56,11 @@ private func p3Candidate(
     )
 }
 
-// 1 — CURRENT UNDESIRED: burst-local-completion possibleBurst carves tonic (event-track).
+// 1 — Phase 3A (FIXED): burst-local-completion possibleBurst is a REVIEW OVERLAY, not an
+// event-track carve. It overlays an overlapping tonic instead of splitting it.
 @Test
-func phase3_characterizesCurrentBurstLocalCompletionPossibleBurstCarvesTonic() {
-    // Faithful to BurstLocalCompletionDetector emission: layer/action/gate carry no "review" token,
-    // so arbitrationTrack routes it to .event (not .review).
+func phase3a_burstLocalCompletionPossibleBurstOverlaysTonicNotCarves() {
+    // Faithful to BurstLocalCompletionDetector emission (layer/action/gate/decisionPath).
     let completion = p3Candidate(
         id: "completion-1", label: .possibleBurst, start: 5, end: 7,
         layer: "burst_local_completion", gate: "burst_local_completion_pass",
@@ -70,16 +70,15 @@ func phase3_characterizesCurrentBurstLocalCompletionPossibleBurstCarvesTonic() {
     )
     let tonic = p3Candidate(id: "tonic-1", label: .tonic, start: 2, end: 10, layer: "event_core_tonic_state")
 
-    // Routing: it is NOT a boundary-review candidate → it lands on the event/burst-event track.
-    #expect(completion.isBurstBoundaryReviewCandidate == false)
-    #expect(completion.arbitrationTrack == .event)
-    #expect(completion.finalLabel.isBurstEventFamily == true)
+    // Phase 3A routing: completion is now a boundary-review candidate on the REVIEW track.
+    #expect(completion.isBurstBoundaryReviewCandidate == true)
+    #expect(completion.arbitrationTrack == .review)
 
     let arbitrated = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack([tonic, completion])
     let tonicResult = arbitrated.first { $0.id == "tonic-1" }
-    // CURRENT behavior: the tonic is carved out by the event-track possibleBurst.
-    #expect(tonicResult?.selectedForAuto == false)
-    #expect(tonicResult?.selectionStatus == "not_selected__state_track_split_by_event_track")
+    // Tonic is RETAINED; the completion overlays it non-destructively (no event-track carving).
+    #expect(tonicResult?.selectedForAuto == true)
+    #expect(tonicResult?.selectionStatus.contains("possible_burst_review_overlay") == true)
 }
 
 // 2 — DESIRED/SAFE (already present): review-track possibleBurst overlays tonic, does not carve.
