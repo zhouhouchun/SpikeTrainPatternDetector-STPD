@@ -1,21 +1,22 @@
 @testable import STPDCore
 import Testing
 
-// MARK: - Phase 3 characterization net (test-only; NO production changes)
+// MARK: - Phase 3 / 3A completion-authority tests
 //
-// Pins the CURRENT local carving-authority behavior so Phase 3A becomes falsifiable:
-//   1. A `.possibleBurst` from BurstLocalCompletionDetector is routed onto the `.event` track and
-//      CARVES an overlapping tonic (undesired — Phase 3A will flip this to a review overlay).
-//   2. A review/boundary-review `.possibleBurst` OVERLAYS tonic instead of carving it (the target
-//      behavior model already present for review-track possibleBursts).
+// Phase 3A FIXED the burst-local-completion carving over-authority. A `.possibleBurst` emitted by
+// BurstLocalCompletionDetector now routes to the REVIEW track and OVERLAYS an overlapping tonic
+// instead of carving it on the event track. These tests protect the fixed behavior and its guards:
+//   1. A `.possibleBurst` from BurstLocalCompletionDetector is a boundary-review candidate on the
+//      `.review` track and OVERLAYS an overlapping tonic (tonic retained; possible_burst_review_overlay).
+//   2. A review/boundary-review `.possibleBurst` OVERLAYS tonic instead of carving it (the shared
+//      target model these routes follow).
 //   3. Phase 2A containment holds: weak / completion-class possibleBurst evidence forms only a
 //      train-local burst seed and does NOT enter the dataset aggregate.
-//   4. Bridge strictPass canonicalization remains dataset-aggregatable — documented as bounded,
-//      by-design behavior (NOT changed in this slice).
+//   4. Bridge strictPass canonicalization remains dataset-aggregatable — bounded, by-design behavior.
 //
 // Tests 1-2 exercise ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack directly with
-// hand-built candidates (deterministic; targets the exact carving mechanism). Tests 3-4 exercise
-// StructuralSeedBandResolver.summarize + StructuralDatasetSeedAggregator.aggregate.
+// hand-built candidates (deterministic). Tests 3-4 exercise StructuralSeedBandResolver.summarize +
+// StructuralDatasetSeedAggregator.aggregate.
 
 private func p3Train(repeating isi: Double, count: Int) -> SpikeTrain {
     var t = [0.0]
