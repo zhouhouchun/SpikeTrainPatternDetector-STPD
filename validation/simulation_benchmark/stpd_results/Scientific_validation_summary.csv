@@ -1,0 +1,8 @@
+"item","value"
+"tool_role","candidate event generator + semi-supervised review platform; not an unbiased final truth classifier"
+"manual_labels_available","FALSE"
+"candidate_count","525"
+"event_count","507"
+"review_candidate_count","76"
+"stationarity_warning_trains","1"
+"recommended_validation","Use strict high-confidence metrics and held-out train/dataset validation for publication-level analysis. Candidate-family metrics estimate candidate sensitivity only."

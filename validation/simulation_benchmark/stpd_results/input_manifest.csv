@@ -1,0 +1,2 @@
+"input_csv","input_sha256","n_trains","total_spikes","min_spikes_per_train","median_spikes_per_train","max_spikes_per_train"
+"<LOCAL_SIMULATOR_ROOT>/Stimulation data for test/stimulation results_2/detector_inputs/latent_spike_events_wide_by_train.csv","72b1ffc33755f3517c9e45bfd5e8e7bd0deaa51c45544a32a2fb0773d166813d",30,8776,116,305.5,491

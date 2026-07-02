@@ -1,0 +1,7 @@
+"item","value"
+"truth_interval_rows",8746
+"stpd_interval_rows_after_first_spike_filter",8746
+"joined_rows",8746
+"missing_stpd_predictions",0
+"max_right_timestamp_abs_error_s",0
+"max_isi_abs_error_s",1.00974784089658e-13

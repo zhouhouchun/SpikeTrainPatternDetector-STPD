@@ -1,0 +1,10 @@
+"truth","burst","high_frequency_spiking","high_frequency_tonic","long_burst","noisy","pause","possible_burst","tonic","unclassified"
+"burst",311,0,0,25,0,0,132,0,30
+"high_frequency_spiking",4,3913,0,0,0,0,1,0,463
+"high_frequency_tonic",457,196,0,99,0,0,451,0,334
+"long_burst",0,0,0,0,0,0,0,0,0
+"noisy",0,0,0,0,0,0,0,78,824
+"pause",0,0,0,0,0,149,0,0,0
+"possible_burst",0,0,0,0,0,0,0,0,0
+"tonic",0,0,0,0,0,0,0,1255,24
+"unclassified",0,0,0,0,0,0,0,0,0

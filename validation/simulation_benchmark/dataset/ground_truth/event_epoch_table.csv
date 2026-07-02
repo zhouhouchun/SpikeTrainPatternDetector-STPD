@@ -1,0 +1,1 @@
+"Train","Event_Epoch_ID","Stimulus_ID","Epoch_Type","Epoch_Class","Response_Component","Epoch_Source","Epoch_Generation_Rule","Start_s","End_s","Duration_s","Interval_ID_Start","Interval_ID_End","N_Intervals","N_Boundary_Spikes","Left_Spike_ID","Right_Spike_ID","Bounded_By_Spikes","Scorable","ISI_Label","Response_Type","Stimulus_Onset_s","Time_From_Stimulus_Onset_s","Source"

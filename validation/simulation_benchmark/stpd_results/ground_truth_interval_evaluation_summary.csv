@@ -1,0 +1,5 @@
+"evaluation","n_intervals","accuracy","macro_F1_inclusive","macro_F1_emitted_only","weighted_F1","truth_classes","predicted_classes"
+"exact_original_labels",8746,0.643494168762863,0.374722620568682,0.843125896279534,0.647189596744917,"burst;high_frequency_spiking;high_frequency_tonic;noisy;pause;tonic","burst;high_frequency_spiking;long_burst;pause;possible_burst;tonic;unclassified"
+"stpd_comparable_noisy_as_unclassified",8746,0.737708666819117,0.501500860440893,0.802401376705428,0.713143401360161,"burst;high_frequency_spiking;high_frequency_tonic;pause;tonic;unclassified","burst;high_frequency_spiking;long_burst;pause;possible_burst;tonic;unclassified"
+"stpd_comparable_burst_family",8746,0.75565973016236,0.665908060305963,0.799089672367156,0.712200553909635,"burst_family;high_frequency_spiking;high_frequency_tonic;pause;tonic;unclassified","burst_family;high_frequency_spiking;pause;tonic;unclassified"
+"binary_patterned_vs_nonpattern",8746,0.893780013720558,0.788608504719084,0.788608504719084,0.906958418074285,"non_pattern_or_noisy;patterned","non_pattern_or_noisy;patterned"

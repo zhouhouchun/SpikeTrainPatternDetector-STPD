@@ -1,0 +1,12 @@
+Experiment,Scenario,Expected_Runs,Completed_Runs,Failed_Runs,Failure_Rate,Pass_Rate,Absolute_Refractory_Pass_Rate,Interval_Time_Consistency_Pass_Rate,Noisy_Clean_Label_Pass_Rate
+detector_benchmark,easy,8,8,0,0,1,1,1,1
+detector_benchmark,hard,8,8,0,0,1,1,1,1
+detector_benchmark,moderate,8,8,0,0,1,1,1,1
+stimulation_preset,biphasic_burst_pause,8,8,0,0,1,1,1,1
+stimulation_preset,feature_tuning,8,8,0,0,1,1,1,1
+stimulation_preset,intensity_response,8,8,0,0,1,1,1,1
+stimulation_preset,oddball_adaptation,8,8,0,0,1,1,1,1
+stimulation_preset,paired_pulse_recovery,8,8,0,0,1,1,1,1
+stimulation_preset,repeated_adaptation,8,8,0,0,1,1,1,1
+stimulation_preset,state_dependent,8,8,0,0,1,1,1,1
+stimulation_preset,stimulus_suppression,8,8,0,0,1,1,1,1

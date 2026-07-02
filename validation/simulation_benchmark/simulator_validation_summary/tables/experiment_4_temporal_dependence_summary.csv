@@ -1,0 +1,7 @@
+Validation,Label,Target_Empirical_Correlation,Expected_Runs,Completed_Runs,Failed_Runs,Failure_Rate,Strict_Direction_Pass_Rate,Monotonic_OK,Direction_Pass_Rate,Constraint_Aware_Pass,Validation_Interpretation
+rho_sweep,Burst,0.9999999999999998,5,5,0,0,1,TRUE,1,TRUE,strict rho control: sign direction and target-to-empirical monotonicity are both primary criteria
+rho_sweep,Noisy,1,5,4,1,0.2,0.6,TRUE,0.6,TRUE,"constraint-aware Noisy rho: clean-label constraints may attenuate sign, so target-to-empirical monotonicity is the primary manuscript criterion"
+rho_sweep,Tonic,0.9999999999999998,5,5,0,0,1,TRUE,1,TRUE,strict rho control: sign direction and target-to-empirical monotonicity are both primary criteria
+trend_sweep,Burst,0.9999999999999998,5,5,0,0,1,TRUE,1,TRUE,strict trend control: sign direction and target-to-empirical monotonicity are both primary criteria
+trend_sweep,Noisy,0.9999999999999998,5,5,0,0,1,TRUE,1,TRUE,strict trend control: sign direction and target-to-empirical monotonicity are both primary criteria
+trend_sweep,Tonic,0.9999999999999998,5,5,0,0,1,TRUE,1,TRUE,strict trend control: sign direction and target-to-empirical monotonicity are both primary criteria

@@ -1,0 +1,6 @@
+
+name: sensitive_exploratory
+notes: High-recall review mode. Not for final publication metrics without held-out validation.
+burst:
+  local_compression_local_ratio_min: 2.0
+  local_compression_candidate_class: possible_burst

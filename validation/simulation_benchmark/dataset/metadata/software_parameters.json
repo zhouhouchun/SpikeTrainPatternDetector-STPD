@@ -1,0 +1,149 @@
+{
+  "dataset": {
+    "title": "Default synthetic spike-train pattern detector test data",
+    "generated_on": "2026-06-21 18:58:25.195014",
+    "n_train": 30,
+    "requested_duration_s": 30,
+    "stimulation_enabled": false,
+    "detector_visible_inputs": "detector_inputs/",
+    "hidden_scoring_truth": "ground_truth/"
+  },
+  "simulator": {
+    "file": "Spike_train_simulator_V13_5_0_HF_modes.R",
+    "id": "Spike_train_simulator_V13_5_0_HF_modes",
+    "version": "V13.5.0",
+    "schema_version": "1.0.0"
+  },
+  "generation": {
+    "seed_base": 202606210,
+    "train_seed_table": "metadata/Train_Seeds.csv",
+    "config_json": "metadata/simulation_config.json",
+    "config_yaml": "metadata/simulation_config.yaml"
+  },
+  "config": {
+    "total_time": 30,
+    "inter_event_gap": 0.003,
+    "generation_mode": "event",
+    "ratios": [0.2, 0.15, 0.2, 0.15, 0.15, 0.15],
+    "pattern_sequence": null,
+    "leading_silence_initial_pause": true,
+    "initial_latency_model": "residual_life",
+    "avoid_noisy_burst_runs": true,
+    "noisy_specificity": {
+      "avoid_mode_overlap": false,
+      "contextual_mode_overlap": true,
+      "tolerance": 0.03,
+      "clean_guard_s": 0.03,
+      "context_guard_s": 0.03,
+      "pause_guard_s": 0.1,
+      "pause_guard_ratio": 0.1,
+      "tonic_upper_multiplier": 1,
+      "mm_ratio": 1.5
+    },
+    "validation": {
+      "check_noisy_clean_label_constraints": true
+    },
+    "stimulation": {
+      "enabled": false
+    },
+    "patterns": {
+      "Burst": {
+        "dist_type": "Gamma",
+        "params": {
+          "shape": 3,
+          "scale": 0.018
+        },
+        "interval_range": [0.03, 0.12],
+        "spike_count_range": [3, 8],
+        "temporal_dependence": {
+          "rho": 0.15,
+          "trend": 0.05
+        }
+      },
+      "Pause": {
+        "dist_type": "Lognormal",
+        "params": {
+          "meanlog": -0.1053605156578263,
+          "sdlog": 0.25
+        },
+        "interval_range": [0.6, 1.5],
+        "spike_count_range": [0, 0],
+        "temporal_dependence": {
+          "rho": 0,
+          "trend": 0
+        }
+      },
+      "Tonic": {
+        "dist_type": "Normal",
+        "params": {
+          "mean": 0.36,
+          "sd": 0.035
+        },
+        "interval_range": [0.25, 0.5],
+        "spike_count_range": [5, 14],
+        "temporal_dependence": {
+          "rho": 0.2,
+          "trend": 0
+        },
+        "regularity_ranges": {
+          "cv": [0, 0.3],
+          "cv2": [0, 0.38],
+          "lv": [0, 0.25]
+        }
+      },
+      "high_frequency_tonic": {
+        "dist_type": "Normal",
+        "params": {
+          "mean": 0.032,
+          "sd": 0.003
+        },
+        "interval_range": [0.024, 0.04],
+        "spike_count_range": [8, 24],
+        "temporal_dependence": {
+          "rho": 0.2,
+          "trend": 0
+        },
+        "regularity_ranges": {
+          "cv": [0, 0.22],
+          "cv2": [0, 0.28],
+          "lv": [0, 0.22],
+          "mm": [1, 1.25]
+        }
+      },
+      "high_frequency_spiking": {
+        "dist_type": "Gamma",
+        "params": {
+          "shape": 3,
+          "scale": 0.0025
+        },
+        "interval_range": [0.003, 0.02],
+        "spike_count_range": [30, 70],
+        "temporal_dependence": {
+          "rho": 0,
+          "trend": 0
+        },
+        "state_rules": {
+          "short_isi_range": [0.003, 0.012],
+          "bridge_isi_range": [0.012, 0.02],
+          "target_short_fraction": 0.9,
+          "short_fraction_min": 0.8,
+          "bridge_fraction_max": 0.15,
+          "max_consecutive_bridge": 2,
+          "min_duration_s": 0.2
+        }
+      },
+      "Noisy": {
+        "dist_type": "Exponential",
+        "params": {
+          "mean": 0.14
+        },
+        "interval_range": [0.08, 0.5],
+        "spike_count_range": [4, 9],
+        "temporal_dependence": {
+          "rho": 0,
+          "trend": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+"Metric","Fully_automatic","Simulator_informed"
+"Accuracy",0.703,0.756
+"Macro-F1, all reference classes",0.498,0.666
+"Macro-F1, emitted classes only",0.498,0.799
+"Weighted-F1, all reference classes",0.669,0.712
+"Binary patterned-vs-non-pattern weighted-F1",0.904,0.907

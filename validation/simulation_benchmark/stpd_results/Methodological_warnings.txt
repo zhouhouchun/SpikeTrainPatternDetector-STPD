@@ -1,0 +1,6 @@
+Spike Train Pattern Detector is a candidate-event generator and semi-supervised review platform, not an unbiased final ground-truth classifier. Results should be reported as high-confidence events, review candidates, and family-level summaries with validation where available.
+High-confidence events, review candidates (possible_burst), and burst-family summaries should be reported separately.
+long_burst is a structural/event-like label based on spike count, duration, short-ISI fraction, and flank contrast; it should not be interpreted automatically as a distinct biological mechanism.
+high_frequency_tonic and high_frequency_spiking are state/epoch-style labels. Their biological interpretation depends on cell type, preparation, and spike-sorting quality.
+Interactive tuning with manual labels can overfit. For publication-grade analysis, use held-out trains/datasets, event-level metrics, and report the preset/parameter hash.
+Refractory-suspect ISIs indicate possible spike-sorting/multi-unit/timestamp issues; default handling is conservative review/demotion rather than silent acceptance.

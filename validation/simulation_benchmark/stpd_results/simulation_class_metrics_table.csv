@@ -1,0 +1,7 @@
+"Class","Reference_intervals","Automatic_precision","Automatic_recall","Automatic_F1","Simulator_informed_precision","Simulator_informed_recall","Simulator_informed_F1_inclusive","Note"
+"Burst family",498,0.135,0.129,0.132,0.316,0.94,0.473,""
+"HF spiking",4381,0.839,0.984,0.906,0.952,0.893,0.922,""
+"HF tonic",1537,1,0.216,0.355,,0,0,"No intervals predicted in simulator-informed run; recall and F1 set to 0 for inclusive macro-F1."
+"Pause",149,0.306,1,0.469,1,1,1,""
+"Tonic",1279,0.788,0.355,0.489,0.941,0.981,0.961,""
+"Unclassified",902,0.482,0.928,0.635,0.492,0.914,0.64,""

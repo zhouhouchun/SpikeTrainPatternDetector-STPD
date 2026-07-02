@@ -1,0 +1,7 @@
+"Simulator_Label","Reference_Intervals","Scored_Label","Rationale"
+"Burst",498,"burst_family","Simulator Burst intervals are compared with STPD burst-family outputs. STPD burst, possible_burst and long_burst predictions are pooled into burst_family."
+"high_frequency_spiking",4381,"high_frequency_spiking","Same vocabulary in simulator and STPD comparable scoring."
+"high_frequency_tonic",1537,"high_frequency_tonic","Same vocabulary in simulator and STPD comparable scoring; intervals with no predictions are scored as zero-F1 in inclusive macro-F1."
+"Pause",149,"pause","Same vocabulary in simulator and STPD comparable scoring."
+"Tonic",1279,"tonic","Same vocabulary in simulator and STPD comparable scoring."
+"Noisy",902,"unclassified","STPD has no native Noisy output class. Simulator Noisy intervals are therefore mapped to the detector's unclassified/non-pattern bucket for comparable scoring."

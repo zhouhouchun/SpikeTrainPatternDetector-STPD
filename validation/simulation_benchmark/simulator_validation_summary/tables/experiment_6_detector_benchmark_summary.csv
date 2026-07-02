@@ -1,0 +1,4 @@
+Difficulty,Interval_Accuracy,Interval_MacroF1,Episode_F1,Episode_Mean_IoU,MedianAbs_Onset_Error_s,MedianAbs_Offset_Error_s,Expected_Runs,Completed_Runs,Failed_Runs,Failure_Rate
+easy,1,1,1,1,0,0,12,12,0,0
+hard,0.9666666666666667,0.9747753833964392,0.9547101449275363,1,0,0,12,12,0,0
+moderate,1,1,1,1,0,0,12,12,0,0

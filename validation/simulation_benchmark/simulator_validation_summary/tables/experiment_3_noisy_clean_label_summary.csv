@@ -1,0 +1,4 @@
+Difficulty,Expected_Runs,Completed_Runs,Failed_Runs,Failure_Rate,Clean_Label_Pass_Rate,Noisy_PauseLike_Intervals,Noisy_Above_TonicUpper_or_PauseGuard_Intervals,Noisy_NearPause_Intervals,Noisy_SameZone_Pair_Violations,Noisy_Mode_Adjacency_Violations,Noisy_TonicLike_or_TooRegular_Runs,Noisy_BurstLike_Intervals,Noisy_TonicLike_Intervals,Min_Burst_Boundary_Spikes,Min_Tonic_Boundary_Spikes
+easy,10,10,0,0,1,0,0,0,0,0,0,0,0,3,4
+hard,10,10,0,0,1,0,0,0,0,0,0,0,0,3,4
+moderate,10,10,0,0,1,0,0,0,0,0,0,0,0,3,4
