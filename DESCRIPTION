@@ -1,7 +1,7 @@
 Package: SpikeTrainPatternDetector
 Type: Package
 Title: Spike Train Pattern Detector
-Version: 1.2.1
+Version: 1.2.2
 Authors@R: person(given = "Houchun", family = "Zhou", role = c("aut", "cre"), email = "zhouhouchun@outlook.com")
 Author: Houchun Zhou [aut, cre]
 Maintainer: Houchun Zhou <zhouhouchun@outlook.com>
