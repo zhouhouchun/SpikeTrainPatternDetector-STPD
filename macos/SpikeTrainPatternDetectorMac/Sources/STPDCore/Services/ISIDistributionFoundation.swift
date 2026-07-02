@@ -348,6 +348,10 @@ public struct ModeISIInterval: Hashable, Sendable {
     public let family: ISIPatternFamily
     public let lowerSec: Double
     public let upperSec: Double
+    /// Optional burst BRIDGE/extension upper bound. `upperSec` is the compact/core/seed upper; when
+    /// present, `bridgeUpperSec` (>= `upperSec`) is the wider bridge extent used by burst. Normally
+    /// nil for tonic/pause/unknown.
+    public let bridgeUpperSec: Double?
     public let supportCount: Int
     public let supportFraction: Double
     public let scope: ISIDistributionScope
@@ -365,17 +369,22 @@ public struct ModeISIInterval: Hashable, Sendable {
         supportFraction: Double = 0,
         scope: ISIDistributionScope,
         provenance: IntervalProvenance,
-        confidence: Double = 0
+        confidence: Double = 0,
+        bridgeUpperSec: Double? = nil
     ) {
         self.family = family
         self.lowerSec = lowerSec
         self.upperSec = upperSec
+        self.bridgeUpperSec = bridgeUpperSec
         self.supportCount = max(0, supportCount)
         self.supportFraction = supportFraction.isFinite ? min(1, max(0, supportFraction)) : 0
         self.scope = scope
         self.provenance = provenance
         self.confidence = confidence.isFinite ? min(1, max(0, confidence)) : 0
-        self.isValid = lowerSec.isFinite && upperSec.isFinite && lowerSec >= 0 && lowerSec <= upperSec
+        let coreValid = lowerSec.isFinite && upperSec.isFinite && lowerSec >= 0 && lowerSec <= upperSec
+        // A bridge, when present, must be finite and extend at or beyond the core upper.
+        let bridgeValid = bridgeUpperSec.map { $0.isFinite && $0 >= upperSec } ?? true
+        self.isValid = coreValid && bridgeValid
     }
 
     /// Failable factory: returns nil for an invalid interval (`lower > upper`, non-finite, negative).
@@ -387,18 +396,28 @@ public struct ModeISIInterval: Hashable, Sendable {
         supportFraction: Double = 0,
         scope: ISIDistributionScope,
         provenance: IntervalProvenance,
-        confidence: Double = 0
+        confidence: Double = 0,
+        bridgeUpperSec: Double? = nil
     ) -> ModeISIInterval? {
         let interval = ModeISIInterval(
             family: family, lowerSec: lowerSec, upperSec: upperSec, supportCount: supportCount,
-            supportFraction: supportFraction, scope: scope, provenance: provenance, confidence: confidence
+            supportFraction: supportFraction, scope: scope, provenance: provenance, confidence: confidence,
+            bridgeUpperSec: bridgeUpperSec
         )
         return interval.isValid ? interval : nil
     }
 
-    /// Does this interval contain a value (inclusive)? Always false when invalid.
+    /// Does this interval contain a value (inclusive)? Uses the CORE bounds [lowerSec, upperSec] only.
+    /// Always false when invalid.
     public func contains(_ valueSec: Double) -> Bool {
         isValid && valueSec.isFinite && valueSec >= lowerSec && valueSec <= upperSec
+    }
+
+    /// Does the value fall within the EXTENDED interval [lowerSec, bridgeUpperSec], falling back to the
+    /// core upper when there is no bridge? Always false when invalid.
+    public func containsBridge(_ valueSec: Double) -> Bool {
+        guard isValid, valueSec.isFinite, valueSec >= lowerSec else { return false }
+        return valueSec <= (bridgeUpperSec ?? upperSec)
     }
 }
 
