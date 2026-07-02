@@ -1,5 +1,5 @@
 # ============================================================
-# event grammar Codex third-review fixes
+# event grammar public-release hardening
 # ------------------------------------------------------------
 # 1) Hard-block high-confidence derived CSV files unless the caller explicitly
 #    sets allow_derived_csv = TRUE.  The second-review guard was too permissive:

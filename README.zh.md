@@ -5,6 +5,12 @@
 
 事件级验证现在可以按 IoU 比较 AUTO 事件与 MANUAL 标签，输出 precision / recall / F1、边界误差、错标和漏检/多检明细；Basic 参数敏感性扫描会导出 `Parameter_sensitivity_summary.csv`、`Event_level_validation_metrics.csv` 和 `Manual_detector_event_matches.csv`，方便记录“为什么采用这组参数”。
 
+## 验证数据
+
+合成验证材料位于 `validation/simulation_benchmark/`。该目录包含模拟 spike train、模拟器 ground truth、STPD 基准输出、紧凑图表和合成数据验证摘要。
+
+真实 STN spike timestamp 示例位于 `validation/real_patient_example/`。该目录只用于真实多 train 输入的 smoke test 和审稿复现检查；列名已经匿名化为 `train_01` 到 `train_23`，不包含本地 Results、`.nex`、`.rds` 或带本机路径的运行输出。推送到远程仓库前，应确认伦理审批、知情同意和数据共享政策允许分享这类去标识单病人电生理时间戳示例。
+
 ## 安装
 
 ```r

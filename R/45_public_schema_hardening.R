@@ -119,7 +119,7 @@ stpd_candidate_diagnostic_audit_to_ledger <- function(ds, params, selected_train
       stpd_event_grammar_is_reject_like(gate) || stpd_event_grammar_is_reject_like(decision)
     lab_ok <- nzchar(final_lab) && !(tolower(trimws(final_lab)) %in% stpd_event_grammar_review_reject_labels()) && !stpd_event_grammar_is_reject_like(final_lab)
 
-    # Critical Codex-review fix: rejected/profile/unlabeled/diagnostic windows remain
+    # Public-release hardening: rejected/profile/unlabeled/diagnostic windows remain
     # in candidate_diagnostic_audit only. They are not public candidate-ledger rows and must
     # not reach eventness/final-decision statistics.
     if (!isTRUE(selected) || !isTRUE(lab_ok) || isTRUE(reject_like) || !isTRUE(visible_flag)) next

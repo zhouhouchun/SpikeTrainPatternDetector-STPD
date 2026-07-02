@@ -47,6 +47,9 @@ DBS_raw/
 *.nev
 *.ns*
 *.mat
+*.nex
+validation/real_patient_example/Results/
+validation/real_patient_example/source_private/
 
 # Private submission and draft materials
 manuscript/

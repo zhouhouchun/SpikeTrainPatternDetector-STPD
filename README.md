@@ -8,12 +8,15 @@ Event-level validation can compare detector events against MANUAL labels by IoU,
 
 This tool is designed for candidate generation and scientific review, not as an unbiased final ground-truth classifier.
 
-## Simulation Benchmark Artifacts
+## Validation Artifacts
 
 Curated synthetic validation artifacts are available under `validation/simulation_benchmark/`.
 This folder contains detector-visible simulated spike trains, simulator ground truth, selected STPD benchmark outputs, compact figures, and synthetic-only simulator validation summaries.
 
-The package intentionally excludes manuscript drafts, reviewer notes, bulky run objects, large TIFF/PDF exports, and real patient calibration tables.
+An anonymized single-patient real STN timestamp example is available under `validation/real_patient_example/`.
+This folder is intended only for smoke testing and reviewer reproducibility checks on real multi-train timestamp input.
+
+Except for this curated real-data example, the package intentionally excludes manuscript drafts, reviewer notes, bulky run objects, large TIFF/PDF exports, and real patient calibration tables.
 
 ## Public audit, CSV input, and parameter namespace policy
 
