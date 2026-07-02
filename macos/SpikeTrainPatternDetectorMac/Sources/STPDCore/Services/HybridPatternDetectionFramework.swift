@@ -210,7 +210,8 @@ public enum HybridPatternDetectionFramework {
             resolutions: run.resolutions,
             results: taggedResults,
             datasetStructuralSeedSummary: run.datasetStructuralSeedSummary,
-            performanceReport: run.performanceReport
+            performanceReport: run.performanceReport,
+            datasetISIDistribution: run.datasetISIDistribution
         )
     }
 

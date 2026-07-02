@@ -124,6 +124,11 @@ public struct ClassicAnchorDetectionRun: Sendable {
     public let datasetStructuralSeedSummary: StructuralDatasetSeedSummary
     public let datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance
     public let performanceReport: ClassicAnchorDetectionPerformanceReport?
+    /// Phase D2-wire: the dataset's distribution-first ISI models, computed once at the detector/band
+    /// floor (`bandSettings.minValidISISec`) before band resolution. Purely diagnostic — no detector
+    /// reads it yet. D3 will derive burst/tonic/pause `ModeISIInterval`s from it. Optional (nil for
+    /// callers that construct a run without the pipeline), mirroring `performanceReport`.
+    public let datasetISIDistribution: DatasetISIDistribution?
 
     public init(
         bandSettings: TrainAdaptiveBandSettings,
@@ -132,7 +137,8 @@ public struct ClassicAnchorDetectionRun: Sendable {
         results: [ClassicAnchorDetectionResult],
         datasetStructuralSeedSummary: StructuralDatasetSeedSummary = .empty,
         datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance = .empty,
-        performanceReport: ClassicAnchorDetectionPerformanceReport? = nil
+        performanceReport: ClassicAnchorDetectionPerformanceReport? = nil,
+        datasetISIDistribution: DatasetISIDistribution? = nil
     ) {
         self.bandSettings = bandSettings
         self.qualitySettings = qualitySettings
@@ -141,6 +147,7 @@ public struct ClassicAnchorDetectionRun: Sendable {
         self.datasetStructuralSeedSummary = datasetStructuralSeedSummary
         self.datasetRerunProvenance = datasetRerunProvenance
         self.performanceReport = performanceReport
+        self.datasetISIDistribution = datasetISIDistribution
     }
 
     public var candidates: [ClassicAnchorCandidate] {
@@ -418,6 +425,13 @@ public enum ClassicAnchorDetectionPipeline {
         manualThresholdScope: ManualThresholdScope = .allTrains
     ) -> ClassicAnchorDetectionRun {
         let performanceRecorder = PerformanceRecorder(dataset: dataset)
+        // Phase D2-wire: compute the dataset ISI distribution once, before per-train band resolution,
+        // at the detector/band floor so it aligns with the valid-ISI set the resolver uses. Diagnostic
+        // only in this slice — threaded into the returned run, consumed by no detector (D3 later).
+        let datasetISIDistribution = DatasetISIDistributionService.compute(
+            dataset: dataset,
+            minimumValidISISec: bandSettings.minValidISISec
+        )
         let initialPass = performanceRecorder.measureWallStage("initial_train_pass_parallel") {
             parallelMap(count: dataset.trains.count) { index in
                 let train = dataset.trains[index]
@@ -944,7 +958,8 @@ public enum ClassicAnchorDetectionPipeline {
             results: results,
             datasetStructuralSeedSummary: finalDatasetStructuralSeedSummary,
             datasetRerunProvenance: datasetRerunProvenance,
-            performanceReport: performanceRecorder.makeReport(results: results)
+            performanceReport: performanceRecorder.makeReport(results: results),
+            datasetISIDistribution: datasetISIDistribution
         )
     }
 
