@@ -77,6 +77,64 @@ public struct ISIModeIntervalRow: Hashable, Sendable {
     }
 }
 
+/// One histogram bar over an ISI range `[lowerSec, upperSec)`.
+public struct ISIHistogramBin: Hashable, Sendable {
+    public let lowerSec: Double
+    public let upperSec: Double
+    public let count: Int
+
+    public init(lowerSec: Double, upperSec: Double, count: Int) {
+        self.lowerSec = lowerSec
+        self.upperSec = upperSec
+        self.count = count
+    }
+}
+
+/// A LOG-spaced histogram of pooled valid ISIs — the drawable distribution for the foundation chart
+/// (ISIs span burst≈ms to pause≈100s of ms, so a log ISI axis is the natural view).
+public struct ISIDistributionHistogram: Hashable, Sendable {
+    public let bins: [ISIHistogramBin]
+    public let totalCount: Int
+    public let maxCount: Int
+    public let minSec: Double   // domain lower (first bin lower)
+    public let maxSec: Double   // domain upper (last bin upper)
+
+    public init(bins: [ISIHistogramBin], totalCount: Int, maxCount: Int, minSec: Double, maxSec: Double) {
+        self.bins = bins
+        self.totalCount = totalCount
+        self.maxCount = maxCount
+        self.minSec = minSec
+        self.maxSec = maxSec
+    }
+
+    /// Build a log-spaced histogram from valid (finite, positive) ISI values. Returns nil when there
+    /// are fewer than two positive values or the range is degenerate (min == max).
+    public static func logScale(values: [Double], binCount: Int = 40) -> ISIDistributionHistogram? {
+        let positive = values.filter { $0.isFinite && $0 > 0 }
+        guard positive.count >= 2, let minSec = positive.min(), let maxSec = positive.max(), maxSec > minSec else {
+            return nil
+        }
+        let bins = max(1, binCount)
+        let logMin = log10(minSec)
+        let logMax = log10(maxSec)
+        let step = (logMax - logMin) / Double(bins)
+        var counts = [Int](repeating: 0, count: bins)
+        for value in positive {
+            let idx = min(bins - 1, max(0, Int((log10(value) - logMin) / step)))
+            counts[idx] += 1
+        }
+        let histBins = (0..<bins).map { index in
+            ISIHistogramBin(
+                lowerSec: pow(10, logMin + Double(index) * step),
+                upperSec: pow(10, logMin + Double(index + 1) * step),
+                count: counts[index])
+        }
+        return ISIDistributionHistogram(
+            bins: histBins, totalCount: positive.count, maxCount: counts.max() ?? 0,
+            minSec: minSec, maxSec: maxSec)
+    }
+}
+
 /// Everything the "Distribution-first foundation (D1-D3)" view needs, already shaped.
 public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     /// Whether the distribution came from the detection run (D2-wired) or a fallback compute.
@@ -95,17 +153,21 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     public let perTrain: [ISIDistributionQuantileRow]
     /// Dataset-scope D3 priors (burst, then tonic, then pause — only those present).
     public let datasetIntervals: [ISIModeIntervalRow]
+    /// Log-ISI histogram of the pooled valid ISIs (nil when too few / degenerate).
+    public let histogram: ISIDistributionHistogram?
 
     public init(
         datasetName: String, source: Source, floorSec: Double,
         contributingTrainCount: Int, pooledValidISICount: Int,
         pooled: ISIDistributionQuantileRow, trainBalanced: ISIDistributionQuantileRow?,
-        perTrain: [ISIDistributionQuantileRow], datasetIntervals: [ISIModeIntervalRow]
+        perTrain: [ISIDistributionQuantileRow], datasetIntervals: [ISIModeIntervalRow],
+        histogram: ISIDistributionHistogram? = nil
     ) {
         self.datasetName = datasetName; self.source = source; self.floorSec = floorSec
         self.contributingTrainCount = contributingTrainCount; self.pooledValidISICount = pooledValidISICount
         self.pooled = pooled; self.trainBalanced = trainBalanced
         self.perTrain = perTrain; self.datasetIntervals = datasetIntervals
+        self.histogram = histogram
     }
 
     /// Shape an already-computed distribution + derived intervals into presentation rows.
@@ -132,11 +194,15 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
             .compactMap { $0 }
             .map(ISIModeIntervalRow.init)
 
+        let pooledValues = distribution.trainDistributions.flatMap(\.validISIValuesSec)
+        let histogram = ISIDistributionHistogram.logScale(values: pooledValues)
+
         return ISIDistributionFoundationPresentation(
             datasetName: distribution.datasetName, source: source, floorSec: floorSec,
             contributingTrainCount: distribution.contributingTrainCount,
             pooledValidISICount: distribution.pooledValidISICount,
-            pooled: pooled, trainBalanced: balanced, perTrain: perTrain, datasetIntervals: intervals)
+            pooled: pooled, trainBalanced: balanced, perTrain: perTrain, datasetIntervals: intervals,
+            histogram: histogram)
     }
 
     /// End-to-end convenience for the view: prefer the D2-wired `runDistribution`; otherwise compute

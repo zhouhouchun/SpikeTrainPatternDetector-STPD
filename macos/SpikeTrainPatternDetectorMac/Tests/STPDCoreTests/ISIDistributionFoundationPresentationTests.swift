@@ -127,3 +127,35 @@ func presentationExposesTonicAcceptanceBand() {
     #expect((tonic.acceptanceLowerSec ?? .infinity) <= tonic.lowerSec)   // core ⊆ acceptance
     #expect((tonic.acceptanceUpperSec ?? -.infinity) >= tonic.upperSec)
 }
+
+// 7 — log-ISI histogram: counts sum to total, bins are ordered/contiguous, degenerate inputs return nil.
+@Test
+func isiDistributionHistogramLogScaleBinsPooledValues() {
+    let values = [0.003, 0.0032, 0.05, 0.052, 0.048, 0.5, 0.55]
+    guard let h = ISIDistributionHistogram.logScale(values: values, binCount: 12) else {
+        #expect(Bool(false), "expected a histogram"); return
+    }
+    #expect(h.totalCount == 7)
+    #expect(h.bins.reduce(0) { $0 + $1.count } == 7)               // every value binned exactly once
+    #expect(h.bins.count == 12)
+    #expect(h.minSec == 0.003 && h.maxSec == 0.55)
+    #expect(h.maxCount >= 1)
+    for i in 0..<(h.bins.count - 1) {
+        #expect(h.bins[i].lowerSec < h.bins[i].upperSec)
+        #expect(abs(h.bins[i].upperSec - h.bins[i + 1].lowerSec) <= 1e-12)   // contiguous
+    }
+    // Degenerate: too few / single value / min==max ⇒ nil (no crash).
+    #expect(ISIDistributionHistogram.logScale(values: [0.05]) == nil)
+    #expect(ISIDistributionHistogram.logScale(values: [0.05, 0.05]) == nil)
+    #expect(ISIDistributionHistogram.logScale(values: []) == nil)
+}
+
+// 8 — the presentation carries the pooled histogram (total == pooled valid ISI count).
+@Test
+func presentationCarriesPooledHistogram() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    #expect(p.histogram != nil)
+    #expect(p.histogram?.totalCount == p.pooledValidISICount)
+    #expect((p.histogram?.maxCount ?? 0) >= 1)
+}

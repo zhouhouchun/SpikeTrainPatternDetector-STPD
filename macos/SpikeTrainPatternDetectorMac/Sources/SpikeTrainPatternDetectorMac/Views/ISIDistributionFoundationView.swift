@@ -28,6 +28,7 @@ struct ISIDistributionFoundationView: View {
                 if presentation.pooledValidISICount == 0 && presentation.perTrain.isEmpty {
                     emptyState
                 } else {
+                    chartSection
                     quantileSection
                     perTrainSection
                     intervalSection
@@ -169,6 +170,123 @@ struct ISIDistributionFoundationView: View {
             if interval.isAuditOnly { badge("audit-only", tint: .gray) }
             if !interval.isValid { badge("invalid", tint: .red) }
         }
+    }
+
+    // MARK: Chart (UI-2A)
+
+    private var chartSection: some View {
+        sectionCard("Pooled ISI distribution (log ISI)") {
+            if let histogram = presentation.histogram, histogram.totalCount > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    chartLegend
+                    Canvas { context, size in
+                        drawFoundationChart(histogram: histogram, intervals: presentation.datasetIntervals,
+                                            context: &context, size: size)
+                    }
+                    .frame(height: 240)
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.6),
+                                in: RoundedRectangle(cornerRadius: 6))
+                }
+            } else {
+                Text("Not enough ISI data to plot a distribution.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var chartLegend: some View {
+        HStack(spacing: 14) {
+            legendSwatch("burst", familyColor(.burst))
+            legendSwatch("tonic", familyColor(.tonic))
+            legendSwatch("pause", familyColor(.pause))
+            Divider().frame(height: 12)
+            Text("dark = core · light = acceptance · mid = bridge")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func legendSwatch(_ label: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2).fill(color.opacity(0.5)).frame(width: 12, height: 10)
+            Text(label).font(.caption2)
+        }
+    }
+
+    private func drawFoundationChart(histogram: ISIDistributionHistogram, intervals: [ISIModeIntervalRow],
+                                     context: inout GraphicsContext, size: CGSize) {
+        let plot = CGRect(x: 8, y: 8, width: size.width - 16, height: size.height - 30)
+        guard plot.width > 8, plot.height > 8, histogram.maxSec > histogram.minSec else { return }
+        let logMin = log10(histogram.minSec)
+        let logSpan = max(1e-9, log10(histogram.maxSec) - logMin)
+
+        func x(_ sec: Double) -> CGFloat {
+            let clamped = min(max(sec, histogram.minSec), histogram.maxSec)
+            return plot.minX + CGFloat((log10(clamped) - logMin) / logSpan) * plot.width
+        }
+        func yTop(_ count: Int) -> CGFloat {
+            let frac = histogram.maxCount > 0 ? CGFloat(count) / CGFloat(histogram.maxCount) : 0
+            return plot.maxY - frac * plot.height
+        }
+
+        // 1) interval bands behind the bars: acceptance (lightest) < bridge (mid) < core (darkest).
+        for interval in intervals {
+            let color = familyColor(interval.family)
+            if interval.acceptanceLowerSec != nil || interval.acceptanceUpperSec != nil {
+                let al = interval.acceptanceLowerSec ?? interval.lowerSec
+                let au = interval.acceptanceUpperSec ?? interval.upperSec
+                fillBand(&context, x(al), x(au), plot, color.opacity(0.10))
+            }
+            if let bridge = interval.bridgeUpperSec, bridge > interval.upperSec {
+                fillBand(&context, x(interval.upperSec), x(bridge), plot, color.opacity(0.16))
+            }
+            fillBand(&context, x(interval.lowerSec), x(interval.upperSec), plot, color.opacity(0.26))
+            verticalRule(&context, x(interval.lowerSec), plot, color.opacity(0.6))
+            verticalRule(&context, x(interval.upperSec), plot, color.opacity(0.6))
+        }
+
+        // 2) histogram bars.
+        for bin in histogram.bins where bin.count > 0 {
+            let x0 = x(bin.lowerSec), x1 = x(bin.upperSec)
+            let top = yTop(bin.count)
+            let rect = CGRect(x: x0 + 0.5, y: top, width: max(1, x1 - x0 - 1), height: plot.maxY - top)
+            context.fill(Path(rect), with: .color(Color(nsColor: .labelColor).opacity(0.55)))
+        }
+
+        // 3) x baseline + log decade ticks / labels.
+        context.stroke(Path { $0.move(to: CGPoint(x: plot.minX, y: plot.maxY)); $0.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY)) },
+                       with: .color(.secondary.opacity(0.5)), lineWidth: 1)
+        for decade in decadeTicks(minSec: histogram.minSec, maxSec: histogram.maxSec) {
+            let tx = x(decade)
+            context.stroke(Path { $0.move(to: CGPoint(x: tx, y: plot.minY)); $0.addLine(to: CGPoint(x: tx, y: plot.maxY)) },
+                           with: .color(.secondary.opacity(0.15)), lineWidth: 1)
+            var label = context.resolve(Text(decadeLabel(decade)).font(.caption2))
+            label.shading = .color(.secondary)
+            context.draw(label, at: CGPoint(x: tx, y: plot.maxY + 11), anchor: .center)
+        }
+    }
+
+    private func fillBand(_ context: inout GraphicsContext, _ x0: CGFloat, _ x1: CGFloat, _ plot: CGRect, _ color: Color) {
+        let rect = CGRect(x: min(x0, x1), y: plot.minY, width: abs(x1 - x0), height: plot.height)
+        context.fill(Path(rect), with: .color(color))
+    }
+
+    private func verticalRule(_ context: inout GraphicsContext, _ x: CGFloat, _ plot: CGRect, _ color: Color) {
+        context.stroke(Path { $0.move(to: CGPoint(x: x, y: plot.minY)); $0.addLine(to: CGPoint(x: x, y: plot.maxY)) },
+                       with: .color(color), lineWidth: 1)
+    }
+
+    private func decadeTicks(minSec: Double, maxSec: Double) -> [Double] {
+        var ticks: [Double] = []
+        var decade = pow(10, (log10(minSec)).rounded(.down))
+        while decade <= maxSec * 1.0000001 {
+            if decade >= minSec { ticks.append(decade) }
+            decade *= 10
+        }
+        return ticks
+    }
+
+    private func decadeLabel(_ sec: Double) -> String {
+        sec >= 1 ? "\(Int(sec.rounded()))s" : "\(Int((sec * 1000).rounded()))ms"
     }
 
     private var emptyState: some View {
