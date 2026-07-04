@@ -104,6 +104,9 @@ struct ISIDistributionFoundationView: View {
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("core = central identity band (e.g. tonic q25–q75);  acc = wider acceptance / membership band;  bridge = burst extension.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     ForEach(presentation.datasetIntervals, id: \.self) { interval in
                         intervalRow(interval)
                     }
@@ -138,20 +141,33 @@ struct ISIDistributionFoundationView: View {
                 .font(.body.weight(.semibold))
                 .foregroundStyle(familyColor(interval.family))
                 .frame(width: 64, alignment: .leading)
-            Text("[\(ms(interval.lowerSec)) – \(ms(interval.upperSec)) ms]")
-                .monospacedDigit()
-            if let bridge = interval.bridgeUpperSec {
-                Text("bridge → \(ms(bridge)) ms")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                // Core (identity) interval.
+                Text("core  [\(ms(interval.lowerSec)) – \(ms(interval.upperSec)) ms]")
+                    .monospacedDigit()
+                // Acceptance (wider membership) interval, shown only when it differs from the core.
+                if interval.acceptanceLowerSec != nil || interval.acceptanceUpperSec != nil {
+                    Text("acc.  [\(ms(interval.acceptanceLowerSec ?? interval.lowerSec)) – \(ms(interval.acceptanceUpperSec ?? interval.upperSec)) ms]")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                // Burst bridge/extension upper.
+                if let bridge = interval.bridgeUpperSec {
+                    Text("bridge → \(ms(bridge)) ms")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            badge(interval.scope.rawValue, tint: .blue)
+
+            Spacer(minLength: 8)
+
+            badge(interval.scope.rawValue, tint: .indigo)
             badge(interval.provenanceOrigin.rawValue, tint: .purple)
             if interval.mayPropagateToDataset { badge("propagate", tint: .green) }
             if !interval.maySelectFinalLabel { badge("no-select", tint: .gray) }
             if interval.isAuditOnly { badge("audit-only", tint: .gray) }
             if !interval.isValid { badge("invalid", tint: .red) }
-            Spacer()
         }
     }
 
