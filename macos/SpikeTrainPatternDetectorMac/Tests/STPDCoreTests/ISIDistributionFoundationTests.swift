@@ -226,3 +226,38 @@ func modeISIIntervalOverlapDescriptorDistinguishesWithinAndCrossTrain() {
     #expect(cross.kind == .crossTrainBandOverlap)
     #expect(cross.hasOverlap == false)   // disjoint bands
 }
+
+// 9 — acceptance band: core ⊆ acceptance validity, containsAcceptance vs contains, effective fallback.
+@Test
+func modeISIIntervalAcceptanceBandValidityAndContainment() {
+    // Valid: acceptance wider than core on both sides.
+    let iv = ModeISIInterval(
+        family: .tonic, lowerSec: 0.02, upperSec: 0.06,
+        scope: .trainLocal, provenance: .trainLocalDerived(sourceStatistic: "x"),
+        acceptanceLowerSec: 0.008, acceptanceUpperSec: 0.17)
+    #expect(iv.isValid)
+    #expect(iv.effectiveAcceptanceLowerSec == 0.008)
+    #expect(iv.effectiveAcceptanceUpperSec == 0.17)
+    #expect(iv.contains(0.04) && !iv.contains(0.10))            // core
+    #expect(iv.containsAcceptance(0.10))                        // inside acceptance, outside core
+    #expect(iv.containsAcceptance(0.009) && !iv.contains(0.009))
+    #expect(!iv.containsAcceptance(0.20))                       // beyond acceptance
+
+    // nil acceptance ⇒ effective == core; containsAcceptance == contains (backward-compatible).
+    let noAccept = ModeISIInterval(
+        family: .tonic, lowerSec: 0.02, upperSec: 0.06,
+        scope: .trainLocal, provenance: .trainLocalDerived(sourceStatistic: "x"))
+    #expect(noAccept.effectiveAcceptanceLowerSec == 0.02 && noAccept.effectiveAcceptanceUpperSec == 0.06)
+    #expect(noAccept.containsAcceptance(0.04) == noAccept.contains(0.04))
+    #expect(!noAccept.containsAcceptance(0.10))
+
+    // Invalid: acceptance NARROWER than core (violates core ⊆ acceptance).
+    #expect(ModeISIInterval.validated(
+        family: .tonic, lowerSec: 0.02, upperSec: 0.06,
+        scope: .trainLocal, provenance: .trainLocalDerived(sourceStatistic: "x"),
+        acceptanceLowerSec: 0.03) == nil)                      // acceptanceLower > lowerSec
+    #expect(ModeISIInterval.validated(
+        family: .tonic, lowerSec: 0.02, upperSec: 0.06,
+        scope: .trainLocal, provenance: .trainLocalDerived(sourceStatistic: "x"),
+        acceptanceUpperSec: 0.05) == nil)                      // acceptanceUpper < upperSec
+}

@@ -113,3 +113,17 @@ func presentationHandlesEmptyDatasetSafely() {
     #expect(p.datasetIntervals.isEmpty)
     #expect(p.pooled.q50Sec == nil)
 }
+
+// 6 — interval rows expose the tonic acceptance band (wider than the core), for UI display.
+@Test
+func presentationExposesTonicAcceptanceBand() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    guard let tonic = p.datasetIntervals.first(where: { $0.family == .tonic }) else {
+        #expect(Bool(false), "expected a tonic interval row"); return
+    }
+    #expect(tonic.acceptanceLowerSec != nil)
+    #expect(tonic.acceptanceUpperSec != nil)
+    #expect((tonic.acceptanceLowerSec ?? .infinity) <= tonic.lowerSec)   // core ⊆ acceptance
+    #expect((tonic.acceptanceUpperSec ?? -.infinity) >= tonic.upperSec)
+}

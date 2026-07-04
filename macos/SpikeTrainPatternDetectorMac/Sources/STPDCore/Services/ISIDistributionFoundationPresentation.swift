@@ -46,9 +46,13 @@ public struct ISIDistributionQuantileRow: Hashable, Sendable {
 public struct ISIModeIntervalRow: Hashable, Sendable {
     public let family: ISIPatternFamily
     public let scope: ISIDistributionScope
+    /// Core interval bounds (e.g. tonic q25-q75).
     public let lowerSec: Double
     public let upperSec: Double
     public let bridgeUpperSec: Double?
+    /// Wider acceptance-band bounds (membership band); nil when equal to the core.
+    public let acceptanceLowerSec: Double?
+    public let acceptanceUpperSec: Double?
     public let isValid: Bool
     public let provenanceOrigin: IntervalOrigin
     public let sourceStatistic: String
@@ -62,6 +66,8 @@ public struct ISIModeIntervalRow: Hashable, Sendable {
         self.lowerSec = interval.lowerSec
         self.upperSec = interval.upperSec
         self.bridgeUpperSec = interval.bridgeUpperSec
+        self.acceptanceLowerSec = interval.acceptanceLowerSec
+        self.acceptanceUpperSec = interval.acceptanceUpperSec
         self.isValid = interval.isValid
         self.provenanceOrigin = interval.provenance.origin
         self.sourceStatistic = interval.provenance.sourceStatistic

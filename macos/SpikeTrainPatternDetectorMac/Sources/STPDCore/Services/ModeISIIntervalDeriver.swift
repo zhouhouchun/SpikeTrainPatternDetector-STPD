@@ -165,12 +165,20 @@ public enum ModeISIIntervalDeriver {
             let count = v.reduce(into: 0) { acc, value in
                 if value >= tonicLower && value <= tonicUpper { acc += 1 }
             }
+            // Acceptance band = the wider "could legitimately be tonic" membership band: extend to the
+            // neighbouring mode boundaries when present (burst valley below / pause valley above), else
+            // to q10/q90. Clamped so the core (q25-q75) is always a subset (core ⊆ acceptance).
+            let acceptanceLowerRaw = burstBridgeBoundary ?? sample.quantile(0.10) ?? tonicLower
+            let acceptanceUpperRaw = pauseFloorBoundary ?? sample.quantile(0.90) ?? tonicUpper
+            let acceptanceLower = Swift.min(acceptanceLowerRaw, tonicLower)
+            let acceptanceUpper = Swift.max(acceptanceUpperRaw, tonicUpper)
             tonic = ModeISIInterval.validated(
                 family: .tonic, lowerSec: tonicLower, upperSec: tonicUpper,
                 supportCount: count, supportFraction: Double(count) / Double(n),
                 scope: scope,
                 provenance: provenance(for: scope, statistic: "tonic_central_iqr", auditOnly: false),
-                confidence: Double(count) / Double(n)
+                confidence: Double(count) / Double(n),
+                acceptanceLowerSec: acceptanceLower, acceptanceUpperSec: acceptanceUpper
             )
         }
 

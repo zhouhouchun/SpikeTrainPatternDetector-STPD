@@ -352,6 +352,14 @@ public struct ModeISIInterval: Hashable, Sendable {
     /// present, `bridgeUpperSec` (>= `upperSec`) is the wider bridge extent used by burst. Normally
     /// nil for tonic/pause/unknown.
     public let bridgeUpperSec: Double?
+    /// Optional ACCEPTANCE-band lower bound. `[lowerSec, upperSec]` is the CORE (e.g. tonic q25-q75);
+    /// the acceptance band, when present, is a WIDER membership band a legitimate ISI may occupy —
+    /// bounded by the neighbouring modes. Invariant: `acceptanceLowerSec <= lowerSec`. nil ⇒ acceptance
+    /// equals the core lower.
+    public let acceptanceLowerSec: Double?
+    /// Optional ACCEPTANCE-band upper bound. Invariant: `acceptanceUpperSec >= upperSec`. nil ⇒
+    /// acceptance equals the core upper.
+    public let acceptanceUpperSec: Double?
     public let supportCount: Int
     public let supportFraction: Double
     public let scope: ISIDistributionScope
@@ -370,12 +378,16 @@ public struct ModeISIInterval: Hashable, Sendable {
         scope: ISIDistributionScope,
         provenance: IntervalProvenance,
         confidence: Double = 0,
-        bridgeUpperSec: Double? = nil
+        bridgeUpperSec: Double? = nil,
+        acceptanceLowerSec: Double? = nil,
+        acceptanceUpperSec: Double? = nil
     ) {
         self.family = family
         self.lowerSec = lowerSec
         self.upperSec = upperSec
         self.bridgeUpperSec = bridgeUpperSec
+        self.acceptanceLowerSec = acceptanceLowerSec
+        self.acceptanceUpperSec = acceptanceUpperSec
         self.supportCount = max(0, supportCount)
         self.supportFraction = supportFraction.isFinite ? min(1, max(0, supportFraction)) : 0
         self.scope = scope
@@ -384,7 +396,10 @@ public struct ModeISIInterval: Hashable, Sendable {
         let coreValid = lowerSec.isFinite && upperSec.isFinite && lowerSec >= 0 && lowerSec <= upperSec
         // A bridge, when present, must be finite and extend at or beyond the core upper.
         let bridgeValid = bridgeUpperSec.map { $0.isFinite && $0 >= upperSec } ?? true
-        self.isValid = coreValid && bridgeValid
+        // An acceptance band, when present, must be finite and CONTAIN the core (core ⊆ acceptance).
+        let acceptanceLowerValid = acceptanceLowerSec.map { $0.isFinite && $0 >= 0 && $0 <= lowerSec } ?? true
+        let acceptanceUpperValid = acceptanceUpperSec.map { $0.isFinite && $0 >= upperSec } ?? true
+        self.isValid = coreValid && bridgeValid && acceptanceLowerValid && acceptanceUpperValid
     }
 
     /// Failable factory: returns nil for an invalid interval (`lower > upper`, non-finite, negative).
@@ -397,12 +412,15 @@ public struct ModeISIInterval: Hashable, Sendable {
         scope: ISIDistributionScope,
         provenance: IntervalProvenance,
         confidence: Double = 0,
-        bridgeUpperSec: Double? = nil
+        bridgeUpperSec: Double? = nil,
+        acceptanceLowerSec: Double? = nil,
+        acceptanceUpperSec: Double? = nil
     ) -> ModeISIInterval? {
         let interval = ModeISIInterval(
             family: family, lowerSec: lowerSec, upperSec: upperSec, supportCount: supportCount,
             supportFraction: supportFraction, scope: scope, provenance: provenance, confidence: confidence,
-            bridgeUpperSec: bridgeUpperSec
+            bridgeUpperSec: bridgeUpperSec,
+            acceptanceLowerSec: acceptanceLowerSec, acceptanceUpperSec: acceptanceUpperSec
         )
         return interval.isValid ? interval : nil
     }
@@ -418,6 +436,18 @@ public struct ModeISIInterval: Hashable, Sendable {
     public func containsBridge(_ valueSec: Double) -> Bool {
         guard isValid, valueSec.isFinite, valueSec >= lowerSec else { return false }
         return valueSec <= (bridgeUpperSec ?? upperSec)
+    }
+
+    /// The acceptance lower/upper, falling back to the core bounds when no acceptance band is set.
+    public var effectiveAcceptanceLowerSec: Double { acceptanceLowerSec ?? lowerSec }
+    public var effectiveAcceptanceUpperSec: Double { acceptanceUpperSec ?? upperSec }
+
+    /// Does the value fall within the wider ACCEPTANCE band
+    /// [effectiveAcceptanceLowerSec, effectiveAcceptanceUpperSec] (equals the core when no acceptance
+    /// band is set)? Always false when invalid.
+    public func containsAcceptance(_ valueSec: Double) -> Bool {
+        isValid && valueSec.isFinite
+            && valueSec >= effectiveAcceptanceLowerSec && valueSec <= effectiveAcceptanceUpperSec
     }
 }
 

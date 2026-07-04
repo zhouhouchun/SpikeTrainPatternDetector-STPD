@@ -181,3 +181,54 @@ func modeISIIntervalBridgeValidityAndExtendedContains() {
         scope: .trainLocal, provenance: .trainLocalDerived(sourceStatistic: "x"),
         bridgeUpperSec: 0.005) == nil)
 }
+
+// 9 — tonic acceptance is wider than the q25-q75 core; a regular tonic-only run has ~half its ISIs in
+// the CORE but most in ACCEPTANCE (the recall-fix property).
+@Test
+func modeISIIntervalDeriverTonicAcceptanceWiderThanCore() {
+    let isis = (0..<20).map { 0.030 + 0.002 * Double($0) }     // spread, regular tonic; no gaps
+    let derived = d3Derive([d3Train("tonic", isis: isis)], floor: 0.001)
+    guard let tonic = derived.dataset.tonic else { #expect(Bool(false), "expected tonic"); return }
+    #expect(tonic.acceptanceLowerSec != nil && tonic.acceptanceUpperSec != nil)
+    #expect(tonic.effectiveAcceptanceLowerSec <= tonic.lowerSec)
+    #expect(tonic.effectiveAcceptanceUpperSec >= tonic.upperSec)
+    #expect(tonic.effectiveAcceptanceLowerSec < tonic.lowerSec || tonic.effectiveAcceptanceUpperSec > tonic.upperSec)
+
+    let inCore = isis.filter { tonic.contains($0) }.count
+    let inAcceptance = isis.filter { tonic.containsAcceptance($0) }.count
+    #expect(inAcceptance > inCore)
+    #expect(Double(inCore) <= 0.65 * Double(isis.count))        // core ≈ half
+    #expect(Double(inAcceptance) >= 0.75 * Double(isis.count))  // acceptance ≈ most
+}
+
+// 10 — with burst + pause neighbours, tonic acceptance extends to the mode boundaries and captures the
+// full tonic mode, while the q25-q75 core clips its edges.
+@Test
+func modeISIIntervalDeriverTonicAcceptanceSpansInterModeGap() {
+    let burst = [0.003, 0.0032, 0.0035, 0.003, 0.0033]
+    let tonicISIs = [0.040, 0.052, 0.045, 0.058, 0.048, 0.055, 0.043, 0.050, 0.047, 0.053]
+    let pause = [0.5, 0.6, 0.55]
+    let derived = d3Derive([d3Train("btp", isis: burst + tonicISIs + pause)], floor: 0.001)
+    guard let tonic = derived.dataset.tonic, let pauseIv = derived.dataset.pause else {
+        #expect(Bool(false), "expected tonic + pause"); return
+    }
+    #expect(tonic.effectiveAcceptanceLowerSec <= tonic.lowerSec)
+    #expect(tonic.effectiveAcceptanceUpperSec >= tonic.upperSec)
+    #expect(tonic.effectiveAcceptanceUpperSec >= pauseIv.lowerSec - 1e-9)   // reaches the pause floor
+    #expect(tonicISIs.allSatisfy { tonic.containsAcceptance($0) })          // all tonic ISIs accepted
+    #expect(tonicISIs.contains { !tonic.contains($0) })                    // core clips at least one
+}
+
+// 11 — tonic core AND acceptance bounds are scale-invariant.
+@Test
+func modeISIIntervalDeriverTonicAcceptanceIsScaleInvariant() {
+    let isis = (0..<20).map { 0.030 + 0.002 * Double($0) }
+    guard let base = d3Derive([d3Train("t", isis: isis)], floor: 0.001).dataset.tonic,
+          let scaled = d3Derive([d3Train("t", isis: isis.map { $0 * 10 })], floor: 0.010).dataset.tonic else {
+        #expect(Bool(false), "expected tonic at both scales"); return
+    }
+    #expect(d3Close(base.lowerSec * 10, scaled.lowerSec))
+    #expect(d3Close(base.upperSec * 10, scaled.upperSec))
+    #expect(d3Close(base.effectiveAcceptanceLowerSec * 10, scaled.effectiveAcceptanceLowerSec))
+    #expect(d3Close(base.effectiveAcceptanceUpperSec * 10, scaled.effectiveAcceptanceUpperSec))
+}
