@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let document = RasterDocument()
     private var mainWindow: NSWindow?
+    private var distributionFoundationWindow: NSWindow?
 
     static func main() {
         let app = NSApplication.shared
@@ -49,6 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showMainWindow()
     }
 
+    // Temporary DEBUG path: open a window inspecting the distribution-first foundation (D1-D3) for the
+    // live document. Not part of the production Workbench navigation.
+    @objc private func openDistributionFoundation() {
+        let window = distributionFoundationWindow ?? makeDistributionFoundationWindow()
+        distributionFoundationWindow = window
+        placeOnVisibleScreenIfNeeded(window)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func showMainWindow() {
         let window = mainWindow ?? makeMainWindow()
         mainWindow = window
@@ -72,6 +83,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentViewController = NSHostingController(rootView: rootView)
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 1240, height: 700)
+        return window
+    }
+
+    private func makeDistributionFoundationWindow() -> NSWindow {
+        let rootView = ISIDistributionFoundationDebugHost(document: document)
+            .frame(minWidth: 680, minHeight: 640)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 820),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Distribution-first foundation (D1-D3) — Debug"
+        window.contentViewController = NSHostingController(rootView: rootView)
+        window.isReleasedWhenClosed = false
         return window
     }
 
@@ -131,6 +158,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withTitle: "Load Sample",
             action: #selector(loadSample),
             keyEquivalent: "r"
+        ).target = self
+
+        // Temporary Debug menu — runtime inspection of the distribution-first foundation (D1-D3).
+        let debugMenuItem = NSMenuItem()
+        mainMenu.addItem(debugMenuItem)
+        let debugMenu = NSMenu(title: "Debug")
+        debugMenuItem.submenu = debugMenu
+        debugMenu.addItem(
+            withTitle: "Distribution-first foundation (D1-D3)",
+            action: #selector(openDistributionFoundation),
+            keyEquivalent: ""
         ).target = self
 
         NSApp.mainMenu = mainMenu
