@@ -201,22 +201,28 @@ func modeISIIntervalDeriverTonicAcceptanceWiderThanCore() {
     #expect(Double(inAcceptance) >= 0.75 * Double(isis.count))  // acceptance ≈ most
 }
 
-// 10 — with burst + pause neighbours, tonic acceptance extends to the mode boundaries and captures the
-// full tonic mode, while the q25-q75 core clips its edges.
+// 10 — RE-CENTERED (S2): with burst + pause neighbours, tonic acceptance HUGS the central tonic mode
+// (its observed segment support) and does NOT reach out to the pause floor or the burst valley. The
+// q25-q75 core still clips the mode's edges, so acceptance stays strictly wider than the core.
 @Test
-func modeISIIntervalDeriverTonicAcceptanceSpansInterModeGap() {
+func modeISIIntervalDeriverTonicAcceptanceHugsCentralMode() {
     let burst = [0.003, 0.0032, 0.0035, 0.003, 0.0033]
     let tonicISIs = [0.040, 0.052, 0.045, 0.058, 0.048, 0.055, 0.043, 0.050, 0.047, 0.053]
     let pause = [0.5, 0.6, 0.55]
     let derived = d3Derive([d3Train("btp", isis: burst + tonicISIs + pause)], floor: 0.001)
-    guard let tonic = derived.dataset.tonic, let pauseIv = derived.dataset.pause else {
-        #expect(Bool(false), "expected tonic + pause"); return
+    guard let tonic = derived.dataset.tonic, let pauseIv = derived.dataset.pause,
+          let burstIv = derived.dataset.burst else {
+        #expect(Bool(false), "expected burst + tonic + pause"); return
     }
-    #expect(tonic.effectiveAcceptanceLowerSec <= tonic.lowerSec)
-    #expect(tonic.effectiveAcceptanceUpperSec >= tonic.upperSec)
-    #expect(tonic.effectiveAcceptanceUpperSec >= pauseIv.lowerSec - 1e-9)   // reaches the pause floor
-    #expect(tonicISIs.allSatisfy { tonic.containsAcceptance($0) })          // all tonic ISIs accepted
-    #expect(tonicISIs.contains { !tonic.contains($0) })                    // core clips at least one
+    // Acceptance does NOT reach the pause floor (the reversed S2 semantics) and stays far below it.
+    #expect(tonic.effectiveAcceptanceUpperSec < pauseIv.lowerSec)
+    #expect(tonic.effectiveAcceptanceUpperSec < 0.5 * pauseIv.lowerSec)
+    // ...nor down into the empty burst gap (acceptance lower stays above the burst bridge/valley).
+    #expect(tonic.effectiveAcceptanceLowerSec > (burstIv.bridgeUpperSec ?? burstIv.upperSec))
+    // Acceptance still captures essentially the whole tonic mode (interior robust to the fp round-trip).
+    #expect(tonicISIs.filter { tonic.containsAcceptance($0) }.count >= 8)
+    // ...while the q25-q75 core clips at least one tonic ISI.
+    #expect(tonicISIs.contains { !tonic.contains($0) })
 }
 
 // 11 — tonic core AND acceptance bounds are scale-invariant.
@@ -231,4 +237,129 @@ func modeISIIntervalDeriverTonicAcceptanceIsScaleInvariant() {
     #expect(d3Close(base.upperSec * 10, scaled.upperSec))
     #expect(d3Close(base.effectiveAcceptanceLowerSec * 10, scaled.effectiveAcceptanceLowerSec))
     #expect(d3Close(base.effectiveAcceptanceUpperSec * 10, scaled.effectiveAcceptanceUpperSec))
+}
+
+// 12 — S2 re-centering, burst_response_2_s boundary case: a tonic baseline + a compact burst packet
+// (incl. the BCB-1 boundary ISIs 0.011/0.017/0.033/0.041) yields a tonic CORE centered INSIDE the tonic
+// cluster [0.42, 0.48] — NOT dragged down into the empty 0.041→0.42 gap by the burst ISIs — and the
+// burst/boundary ISIs are excluded from the tonic core.
+@Test
+func modeISIIntervalDeriverTonicCoreCentersOnClusterDespiteBurstPacket() {
+    let tonicBaseline = [0.42, 0.46, 0.43, 0.47, 0.45, 0.42, 0.48, 0.45, 0.44, 0.46]
+    let burstPacket = [0.011, 0.017, 0.033, 0.041]
+    let fam = d3Derive([d3Train("burst_response", isis: tonicBaseline + burstPacket)], floor: 0.001).dataset
+    guard let tonic = fam.tonic else { #expect(Bool(false), "expected tonic"); return }
+    // Core sits inside the tonic cluster, not in the burst→tonic gap.
+    #expect(tonic.lowerSec >= 0.42 - 1e-9)
+    #expect(tonic.upperSec <= 0.48 + 1e-9)
+    #expect(tonic.lowerSec < tonic.upperSec)
+    // Burst + the 0.041 boundary ISI are NOT tonic (below the central segment).
+    for isi in burstPacket { #expect(!tonic.contains(isi)) }
+    #expect(!tonic.contains(0.041))
+    // A central baseline ISI is inside the core.
+    #expect(tonic.contains(0.45))
+    #expect(tonic.provenance.sourceStatistic == "tonic_central_segment_iqr")
+}
+
+// 13 — clean tonic-only train: no spurious burst/pause modes; acceptance spans the observed range so
+// essentially every ISI is a member; core is the central IQR (strictly inside acceptance).
+@Test
+func modeISIIntervalDeriverCleanTonicHasNoSpuriousModes() {
+    let isis = (0..<12).map { 0.44 + 0.004 * Double($0) }      // 0.440..0.484, regular, no gaps
+    let fam = d3Derive([d3Train("tonic", isis: isis)], floor: 0.001).dataset
+    #expect(fam.burst == nil)
+    #expect(fam.pause == nil)
+    guard let tonic = fam.tonic else { #expect(Bool(false), "expected tonic"); return }
+    #expect(isis.filter { tonic.containsAcceptance($0) }.count >= isis.count - 2)   // ~full range
+    #expect(isis.filter { tonic.contains($0) }.count < isis.count)                  // core clips
+}
+
+// 14 — regression for the mixture-q25 bug: in a burst+tonic train the GLOBAL q25 falls in the empty
+// burst→tonic gap; the re-centered core lower must sit in the tonic cluster, not the gap, and no burst
+// ISI may be tonic-core or tonic-acceptance.
+@Test
+func modeISIIntervalDeriverTonicCoreLowerNotPulledIntoGap() {
+    let burst = [0.006, 0.008, 0.010, 0.012]
+    let tonic = [0.40, 0.42, 0.44, 0.45, 0.46, 0.47, 0.48, 0.50]
+    let fam = d3Derive([d3Train("bt", isis: burst + tonic)], floor: 0.001).dataset
+    guard let t = fam.tonic, let b = fam.burst else { #expect(Bool(false), "expected burst + tonic"); return }
+    #expect(t.lowerSec >= 0.40 - 1e-9)                          // in the cluster, above the empty gap
+    #expect(t.lowerSec > (b.bridgeUpperSec ?? b.upperSec))
+    for isi in burst {
+        #expect(!t.contains(isi))
+        #expect(!t.containsAcceptance(isi))
+    }
+}
+
+// 15 — pause tail must NOT inflate tonic: a tonic cluster + a long-ISI pair yields a pause, and the tonic
+// acceptance upper stays hugged to the tonic mode, well below the pause floor (no empty-gap balloon).
+@Test
+func modeISIIntervalDeriverPauseTailDoesNotInflateTonicAcceptance() {
+    let tonic = [0.42, 0.46, 0.43, 0.47, 0.45, 0.42, 0.48, 0.45]
+    let longTail = [1.6, 1.8]
+    let fam = d3Derive([d3Train("tp", isis: tonic + longTail)], floor: 0.001).dataset
+    guard let t = fam.tonic, let p = fam.pause else { #expect(Bool(false), "expected tonic + pause"); return }
+    #expect(t.effectiveAcceptanceUpperSec < p.lowerSec)         // no balloon to the pause valley
+    #expect(t.effectiveAcceptanceUpperSec <= 0.5)               // hugged near the tonic mode (<< ~0.876 valley)
+    for isi in longTail { #expect(!t.containsAcceptance(isi)) } // pause ISIs are not tonic
+}
+
+// 16 — the RE-CENTERED tonic core + acceptance are scale-invariant on a burst+tonic+pause train (proves
+// no absolute-ms cutoff leaked into the central-segment re-centering).
+@Test
+func modeISIIntervalDeriverReCenteredTonicIsScaleInvariant() {
+    let isis = d3BurstISIs + d3TonicISIs + d3PauseISIs
+    guard let base = d3Derive([d3Train("s", isis: isis)], floor: 0.001).dataset.tonic,
+          let scaled = d3Derive([d3Train("s", isis: isis.map { $0 * 10 })], floor: 0.010).dataset.tonic else {
+        #expect(Bool(false), "expected tonic at both scales"); return
+    }
+    #expect(d3Close(base.lowerSec * 10, scaled.lowerSec))
+    #expect(d3Close(base.upperSec * 10, scaled.upperSec))
+    #expect(d3Close(base.effectiveAcceptanceLowerSec * 10, scaled.effectiveAcceptanceLowerSec))
+    #expect(d3Close(base.effectiveAcceptanceUpperSec * 10, scaled.effectiveAcceptanceUpperSec))
+}
+
+// 17 — the minTonicSegmentCount guard: a burst+pause train whose central region holds only 2 ISIs emits
+// NO tonic prior (rather than a misleading one from too little central mass).
+@Test
+func modeISIIntervalDeriverEmitsNoTonicWhenCentralSegmentTooSmall() {
+    // burst(4) + two mid ISIs + pause(4): the central segment is just the 2 mid ISIs.
+    let isis = [0.003, 0.0032, 0.0031, 0.0033, 0.05, 0.06, 0.50, 0.55, 0.60, 0.52]
+    let fam = d3Derive([d3Train("bmp", isis: isis)], floor: 0.001).dataset
+    #expect(fam.burst != nil)
+    #expect(fam.pause != nil)
+    #expect(fam.tonic == nil)                                   // central segment ({0.05,0.06}) has < 3 ISIs
+}
+
+// 18 — a concentrated/regular tonic mode (central q25 == q75) STILL yields a tonic prior: the core falls
+// back to the segment support instead of disappearing. Regression guard for the IQR-collapse fix.
+@Test
+func modeISIIntervalDeriverConcentratedTonicStillEmitsPrior() {
+    let burst = [0.004, 0.005, 0.004, 0.005]
+    let tonic = [0.44, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.46]   // regular: central q25 == q75 == 0.45
+    let fam = d3Derive([d3Train("concentrated", isis: burst + tonic)], floor: 0.001).dataset
+    guard let t = fam.tonic else { #expect(Bool(false), "expected a tonic prior for a concentrated mode"); return }
+    #expect(t.lowerSec < t.upperSec)                            // non-degenerate band (segment support)
+    #expect(t.lowerSec >= 0.44 - 1e-9)                          // hugged to the tonic cluster [0.44, 0.46]
+    #expect(t.upperSec <= 0.46 + 1e-9)
+    #expect(t.contains(0.45))
+}
+
+// 19 — re-centering protects the tonic CORE from a minority of "recovery" ISIs inside the central segment
+// (above the tonic mode, below the pause valley): the q25-q75 core stays hugged to the tonic mode, while
+// the acceptance upper still reflects those recovery ISIs. That acceptance residual is resolved by the
+// later burst-split slice (S3), not S2 — this test pins the S2/S3 boundary.
+@Test
+func modeISIIntervalDeriverCoreProtectedFromMinorityRecoveryISIs() {
+    let tonic = (0..<12).map { 0.040 + 0.002 * Double($0) }     // 0.040..0.062 — the tonic mode
+    let recovery = [0.10, 0.13, 0.16]                           // minority, between tonic and pause
+    let pause = [0.6, 0.7]
+    let fam = d3Derive([d3Train("tr", isis: tonic + recovery + pause)], floor: 0.001).dataset
+    guard let t = fam.tonic, let p = fam.pause else { #expect(Bool(false), "expected tonic + pause"); return }
+    // Core stays hugged to the tonic mode (recovery ISIs are a minority ⇒ excluded from the q25-q75 core).
+    #expect(t.upperSec <= 0.075)
+    #expect(t.contains(0.05))
+    // ...acceptance upper still shows the residual recovery contamination (S3 boundary), but never the pause.
+    #expect(t.effectiveAcceptanceUpperSec >= 0.10)
+    #expect(t.effectiveAcceptanceUpperSec < p.lowerSec)
 }

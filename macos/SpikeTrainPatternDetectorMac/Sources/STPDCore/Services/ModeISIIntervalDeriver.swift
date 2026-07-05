@@ -57,6 +57,9 @@ public enum ModeISIIntervalDeriver {
     private static let gapRatioThreshold = 2.0
     /// Minimum valid-ISI count before attempting gap-based burst/pause mode detection.
     private static let minSampleForGap = 4
+    /// Minimum ISIs in the central (post-burst, pre-pause) segment before a tonic mode is trusted.
+    /// Dimensionless (a count), so the deriver stays scale-free.
+    private static let minTonicSegmentCount = 3
 
     /// Derive per-train and pooled-dataset burst/tonic/pause interval priors.
     public static func derive(
@@ -102,9 +105,9 @@ public enum ModeISIIntervalDeriver {
 
         let sample = SortedFiniteSample(sortedFiniteValues: v)
         let floor = max(0, minimumValidISISec)
-        guard let median = sample.quantile(0.5),
-              let q25 = sample.quantile(0.25),
-              let q75 = sample.quantile(0.75) else {
+        // `median` divides the lower (burst) / upper (pause) search regions. Tonic quantiles are taken on
+        // the central segment below (NOT the global sample), so global q25/q75 are no longer needed here.
+        guard let median = sample.quantile(0.5) else {
             return FamilyModeIntervals()
         }
 
@@ -152,31 +155,39 @@ public enum ModeISIIntervalDeriver {
             )
         }
 
-        // --- Tonic: central ISI mass, bounded ABOVE the burst bridge and BELOW the pause floor.
+        // --- Tonic: central ISI mass, RE-CENTERED on the CENTRAL SEGMENT — the valid ISIs strictly
+        // between the burst valley (burstBridgeBoundary) and the pause valley (pauseFloorBoundary). Taking
+        // quantiles on that segment ALONE (not the global mixture) stops burst ISIs from pulling the core
+        // down and the pause tail from inflating it. Scale-free: the boundaries are the geometric-mean
+        // valleys already derived, and the statistics are segment quantiles/extrema — no absolute-ms cutoff.
         var tonic: ModeISIInterval?
-        let tonicFloor = max(floor, burstBridgeBoundary ?? floor)
-        var tonicLower = max(tonicFloor, q25)
-        var tonicUpper = max(tonicLower, q75)
-        if let pauseFloorBoundary {
-            tonicUpper = min(tonicUpper, pauseFloorBoundary)
-            tonicLower = min(tonicLower, tonicUpper)
-        }
-        if tonicUpper > tonicLower {
-            let count = v.reduce(into: 0) { acc, value in
+        let central = v.filter { value in
+            (burstBridgeBoundary.map { value > $0 } ?? true) &&   // no burst ⇒ keep all short ISIs
+            (pauseFloorBoundary.map { value < $0 } ?? true)       // no pause ⇒ keep all long ISIs
+        }   // `v` is sorted ⇒ `central` is sorted
+        if central.count >= minTonicSegmentCount,
+           let segLo = central.first, let segHi = central.last, segHi > segLo {
+            let centralSample = SortedFiniteSample(sortedFiniteValues: central)
+            let cLo = centralSample.quantile(0.25) ?? segLo
+            let cHi = centralSample.quantile(0.75) ?? segHi
+            // CORE = central q25–q75 (robust tonic identity). For a concentrated/regular tonic mode the
+            // central IQR can COLLAPSE (q25 == q75 when a majority of ISIs are near-identical); fall back
+            // to the segment support [segMin, segMax] so a valid steady tonic still yields a (non-degenerate,
+            // since segHi > segLo) prior instead of disappearing. ACCEPTANCE = the observed central-segment
+            // support: a membership band that captures every observed tonic ISI yet, by construction, cannot
+            // reach into the empty burst/pause gaps. core ⊆ acceptance holds because segLo <= cLo, segHi >= cHi.
+            let tonicLower = cHi > cLo ? cLo : segLo
+            let tonicUpper = cHi > cLo ? cHi : segHi
+            let acceptanceLower = Swift.min(segLo, tonicLower)
+            let acceptanceUpper = Swift.max(segHi, tonicUpper)
+            let count = central.reduce(into: 0) { acc, value in
                 if value >= tonicLower && value <= tonicUpper { acc += 1 }
             }
-            // Acceptance band = the wider "could legitimately be tonic" membership band: extend to the
-            // neighbouring mode boundaries when present (burst valley below / pause valley above), else
-            // to q10/q90. Clamped so the core (q25-q75) is always a subset (core ⊆ acceptance).
-            let acceptanceLowerRaw = burstBridgeBoundary ?? sample.quantile(0.10) ?? tonicLower
-            let acceptanceUpperRaw = pauseFloorBoundary ?? sample.quantile(0.90) ?? tonicUpper
-            let acceptanceLower = Swift.min(acceptanceLowerRaw, tonicLower)
-            let acceptanceUpper = Swift.max(acceptanceUpperRaw, tonicUpper)
             tonic = ModeISIInterval.validated(
                 family: .tonic, lowerSec: tonicLower, upperSec: tonicUpper,
                 supportCount: count, supportFraction: Double(count) / Double(n),
                 scope: scope,
-                provenance: provenance(for: scope, statistic: "tonic_central_iqr", auditOnly: false),
+                provenance: provenance(for: scope, statistic: "tonic_central_segment_iqr", auditOnly: false),
                 confidence: Double(count) / Double(n),
                 acceptanceLowerSec: acceptanceLower, acceptanceUpperSec: acceptanceUpper
             )
