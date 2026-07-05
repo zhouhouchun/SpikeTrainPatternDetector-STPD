@@ -133,6 +133,42 @@ public struct ISIDistributionHistogram: Hashable, Sendable {
             bins: histBins, totalCount: positive.count, maxCount: counts.max() ?? 0,
             minSec: minSec, maxSec: maxSec)
     }
+
+    /// Bin `values` into THIS histogram's existing (log) bin edges — for overlaying a single train's
+    /// distribution on the pooled histogram with aligned bars. Returns one count per bin.
+    public func counts(for values: [Double]) -> [Int] {
+        let binCount = bins.count
+        guard binCount > 0, maxSec > minSec else { return [Int](repeating: 0, count: binCount) }
+        let logMin = log10(minSec)
+        let step = (log10(maxSec) - logMin) / Double(binCount)
+        var result = [Int](repeating: 0, count: binCount)
+        for value in values where value.isFinite && value > 0 {
+            let idx = min(binCount - 1, max(0, Int((log10(value) - logMin) / step)))
+            result[idx] += 1
+        }
+        return result
+    }
+}
+
+/// Per-train detail for the selected-train overlay: identity, counts binned onto the pooled histogram,
+/// and the train-local D3 interval priors.
+public struct ISIDistributionTrainDetail: Hashable, Sendable {
+    public let trainID: String
+    public let trainName: String
+    public let validISICount: Int
+    /// Per-train counts aligned to the POOLED histogram bins (same edges → overlay-aligned); empty when
+    /// there is no pooled histogram.
+    public let histogramCounts: [Int]
+    /// Train-local D3 interval priors (burst, tonic, pause — only those present).
+    public let intervals: [ISIModeIntervalRow]
+
+    public init(trainID: String, trainName: String, validISICount: Int, histogramCounts: [Int], intervals: [ISIModeIntervalRow]) {
+        self.trainID = trainID
+        self.trainName = trainName
+        self.validISICount = validISICount
+        self.histogramCounts = histogramCounts
+        self.intervals = intervals
+    }
 }
 
 /// Everything the "Distribution-first foundation (D1-D3)" view needs, already shaped.
@@ -155,19 +191,30 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     public let datasetIntervals: [ISIModeIntervalRow]
     /// Log-ISI histogram of the pooled valid ISIs (nil when too few / degenerate).
     public let histogram: ISIDistributionHistogram?
+    /// Per-train overlay details (counts aligned to the pooled histogram + train-local D3 priors), one
+    /// per contributing train, in `perTrain` order.
+    public let perTrainDetails: [ISIDistributionTrainDetail]
 
     public init(
         datasetName: String, source: Source, floorSec: Double,
         contributingTrainCount: Int, pooledValidISICount: Int,
         pooled: ISIDistributionQuantileRow, trainBalanced: ISIDistributionQuantileRow?,
         perTrain: [ISIDistributionQuantileRow], datasetIntervals: [ISIModeIntervalRow],
-        histogram: ISIDistributionHistogram? = nil
+        histogram: ISIDistributionHistogram? = nil,
+        perTrainDetails: [ISIDistributionTrainDetail] = []
     ) {
         self.datasetName = datasetName; self.source = source; self.floorSec = floorSec
         self.contributingTrainCount = contributingTrainCount; self.pooledValidISICount = pooledValidISICount
         self.pooled = pooled; self.trainBalanced = trainBalanced
         self.perTrain = perTrain; self.datasetIntervals = datasetIntervals
         self.histogram = histogram
+        self.perTrainDetails = perTrainDetails
+    }
+
+    /// Flatten a family-interval bundle into display rows (burst, then tonic, then pause — present only).
+    private static func intervalRows(_ families: FamilyModeIntervals?) -> [ISIModeIntervalRow] {
+        guard let families else { return [] }
+        return [families.burst, families.tonic, families.pause].compactMap { $0 }.map(ISIModeIntervalRow.init)
     }
 
     /// Shape an already-computed distribution + derived intervals into presentation rows.
@@ -189,20 +236,26 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
                 label: train.trainName, trainID: train.trainID, count: train.validISICount,
                 quantiles: train.quantiles)
         }
-        let families = derived.dataset
-        let intervals = [families.burst, families.tonic, families.pause]
-            .compactMap { $0 }
-            .map(ISIModeIntervalRow.init)
+        let intervals = intervalRows(derived.dataset)
 
         let pooledValues = distribution.trainDistributions.flatMap(\.validISIValuesSec)
         let histogram = ISIDistributionHistogram.logScale(values: pooledValues)
+
+        // Per-train overlay details: bin each train's ISIs onto the pooled histogram edges (so bars align)
+        // and carry its train-local D3 priors — answering "does this train have a prior the dataset lacks?"
+        let perTrainDetails = distribution.trainDistributions.map { train in
+            ISIDistributionTrainDetail(
+                trainID: train.trainID, trainName: train.trainName, validISICount: train.validISICount,
+                histogramCounts: histogram?.counts(for: train.validISIValuesSec) ?? [],
+                intervals: intervalRows(derived.perTrain[train.trainID]))
+        }
 
         return ISIDistributionFoundationPresentation(
             datasetName: distribution.datasetName, source: source, floorSec: floorSec,
             contributingTrainCount: distribution.contributingTrainCount,
             pooledValidISICount: distribution.pooledValidISICount,
             pooled: pooled, trainBalanced: balanced, perTrain: perTrain, datasetIntervals: intervals,
-            histogram: histogram)
+            histogram: histogram, perTrainDetails: perTrainDetails)
     }
 
     /// End-to-end convenience for the view: prefer the D2-wired `runDistribution`; otherwise compute

@@ -159,3 +159,97 @@ func presentationCarriesPooledHistogram() {
     #expect(p.histogram?.totalCount == p.pooledValidISICount)
     #expect((p.histogram?.maxCount ?? 0) >= 1)
 }
+
+// 9 — `counts(for:)` bins onto the SAME edges as the pooled histogram: per-train overlays are aligned
+// (same length as bins) and every train's counts nest inside the pooled counts bin-for-bin.
+@Test
+func histogramCountsForOverlayAlignWithPooledBins() {
+    let values = [0.003, 0.0032, 0.05, 0.052, 0.048, 0.5, 0.55]
+    guard let h = ISIDistributionHistogram.logScale(values: values, binCount: 12) else {
+        #expect(Bool(false), "expected a histogram"); return
+    }
+    // Re-binning the pooled values through counts(for:) reproduces the histogram's own bar counts.
+    let reBinned = h.counts(for: values)
+    #expect(reBinned == h.bins.map(\.count))
+    #expect(reBinned.reduce(0, +) == 7)
+
+    // A subset (one "train") bins into a subset of the bins and never exceeds the pooled per-bin count.
+    let subset = [0.05, 0.052, 0.048]
+    let subCounts = h.counts(for: subset)
+    #expect(subCounts.count == h.bins.count)
+    #expect(subCounts.reduce(0, +) == 3)
+    for i in 0..<subCounts.count { #expect(subCounts[i] <= reBinned[i]) }
+    // Values outside the domain are clamped into the edge bins (not dropped, not crashing).
+    #expect(h.counts(for: [1e-9, 1e9]).reduce(0, +) == 2)
+}
+
+// 10 — per-train details: one per train, overlay counts aligned to the pooled histogram, and the pooled
+// histogram equals the bin-wise sum of the train overlays (pooled = sum of trains).
+@Test
+func presentationCarriesPerTrainOverlayDetails() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    #expect(p.perTrainDetails.count == p.perTrain.count)                 // one detail per train
+    guard let hist = p.histogram else { #expect(Bool(false), "expected pooled histogram"); return }
+    // Each overlay is aligned to the pooled bins and sums to that train's valid ISI count.
+    for detail in p.perTrainDetails {
+        #expect(detail.histogramCounts.count == hist.bins.count)
+        #expect(detail.histogramCounts.reduce(0, +) == detail.validISICount)
+    }
+    // Bin-wise, the train overlays sum exactly to the pooled bars.
+    var summed = [Int](repeating: 0, count: hist.bins.count)
+    for detail in p.perTrainDetails {
+        for i in 0..<summed.count { summed[i] += detail.histogramCounts[i] }
+    }
+    #expect(summed == hist.bins.map(\.count))
+}
+
+// 11 — a train-local prior can exist even when the same family is absent at dataset scope: the
+// per-train details expose it (the "pause_response" inspection question, in miniature).
+@Test
+func perTrainDetailsExposeTrainLocalPriors() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    // The bimodal train carries burst + tonic train-local priors.
+    guard let bimodal = p.perTrainDetails.first(where: { $0.trainName == "bimodal" }) else {
+        #expect(Bool(false), "expected a bimodal per-train detail"); return
+    }
+    let localFamilies = Set(bimodal.intervals.map(\.family))
+    #expect(localFamilies.contains(.tonic))
+    // Train-local priors are train-scoped, distinguishing them from dataset priors.
+    for row in bimodal.intervals { #expect(row.scope == .trainLocal) }
+}
+
+// 12 — KEY QUESTION: a train can carry a train-local prior (here PAUSE) that the pooled dataset prior
+// LACKS. A "pause responder" train has a tight tonic cluster + a slow pause tail (its own sorted ISIs
+// show a ≥2× upper gap ⇒ train-local pause), while a second "filler" train ramps smoothly across that
+// gap so the POOLED distribution has no ≥2× upper gap ⇒ the dataset scope derives no pause. This is the
+// exact "does pause_response show a train-local pause the dataset does not?" inspection question, pinned
+// so a regression that sourced per-train priors from `derived.dataset` would fail here.
+@Test
+func perTrainDetailExposesPauseAbsentFromDataset() {
+    // Pause responder: tonic ~50 ms + slow tail ~0.5 s (clear upper gap → train-local pause).
+    let responder = presTrain(
+        "pause_responder",
+        isis: [0.048, 0.050, 0.052, 0.049, 0.051, 0.047, 0.053, 0.050, 0.50, 0.55, 0.52])
+    // Filler: a smooth <2× ramp bridging ~0.05 s → ~0.55 s so the POOLED upper region has no ≥2× gap.
+    let filler = presTrain("filler", isis: [0.06, 0.09, 0.13, 0.18, 0.25, 0.33, 0.45, 0.55])
+    let dataset = SpikeDataset(name: "pause-case", sourceDescription: "unit-test", trains: [responder, filler])
+
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+
+    let datasetFamilies = Set(p.datasetIntervals.map(\.family))
+    // Dataset-scope prior has NO pause (the filler bridged the gap in the pooled distribution).
+    #expect(!datasetFamilies.contains(.pause))
+
+    // ...but the responder's TRAIN-LOCAL prior does carry a pause the dataset lacks.
+    guard let responderDetail = p.perTrainDetails.first(where: { $0.trainName == "pause_responder" }) else {
+        #expect(Bool(false), "expected a pause_responder per-train detail"); return
+    }
+    let localFamilies = Set(responderDetail.intervals.map(\.family))
+    #expect(localFamilies.contains(.pause))
+    #expect(localFamilies.subtracting(datasetFamilies).contains(.pause))   // train-local-ONLY family
+    let pauseRow = responderDetail.intervals.first { $0.family == .pause }
+    #expect(pauseRow?.scope == .trainLocal)
+}

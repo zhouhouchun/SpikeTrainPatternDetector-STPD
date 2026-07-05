@@ -11,6 +11,27 @@ import SwiftUI
 struct ISIDistributionFoundationView: View {
     let presentation: ISIDistributionFoundationPresentation
 
+    /// Selected train for the overlay (UI-2B). `nil` ⇒ pooled-only. Held as local `@State` so the
+    /// picker is self-contained — deliberately NOT wired to Workbench selection yet.
+    @State private var selectedTrainID: String?
+
+    /// The picked train's overlay detail, if it is still present in the current presentation.
+    private var selectedDetail: ISIDistributionTrainDetail? {
+        guard let selectedTrainID else { return nil }
+        return presentation.perTrainDetails.first { $0.trainID == selectedTrainID }
+    }
+
+    /// Picker binding that reflects the EFFECTIVE selection: a stale id (not in the current
+    /// presentation — e.g. after the debug host swaps in a different dataset) reads back as `nil`, so the
+    /// Picker shows "None (pooled only)" rather than a blank label. This keeps the control consistent
+    /// with the overlay, which also falls back to pooled-only via `selectedDetail == nil`.
+    private var overlaySelection: Binding<String?> {
+        Binding(get: { selectedDetail?.trainID }, set: { selectedTrainID = $0 })
+    }
+
+    /// Distinct (non-family) color for the selected-train overlay bars + dashed prior rules.
+    private var selectedOverlayColor: Color { .pink }
+
     /// Convenience for the eventual nav call site (and the preview): shape the presentation from a
     /// dataset, preferring a D2-wired run distribution when available.
     init(dataset: SpikeDataset, runDistribution: DatasetISIDistribution?, minimumValidISISec: Double) {
@@ -28,7 +49,9 @@ struct ISIDistributionFoundationView: View {
                 if presentation.pooledValidISICount == 0 && presentation.perTrain.isEmpty {
                     emptyState
                 } else {
+                    selectedTrainControl
                     chartSection
+                    selectedTrainPriorsSection
                     quantileSection
                     perTrainSection
                     intervalSection
@@ -172,7 +195,56 @@ struct ISIDistributionFoundationView: View {
         }
     }
 
-    // MARK: Chart (UI-2A)
+    // MARK: Selected-train overlay (UI-2B)
+
+    private var selectedTrainControl: some View {
+        HStack(spacing: 10) {
+            Text("Overlay train")
+                .font(.callout.weight(.medium))
+            Picker("Overlay train", selection: overlaySelection) {
+                Text("None (pooled only)").tag(String?.none)
+                ForEach(presentation.perTrainDetails, id: \.trainID) { detail in
+                    Text("\(detail.trainName)  ·  \(detail.validISICount) ISIs")
+                        .tag(String?.some(detail.trainID))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 340)
+            if let selected = selectedDetail {
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2).fill(selectedOverlayColor).frame(width: 12, height: 10)
+                    Text("overlaid: \(selected.trainName)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private var selectedTrainPriorsSection: some View {
+        sectionCard("Selected-train interval priors") {
+            if let selected = selectedDetail {
+                if selected.intervals.isEmpty {
+                    Text("No train-local burst/tonic/pause priors derived for “\(selected.trainName)”.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Train-local priors for “\(selected.trainName)” (\(selected.validISICount) valid ISIs) — the “trainLocal” badge distinguishes these from the dataset priors below.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(selected.intervals, id: \.self) { interval in
+                            intervalRow(interval)
+                        }
+                    }
+                }
+            } else {
+                Text("Select a train above to overlay its ISI distribution and list its train-local priors.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Chart (UI-2A + UI-2B overlay)
 
     private var chartSection: some View {
         sectionCard("Pooled ISI distribution (log ISI)") {
@@ -180,8 +252,8 @@ struct ISIDistributionFoundationView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     chartLegend
                     Canvas { context, size in
-                        drawFoundationChart(histogram: histogram, intervals: presentation.datasetIntervals,
-                                            context: &context, size: size)
+                        drawFoundationChart(histogram: histogram, datasetIntervals: presentation.datasetIntervals,
+                                            selected: selectedDetail, context: &context, size: size)
                     }
                     .frame(height: 240)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.6),
@@ -202,6 +274,12 @@ struct ISIDistributionFoundationView: View {
             Divider().frame(height: 12)
             Text("dark = core · light = acceptance · mid = bridge")
                 .font(.caption2).foregroundStyle(.secondary)
+            if selectedDetail != nil {
+                Divider().frame(height: 12)
+                legendSwatch("selected train", selectedOverlayColor)
+                Text("dashed = its priors")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -212,7 +290,8 @@ struct ISIDistributionFoundationView: View {
         }
     }
 
-    private func drawFoundationChart(histogram: ISIDistributionHistogram, intervals: [ISIModeIntervalRow],
+    private func drawFoundationChart(histogram: ISIDistributionHistogram, datasetIntervals: [ISIModeIntervalRow],
+                                     selected: ISIDistributionTrainDetail?,
                                      context: inout GraphicsContext, size: CGSize) {
         let plot = CGRect(x: 8, y: 8, width: size.width - 16, height: size.height - 30)
         guard plot.width > 8, plot.height > 8, histogram.maxSec > histogram.minSec else { return }
@@ -228,8 +307,8 @@ struct ISIDistributionFoundationView: View {
             return plot.maxY - frac * plot.height
         }
 
-        // 1) interval bands behind the bars: acceptance (lightest) < bridge (mid) < core (darkest).
-        for interval in intervals {
+        // 1) DATASET interval bands behind the bars: acceptance (lightest) < bridge (mid) < core (darkest).
+        for interval in datasetIntervals {
             let color = familyColor(interval.family)
             if interval.acceptanceLowerSec != nil || interval.acceptanceUpperSec != nil {
                 let al = interval.acceptanceLowerSec ?? interval.lowerSec
@@ -244,7 +323,7 @@ struct ISIDistributionFoundationView: View {
             verticalRule(&context, x(interval.upperSec), plot, color.opacity(0.6))
         }
 
-        // 2) histogram bars.
+        // 2) pooled histogram bars (gray).
         for bin in histogram.bins where bin.count > 0 {
             let x0 = x(bin.lowerSec), x1 = x(bin.upperSec)
             let top = yTop(bin.count)
@@ -252,7 +331,30 @@ struct ISIDistributionFoundationView: View {
             context.fill(Path(rect), with: .color(Color(nsColor: .labelColor).opacity(0.55)))
         }
 
-        // 3) x baseline + log decade ticks / labels.
+        // 3) SELECTED-train overlay (UI-2B): its share of each pooled bin as translucent distinct bars,
+        // then its train-local D3 priors as dashed rules (distinct from the dataset FILLED bands).
+        if let selected, selected.histogramCounts.count == histogram.bins.count {
+            for (index, bin) in histogram.bins.enumerated() {
+                let count = selected.histogramCounts[index]
+                guard count > 0 else { continue }
+                let x0 = x(bin.lowerSec), x1 = x(bin.upperSec)
+                let top = yTop(count)
+                let rect = CGRect(x: x0 + 0.5, y: top, width: max(1, x1 - x0 - 1), height: plot.maxY - top)
+                context.fill(Path(rect), with: .color(selectedOverlayColor.opacity(0.55)))
+            }
+        }
+        if let selected {
+            for interval in selected.intervals {
+                let color = familyColor(interval.family)
+                dashedRule(&context, x(interval.lowerSec), plot, color.opacity(0.9))
+                dashedRule(&context, x(interval.upperSec), plot, color.opacity(0.9))
+                if let bridge = interval.bridgeUpperSec, bridge > interval.upperSec {
+                    dashedRule(&context, x(bridge), plot, color.opacity(0.6))
+                }
+            }
+        }
+
+        // 4) x baseline + log decade ticks / labels.
         context.stroke(Path { $0.move(to: CGPoint(x: plot.minX, y: plot.maxY)); $0.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY)) },
                        with: .color(.secondary.opacity(0.5)), lineWidth: 1)
         for decade in decadeTicks(minSec: histogram.minSec, maxSec: histogram.maxSec) {
@@ -273,6 +375,11 @@ struct ISIDistributionFoundationView: View {
     private func verticalRule(_ context: inout GraphicsContext, _ x: CGFloat, _ plot: CGRect, _ color: Color) {
         context.stroke(Path { $0.move(to: CGPoint(x: x, y: plot.minY)); $0.addLine(to: CGPoint(x: x, y: plot.maxY)) },
                        with: .color(color), lineWidth: 1)
+    }
+
+    private func dashedRule(_ context: inout GraphicsContext, _ x: CGFloat, _ plot: CGRect, _ color: Color) {
+        context.stroke(Path { $0.move(to: CGPoint(x: x, y: plot.minY)); $0.addLine(to: CGPoint(x: x, y: plot.maxY)) },
+                       with: .color(color), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
     }
 
     private func decadeTicks(minSec: Double, maxSec: Double) -> [Double] {
