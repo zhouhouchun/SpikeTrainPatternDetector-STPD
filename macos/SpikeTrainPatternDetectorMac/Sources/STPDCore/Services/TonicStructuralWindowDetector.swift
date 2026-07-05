@@ -52,6 +52,18 @@ public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
     }
 }
 
+/// TSW-2A — the family/magnitude ROUTE a regularity-passing window is classified into. Regularity alone
+/// does not make a window classic tonic; its central magnitude must be compatible with the tonic family.
+/// Only `.classicTonic` is "accepted as classic tonic"; the others keep the window as structural evidence
+/// without contaminating classic tonic. This is a debug/structural classification — TSW is unwired.
+public enum TonicStructuralWindowRoute: String, Hashable, Sendable {
+    case classicTonic              // regular AND magnitude-compatible with the tonic family
+    case highFrequencyTonic        // regular but too fast for classic tonic (short/moderate run)
+    case highFrequencySpiking      // regular but too fast, and long/dense (HFS-like)
+    case possibleTonicReview       // just below the tonic floor, or no reliable magnitude guard — review
+    case tooFastForClassicTonic    // clearly fast with no trustworthy boundary to sub-type
+}
+
 /// TSW configuration. Reuses `StructuralEvidenceThresholds` for the CV/CV2/LV limits, the compactness
 /// ratios (`tonicLocalRatioLow/High`), the QC `minimumValidISISec` floor, and the contamination fraction
 /// cap. The extra fields govern the burst-floor fallback and the short/long boundary.
@@ -68,19 +80,46 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
     public var adjacentRatioMax: Double
     /// Minimum valid ISIs at which the gate switches from compactness to CV/CV2/LV.
     public var longWindowMinISI: Int
+    /// TSW-2A: ratio a classic-tonic window's median must clear above a TRUSTED burst boundary (mirrors
+    /// StatePatternDetector's burstSeedUpper*1.25). Dimensionless / scale-free.
+    public var classicTonicBurstFloorRatio: Double
+    /// TSW-2A: review buffer width just below the classic-tonic floor — median in [floor/ratio, floor)
+    /// routes to review rather than a fast family. Dimensionless.
+    public var tonicReviewBufferRatio: Double
+    /// TSW-2A: a burst valley is trusted as a magnitude boundary only when its support count is at least
+    /// this — a single-point / low-support valley is a refractory artifact, not a mode boundary.
+    public var minBurstSupportCountForValley: Int
+    /// TSW-2A: spike-count tier separating a long/dense high-frequency-spiking run from high-frequency
+    /// tonic. A dimensionless COUNT (scale-free).
+    public var highFrequencySpikingMinSpikes: Int
+    /// TSW-2A: PHYSIOLOGICAL fast/HF exclusion — a classic-tonic window's median must be at least this
+    /// multiple of the QC `refractoryFloorSec` (a refractory-RELATIVE guard, NOT an absolute-ms cutoff).
+    /// Below it a regular window is too fast for classic tonic regardless of any train-local quantile.
+    /// This is what stops a fast-dominated train's low q25 from confirming fast regular windows as classic.
+    public var classicTonicMinRefractoryMultiple: Double
 
     public init(
         thresholds: StructuralEvidenceThresholds = StructuralEvidenceThresholds(),
         refractoryFloorSec: Double = 0.001,
         refractoryFloorMultiplier: Double = 3.0,
         adjacentRatioMax: Double? = nil,
-        longWindowMinISI: Int = 5
+        longWindowMinISI: Int = 5,
+        classicTonicBurstFloorRatio: Double = 1.25,
+        tonicReviewBufferRatio: Double = 1.25,
+        minBurstSupportCountForValley: Int = 2,
+        highFrequencySpikingMinSpikes: Int = 30,
+        classicTonicMinRefractoryMultiple: Double = 15.0
     ) {
         self.thresholds = thresholds
         self.refractoryFloorSec = refractoryFloorSec
         self.refractoryFloorMultiplier = refractoryFloorMultiplier
         self.adjacentRatioMax = adjacentRatioMax ?? thresholds.tonicLocalRatioHigh
         self.longWindowMinISI = longWindowMinISI
+        self.classicTonicBurstFloorRatio = classicTonicBurstFloorRatio
+        self.tonicReviewBufferRatio = tonicReviewBufferRatio
+        self.minBurstSupportCountForValley = minBurstSupportCountForValley
+        self.highFrequencySpikingMinSpikes = highFrequencySpikingMinSpikes
+        self.classicTonicMinRefractoryMultiple = classicTonicMinRefractoryMultiple
     }
 }
 
@@ -95,15 +134,20 @@ public struct TonicStructuralWindowCandidate: Hashable, Sendable {
     /// Why expansion stopped at the trailing edge (TSW-2/3); nil for a single evaluated window.
     public let boundaryReason: TonicWindowBoundaryReason?
     public let decisionPath: String
+    /// TSW-2A family/magnitude route. `.classicTonic` only when the window is regular AND magnitude-
+    /// compatible with the tonic family; otherwise a non-classic route (kept as structural evidence).
+    public let route: TonicStructuralWindowRoute
 
     public init(
         span: ISISpan, metrics: ISISpanMetrics, source: TonicWindowSource,
         signals: [EvidenceSignal], reviewRequired: Bool,
-        boundaryReason: TonicWindowBoundaryReason?, decisionPath: String
+        boundaryReason: TonicWindowBoundaryReason?, decisionPath: String,
+        route: TonicStructuralWindowRoute = .classicTonic
     ) {
         self.span = span; self.metrics = metrics; self.source = source
         self.signals = signals; self.reviewRequired = reviewRequired
         self.boundaryReason = boundaryReason; self.decisionPath = decisionPath
+        self.route = route
     }
 
     /// Span → spike mapping per the codebase convention: ISI index `i` is the interval between spikes
@@ -218,36 +262,118 @@ public enum TonicStructuralWindowDetector {
         return (!contaminated, signal, provenance)
     }
 
+    /// TSW-2A — classic-tonic FAMILY / MAGNITUDE routing (scale-free). A regularity-passing window is
+    /// classic tonic only when its central magnitude (median) is compatible with the tonic family, i.e.
+    /// SLOWER than the burst/HF region. Evidence order: a TRUSTED train-local D3 burst valley (× ratio) →
+    /// a train-local tonic core-lower fallback → otherwise NO reliable guard (route to review). The
+    /// refractory floor is only a protective floor-of-floors, never the classifier. Degenerate / low-
+    /// support valleys are not trusted. Returns the route, a provenance signal, a trust tag, and the floor.
+    public static func classicTonicMagnitudeGate(
+        metrics: ISISpanMetrics,
+        burstValleySec: Double?,
+        burstValleySupportCount: Int?,
+        fallbackFloorSec: Double?,
+        config: TonicStructuralWindowConfig
+    ) -> (route: TonicStructuralWindowRoute, signal: EvidenceSignal, trust: String, floorSec: Double) {
+        // PHYSIOLOGICAL fast/HF exclusion floor — refractory-relative (scale-free), independent of any
+        // train-local quantile. A regular window below this is too fast to be classic tonic, period.
+        let physiologicalFloor = config.classicTonicMinRefractoryMultiple * config.refractoryFloorSec
+
+        // Distribution-derived boundary + its RELIABILITY CLASS:
+        //  d3_valley           — a trusted burst/HF boundary (support >= min; degenerate valleys excluded)
+        //  d3_tonic_core_lower — a trusted classic-tonic lower (q25 clear of the fast/HF regime)
+        //  ambiguous_fast_q25  — a train-local q25 that itself sits in the fast/HF regime (NOT trusted)
+        //  unavailable         — no distribution guard at all
+        var distFloor: Double?
+        var distReliable = false
+        var trust: String
+        if let valley = burstValleySec, valley.isFinite, valley > 0,
+           (burstValleySupportCount ?? 0) >= config.minBurstSupportCountForValley {
+            distFloor = valley * config.classicTonicBurstFloorRatio      // burst boundary → need 25% above
+            distReliable = true
+            trust = "d3_valley"
+        } else if let fallback = fallbackFloorSec, fallback.isFinite, fallback > 0 {
+            distFloor = fallback
+            if fallback >= physiologicalFloor {
+                distReliable = true                                      // q25 is clear of the HF regime
+                trust = "d3_tonic_core_lower"
+            } else {
+                distReliable = false                                     // q25 in the HF regime → not trusted
+                trust = "ambiguous_fast_q25"
+            }
+        } else {
+            trust = "unavailable"
+        }
+
+        let median = metrics.medianSec ?? .infinity
+        let route: TonicStructuralWindowRoute
+        var floor = physiologicalFloor
+        if median < physiologicalFloor {
+            // Hard physiological exclusion — clearly too fast for classic tonic.
+            route = .tooFastForClassicTonic
+        } else if distReliable, let distFloor {
+            // Above the physiological floor AND with reliable distribution evidence: classic tonic requires
+            // magnitude compatibility with BOTH floors.
+            floor = Swift.max(physiologicalFloor, distFloor)
+            if median >= floor {
+                route = .classicTonic
+            } else if median >= floor / config.tonicReviewBufferRatio {
+                route = .possibleTonicReview
+            } else {
+                route = metrics.nSpikes >= config.highFrequencySpikingMinSpikes
+                    ? .highFrequencySpiking : .highFrequencyTonic        // fast vs this train's own boundary
+            }
+        } else {
+            // Above the physiological floor but no RELIABLE distribution evidence (ambiguous fast-dominated
+            // q25, or none) → cannot CONFIRM classic tonic; keep as review.
+            route = .possibleTonicReview
+        }
+        let signal = EvidenceSignal(
+            key: "tonic_magnitude_floor", status: route == .classicTonic ? .pass : .fail,
+            role: .priorCompatibility, observedValue: metrics.medianSec, requiredValue: floor,
+            message: "route=\(route.rawValue) floor=\(trust)")
+        return (route, signal, trust, floor)
+    }
+
     /// Evaluate one span of a real train end-to-end: compute `ISISpanMetrics` (QC-filtered, parity with
-    /// the D3/D4 layers), apply the regularity gate then the burst guard, and return an accepted candidate
-    /// or a rejection with its boundary reason.
+    /// the D3/D4 layers), apply the regularity gate then the burst guard, then TSW-2A family/magnitude
+    /// routing; return an accepted candidate (with its route) or a rejection with its boundary reason.
     public static func evaluateWindow(
         train: SpikeTrain, span: ISISpan, source: TonicWindowSource = .seed,
-        burstValleySec: Double?, config: TonicStructuralWindowConfig = TonicStructuralWindowConfig()
+        burstValleySec: Double?, burstValleySupportCount: Int? = nil, fallbackFloorSec: Double? = nil,
+        config: TonicStructuralWindowConfig = TonicStructuralWindowConfig()
     ) -> TonicWindowEvaluation {
         let metrics = ISISpanMetrics.from(train: train, span: span, thresholds: config.thresholds)
-        return evaluate(metrics: metrics, span: span, source: source, burstValleySec: burstValleySec, config: config)
+        return evaluate(metrics: metrics, span: span, source: source, burstValleySec: burstValleySec,
+                        burstValleySupportCount: burstValleySupportCount, fallbackFloorSec: fallbackFloorSec, config: config)
     }
 
     /// Evaluate from already-computed metrics (used by tests and by the TSW-2/3 scan to avoid recomputing).
     public static func evaluate(
         metrics: ISISpanMetrics, span: ISISpan, source: TonicWindowSource = .seed,
-        burstValleySec: Double?, config: TonicStructuralWindowConfig = TonicStructuralWindowConfig()
+        burstValleySec: Double?, burstValleySupportCount: Int? = nil, fallbackFloorSec: Double? = nil,
+        config: TonicStructuralWindowConfig = TonicStructuralWindowConfig()
     ) -> TonicWindowEvaluation {
         let gate = regularityGate(metrics: metrics, config: config)
         guard gate.passed else {
             return .rejected(reason: gate.failReason ?? .insufficientData, signals: gate.signals)
         }
         let guardResult = burstContaminationGuard(metrics: metrics, burstValleySec: burstValleySec, config: config)
-        let signals = gate.signals + [guardResult.signal]
         guard guardResult.passed else {
-            return .rejected(reason: .burstContamination, signals: signals)
+            return .rejected(reason: .burstContamination, signals: gate.signals + [guardResult.signal])
         }
+        // TSW-2A: family/magnitude routing (regularity + burst-clean is necessary but NOT sufficient for
+        // classic tonic). Routing does not change acceptance/expansion — only the emitted family.
+        let magnitude = classicTonicMagnitudeGate(
+            metrics: metrics, burstValleySec: burstValleySec, burstValleySupportCount: burstValleySupportCount,
+            fallbackFloorSec: fallbackFloorSec, config: config)
+        let signals = gate.signals + [guardResult.signal, magnitude.signal]
         let tier = gate.usedLongMetrics ? "long_cvcv2lv" : "short_compactness"
         let decisionPath = "tsw1/gate=\(tier)/guard=\(guardResult.provenance)/pass"
+            + "/route=\(magnitude.route.rawValue)/floor=\(magnitude.trust)"
         let candidate = TonicStructuralWindowCandidate(
             span: span, metrics: metrics, source: source, signals: signals,
-            reviewRequired: false, boundaryReason: nil, decisionPath: decisionPath)
+            reviewRequired: false, boundaryReason: nil, decisionPath: decisionPath, route: magnitude.route)
         return .accepted(candidate)
     }
 
@@ -263,7 +389,9 @@ public enum TonicStructuralWindowDetector {
         train: SpikeTrain,
         config: TonicStructuralWindowConfig = TonicStructuralWindowConfig(),
         burstValleySec: Double? = nil,
-        minTonicSpikes: Int? = nil
+        minTonicSpikes: Int? = nil,
+        burstValleySupportCount: Int? = nil,
+        fallbackFloorSec: Double? = nil
     ) -> [TonicStructuralWindowCandidate] {
         let lastValidIndex = train.isiSec.count - 1              // ISI slots live at 1...lastValidIndex
         guard lastValidIndex >= 1 else { return [] }
@@ -321,7 +449,8 @@ public enum TonicStructuralWindowDetector {
             let source: TonicWindowSource = (span.end - span.start + 1) > seedISI ? .merged : .seed
             if let candidate = finalizeCandidate(
                 train: train, startISIIndex: span.start, endISIIndex: span.end, source: source,
-                burstValleySec: burstValleySec, config: config, lastValidIndex: lastValidIndex, floor: floor) {
+                burstValleySec: burstValleySec, burstValleySupportCount: burstValleySupportCount,
+                fallbackFloorSec: fallbackFloorSec, config: config, lastValidIndex: lastValidIndex, floor: floor) {
                 candidates.append(candidate)
             }
         }
@@ -338,11 +467,13 @@ public enum TonicStructuralWindowDetector {
     /// never sets `reviewRequired`.
     private static func finalizeCandidate(
         train: SpikeTrain, startISIIndex: Int, endISIIndex: Int, source: TonicWindowSource,
-        burstValleySec: Double?, config: TonicStructuralWindowConfig, lastValidIndex: Int, floor: Double
+        burstValleySec: Double?, burstValleySupportCount: Int?, fallbackFloorSec: Double?,
+        config: TonicStructuralWindowConfig, lastValidIndex: Int, floor: Double
     ) -> TonicStructuralWindowCandidate? {
         let span = ISISpan(trainID: train.id, startISIIndex: startISIIndex, endISIIndex: endISIIndex, familyHint: .tonic)
         guard case let .accepted(base) = evaluateWindow(
-            train: train, span: span, source: source, burstValleySec: burstValleySec, config: config) else {
+            train: train, span: span, source: source, burstValleySec: burstValleySec,
+            burstValleySupportCount: burstValleySupportCount, fallbackFloorSec: fallbackFloorSec, config: config) else {
             return nil
         }
         var boundaryReason: TonicWindowBoundaryReason?
@@ -368,7 +499,8 @@ public enum TonicStructuralWindowDetector {
         }
         return TonicStructuralWindowCandidate(
             span: base.span, metrics: base.metrics, source: source, signals: base.signals,
-            reviewRequired: reviewRequired, boundaryReason: boundaryReason, decisionPath: decisionPath)
+            reviewRequired: reviewRequired, boundaryReason: boundaryReason, decisionPath: decisionPath,
+            route: base.route)
     }
 
     // MARK: Helpers

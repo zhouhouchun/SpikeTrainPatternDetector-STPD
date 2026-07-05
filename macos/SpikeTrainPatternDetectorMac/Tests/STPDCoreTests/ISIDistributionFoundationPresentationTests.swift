@@ -392,3 +392,32 @@ func presentationTSWSafeForEmptyDataset() {
     let p = ISIDistributionFoundationPresentation.from(dataset: empty, runDistribution: nil, minimumValidISISec: 0.001)
     #expect(p.tswCandidatesByTrainID.isEmpty)
 }
+
+// 21 — TSW-2A: rows carry a family route; a slow regular tonic train routes classic tonic (the D3
+// tonic-core-lower fallback is threaded into the scan).
+@Test
+func presentationTSWRowsCarryRouteAndSlowTonicIsClassic() {
+    let tonic = presTrain("slow_tonic", isis: [0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.44, 0.46, 0.45, 0.47, 0.45, 0.46])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [tonic])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    let rows = p.tswCandidatesByTrainID[tonic.id] ?? []
+    #expect(!rows.isEmpty)
+    #expect(rows.allSatisfy { $0.route == "classicTonic" })
+}
+
+// 22 — TSW-2A: the physiological classic-tonic floor tracks the dataset QC floor threaded through the
+// presentation (refractoryFloorSec == minimumValidISISec). The SAME ~20 ms regular train routes classic at
+// minimumValidISISec = 0.001 (physiological floor 15 ms) but too-fast at 0.0015 (floor 22.5 ms). Without the
+// fix (refractoryFloorSec pinned to 0.001) both would route classic and the second assertion would fail.
+@Test
+func presentationTSWPhysiologicalFloorTracksQCFloor() {
+    let train = presTrain("mid", isis: [0.020, 0.021, 0.019, 0.022, 0.020, 0.021, 0.019, 0.022, 0.020, 0.021])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [train])
+    let low = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+        .tswCandidatesByTrainID[train.id] ?? []
+    let high = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.0015)
+        .tswCandidatesByTrainID[train.id] ?? []
+    #expect(!low.isEmpty && !high.isEmpty)
+    #expect(low.contains { $0.route == "classicTonic" })              // physiological floor 15 ms < 20 ms → classic
+    #expect(high.allSatisfy { $0.route == "tooFastForClassicTonic" }) // physiological floor 22.5 ms > 20 ms → too fast
+}

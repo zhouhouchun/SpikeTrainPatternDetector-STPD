@@ -185,6 +185,7 @@ public struct TSWCandidateRow: Hashable, Sendable {
     public let isiCount: Int
     public let spikeCount: Int
     public let source: String            // TonicWindowSource raw value (seed / merged)
+    public let route: String             // TSW-2A TonicStructuralWindowRoute raw value (classicTonic / HF / review)
     public let reviewRequired: Bool
     public let boundaryReason: String?   // TonicWindowBoundaryReason raw value, when expansion stopped
     public let decisionPath: String
@@ -202,7 +203,7 @@ public struct TSWCandidateRow: Hashable, Sendable {
     public init(
         trainID: String, trainName: String, startISIIndex: Int, endISIIndex: Int,
         startSpikeIndex: Int, endSpikeIndex: Int, isiCount: Int, spikeCount: Int,
-        source: String, reviewRequired: Bool, boundaryReason: String?, decisionPath: String,
+        source: String, route: String, reviewRequired: Bool, boundaryReason: String?, decisionPath: String,
         cv: Double?, cv2: Double?, lv: Double?, medianSec: Double?,
         lowerSec: Double?, upperSec: Double?, outsideD3Acceptance: Bool
     ) {
@@ -210,7 +211,7 @@ public struct TSWCandidateRow: Hashable, Sendable {
         self.startISIIndex = startISIIndex; self.endISIIndex = endISIIndex
         self.startSpikeIndex = startSpikeIndex; self.endSpikeIndex = endSpikeIndex
         self.isiCount = isiCount; self.spikeCount = spikeCount
-        self.source = source; self.reviewRequired = reviewRequired
+        self.source = source; self.route = route; self.reviewRequired = reviewRequired
         self.boundaryReason = boundaryReason; self.decisionPath = decisionPath
         self.cv = cv; self.cv2 = cv2; self.lv = lv; self.medianSec = medianSec
         self.lowerSec = lowerSec; self.upperSec = upperSec
@@ -233,7 +234,7 @@ public struct TSWCandidateRow: Hashable, Sendable {
             startISIIndex: candidate.span.startISIIndex, endISIIndex: candidate.span.endISIIndex,
             startSpikeIndex: candidate.startSpikeIndex, endSpikeIndex: candidate.endSpikeIndex,
             isiCount: m.nISI, spikeCount: m.nSpikes,
-            source: candidate.source.rawValue, reviewRequired: candidate.reviewRequired,
+            source: candidate.source.rawValue, route: candidate.route.rawValue, reviewRequired: candidate.reviewRequired,
             boundaryReason: candidate.boundaryReason?.rawValue, decisionPath: candidate.decisionPath,
             cv: m.cv, cv2: m.cv2, lv: m.lv, medianSec: m.medianSec,
             lowerSec: m.minSec, upperSec: m.maxSec, outsideD3Acceptance: outside)
@@ -361,14 +362,24 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     public static func tswCandidates(
         dataset: SpikeDataset, derived: DerivedModeISIIntervals, minimumValidISISec: Double
     ) -> [String: [TSWCandidateRow]] {
+        // Use the dataset's QC floor as BOTH the metric floor and the TSW refractory floor, so the
+        // physiological classic-tonic floor (classicTonicMinRefractoryMultiple × refractoryFloorSec) is
+        // computed from the same QC floor shown in the distribution-first debug view (not the 0.001 default).
         let config = TonicStructuralWindowConfig(
-            thresholds: StructuralEvidenceThresholds(minimumValidISISec: minimumValidISISec))
+            thresholds: StructuralEvidenceThresholds(minimumValidISISec: minimumValidISISec),
+            refractoryFloorSec: minimumValidISISec)
         var byTrainID: [String: [TSWCandidateRow]] = [:]
         for train in dataset.trains {
             let family = derived.perTrain[train.id]
             let burstValley = family?.burst?.bridgeUpperSec
+            // TSW-2A magnitude-guard inputs (train-local D3 priors): the burst valley's support count (so a
+            // degenerate single-point valley is not trusted) and the tonic CORE lower (q25) as the fallback
+            // classic-tonic floor, else the dataset tonic core lower. Scale-free; no absolute-ms literal.
+            let burstSupport = family?.burst?.supportCount
+            let tonicCoreLower = family?.tonic?.lowerSec ?? derived.dataset.tonic?.lowerSec
             let candidates = TonicStructuralWindowDetector.scan(
-                train: train, config: config, burstValleySec: burstValley)
+                train: train, config: config, burstValleySec: burstValley,
+                burstValleySupportCount: burstSupport, fallbackFloorSec: tonicCoreLower)
             guard !candidates.isEmpty else { continue }
             let tonic = family?.tonic ?? derived.dataset.tonic
             let acceptance = tonic.map { (lower: $0.effectiveAcceptanceLowerSec, upper: $0.effectiveAcceptanceUpperSec) }

@@ -128,7 +128,7 @@ func tswNoRemovedPeakinessMetricInProvenance() {
     #expect(c.decisionPath.contains("short_compactness") || c.decisionPath.contains("long_cvcv2lv"))
     let allowedKeys: Set<String> = [
         "tonic_window_size", "tonic_compactness", "tonic_cv", "tonic_cv2", "tonic_lv",
-        "tonic_adjacent_ratio", "burst_contamination",
+        "tonic_adjacent_ratio", "burst_contamination", "tonic_magnitude_floor",
     ]
     for signal in c.signals { #expect(allowedKeys.contains(signal.key)) }
 }
@@ -362,4 +362,163 @@ func tsw2QCInvalidNextISIRecordedAsBoundaryNotSwallowed() {
     #expect(first.span.endISIIndex == 5)                         // does not cross the sub-floor ISI 6
     #expect(first.boundaryReason == .invalidNextISI)
     #expect(first.reviewRequired == true)
+}
+
+// MARK: - TSW-2A — family / magnitude routing.
+
+private func tsw2aMetrics(_ isis: [Double]) -> ISISpanMetrics { ISISpanMetrics.compute(orderedValidISISec: isis) }
+private func tsw2aGate(
+    _ isis: [Double], valley: Double? = nil, valleySupport: Int? = nil, fallback: Double? = nil,
+    config: TonicStructuralWindowConfig = TonicStructuralWindowConfig()
+) -> (route: TonicStructuralWindowRoute, signal: EvidenceSignal, trust: String, floorSec: Double) {
+    TonicStructuralWindowDetector.classicTonicMagnitudeGate(
+        metrics: tsw2aMetrics(isis), burstValleySec: valley, burstValleySupportCount: valleySupport,
+        fallbackFloorSec: fallback, config: config)
+}
+// Default physiological floor = classicTonicMinRefractoryMultiple(15) × refractoryFloorSec(0.001) = 15 ms.
+
+// TSW-2A #1 (5x5 slow tonic stays classic) — a slow regular ~450ms window with a tonic-core-lower fallback
+// (well above the physiological floor) routes classic tonic.
+@Test
+func tsw2aSlowRegularTonicRoutesClassic() {
+    let g = tsw2aGate([0.44, 0.46, 0.45, 0.47, 0.45, 0.46], fallback: 0.434)   // D3 tonic core lower ~434ms
+    #expect(g.route == .classicTonic)
+    #expect(g.trust == "d3_tonic_core_lower")
+}
+
+// TSW-2A #2 (KEY regression — Grechishnikova ~6.6-11.5ms NOT classic even with a low q25) — a regular
+// window whose median (~9ms) is below the physiological floor is too fast for classic tonic, and its
+// fast-dominated q25 (~6ms) is classified ambiguous, not trusted.
+@Test
+func tsw2aGrechishnikovaFastWindowNotClassicEvenWithLowQ25() {
+    let g = tsw2aGate([0.0066, 0.0090, 0.0075, 0.0114, 0.0088, 0.0096], fallback: 0.0060)
+    #expect(g.route != .classicTonic)
+    #expect(g.route == .tooFastForClassicTonic)          // below the 15ms physiological floor
+    #expect(g.trust == "ambiguous_fast_q25")             // the low q25 is not trusted to confirm classic
+}
+
+// TSW-2A #3 (fast-dominated q25 is ambiguous) — a window ABOVE the physiological floor whose only guard is
+// a fast-dominated q25 cannot confirm classic; it is routed review.
+@Test
+func tsw2aFastDominatedQ25IsClassifiedAmbiguous() {
+    let g = tsw2aGate([0.020, 0.021, 0.019, 0.022, 0.020], fallback: 0.0060)   // median 20ms; q25 6ms (HF regime)
+    #expect(g.trust == "ambiguous_fast_q25")
+    #expect(g.route == .possibleTonicReview)
+    #expect(g.route != .classicTonic)
+}
+
+// TSW-2A #4 (reliable valley downgrades a moderately-fast window) — above the physiological floor but below
+// a reliable burst valley → high-frequency route, not classic.
+@Test
+func tsw2aReliableValleyDowngradesModeratelyFastWindow() {
+    let g = tsw2aGate([0.020, 0.021, 0.019, 0.022, 0.020], valley: 0.050, valleySupport: 20)
+    #expect(g.route != .classicTonic)
+    #expect(g.trust == "d3_valley")
+    #expect(g.route == .highFrequencyTonic || g.route == .highFrequencySpiking)
+}
+
+// TSW-2A #5 (degenerate valley ignored) — a single-point/low-support valley is not trusted: a genuine slow
+// tonic is NOT rejected, and a fast window is NOT rescued to classic via the tiny valley.
+@Test
+func tsw2aDegenerateValleyIgnored() {
+    let slow = tsw2aGate([0.44, 0.46, 0.45, 0.47, 0.45, 0.46], valley: 0.00145, valleySupport: 1, fallback: 0.434)
+    #expect(slow.route == .classicTonic)                 // not a false rejection
+    #expect(slow.trust == "d3_tonic_core_lower")          // degenerate valley ignored, reliable fallback used
+    let fast = tsw2aGate([0.0066, 0.0090, 0.0075, 0.0114, 0.0088, 0.0096], valley: 0.00145, valleySupport: 1, fallback: 0.0060)
+    #expect(fast.route != .classicTonic)                 // tiny valley did not rescue it to classic
+}
+
+// TSW-2A #6 (no reliable guard → review, not classic) — a window above the physiological floor with no
+// valley and no fallback routes review rather than confirmed classic tonic.
+@Test
+func tsw2aNoGuardRoutesReviewNotClassic() {
+    let g = tsw2aGate([0.020, 0.021, 0.019, 0.022, 0.020])
+    #expect(g.trust == "unavailable")
+    #expect(g.route == .possibleTonicReview)
+}
+
+// TSW-2A #7 (tooFastForClassicTonic reachable) — the physiological floor is a HARD guard: a window below
+// it is too fast for classic tonic even when a reliable valley sits below the window.
+@Test
+func tsw2aTooFastRouteIsReachable() {
+    let g = tsw2aGate([0.008, 0.0085, 0.008, 0.0082, 0.008], valley: 0.004, valleySupport: 20)   // 8ms < 15ms floor
+    #expect(g.route == .tooFastForClassicTonic)
+}
+
+// TSW-2A #8 (HF family sub-typing by dimensionless spike count) — above the physiological floor but below a
+// reliable valley: a long dense run → HF spiking; a short run → HF tonic.
+@Test
+func tsw2aLongDenseFastRunRoutesHFSpiking() {
+    let long = tsw2aGate(Array(repeating: 0.020, count: 40), valley: 0.050, valleySupport: 20)   // nSpikes 41 >= 30
+    #expect(long.route == .highFrequencySpiking)
+    let short = tsw2aGate([0.020, 0.020, 0.020, 0.020, 0.020], valley: 0.050, valleySupport: 20)
+    #expect(short.route == .highFrequencyTonic)
+}
+
+// TSW-2A #9 (scale invariance) — scaling ALL ISIs, the valley/fallback, AND the refractory floor by k
+// preserves the route (for both a classic and a too-fast case).
+@Test
+func tsw2aScaleInvarianceWithRefractoryScaled() {
+    func classicRoute(_ k: Double) -> TonicStructuralWindowRoute {
+        let cfg = TonicStructuralWindowConfig(refractoryFloorSec: 0.001 * k)
+        return tsw2aGate([0.50, 0.52, 0.51, 0.53, 0.50].map { $0 * k }, valley: 0.020 * k, valleySupport: 20, config: cfg).route
+    }
+    #expect(classicRoute(1.0) == .classicTonic)
+    #expect(classicRoute(10.0) == .classicTonic)
+    func fastRoute(_ k: Double) -> TonicStructuralWindowRoute {
+        let cfg = TonicStructuralWindowConfig(refractoryFloorSec: 0.001 * k)
+        return tsw2aGate([0.005, 0.0052, 0.005, 0.0053, 0.005].map { $0 * k }, fallback: 0.006 * k, config: cfg).route
+    }
+    #expect(fastRoute(1.0) == .tooFastForClassicTonic)
+    #expect(fastRoute(10.0) == fastRoute(1.0))
+}
+
+// TSW-2A #10 (provenance uses allowed positive tokens) — decisionPath carries route + floor tokens from
+// the allowed set only (so no removed peakiness metric can appear).
+@Test
+func tsw2aProvenanceUsesAllowedRouteAndFloorTokens() {
+    let train = tswTrain("t", isis: [0.44, 0.46, 0.45, 0.47, 0.45, 0.46])
+    let span = ISISpan(trainID: "t", startISIIndex: 1, endISIIndex: 6, familyHint: .tonic)
+    guard case let .accepted(c) = TonicStructuralWindowDetector.evaluateWindow(
+        train: train, span: span, burstValleySec: nil, fallbackFloorSec: 0.434) else {
+        #expect(Bool(false), "expected accepted"); return
+    }
+    #expect(c.route == .classicTonic)
+    #expect(c.decisionPath.contains("route=classicTonic"))
+    #expect(c.decisionPath.contains("floor=d3_tonic_core_lower"))
+    let allowedTokens: Set<String> = [
+        "route=classicTonic", "route=highFrequencyTonic", "route=highFrequencySpiking",
+        "route=possibleTonicReview", "route=tooFastForClassicTonic",
+        "floor=d3_valley", "floor=d3_tonic_core_lower", "floor=ambiguous_fast_q25", "floor=unavailable",
+    ]
+    for part in c.decisionPath.split(separator: "/").map(String.init)
+    where part.hasPrefix("route=") || part.hasPrefix("floor=") {
+        #expect(allowedTokens.contains(part))
+    }
+}
+
+// TSW-2A #11 (scan-level integration) — maximal-disjoint scan unchanged; slow candidates route classic,
+// Grechishnikova-like fast candidates are still emitted as structural evidence but route too-fast, NOT classic.
+@Test
+func tsw2aScanRoutesSlowClassicAndFastNonClassic() {
+    let slow = tswTrain("slow", isis: [0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.44, 0.46, 0.45, 0.47])
+    let sc = TonicStructuralWindowDetector.scan(train: slow, burstValleySec: nil, fallbackFloorSec: 0.434)
+    #expect(!sc.isEmpty)
+    #expect(sc.allSatisfy { $0.route == .classicTonic })
+    let fast = tswTrain("fast", isis: [0.0066, 0.0090, 0.0075, 0.0114, 0.0088, 0.0096, 0.0075, 0.0090, 0.0080, 0.0100])
+    let fc = TonicStructuralWindowDetector.scan(train: fast, burstValleySec: nil, fallbackFloorSec: 0.0060)
+    #expect(!fc.isEmpty)                                   // still found as structural evidence
+    #expect(fc.allSatisfy { $0.route != .classicTonic })  // but not classic tonic
+    #expect(fc.contains { $0.route == .tooFastForClassicTonic })
+}
+
+// TSW-2A #12 (physiological floor tracks the configured QC/refractory floor) — a fast window with no
+// distribution guard routes tooFast, and the reported floor is classicTonicMinRefractoryMultiple ×
+// refractoryFloorSec using the CONFIGURED floor (0.0009), not the 0.001 default.
+@Test
+func tsw2aPhysiologicalFloorUsesConfiguredRefractoryFloor() {
+    let cfg = TonicStructuralWindowConfig(refractoryFloorSec: 0.0009)
+    let g = tsw2aGate([0.005, 0.0052, 0.005, 0.0053, 0.005], config: cfg)
+    #expect(g.route == .tooFastForClassicTonic)
+    #expect(abs(g.floorSec - 15.0 * 0.0009) < 1e-12)   // 15 × 0.0009, NOT 15 × 0.001
 }

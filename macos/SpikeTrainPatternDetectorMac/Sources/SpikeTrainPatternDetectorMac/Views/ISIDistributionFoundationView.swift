@@ -409,6 +409,7 @@ struct ISIDistributionFoundationView: View {
             HStack(spacing: 8) {
                 Text("ISI seq [\(row.startISIIndex)–\(row.endISIIndex)] · spikes [\(row.startSpikeIndex)–\(row.endSpikeIndex)] · \(row.isiCount) ISIs")
                     .font(.caption).monospacedDigit()
+                badge(tswRouteLabel(row.route), tint: tswRouteTint(row.route))
                 badge(row.source, tint: .purple)
                 if row.outsideD3Acceptance { badge("outside D3 acceptance", tint: .orange) }
                 if row.reviewRequired { badge("review", tint: .yellow) }
@@ -422,6 +423,28 @@ struct ISIDistributionFoundationView: View {
                     Text("boundary: \(reason)").font(.caption2).foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    /// Short label + color for a TSW-2A family route (classic = green; HF = amber; review = orange;
+    /// too-fast = gray). Debug-only; TSW is unwired.
+    private func tswRouteLabel(_ route: String) -> String {
+        switch route {
+        case "classicTonic": return "classic tonic"
+        case "highFrequencyTonic": return "HF tonic"
+        case "highFrequencySpiking": return "HF spiking"
+        case "possibleTonicReview": return "tonic? review"
+        case "tooFastForClassicTonic": return "too fast"
+        default: return route
+        }
+    }
+    private func tswRouteTint(_ route: String) -> Color {
+        switch route {
+        case "classicTonic": return .green
+        case "highFrequencyTonic", "highFrequencySpiking": return .orange
+        case "possibleTonicReview": return .yellow
+        case "tooFastForClassicTonic": return .gray
+        default: return .gray
         }
     }
 
