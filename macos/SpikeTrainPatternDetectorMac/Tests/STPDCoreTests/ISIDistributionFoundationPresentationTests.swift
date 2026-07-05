@@ -253,3 +253,55 @@ func perTrainDetailExposesPauseAbsentFromDataset() {
     let pauseRow = responderDetail.intervals.first { $0.family == .pause }
     #expect(pauseRow?.scope == .trainLocal)
 }
+
+// 13 — selectedTrainDetails(_:) returns trains in stable perTrainDetails order and silently drops ids
+// that are not in the current presentation (so a stale/partial multi-selection stays consistent).
+@Test
+func selectedTrainDetailsAreStableOrderedAndDropUnknownIDs() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    let order = p.perTrainDetails.map(\.trainID)
+    #expect(order.count == 2)
+    // Selecting everything preserves perTrainDetails order.
+    #expect(p.selectedTrainDetails(Set(order)).map(\.trainID) == order)
+    // A known subset preserves order; unknown ids are dropped, not appended.
+    let firstID = order[0]
+    #expect(p.selectedTrainDetails([firstID, "not-a-real-train"]).map(\.trainID) == [firstID])
+    // Reversed input set still comes back in perTrainDetails order (Set has no order; the method imposes it).
+    #expect(p.selectedTrainDetails(Set(order.reversed())).map(\.trainID) == order)
+    #expect(p.selectedTrainDetails([]).isEmpty)
+}
+
+// 14 — STACKED composition invariant: within each pooled bin, a SUBSET of selected trains sums to at
+// most the pooled bar (so stacked segments never exceed the gray pooled bar), and ALL trains sum to
+// EXACTLY the pooled bar (full composition == pooled). This is the y-scale contract the view stacks on.
+@Test
+func stackedSelectedTrainCountsComposeWithinPooledPerBin() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    guard let hist = p.histogram else { #expect(Bool(false), "expected pooled histogram"); return }
+    let pooled = hist.bins.map(\.count)
+
+    func binSums(_ details: [ISIDistributionTrainDetail]) -> [Int] {
+        var sums = [Int](repeating: 0, count: hist.bins.count)
+        for detail in details {
+            #expect(detail.histogramCounts.count == hist.bins.count)   // every overlay is pooled-aligned
+            for i in 0..<sums.count { sums[i] += detail.histogramCounts[i] }
+        }
+        return sums
+    }
+
+    let allIDs = Set(p.perTrainDetails.map(\.trainID))
+    let subsetIDs = Set(p.perTrainDetails.prefix(1).map(\.trainID))     // a single train
+    let allSums = binSums(p.selectedTrainDetails(allIDs))
+    let subsetSums = binSums(p.selectedTrainDetails(subsetIDs))
+
+    #expect(allSums == pooled)                                          // full stack == pooled bar
+    for i in 0..<pooled.count {
+        #expect(subsetSums[i] <= pooled[i])                            // subset never exceeds pooled bar
+        #expect(subsetSums[i] <= allSums[i])                           // subset ⊆ full stack
+    }
+    // At least one bin has the single-train subset STRICTLY below the pooled bar → the gray pooled bar
+    // stays visible above the stacked segment there (the "pooled behind" guarantee, pt4).
+    #expect(zip(subsetSums, pooled).contains { $0 < $1 })
+}

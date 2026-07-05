@@ -217,6 +217,14 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
         return [families.burst, families.tonic, families.pause].compactMap { $0 }.map(ISIModeIntervalRow.init)
     }
 
+    /// The given trains in stable `perTrainDetails` order (i.e. stacking order + color index for a
+    /// multi-train composition), silently dropping ids not present in this presentation. Pure, so a
+    /// stacked-overlay control can rely on a deterministic order and stay consistent with a stale or
+    /// partial selection after a dataset swap.
+    public func selectedTrainDetails(_ trainIDs: Set<String>) -> [ISIDistributionTrainDetail] {
+        perTrainDetails.filter { trainIDs.contains($0.trainID) }
+    }
+
     /// Shape an already-computed distribution + derived intervals into presentation rows.
     public static func make(
         distribution: DatasetISIDistribution,
