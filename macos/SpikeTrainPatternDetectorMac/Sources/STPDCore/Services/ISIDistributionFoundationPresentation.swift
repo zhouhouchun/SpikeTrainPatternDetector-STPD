@@ -171,6 +171,75 @@ public struct ISIDistributionTrainDetail: Hashable, Sendable {
     }
 }
 
+/// One TSW-2 tonic STRUCTURAL window candidate, flattened for display. TSW candidates are SEQUENCE-LOCAL
+/// (ordered runs of ISIs), NOT ISI-distribution bands like the D3 priors — `startISIIndex/endISIIndex`
+/// are the ordered sequence span, while `lowerSec/upperSec` are the candidate's ISI VALUE range (min–max)
+/// used only to place it on the log-ISI magnitude axis. This is a debug/inspection row; TSW is unwired.
+public struct TSWCandidateRow: Hashable, Sendable {
+    public let trainID: String
+    public let trainName: String
+    public let startISIIndex: Int
+    public let endISIIndex: Int
+    public let startSpikeIndex: Int
+    public let endSpikeIndex: Int
+    public let isiCount: Int
+    public let spikeCount: Int
+    public let source: String            // TonicWindowSource raw value (seed / merged)
+    public let reviewRequired: Bool
+    public let boundaryReason: String?   // TonicWindowBoundaryReason raw value, when expansion stopped
+    public let decisionPath: String
+    public let cv: Double?
+    public let cv2: Double?
+    public let lv: Double?
+    public let medianSec: Double?
+    /// Candidate ISI VALUE range (min / max within the span) — for the log-ISI magnitude axis only.
+    public let lowerSec: Double?
+    public let upperSec: Double?
+    /// True when the candidate's ISI value range extends outside the D3 tonic ACCEPTANCE band (a
+    /// distribution-vs-sequence mismatch worth review). False when there is no D3 tonic band to compare.
+    public let outsideD3Acceptance: Bool
+
+    public init(
+        trainID: String, trainName: String, startISIIndex: Int, endISIIndex: Int,
+        startSpikeIndex: Int, endSpikeIndex: Int, isiCount: Int, spikeCount: Int,
+        source: String, reviewRequired: Bool, boundaryReason: String?, decisionPath: String,
+        cv: Double?, cv2: Double?, lv: Double?, medianSec: Double?,
+        lowerSec: Double?, upperSec: Double?, outsideD3Acceptance: Bool
+    ) {
+        self.trainID = trainID; self.trainName = trainName
+        self.startISIIndex = startISIIndex; self.endISIIndex = endISIIndex
+        self.startSpikeIndex = startSpikeIndex; self.endSpikeIndex = endSpikeIndex
+        self.isiCount = isiCount; self.spikeCount = spikeCount
+        self.source = source; self.reviewRequired = reviewRequired
+        self.boundaryReason = boundaryReason; self.decisionPath = decisionPath
+        self.cv = cv; self.cv2 = cv2; self.lv = lv; self.medianSec = medianSec
+        self.lowerSec = lowerSec; self.upperSec = upperSec
+        self.outsideD3Acceptance = outsideD3Acceptance
+    }
+
+    /// Flatten a TSW candidate for display, flagging a mismatch when its ISI value range extends outside
+    /// the supplied D3 tonic acceptance band.
+    public init(
+        trainName: String, candidate: TonicStructuralWindowCandidate,
+        d3TonicAcceptance: (lower: Double, upper: Double)?
+    ) {
+        let m = candidate.metrics
+        var outside = false
+        if let acc = d3TonicAcceptance, let lo = m.minSec, let hi = m.maxSec {
+            outside = lo < acc.lower - 1e-12 || hi > acc.upper + 1e-12
+        }
+        self.init(
+            trainID: candidate.span.trainID, trainName: trainName,
+            startISIIndex: candidate.span.startISIIndex, endISIIndex: candidate.span.endISIIndex,
+            startSpikeIndex: candidate.startSpikeIndex, endSpikeIndex: candidate.endSpikeIndex,
+            isiCount: m.nISI, spikeCount: m.nSpikes,
+            source: candidate.source.rawValue, reviewRequired: candidate.reviewRequired,
+            boundaryReason: candidate.boundaryReason?.rawValue, decisionPath: candidate.decisionPath,
+            cv: m.cv, cv2: m.cv2, lv: m.lv, medianSec: m.medianSec,
+            lowerSec: m.minSec, upperSec: m.maxSec, outsideD3Acceptance: outside)
+    }
+}
+
 /// Everything the "Distribution-first foundation (D1-D3)" view needs, already shaped.
 public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     /// Whether the distribution came from the detection run (D2-wired) or a fallback compute.
@@ -194,6 +263,10 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
     /// Per-train overlay details (counts aligned to the pooled histogram + train-local D3 priors), one
     /// per contributing train, in `perTrain` order.
     public let perTrainDetails: [ISIDistributionTrainDetail]
+    /// TSW-2 tonic structural window candidates per train (keyed by `SpikeTrain.id` == the detail
+    /// `trainID`). Debug-only + UNWIRED — nothing consumes these; empty when computed without the dataset
+    /// (e.g. via `make` directly) or when a train has no candidate.
+    public let tswCandidatesByTrainID: [String: [TSWCandidateRow]]
 
     public init(
         datasetName: String, source: Source, floorSec: Double,
@@ -201,7 +274,8 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
         pooled: ISIDistributionQuantileRow, trainBalanced: ISIDistributionQuantileRow?,
         perTrain: [ISIDistributionQuantileRow], datasetIntervals: [ISIModeIntervalRow],
         histogram: ISIDistributionHistogram? = nil,
-        perTrainDetails: [ISIDistributionTrainDetail] = []
+        perTrainDetails: [ISIDistributionTrainDetail] = [],
+        tswCandidatesByTrainID: [String: [TSWCandidateRow]] = [:]
     ) {
         self.datasetName = datasetName; self.source = source; self.floorSec = floorSec
         self.contributingTrainCount = contributingTrainCount; self.pooledValidISICount = pooledValidISICount
@@ -209,6 +283,7 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
         self.perTrain = perTrain; self.datasetIntervals = datasetIntervals
         self.histogram = histogram
         self.perTrainDetails = perTrainDetails
+        self.tswCandidatesByTrainID = tswCandidatesByTrainID
     }
 
     /// Flatten a family-interval bundle into display rows (burst, then tonic, then pause — present only).
@@ -241,7 +316,8 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
         distribution: DatasetISIDistribution,
         derived: DerivedModeISIIntervals,
         source: Source,
-        floorSec: Double
+        floorSec: Double,
+        tswCandidatesByTrainID: [String: [TSWCandidateRow]] = [:]
     ) -> ISIDistributionFoundationPresentation {
         let pooled = ISIDistributionQuantileRow.from(
             label: "Pooled", trainID: nil, count: distribution.pooledValidISICount,
@@ -274,7 +350,33 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
             contributingTrainCount: distribution.contributingTrainCount,
             pooledValidISICount: distribution.pooledValidISICount,
             pooled: pooled, trainBalanced: balanced, perTrain: perTrain, datasetIntervals: intervals,
-            histogram: histogram, perTrainDetails: perTrainDetails)
+            histogram: histogram, perTrainDetails: perTrainDetails,
+            tswCandidatesByTrainID: tswCandidatesByTrainID)
+    }
+
+    /// Run the TSW-2 tonic structural window scan per train (debug-only, UNWIRED). Uses the D3 train-local
+    /// burst bridge valley as the contamination floor when present, else TSW's refractory fallback. Does
+    /// NOT seed from any global tonic band. Flags each candidate whose ISI value range extends outside the
+    /// train's D3 tonic acceptance band.
+    public static func tswCandidates(
+        dataset: SpikeDataset, derived: DerivedModeISIIntervals, minimumValidISISec: Double
+    ) -> [String: [TSWCandidateRow]] {
+        let config = TonicStructuralWindowConfig(
+            thresholds: StructuralEvidenceThresholds(minimumValidISISec: minimumValidISISec))
+        var byTrainID: [String: [TSWCandidateRow]] = [:]
+        for train in dataset.trains {
+            let family = derived.perTrain[train.id]
+            let burstValley = family?.burst?.bridgeUpperSec
+            let candidates = TonicStructuralWindowDetector.scan(
+                train: train, config: config, burstValleySec: burstValley)
+            guard !candidates.isEmpty else { continue }
+            let tonic = family?.tonic ?? derived.dataset.tonic
+            let acceptance = tonic.map { (lower: $0.effectiveAcceptanceLowerSec, upper: $0.effectiveAcceptanceUpperSec) }
+            byTrainID[train.id] = candidates.map {
+                TSWCandidateRow(trainName: train.name, candidate: $0, d3TonicAcceptance: acceptance)
+            }
+        }
+        return byTrainID
     }
 
     /// End-to-end convenience for the view: prefer the D2-wired `runDistribution`; otherwise compute
@@ -288,6 +390,8 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
             ?? DatasetISIDistributionService.compute(dataset: dataset, minimumValidISISec: minimumValidISISec)
         let derived = ModeISIIntervalDeriver.derive(datasetDistribution: distribution, minimumValidISISec: minimumValidISISec)
         let source: Source = runDistribution != nil ? .detectionRun : .computedFromDataset
-        return make(distribution: distribution, derived: derived, source: source, floorSec: minimumValidISISec)
+        let tsw = tswCandidates(dataset: dataset, derived: derived, minimumValidISISec: minimumValidISISec)
+        return make(distribution: distribution, derived: derived, source: source, floorSec: minimumValidISISec,
+                    tswCandidatesByTrainID: tsw)
     }
 }

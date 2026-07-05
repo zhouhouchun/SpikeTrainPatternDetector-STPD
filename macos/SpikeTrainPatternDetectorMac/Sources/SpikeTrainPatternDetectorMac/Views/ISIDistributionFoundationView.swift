@@ -45,6 +45,16 @@ struct ISIDistributionFoundationView: View {
         Binding(get: { focusedDetail?.trainID }, set: { focusedTrainID = $0 })
     }
 
+    /// TSW-2 candidates (debug-only, unwired) for a given train.
+    private func tswCandidates(for trainID: String) -> [TSWCandidateRow] {
+        presentation.tswCandidatesByTrainID[trainID] ?? []
+    }
+
+    /// TSW candidates for the focused train — the only ones overlaid on the chart (to avoid clutter).
+    private var focusedTSWCandidates: [TSWCandidateRow] {
+        focusedDetail.map { tswCandidates(for: $0.trainID) } ?? []
+    }
+
     /// Curated per-train palette, deliberately avoiding the family band hues (burst=orange, tonic=green,
     /// pause=blue) so train stacks read distinctly against the bands. Used for the first N trains.
     private static let trainPalette: [Color] = [.pink, .purple, .brown, .indigo, .red, .yellow, .teal, .mint, .cyan]
@@ -83,6 +93,7 @@ struct ISIDistributionFoundationView: View {
                     selectedTrainControl
                     chartSection
                     selectedTrainPriorsSection
+                    tswCandidatesSection
                     quantileSection
                     perTrainSection
                     intervalSection
@@ -354,6 +365,66 @@ struct ISIDistributionFoundationView: View {
         }
     }
 
+    // MARK: TSW-2 tonic structural candidates (debug-only; unwired)
+
+    private var tswCandidatesSection: some View {
+        sectionCard("TSW tonic structural candidates") {
+            if selectedDetails.isEmpty {
+                Text("Select one or more trains above to list their TSW-2 sequence-local tonic structural candidates (debug only; TSW is unwired — it does not affect detection).")
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Sequence-local tonic windows discovered from each train's ISI ORDER (TSW-2) — a different object from the D3 distribution bands below: D3 = ISI-magnitude priors, TSW = ordered-run structure. On the chart, the focus train's candidates appear as PURPLE ISI value ranges (min–max), not time spans; the sequence span is the ISI-index range shown here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(selectedDetails, id: \.trainID) { detail in
+                        let rows = tswCandidates(for: detail.trainID)
+                        let isFocus = detail.trainID == focusedDetail?.trainID
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 2).fill(trainColor(detail.trainID)).frame(width: 12, height: 12)
+                                Text(detail.trainName).font(.subheadline.weight(.semibold))
+                                if isFocus { badge("focus", tint: .accentColor) }
+                                Text("\(rows.count) candidate\(rows.count == 1 ? "" : "s")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .padding(isFocus ? 4 : 0)
+                            .background(isFocus ? Color.purple.opacity(0.08) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 5))
+                            if rows.isEmpty {
+                                Text("No TSW tonic structural candidate.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                ForEach(rows, id: \.self) { row in tswRow(row) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func tswRow(_ row: TSWCandidateRow) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text("ISI seq [\(row.startISIIndex)–\(row.endISIIndex)] · spikes [\(row.startSpikeIndex)–\(row.endSpikeIndex)] · \(row.isiCount) ISIs")
+                    .font(.caption).monospacedDigit()
+                badge(row.source, tint: .purple)
+                if row.outsideD3Acceptance { badge("outside D3 acceptance", tint: .orange) }
+                if row.reviewRequired { badge("review", tint: .yellow) }
+            }
+            HStack(spacing: 8) {
+                Text("value range \(ms(row.lowerSec))–\(ms(row.upperSec)) ms")
+                    .font(.caption2).foregroundStyle(.purple).monospacedDigit()
+                Text("CV \(num(row.cv)) · CV2 \(num(row.cv2)) · LV \(num(row.lv))")
+                    .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                if let reason = row.boundaryReason {
+                    Text("boundary: \(reason)").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     // MARK: Chart (UI-2A bars + UI-2C stacked composition)
 
     private var chartSection: some View {
@@ -364,7 +435,7 @@ struct ISIDistributionFoundationView: View {
                     Canvas { context, size in
                         drawFoundationChart(histogram: histogram, datasetIntervals: presentation.datasetIntervals,
                                             stacked: stackedTrains, focus: focusedDetail,
-                                            context: &context, size: size)
+                                            tswFocus: focusedTSWCandidates, context: &context, size: size)
                     }
                     .frame(height: 240)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.6),
@@ -395,6 +466,12 @@ struct ISIDistributionFoundationView: View {
                 Text("dashed = focus “\(focus.trainName)” priors (core; tonic acc. band; burst bridge ▾)")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+            if !focusedTSWCandidates.isEmpty {
+                Divider().frame(height: 12)
+                legendSwatch("TSW tonic candidates", .purple)
+                Text("(focus train; ISI value range — NOT a time span)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -407,7 +484,7 @@ struct ISIDistributionFoundationView: View {
 
     private func drawFoundationChart(histogram: ISIDistributionHistogram, datasetIntervals: [ISIModeIntervalRow],
                                      stacked: [(detail: ISIDistributionTrainDetail, color: Color)],
-                                     focus: ISIDistributionTrainDetail?,
+                                     focus: ISIDistributionTrainDetail?, tswFocus: [TSWCandidateRow],
                                      context: inout GraphicsContext, size: CGSize) {
         let plot = CGRect(x: 8, y: 8, width: size.width - 16, height: size.height - 30)
         guard plot.width > 8, plot.height > 8, histogram.maxSec > histogram.minSec else { return }
@@ -496,6 +573,16 @@ struct ISIDistributionFoundationView: View {
                     context.fill(marker, with: .color(color))
                 }
             }
+        }
+        // 3c) TSW candidates (focus train only) — purple translucent bands at each candidate's ISI VALUE
+        // range [min, max] with dashed purple edges. This is a MAGNITUDE range on the log-ISI axis, NOT a
+        // time-span overlay; the sequence span (ISI indices) is shown in the list below. Distinct from the
+        // green D3 tonic band so the two objects are not confused.
+        for row in tswFocus {
+            guard let lo = row.lowerSec, let hi = row.upperSec, hi >= lo else { continue }
+            fillBand(&context, x(lo), x(hi), plot, Color.purple.opacity(0.10))
+            dashedRule(&context, x(lo), plot, Color.purple.opacity(0.8))
+            dashedRule(&context, x(hi), plot, Color.purple.opacity(0.8))
         }
 
         // 4) x baseline + log decade ticks / labels.
@@ -587,6 +674,12 @@ struct ISIDistributionFoundationView: View {
     private func ms(_ sec: Double?) -> String {
         guard let sec else { return "—" }
         return String(format: "%.2f", sec * 1000)
+    }
+
+    /// Format a dimensionless metric (CV/CV2/LV) for compact display.
+    private func num(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return String(format: "%.2f", value)
     }
 
     private func familyName(_ family: ISIPatternFamily) -> String {

@@ -328,3 +328,67 @@ func focusedTrainDetailResolvesRequestedElseFirstSelected() {
     // Nothing selected → nil.
     #expect(p.focusedTrainDetail(requested: ids[0], within: []) == nil)
 }
+
+// MARK: - TSW-2 debug candidate rows (presentation only; TSW unwired).
+
+// 16 — a clean regular tonic train produces a TSW candidate row spanning the full run.
+@Test
+func presentationComputesTSWCandidatesForCleanTonicTrain() {
+    let tonic = presTrain("clean_tonic", isis: [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.051, 0.050, 0.049, 0.051])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [tonic])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    let rows = p.tswCandidatesByTrainID[tonic.id] ?? []
+    #expect(!rows.isEmpty)
+    #expect(rows.first?.startISIIndex == 1)
+    #expect(rows.first?.endISIIndex == 10)
+    #expect(rows.first?.isiCount == 10)
+    #expect(rows.first?.trainName == "clean_tonic")
+}
+
+// 17 — a hyper-regular burst-like train (sub-refractory-floor ISIs) yields NO TSW tonic rows.
+@Test
+func presentationBurstLikeTrainProducesNoTSWCandidate() {
+    let burst = presTrain("burst_like", isis: [Double](repeating: 0.002, count: 10))   // < refractory floor ×3
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [burst])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    #expect((p.tswCandidatesByTrainID[burst.id] ?? []).isEmpty)
+}
+
+// 18 — TSW row honors the span→spike index convention: endSpikeIndex == endISIIndex + 1.
+@Test
+func presentationTSWRowIndexConvention() {
+    let tonic = presTrain("t", isis: [0.050, 0.051, 0.049, 0.050, 0.052, 0.048])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [tonic])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    guard let row = p.tswCandidatesByTrainID[tonic.id]?.first else { #expect(Bool(false), "expected a row"); return }
+    #expect(row.startSpikeIndex == row.startISIIndex)
+    #expect(row.endSpikeIndex == row.endISIIndex + 1)
+    #expect(row.spikeCount == row.isiCount + 1)
+}
+
+// 19 — the D3-mismatch flag: a candidate whose ISI value range sits outside the D3 tonic acceptance band
+// is flagged; a covered range or a nil band is not.
+@Test
+func tswCandidateRowD3MismatchFlag() {
+    let metrics = ISISpanMetrics.compute(orderedValidISISec: [0.020, 0.022, 0.021])   // range 0.020–0.022
+    let span = ISISpan(trainID: "x", startISIIndex: 1, endISIIndex: 3, familyHint: .tonic)
+    let candidate = TonicStructuralWindowCandidate(
+        span: span, metrics: metrics, source: .seed, signals: [], reviewRequired: false,
+        boundaryReason: nil, decisionPath: "test")
+    // Acceptance band well above the candidate range → outside.
+    #expect(TSWCandidateRow(trainName: "x", candidate: candidate,
+                            d3TonicAcceptance: (lower: 0.040, upper: 0.060)).outsideD3Acceptance == true)
+    // Acceptance band covering the range → not outside.
+    #expect(TSWCandidateRow(trainName: "x", candidate: candidate,
+                            d3TonicAcceptance: (lower: 0.010, upper: 0.030)).outsideD3Acceptance == false)
+    // No D3 tonic band → not flagged.
+    #expect(TSWCandidateRow(trainName: "x", candidate: candidate, d3TonicAcceptance: nil).outsideD3Acceptance == false)
+}
+
+// 20 — TSW presentation is safe for an empty dataset.
+@Test
+func presentationTSWSafeForEmptyDataset() {
+    let empty = SpikeDataset(name: "empty", sourceDescription: "unit-test", trains: [])
+    let p = ISIDistributionFoundationPresentation.from(dataset: empty, runDistribution: nil, minimumValidISISec: 0.001)
+    #expect(p.tswCandidatesByTrainID.isEmpty)
+}
