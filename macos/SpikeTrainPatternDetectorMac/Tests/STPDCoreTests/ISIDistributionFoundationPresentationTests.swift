@@ -305,3 +305,26 @@ func stackedSelectedTrainCountsComposeWithinPooledPerBin() {
     // stays visible above the stacked segment there (the "pooled behind" guarantee, pt4).
     #expect(zip(subsetSums, pooled).contains { $0 < $1 })
 }
+
+// 15 — focusedTrainDetail(requested:within:) resolves the effective focus train: the requested train
+// when it is selected, otherwise the first selected train (stable order), and nil when nothing is
+// selected. Pure backing for the UI-2D focus picker's default + deselect-fallback behavior.
+@Test
+func focusedTrainDetailResolvesRequestedElseFirstSelected() {
+    let p = ISIDistributionFoundationPresentation.from(
+        dataset: presDataset(), runDistribution: nil, minimumValidISISec: 0.001)
+    let ids = p.perTrainDetails.map(\.trainID)                          // stable order
+    #expect(ids.count == 2)
+    let all = Set(ids)
+
+    // No request → first selected (in perTrainDetails order).
+    #expect(p.focusedTrainDetail(requested: nil, within: all)?.trainID == ids[0])
+    // Requested train that IS selected → that train.
+    #expect(p.focusedTrainDetail(requested: ids[1], within: all)?.trainID == ids[1])
+    // Requested train NOT in the selected set → first selected (deselect fallback).
+    #expect(p.focusedTrainDetail(requested: ids[0], within: [ids[1]])?.trainID == ids[1])
+    // Unknown id → first selected.
+    #expect(p.focusedTrainDetail(requested: "not-a-real-train", within: all)?.trainID == ids[0])
+    // Nothing selected → nil.
+    #expect(p.focusedTrainDetail(requested: ids[0], within: []) == nil)
+}

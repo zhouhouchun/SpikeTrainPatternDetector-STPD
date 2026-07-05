@@ -30,6 +30,21 @@ struct ISIDistributionFoundationView: View {
         selectedDetails.map { ($0, trainColor($0.trainID)) }
     }
 
+    /// The train whose detailed priors are drawn on the chart (UI-2D). Requested via `focusedTrainID`,
+    /// but always constrained to the selected set (defaults to the first selected train, and falls back
+    /// there when its train is deselected). `nil` when nothing is selected.
+    @State private var focusedTrainID: String?
+
+    private var focusedDetail: ISIDistributionTrainDetail? {
+        presentation.focusedTrainDetail(requested: focusedTrainID, within: selectedTrainIDs)
+    }
+
+    /// Focus-picker binding reflecting the EFFECTIVE focus, so the control always shows the train whose
+    /// priors are on the chart (even when the request defaulted/fell back).
+    private var focusSelection: Binding<String?> {
+        Binding(get: { focusedDetail?.trainID }, set: { focusedTrainID = $0 })
+    }
+
     /// Curated per-train palette, deliberately avoiding the family band hues (burst=orange, tonic=green,
     /// pause=blue) so train stacks read distinctly against the bands. Used for the first N trains.
     private static let trainPalette: [Color] = [.pink, .purple, .brown, .indigo, .red, .yellow, .teal, .mint, .cyan]
@@ -236,6 +251,35 @@ struct ISIDistributionFoundationView: View {
                     trainToggleChip(detail)
                 }
             }
+
+            if selectedDetails.count > 1 {
+                focusControl
+            }
+        }
+    }
+
+    /// UI-2D focus picker: choose ONE of the selected trains whose detailed priors are drawn on the
+    /// chart (the stacked bars still show every selected train's composition). Only shown when more than
+    /// one train is selected — with a single selection that train is already the focus.
+    private var focusControl: some View {
+        HStack(spacing: 8) {
+            Text("Focus")
+                .font(.callout.weight(.medium))
+            Picker("Focus train", selection: focusSelection) {
+                ForEach(selectedDetails, id: \.trainID) { detail in
+                    Text(detail.trainName).tag(String?.some(detail.trainID))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 260)
+            if let focus = focusedDetail {
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2).fill(trainColor(focus.trainID)).frame(width: 12, height: 10)
+                    Text("priors drawn on chart: \(focus.trainName)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
         }
     }
 
@@ -291,6 +335,9 @@ struct ISIDistributionFoundationView: View {
                                 RoundedRectangle(cornerRadius: 2).fill(trainColor(detail.trainID)).frame(width: 12, height: 12)
                                 Text(detail.trainName).font(.subheadline.weight(.semibold))
                                 Text("(\(detail.validISICount) valid ISIs)").font(.caption).foregroundStyle(.secondary)
+                                if detail.trainID == focusedDetail?.trainID {
+                                    badge("focus", tint: .accentColor)   // priors drawn on the chart
+                                }
                             }
                             if detail.intervals.isEmpty {
                                 Text("No train-local burst/tonic/pause priors derived.")
@@ -316,7 +363,8 @@ struct ISIDistributionFoundationView: View {
                     chartLegend
                     Canvas { context, size in
                         drawFoundationChart(histogram: histogram, datasetIntervals: presentation.datasetIntervals,
-                                            stacked: stackedTrains, context: &context, size: size)
+                                            stacked: stackedTrains, focus: focusedDetail,
+                                            context: &context, size: size)
                     }
                     .frame(height: 240)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.6),
@@ -342,6 +390,11 @@ struct ISIDistributionFoundationView: View {
                 Text("colored stack = selected-train contributions (stacked on the gray pooled bar; colors in list below)")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+            if let focus = focusedDetail {
+                Divider().frame(height: 12)
+                Text("dashed = focus “\(focus.trainName)” priors (core; tonic acc. band; burst bridge ▾)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -354,6 +407,7 @@ struct ISIDistributionFoundationView: View {
 
     private func drawFoundationChart(histogram: ISIDistributionHistogram, datasetIntervals: [ISIModeIntervalRow],
                                      stacked: [(detail: ISIDistributionTrainDetail, color: Color)],
+                                     focus: ISIDistributionTrainDetail?,
                                      context: inout GraphicsContext, size: CGSize) {
         let plot = CGRect(x: 8, y: 8, width: size.width - 16, height: size.height - 30)
         guard plot.width > 8, plot.height > 8, histogram.maxSec > histogram.minSec else { return }
@@ -413,16 +467,33 @@ struct ISIDistributionFoundationView: View {
                 }
             }
         }
-        // With exactly ONE train selected, also draw its train-local D3 priors as dashed rules (the
-        // focused single-train read); with several stacked, per-train rules would be too noisy, so the
-        // priors list below carries them per train instead.
-        if validStacks.count == 1 {
-            for interval in validStacks[0].detail.intervals {
+        // 3b) FOCUS train (UI-2D): draw ONE focused train's train-local priors in detail — regardless of
+        // how many trains are stacked — so boundaries stay legible without per-train clutter:
+        //   • core dashed rules (every family)
+        //   • tonic ACCEPTANCE band: faint fill + dashed edges (distinct from the dataset solid band)
+        //   • burst BRIDGE marker: dashed rule + a small triangle at the top.
+        if let focus {
+            for interval in focus.intervals {
                 let color = familyColor(interval.family)
-                dashedRule(&context, x(interval.lowerSec), plot, color.opacity(0.9))
-                dashedRule(&context, x(interval.upperSec), plot, color.opacity(0.9))
-                if let bridge = interval.bridgeUpperSec, bridge > interval.upperSec {
+                if interval.family == .tonic,
+                   interval.acceptanceLowerSec != nil || interval.acceptanceUpperSec != nil {
+                    let al = interval.acceptanceLowerSec ?? interval.lowerSec
+                    let au = interval.acceptanceUpperSec ?? interval.upperSec
+                    fillBand(&context, x(al), x(au), plot, color.opacity(0.07))
+                    dashedRule(&context, x(al), plot, color.opacity(0.5))
+                    dashedRule(&context, x(au), plot, color.opacity(0.5))
+                }
+                dashedRule(&context, x(interval.lowerSec), plot, color.opacity(0.95))
+                dashedRule(&context, x(interval.upperSec), plot, color.opacity(0.95))
+                if interval.family == .burst, let bridge = interval.bridgeUpperSec, bridge > interval.upperSec {
                     dashedRule(&context, x(bridge), plot, color.opacity(0.6))
+                    let bx = x(bridge), s: CGFloat = 4
+                    var marker = Path()
+                    marker.move(to: CGPoint(x: bx, y: plot.minY + s))
+                    marker.addLine(to: CGPoint(x: bx - s, y: plot.minY))
+                    marker.addLine(to: CGPoint(x: bx + s, y: plot.minY))
+                    marker.closeSubpath()
+                    context.fill(marker, with: .color(color))
                 }
             }
         }

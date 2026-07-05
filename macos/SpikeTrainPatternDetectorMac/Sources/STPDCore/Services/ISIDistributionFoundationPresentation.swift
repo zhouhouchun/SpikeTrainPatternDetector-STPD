@@ -225,6 +225,17 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
         perTrainDetails.filter { trainIDs.contains($0.trainID) }
     }
 
+    /// Resolve the effective FOCUS train (for detailed prior inspection) from a `requested` id,
+    /// constrained to the selected set: the requested train if it is currently selected, otherwise the
+    /// first selected train (stable `perTrainDetails` order), or nil when nothing is selected. Pure so
+    /// the "focus defaults to first selected, and falls back when its train is deselected" rule is
+    /// unit-testable independent of the view.
+    public func focusedTrainDetail(requested: String?, within selectedIDs: Set<String>) -> ISIDistributionTrainDetail? {
+        let selected = selectedTrainDetails(selectedIDs)
+        if let requested, let match = selected.first(where: { $0.trainID == requested }) { return match }
+        return selected.first
+    }
+
     /// Shape an already-computed distribution + derived intervals into presentation rows.
     public static func make(
         distribution: DatasetISIDistribution,
