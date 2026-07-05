@@ -36,6 +36,7 @@ public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
     case cv2Exceeded               // long window: CV2 over the max
     case lvExceeded                // long window: LV over the max
     case burstContamination        // too many / a run of sub-burst-floor ISIs (post-window veto)
+    case invalidNextISI            // the next ISI failed QC (artifact / sub-floor) — a real edge, not tonic
 
     public var message: String {
         switch self {
@@ -46,6 +47,7 @@ public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
         case .cv2Exceeded: return "CV2 exceeded the tonic maximum"
         case .lvExceeded: return "LV exceeded the tonic maximum"
         case .burstContamination: return "window contains burst-floor contamination"
+        case .invalidNextISI: return "the next ISI failed QC (artifact or sub-floor)"
         }
     }
 }
@@ -249,7 +251,141 @@ public enum TonicStructuralWindowDetector {
         return .accepted(candidate)
     }
 
+    // MARK: TSW-2 — sequence-level scan
+
+    /// Stride-1 sequence scan: slides a minimum seed window (`max(2, tonicMinSpikes - 1)` ISIs) across the
+    /// train's valid ISI slots (indices `1...`), evaluates each seed with the TSW-1 gate + burst guard,
+    /// merges overlapping/contiguous PASSING seeds only when the full merged span re-validates, emits
+    /// MAXIMAL DISJOINT candidates, and records right-edge boundary provenance. It reads the raw QC ISI
+    /// series directly — NOT a global/adaptive tonic band. Deterministic: the result is sorted by
+    /// (startISIIndex, endISIIndex) and independent of incidental iteration order.
+    public static func scan(
+        train: SpikeTrain,
+        config: TonicStructuralWindowConfig = TonicStructuralWindowConfig(),
+        burstValleySec: Double? = nil,
+        minTonicSpikes: Int? = nil
+    ) -> [TonicStructuralWindowCandidate] {
+        let lastValidIndex = train.isiSec.count - 1              // ISI slots live at 1...lastValidIndex
+        guard lastValidIndex >= 1 else { return [] }
+        let baseMinSpikes = minTonicSpikes ?? config.thresholds.tonicMinSpikes
+        let seedISI = Swift.max(2, baseMinSpikes - 1)
+        guard lastValidIndex >= seedISI else { return [] }
+        let floor = Swift.max(0, config.thresholds.minimumValidISISec)
+
+        // A span is a valid tonic window only when every ISI in it is QC-valid AND it clears the TSW-1
+        // regularity gate + burst guard.
+        func accepts(_ start: Int, _ end: Int) -> Bool {
+            guard spanHasOnlyValidISIs(train, start, end, floor: floor) else { return false }
+            let span = ISISpan(trainID: train.id, startISIIndex: start, endISIIndex: end, familyHint: .tonic)
+            if case .accepted = evaluateWindow(train: train, span: span, burstValleySec: burstValleySec, config: config) {
+                return true
+            }
+            return false
+        }
+
+        // 1) Passing minimum seeds (stride 1).
+        var passingStarts: [Int] = []
+        for start in 1...(lastValidIndex - seedISI + 1) where accepts(start, start + seedISI - 1) {
+            passingStarts.append(start)
+        }
+        guard !passingStarts.isEmpty else { return [] }
+
+        // 2) From EACH passing start, greedily build the LONGEST valid span by expanding one ISI at a time
+        //    and re-validating the FULL span (never across a QC-invalid ISI). Building from every start
+        //    independently makes each start's best candidate order-independent — so a later-starting seed
+        //    can still form a longer candidate than an earlier one whose forward merge failed.
+        var provisional: [(start: Int, end: Int)] = []
+        for start in passingStarts {
+            var end = start + seedISI - 1
+            while end + 1 <= lastValidIndex, accepts(start, end + 1) { end += 1 }
+            provisional.append((start: start, end: end))
+        }
+
+        // 3) Select MAXIMAL DISJOINT candidates: longest first, ties by earliest start then earliest end;
+        //    keep a candidate only if it does not overlap an already-selected one (longer wins).
+        provisional.sort { a, b in
+            let lengthA = a.end - a.start, lengthB = b.end - b.start
+            if lengthA != lengthB { return lengthA > lengthB }
+            if a.start != b.start { return a.start < b.start }
+            return a.end < b.end
+        }
+        var selected: [(start: Int, end: Int)] = []
+        for candidate in provisional {
+            let overlaps = selected.contains { !(candidate.end < $0.start || candidate.start > $0.end) }
+            if !overlaps { selected.append(candidate) }
+        }
+
+        // 4) Finalize (metrics + boundary provenance + source) and return sorted by (startISIIndex, endISIIndex).
+        var candidates: [TonicStructuralWindowCandidate] = []
+        for span in selected {
+            let source: TonicWindowSource = (span.end - span.start + 1) > seedISI ? .merged : .seed
+            if let candidate = finalizeCandidate(
+                train: train, startISIIndex: span.start, endISIIndex: span.end, source: source,
+                burstValleySec: burstValleySec, config: config, lastValidIndex: lastValidIndex, floor: floor) {
+                candidates.append(candidate)
+            }
+        }
+        return candidates.sorted {
+            $0.span.startISIIndex != $1.span.startISIIndex
+                ? $0.span.startISIIndex < $1.span.startISIIndex
+                : $0.span.endISIIndex < $1.span.endISIIndex
+        }
+    }
+
+    /// Build the final candidate for `[startISIIndex, endISIIndex]`, attaching right-edge boundary
+    /// provenance: if the next ISI exists and the one-ISI-expanded span FAILS, record the failure reason
+    /// (the failing ISI is NOT included) and flag `reviewRequired`. A train that simply ends (no next ISI)
+    /// never sets `reviewRequired`.
+    private static func finalizeCandidate(
+        train: SpikeTrain, startISIIndex: Int, endISIIndex: Int, source: TonicWindowSource,
+        burstValleySec: Double?, config: TonicStructuralWindowConfig, lastValidIndex: Int, floor: Double
+    ) -> TonicStructuralWindowCandidate? {
+        let span = ISISpan(trainID: train.id, startISIIndex: startISIIndex, endISIIndex: endISIIndex, familyHint: .tonic)
+        guard case let .accepted(base) = evaluateWindow(
+            train: train, span: span, source: source, burstValleySec: burstValleySec, config: config) else {
+            return nil
+        }
+        var boundaryReason: TonicWindowBoundaryReason?
+        var reviewRequired = false
+        var decisionPath = base.decisionPath
+        let nextIndex = endISIIndex + 1
+        if nextIndex <= lastValidIndex {
+            if !isValidISI(train.isiSec, nextIndex, floor: floor) {
+                // The next ISI failed QC (artifact / sub-floor) — a real edge. Record it rather than
+                // letting the raw span silently cross it.
+                boundaryReason = .invalidNextISI
+                reviewRequired = true
+                decisionPath += "/right_boundary_fail=\(TonicWindowBoundaryReason.invalidNextISI.rawValue)"
+            } else {
+                let expanded = ISISpan(trainID: train.id, startISIIndex: startISIIndex, endISIIndex: nextIndex, familyHint: .tonic)
+                if case let .rejected(reason, _) = evaluateWindow(
+                    train: train, span: expanded, burstValleySec: burstValleySec, config: config) {
+                    boundaryReason = reason
+                    reviewRequired = true
+                    decisionPath += "/right_boundary_fail=\(reason.rawValue)"
+                }
+            }
+        }
+        return TonicStructuralWindowCandidate(
+            span: base.span, metrics: base.metrics, source: source, signals: base.signals,
+            reviewRequired: reviewRequired, boundaryReason: boundaryReason, decisionPath: decisionPath)
+    }
+
     // MARK: Helpers
+
+    /// True when every ISI slot in `[start, end]` is QC-valid (finite and `>= floor`). A tonic structural
+    /// window must be a contiguous run of valid ISIs — it never spans an artifact/sub-floor ISI.
+    private static func spanHasOnlyValidISIs(_ train: SpikeTrain, _ start: Int, _ end: Int, floor: Double) -> Bool {
+        let isi = train.isiSec
+        guard start >= 1, end >= start, end < isi.count else { return false }
+        for index in start...end where !isValidISI(isi, index, floor: floor) { return false }
+        return true
+    }
+
+    private static func isValidISI(_ isi: [Double?], _ index: Int, floor: Double) -> Bool {
+        guard index >= 1, index < isi.count, let value = isi[index], value.isFinite, value >= floor else { return false }
+        return true
+    }
 
     private static func maxConsecutiveTrue(_ flags: [Bool]) -> Int {
         var best = 0, current = 0

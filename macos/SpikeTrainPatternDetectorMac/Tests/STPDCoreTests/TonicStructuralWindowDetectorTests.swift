@@ -175,3 +175,191 @@ func tswMaxAdjacentRatioHelper() {
     let scaled = TonicStructuralWindowDetector.maxAdjacentRatio([50.0, 100.0])
     #expect(scaled != nil && abs((scaled ?? 0) - 2.0) < 1e-9)
 }
+
+// MARK: - TSW-2 — stride-1 scan + maximal-disjoint emission + boundary provenance.
+
+private func tswScan(
+    _ isis: [Double], config: TonicStructuralWindowConfig = TonicStructuralWindowConfig(),
+    burstValleySec: Double? = nil, minTonicSpikes: Int? = nil
+) -> [TonicStructuralWindowCandidate] {
+    TonicStructuralWindowDetector.scan(
+        train: tswTrain("t", isis: isis), config: config, burstValleySec: burstValleySec, minTonicSpikes: minTonicSpikes)
+}
+
+// TSW-2 #1 — a clean regular tonic run yields ONE candidate covering the full run.
+@Test
+func tsw2CleanTonicRunProducesOneCandidate() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.051, 0.050, 0.049, 0.051]   // 10 tight ISIs
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)
+    #expect(cands.first?.span.startISIIndex == 1)
+    #expect(cands.first?.span.endISIIndex == isis.count)                                // covers [1...10]
+    #expect(cands.first?.boundaryReason == nil)                                         // train ends → no boundary
+    #expect(cands.first?.reviewRequired == false)
+}
+
+// TSW-2 #2 — a tonic run followed by a large pause ISI stops BEFORE the pause; boundary is recorded.
+@Test
+func tsw2PauseBoundaryStopsBeforePause() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.500]                         // 6 tonic + pause@7
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)
+    #expect(cands.first?.span.endISIIndex == 6)                                         // stops before the pause
+    #expect(cands.first?.boundaryReason != nil)                                         // failed expansion recorded
+    #expect(cands.first?.reviewRequired == true)
+}
+
+// TSW-2 #3 — a hyper-regular burst-like run produces NO tonic candidate (burst guard vetoes every seed).
+@Test
+func tsw2BurstContaminationProducesNoCandidate() {
+    let isis = [Double](repeating: 0.004, count: 8)
+    #expect(tswScan(isis, burstValleySec: 0.020).isEmpty)
+}
+
+// TSW-2 #4 — two tonic epochs separated by pause ISIs produce TWO candidates, not one.
+@Test
+func tsw2TwoSeparatedEpochsProduceTwoCandidates() {
+    let epochA = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.051, 0.050]                // ISIs 1...8
+    let gap = [0.500, 0.480]                                                             // ISIs 9,10
+    let epochB = [0.050, 0.049, 0.051, 0.050, 0.052, 0.048, 0.050, 0.051]                // ISIs 11...18
+    let cands = tswScan(epochA + gap + epochB)
+    #expect(cands.count == 2)
+    #expect(cands[0].span.startISIIndex == 1 && cands[0].span.endISIIndex == 8)
+    #expect(cands[1].span.startISIIndex == 11 && cands[1].span.endISIIndex == 18)
+}
+
+// TSW-2 #5 — a long regular run consolidates overlapping seeds into ONE maximal candidate (not one per seed).
+@Test
+func tsw2OverlappingSeedsConsolidateToOneMaximal() {
+    let isis = (0..<12).map { 0.050 + 0.001 * Double($0 % 3) }                           // 12 tight ISIs
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)                                                            // NOT 12-4+1 = 9 seeds
+    #expect(cands.first?.source == .merged)
+    #expect(cands.first?.span.startISIIndex == 1 && cands.first?.span.endISIIndex == 12)
+}
+
+// TSW-2 #6 — two passing seeds must NOT merge when the full union fails a regularity gate.
+@Test
+func tsw2MergeRevalidationRejectsBadUnion() {
+    let isis = [0.050, 0.080, 0.050, 0.080, 0.050]   // two 4-ISI seeds compact; 5-ISI union fails CV2
+    let cands = tswScan(isis)
+    #expect(!cands.contains { $0.span.startISIIndex == 1 && $0.span.endISIIndex == 5 })  // union NOT emitted
+    #expect(cands.contains { $0.span.endISIIndex == 4 })                                 // earlier seed survives
+}
+
+// TSW-2 #7 — emitted candidates are pairwise DISJOINT and sorted by start (overlap suppression).
+@Test
+func tsw2CandidatesAreDisjointAndSorted() {
+    let block = [0.050, 0.051, 0.049, 0.050, 0.052]
+    let isis = block + [0.500] + block + [0.500] + block
+    let cands = tswScan(isis)
+    #expect(cands.count >= 2)
+    for k in 1..<cands.count {
+        #expect(cands[k - 1].span.endISIIndex < cands[k].span.startISIIndex)             // disjoint
+        #expect(cands[k - 1].span.startISIIndex < cands[k].span.startISIIndex)           // sorted
+    }
+}
+
+// TSW-2 #8 — the failing expanded (pause) ISI is NOT swallowed into the emitted candidate.
+@Test
+func tsw2BoundaryEdgeNotSwallowed() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.900]                                // 5 tonic + huge pause@6
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)
+    #expect(cands.first?.span.endISIIndex == 5)                                          // excludes ISI 6
+    #expect((cands.first?.span.endISIIndex ?? 99) < 6)
+    #expect(cands.first?.boundaryReason != nil)
+}
+
+// TSW-2 #9 — span→spike index convention holds for emitted candidates.
+@Test
+func tsw2ScanSpanToSpikeIndexConvention() {
+    let cands = tswScan([0.050, 0.051, 0.049, 0.050, 0.052, 0.048])
+    guard let c = cands.first else { #expect(Bool(false), "expected a candidate"); return }
+    #expect(c.startSpikeIndex == c.span.startISIIndex)
+    #expect(c.endSpikeIndex == c.span.endISIIndex + 1)
+    #expect(c.metrics.nSpikes == c.metrics.nISI + 1)
+}
+
+// TSW-2 #10 — scale invariance: scaling all ISIs and the floors/valleys by the same factor preserves the
+// candidate spans, sources, and boundary reasons.
+@Test
+func tsw2ScaleInvariance() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.500, 0.050, 0.051, 0.049, 0.050, 0.052]
+    let base = tswScan(isis)
+    let cfg10 = TonicStructuralWindowConfig(refractoryFloorSec: 0.010, refractoryFloorMultiplier: 3.0)
+    let scaled = tswScan(isis.map { $0 * 10 }, config: cfg10)
+    #expect(base.count == scaled.count)
+    for (a, b) in zip(base, scaled) {
+        #expect(a.span.startISIIndex == b.span.startISIIndex)
+        #expect(a.span.endISIIndex == b.span.endISIIndex)
+        #expect(a.source == b.source)
+        #expect(a.boundaryReason == b.boundaryReason)
+    }
+    // Burst-reject invariance too.
+    let burst = [Double](repeating: 0.004, count: 8)
+    #expect(tswScan(burst, burstValleySec: 0.020).isEmpty)
+    #expect(tswScan(burst.map { $0 * 10 }, burstValleySec: 0.200).isEmpty)
+}
+
+// TSW-2 #11 — boundary provenance uses only the allowed positive tokens (no removed-metric terminology).
+@Test
+func tsw2BoundaryProvenanceUsesCleanTokens() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.500]
+    guard let c = tswScan(isis).first, let reason = c.boundaryReason else {
+        #expect(Bool(false), "expected a boundary reason"); return
+    }
+    #expect(c.decisionPath.contains("right_boundary_fail="))
+    #expect(c.decisionPath.contains(reason.rawValue))
+    let allowed: Set<TonicWindowBoundaryReason> = [
+        .insufficientData, .notCompact, .adjacentRatioExceeded, .cvExceeded, .cv2Exceeded, .lvExceeded,
+        .burstContamination, .invalidNextISI,
+    ]
+    #expect(allowed.contains(reason))
+}
+
+// TSW-2 #12 — determinism: repeated scans of the same train + config are identical.
+@Test
+func tsw2ScanIsDeterministic() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.500, 0.050, 0.051, 0.049, 0.050]
+    #expect(tswScan(isis) == tswScan(isis))
+}
+
+// TSW-2 #13 (review regression) — a LATER-starting seed that forms a LONGER valid candidate wins over an
+// early short one: ISI 1 (0.090) passes the 4-seed but caps [1,5] (CV over max), while the run 2..8 forms
+// a longer valid candidate. The earlier [1,4] must NOT be emitted in its place.
+@Test
+func tsw2LaterStartLongerCandidateWinsOverEarlyShort() {
+    let isis = [0.090, 0.050, 0.050, 0.050, 0.050, 0.050, 0.050, 0.050]
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)
+    #expect(cands.first?.span.startISIIndex == 2)                 // later start wins
+    #expect(cands.first?.span.endISIIndex == 8)                  // longer candidate
+    #expect(!cands.contains { $0.span.startISIIndex == 1 })      // the early short [1,4] is suppressed
+}
+
+// TSW-2 #14 (review regression) — the candidate reaches the MAXIMAL valid span even when the trailing
+// minimum seed fails: [1..7]=0.055, [8]=0.030; the 4-seed [5..8] fails compactness, but the full [1..8]
+// is valid under the long tier, so the candidate must reach 8 (not truncate at 7).
+@Test
+func tsw2MaximalExtensionBeyondFailingTrailingSeed() {
+    let isis = [0.055, 0.055, 0.055, 0.055, 0.055, 0.055, 0.055, 0.030]
+    let cands = tswScan(isis)
+    #expect(cands.count == 1)
+    #expect(cands.first?.span.startISIIndex == 1)
+    #expect(cands.first?.span.endISIIndex == 8)
+}
+
+// TSW-2 #15 (review regression) — a QC-invalid (sub-floor) next ISI is recorded as a boundary and NOT
+// swallowed: ISI slot 6 = 0.0005 (< minValid 0.001); the tonic run stops at 5 and flags invalidNextISI.
+@Test
+func tsw2QCInvalidNextISIRecordedAsBoundaryNotSwallowed() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.0005, 0.050, 0.051, 0.049]   // sub-floor ISI at slot 6
+    let cands = tswScan(isis)
+    guard let first = cands.first(where: { $0.span.startISIIndex == 1 }) else {
+        #expect(Bool(false), "expected a leading candidate"); return
+    }
+    #expect(first.span.endISIIndex == 5)                         // does not cross the sub-floor ISI 6
+    #expect(first.boundaryReason == .invalidNextISI)
+    #expect(first.reviewRequired == true)
+}
