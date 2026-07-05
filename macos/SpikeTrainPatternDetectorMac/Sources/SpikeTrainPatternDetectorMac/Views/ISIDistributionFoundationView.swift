@@ -410,9 +410,22 @@ struct ISIDistributionFoundationView: View {
                 Text("ISI seq [\(row.startISIIndex)–\(row.endISIIndex)] · spikes [\(row.startSpikeIndex)–\(row.endSpikeIndex)] · \(row.isiCount) ISIs")
                     .font(.caption).monospacedDigit()
                 badge(tswRouteLabel(row.route), tint: tswRouteTint(row.route))
-                badge(row.source, tint: .purple)
+                badge(row.source, tint: row.isRefined ? .indigo : .purple)
+                badge(modeReliabilityLabel(row.modeReliability), tint: modeReliabilityTint(row.modeReliability))
                 if row.outsideD3Acceptance { badge("outside D3 acceptance", tint: .orange) }
                 if row.reviewRequired { badge("review", tint: .yellow) }
+            }
+            // TSW-3 refinement provenance: original → refined span + shrink/bridge badges.
+            if row.isRefined {
+                HStack(spacing: 8) {
+                    if let os = row.originalStartISIIndex, let oe = row.originalEndISIIndex {
+                        Text("refined from [\(os)–\(oe)]").font(.caption2).foregroundStyle(.indigo).monospacedDigit()
+                    }
+                    if row.lowSideTrimmed > 0 { badge("−\(row.lowSideTrimmed) low", tint: .teal) }
+                    if row.highSideTrimmed > 0 { badge("−\(row.highSideTrimmed) high", tint: .teal) }
+                    if row.bridgeCount > 0 { badge("bridge ×\(row.bridgeCount)\(row.bridgeSide.map { " (\($0))" } ?? "")", tint: .blue) }
+                    if row.usedReliableBurstBoundary { badge("D3 valley", tint: .green) }
+                }
             }
             HStack(spacing: 8) {
                 Text("value range \(ms(row.lowerSec))–\(ms(row.upperSec)) ms")
@@ -423,6 +436,30 @@ struct ISIDistributionFoundationView: View {
                     Text("boundary: \(reason)").font(.caption2).foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    /// Short label + color for the D3-HF fast/tonic mode-separation reliability of the candidate's train.
+    /// `.unavailable` ("fast ?") means the separation was not characterized — distinct from a computed
+    /// `.noFastMode` ("no fast").
+    private func modeReliabilityLabel(_ reliability: String) -> String {
+        switch reliability {
+        case "reliable": return "fast✓sep"
+        case "degenerate": return "fast~sep"
+        case "notSeparable": return "fast✗sep"
+        case "noFastMode": return "no fast"
+        case "unavailable": return "fast ?"
+        default: return reliability
+        }
+    }
+    private func modeReliabilityTint(_ reliability: String) -> Color {
+        switch reliability {
+        case "reliable": return .green
+        case "degenerate": return .yellow
+        case "notSeparable": return .orange
+        case "noFastMode": return .gray
+        case "unavailable": return .gray
+        default: return .gray
         }
     }
 

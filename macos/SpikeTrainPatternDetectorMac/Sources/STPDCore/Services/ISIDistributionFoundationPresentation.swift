@@ -184,7 +184,7 @@ public struct TSWCandidateRow: Hashable, Sendable {
     public let endSpikeIndex: Int
     public let isiCount: Int
     public let spikeCount: Int
-    public let source: String            // TonicWindowSource raw value (seed / merged)
+    public let source: String            // TonicWindowSource raw value (seed / merged / refined)
     public let route: String             // TSW-2A TonicStructuralWindowRoute raw value (classicTonic / HF / review)
     public let reviewRequired: Bool
     public let boundaryReason: String?   // TonicWindowBoundaryReason raw value, when expansion stopped
@@ -199,13 +199,28 @@ public struct TSWCandidateRow: Hashable, Sendable {
     /// True when the candidate's ISI value range extends outside the D3 tonic ACCEPTANCE band (a
     /// distribution-vs-sequence mismatch worth review). False when there is no D3 tonic band to compare.
     public let outsideD3Acceptance: Bool
+    // TSW-3 boundary refinement (nil / 0 when this candidate was not refined).
+    public let originalStartISIIndex: Int?
+    public let originalEndISIIndex: Int?
+    public let lowSideTrimmed: Int
+    public let highSideTrimmed: Int
+    public let bridgeCount: Int
+    public let bridgeSide: String?
+    public let usedReliableBurstBoundary: Bool
+    // D3-HF mode-separation evidence for this candidate's train (same for every row of the train).
+    public let modeReliability: String    // ModeBoundaryReliability raw value
+    public let tonicLowerReliable: Bool    // tonic core lower clears the physiological fast ceiling
 
     public init(
         trainID: String, trainName: String, startISIIndex: Int, endISIIndex: Int,
         startSpikeIndex: Int, endSpikeIndex: Int, isiCount: Int, spikeCount: Int,
         source: String, route: String, reviewRequired: Bool, boundaryReason: String?, decisionPath: String,
         cv: Double?, cv2: Double?, lv: Double?, medianSec: Double?,
-        lowerSec: Double?, upperSec: Double?, outsideD3Acceptance: Bool
+        lowerSec: Double?, upperSec: Double?, outsideD3Acceptance: Bool,
+        originalStartISIIndex: Int? = nil, originalEndISIIndex: Int? = nil,
+        lowSideTrimmed: Int = 0, highSideTrimmed: Int = 0, bridgeCount: Int = 0,
+        bridgeSide: String? = nil, usedReliableBurstBoundary: Bool = false,
+        modeReliability: String = ModeBoundaryReliability.unavailable.rawValue, tonicLowerReliable: Bool = false
     ) {
         self.trainID = trainID; self.trainName = trainName
         self.startISIIndex = startISIIndex; self.endISIIndex = endISIIndex
@@ -216,19 +231,29 @@ public struct TSWCandidateRow: Hashable, Sendable {
         self.cv = cv; self.cv2 = cv2; self.lv = lv; self.medianSec = medianSec
         self.lowerSec = lowerSec; self.upperSec = upperSec
         self.outsideD3Acceptance = outsideD3Acceptance
+        self.originalStartISIIndex = originalStartISIIndex; self.originalEndISIIndex = originalEndISIIndex
+        self.lowSideTrimmed = lowSideTrimmed; self.highSideTrimmed = highSideTrimmed
+        self.bridgeCount = bridgeCount; self.bridgeSide = bridgeSide
+        self.usedReliableBurstBoundary = usedReliableBurstBoundary
+        self.modeReliability = modeReliability; self.tonicLowerReliable = tonicLowerReliable
     }
 
+    /// Whether the refined span differs from the raw scan span (i.e. TSW-3 trimmed or bridged).
+    public var isRefined: Bool { source == TonicWindowSource.refined.rawValue }
+
     /// Flatten a TSW candidate for display, flagging a mismatch when its ISI value range extends outside
-    /// the supplied D3 tonic acceptance band.
+    /// the supplied D3 tonic acceptance band, and carrying TSW-3 refinement + D3-HF separation evidence.
     public init(
         trainName: String, candidate: TonicStructuralWindowCandidate,
-        d3TonicAcceptance: (lower: Double, upper: Double)?
+        d3TonicAcceptance: (lower: Double, upper: Double)?,
+        separation: ModeSeparationEvidence = .unavailable
     ) {
         let m = candidate.metrics
-        var outside = false
+        var flag = false
         if let acc = d3TonicAcceptance, let lo = m.minSec, let hi = m.maxSec {
-            outside = lo < acc.lower - 1e-12 || hi > acc.upper + 1e-12
+            flag = lo < acc.lower - 1e-12 || hi > acc.upper + 1e-12
         }
+        let ref = candidate.refinement
         self.init(
             trainID: candidate.span.trainID, trainName: trainName,
             startISIIndex: candidate.span.startISIIndex, endISIIndex: candidate.span.endISIIndex,
@@ -237,7 +262,13 @@ public struct TSWCandidateRow: Hashable, Sendable {
             source: candidate.source.rawValue, route: candidate.route.rawValue, reviewRequired: candidate.reviewRequired,
             boundaryReason: candidate.boundaryReason?.rawValue, decisionPath: candidate.decisionPath,
             cv: m.cv, cv2: m.cv2, lv: m.lv, medianSec: m.medianSec,
-            lowerSec: m.minSec, upperSec: m.maxSec, outsideD3Acceptance: outside)
+            lowerSec: m.minSec, upperSec: m.maxSec, outsideD3Acceptance: flag,
+            originalStartISIIndex: candidate.originalSpan?.startISIIndex ?? ref?.originalStartISIIndex,
+            originalEndISIIndex: candidate.originalSpan?.endISIIndex ?? ref?.originalEndISIIndex,
+            lowSideTrimmed: ref?.lowSideTrimmed ?? 0, highSideTrimmed: ref?.highSideTrimmed ?? 0,
+            bridgeCount: ref?.bridgeCount ?? 0, bridgeSide: ref?.bridgeSide?.rawValue,
+            usedReliableBurstBoundary: ref?.usedReliableBurstBoundary ?? false,
+            modeReliability: separation.reliability.rawValue, tonicLowerReliable: separation.tonicLowerReliable)
     }
 }
 
@@ -355,10 +386,12 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
             tswCandidatesByTrainID: tswCandidatesByTrainID)
     }
 
-    /// Run the TSW-2 tonic structural window scan per train (debug-only, UNWIRED). Uses the D3 train-local
-    /// burst bridge valley as the contamination floor when present, else TSW's refractory fallback. Does
-    /// NOT seed from any global tonic band. Flags each candidate whose ISI value range extends outside the
-    /// train's D3 tonic acceptance band.
+    /// Run the TSW-2/3 tonic structural window scan + boundary refinement per train (debug-only, UNWIRED).
+    /// Uses the D3 train-local burst bridge valley as the contamination floor when present (else TSW's
+    /// refractory fallback), the tonic core lower as the classic-tonic magnitude fallback, and the D3 pause
+    /// lower to bound the TSW-3 high-side trim / bridge. Does NOT seed from any global tonic band. Flags each
+    /// candidate whose ISI value range extends outside the train's D3 tonic acceptance band, and carries the
+    /// TSW-3 refinement + D3-HF mode-separation evidence.
     public static func tswCandidates(
         dataset: SpikeDataset, derived: DerivedModeISIIntervals, minimumValidISISec: Double
     ) -> [String: [TSWCandidateRow]] {
@@ -377,14 +410,18 @@ public struct ISIDistributionFoundationPresentation: Hashable, Sendable {
             // classic-tonic floor, else the dataset tonic core lower. Scale-free; no absolute-ms literal.
             let burstSupport = family?.burst?.supportCount
             let tonicCoreLower = family?.tonic?.lowerSec ?? derived.dataset.tonic?.lowerSec
-            let candidates = TonicStructuralWindowDetector.scan(
+            // TSW-3: the D3 pause floor bounds the high-side trim and the bridge (so pauses are never
+            // swallowed). Prefer the train-local pause lower, else the dataset pause lower.
+            let pauseFloor = family?.pause?.lowerSec ?? derived.dataset.pause?.lowerSec
+            let separation = family?.separation ?? .unavailable
+            let candidates = TonicStructuralWindowDetector.scanRefined(
                 train: train, config: config, burstValleySec: burstValley,
-                burstValleySupportCount: burstSupport, fallbackFloorSec: tonicCoreLower)
+                burstValleySupportCount: burstSupport, fallbackFloorSec: tonicCoreLower, pauseFloorSec: pauseFloor)
             guard !candidates.isEmpty else { continue }
             let tonic = family?.tonic ?? derived.dataset.tonic
             let acceptance = tonic.map { (lower: $0.effectiveAcceptanceLowerSec, upper: $0.effectiveAcceptanceUpperSec) }
             byTrainID[train.id] = candidates.map {
-                TSWCandidateRow(trainName: train.name, candidate: $0, d3TonicAcceptance: acceptance)
+                TSWCandidateRow(trainName: train.name, candidate: $0, d3TonicAcceptance: acceptance, separation: separation)
             }
         }
         return byTrainID

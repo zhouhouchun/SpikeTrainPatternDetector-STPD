@@ -522,3 +522,172 @@ func tsw2aPhysiologicalFloorUsesConfiguredRefractoryFloor() {
     #expect(g.route == .tooFastForClassicTonic)
     #expect(abs(g.floorSec - 15.0 * 0.0009) < 1e-12)   // 15 × 0.0009, NOT 15 × 0.001
 }
+
+// MARK: - TSW-3 — boundary refinement (asymmetric edge trim + bounded single bridge; unwired).
+
+private func tswRefine(
+    _ isis: [Double], config: TonicStructuralWindowConfig = TonicStructuralWindowConfig(),
+    burstValleySec: Double? = nil, burstValleySupportCount: Int? = nil,
+    fallbackFloorSec: Double? = nil, pauseFloorSec: Double? = nil, minTonicSpikes: Int? = nil
+) -> [TonicStructuralWindowCandidate] {
+    TonicStructuralWindowDetector.scanRefined(
+        train: tswTrain("t", isis: isis), config: config, burstValleySec: burstValleySec,
+        minTonicSpikes: minTonicSpikes, burstValleySupportCount: burstValleySupportCount,
+        fallbackFloorSec: fallbackFloorSec, pauseFloorSec: pauseFloorSec)
+}
+
+// TSW-3 #1 — LOW-side trim: a leading ISI below the classic-tonic magnitude floor (0.012 < 15×0.001) is
+// shrunk off the fast edge; the refined span starts one ISI later and carries TSW-3 provenance.
+@Test
+func tsw3LowSideTrimDropsLeadingFastISI() {
+    let isis = [0.012, 0.020, 0.021, 0.019, 0.020, 0.021]   // leading 0.012 is fast-regime, rest ~0.020
+    let scanCands = tswScan(isis)
+    #expect(scanCands.first?.span.startISIIndex == 1)        // scan includes the fast leading ISI
+    let refined = tswRefine(isis)
+    #expect(refined.count == 1)
+    guard let c = refined.first else { return }
+    #expect(c.source == .refined)
+    #expect(c.span.startISIIndex == 2)                       // fast leading ISI trimmed
+    #expect(c.span.endISIIndex == 6)
+    #expect(c.refinement?.lowSideTrimmed == 1)
+    #expect(c.refinement?.highSideTrimmed == 0)
+    #expect(c.refinement?.bridgeCount == 0)
+    #expect(c.originalSpan?.startISIIndex == 1)              // provenance back to the raw scan span
+}
+
+// TSW-3 #2 — ASYMMETRY: with no pause floor supplied, a TRAILING fast ISI is NOT trimmed (only the LOW
+// side is trimmed against the classic-tonic floor). Leading 0.012 goes; trailing 0.012 stays.
+@Test
+func tsw3TrimIsAsymmetricLowSideOnly() {
+    let isis = [0.012, 0.020, 0.021, 0.019, 0.020, 0.012]
+    let refined = tswRefine(isis)
+    guard let c = refined.first else { #expect(Bool(false), "expected a candidate"); return }
+    #expect(c.refinement?.lowSideTrimmed == 1)               // leading fast ISI trimmed
+    #expect(c.refinement?.highSideTrimmed == 0)              // trailing fast ISI NOT trimmed (asymmetric)
+    #expect(c.span.startISIIndex == 2)
+    #expect(c.span.endISIIndex == 6)                         // trailing fast ISI retained
+}
+
+// TSW-3 #3 — HIGH-side trim: given a pause floor, a trailing pause-like ISI that scan absorbed into a long
+// window is shrunk off the slow edge.
+@Test
+func tsw3HighSideTrimDropsTrailingPauseISI() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.080]   // trailing 0.080 is pause-like (≥ 0.070)
+    #expect(tswScan(isis).first?.span.endISIIndex == 7)            // scan absorbs 0.080 into the long window
+    let refined = tswRefine(isis, pauseFloorSec: 0.070)
+    guard let c = refined.first else { #expect(Bool(false), "expected a candidate"); return }
+    #expect(c.source == .refined)
+    #expect(c.span.endISIIndex == 6)                              // pause ISI trimmed off the high edge
+    #expect(c.refinement?.highSideTrimmed == 1)
+    #expect(c.refinement?.lowSideTrimmed == 0)
+}
+
+// TSW-3 #4 — bounded single BRIDGE: two regular runs split by exactly one tonic-magnitude-compatible ISI
+// (0.095, which breaks the strict adjacent-ratio cap so scan yields TWO) merge into ONE refined window.
+@Test
+func tsw3BoundedBridgeMergesTwoRuns() {
+    let isis = [0.050, 0.051, 0.049, 0.050] + [0.095] + [0.050, 0.049, 0.051, 0.050]   // A, bridge, B
+    #expect(tswScan(isis).count == 2)                             // scan splits at the bridge
+    let refined = tswRefine(isis)
+    #expect(refined.count == 1)                                  // TSW-3 bridges them
+    guard let c = refined.first else { return }
+    #expect(c.source == .refined)
+    #expect(c.span.startISIIndex == 1 && c.span.endISIIndex == 9)
+    #expect(c.refinement?.bridgeCount == 1)
+    #expect(c.refinement?.bridgeSide == .high)
+    #expect(c.originalSpan?.endISIIndex == 4)                    // original = the LEFT run
+}
+
+// TSW-3 #5 — the bridge NEVER swallows a BURST ISI: the separating ISI (0.002) is below the D3 burst
+// floor (0.010), so no bridge is taken and the two runs stay separate.
+@Test
+func tsw3BridgeRefusesBurstFloorISI() {
+    let isis = [0.050, 0.051, 0.049, 0.050] + [0.002] + [0.050, 0.049, 0.051, 0.050]
+    let refined = tswRefine(isis, burstValleySec: 0.010)
+    #expect(refined.count == 2)                                  // NOT bridged across the burst ISI
+    #expect(refined.allSatisfy { ($0.refinement?.bridgeCount ?? 0) == 0 })
+}
+
+// TSW-3 #6 — the bridge NEVER swallows a PAUSE ISI: the same 0.095 separator that bridges in #4 is refused
+// once it is at/above the supplied pause floor (0.070), so the runs stay separate.
+@Test
+func tsw3BridgeRefusesPauseFloorISI() {
+    let isis = [0.050, 0.051, 0.049, 0.050] + [0.095] + [0.050, 0.049, 0.051, 0.050]
+    let refined = tswRefine(isis, pauseFloorSec: 0.070)
+    #expect(refined.count == 2)                                  // 0.095 ≥ pause floor → not bridged
+    #expect(refined.allSatisfy { ($0.refinement?.bridgeCount ?? 0) == 0 })
+}
+
+// TSW-3 #7 — AT MOST ONE bridge per refined window: three runs split by two bounded ISIs merge the first
+// pair (one bridge) but never chain into a single triple-run window.
+@Test
+func tsw3AtMostOneBridgePerWindow() {
+    let run: [Double] = [0.050, 0.051, 0.049, 0.050]
+    let isis = run + [0.095] + [0.050, 0.049, 0.051, 0.050] + [0.095] + run
+    #expect(tswScan(isis).count == 3)
+    let refined = tswRefine(isis)
+    #expect(refined.count == 2)                                  // A+B bridged; C stands alone (≤ 1 bridge)
+    #expect(refined.first?.refinement?.bridgeCount == 1)
+    #expect(refined.first?.span.startISIIndex == 1 && refined.first?.span.endISIIndex == 9)
+    #expect(refined.last?.span.startISIIndex == 11 && refined.last?.span.endISIIndex == 14)
+    #expect(!refined.contains { $0.span.startISIIndex == 1 && $0.span.endISIIndex == 14 })   // no triple merge
+}
+
+// TSW-3 #8 — an already-clean run passes through UNCHANGED: no trim, no bridge, source preserved (not
+// .refined), and no TSW-3 provenance is invented.
+@Test
+func tsw3UnchangedCandidatePassesThroughVerbatim() {
+    let isis = [0.050, 0.051, 0.049, 0.050, 0.052, 0.048, 0.051, 0.050, 0.049, 0.051]
+    let refined = tswRefine(isis)
+    #expect(refined.count == 1)
+    guard let c = refined.first else { return }
+    #expect(c.source == .merged)                                // scan's source preserved, NOT .refined
+    #expect(c.refinement == nil)
+    #expect(c.originalSpan == nil)
+    #expect(c.span.startISIIndex == 1 && c.span.endISIIndex == 10)
+}
+
+// TSW-3 #9 — refinement is scale-invariant: scaling every ISI and the refractory floor by 10 leaves the
+// trimmed span indices and the trim count unchanged (the classic-tonic floor is refractory-relative).
+@Test
+func tsw3RefinementIsScaleInvariant() {
+    let isis = [0.012, 0.020, 0.021, 0.019, 0.020, 0.021]
+    let base = tswRefine(isis)
+    let cfg10 = TonicStructuralWindowConfig(refractoryFloorSec: 0.010)
+    let scaled = tswRefine(isis.map { $0 * 10 }, config: cfg10)
+    #expect(base.count == scaled.count)
+    guard let b = base.first, let s = scaled.first else { #expect(Bool(false), "expected candidates"); return }
+    #expect(b.span.startISIIndex == s.span.startISIIndex)       // same trim point at both scales
+    #expect(b.span.endISIIndex == s.span.endISIIndex)
+    #expect(b.refinement?.lowSideTrimmed == s.refinement?.lowSideTrimmed)
+    #expect(b.source == s.source)
+}
+
+// TSW-3 #10 (route regression) — a slow regular tonic with a low-side boundary ISI still routes CLASSIC
+// after refinement when the D3 tonic-core-lower fallback is supplied: the boundary ISI is trimmed, and the
+// surviving slow run is magnitude-compatible with classic tonic.
+@Test
+func tsw3RefinedSlowTonicRemainsClassicWithD3Fallback() {
+    let isis = [0.40, 0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.44]   // leading 0.40 below the 0.434 core lower
+    let refined = tswRefine(isis, fallbackFloorSec: 0.434)
+    #expect(refined.count == 1)
+    guard let c = refined.first else { return }
+    #expect(c.route == .classicTonic)                            // still classic after refinement
+    #expect(c.source == .refined)                               // it WAS refined (low-side trim)
+    #expect(c.refinement?.lowSideTrimmed == 1)
+    #expect(c.span.startISIIndex == 2 && c.span.endISIIndex == 8)
+}
+
+// TSW-3 #11 (route regression) — a Grechishnikova-like fast regular window (6.6–11.5 ms) is STILL emitted
+// as structural evidence after `scanRefined`, but NO candidate routes classic tonic; at least one routes
+// tooFast. The uniformly-fast window is not gutted by the low-side trim (no tonic core above the floor).
+@Test
+func tsw3RefinedFastWindowStaysNonClassic() {
+    let isis = [0.0066, 0.0090, 0.0075, 0.0114, 0.0088, 0.0096, 0.0075, 0.0090, 0.0080, 0.0100]
+    let refined = tswRefine(isis, fallbackFloorSec: 0.0060)
+    #expect(!refined.isEmpty)                                    // still surfaced as structural evidence
+    #expect(refined.allSatisfy { $0.route != .classicTonic })   // never promoted to classic by refinement
+    #expect(refined.contains { $0.route == .tooFastForClassicTonic })
+    // uniformly-fast → no tonic core above the floor → not truncated, span preserved from scan.
+    #expect(refined.allSatisfy { ($0.refinement?.lowSideTrimmed ?? 0) == 0 })
+}

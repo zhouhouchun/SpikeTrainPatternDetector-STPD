@@ -363,3 +363,117 @@ func modeISIIntervalDeriverCoreProtectedFromMinorityRecoveryISIs() {
     #expect(t.effectiveAcceptanceUpperSec >= 0.10)
     #expect(t.effectiveAcceptanceUpperSec < p.lowerSec)
 }
+
+// MARK: - D3-HF — fast/high-frequency mode separation evidence (ModeSeparationEvidence)
+
+// D3HF-1 — a clean burst(fast) + tonic distribution yields a RELIABLE fast→tonic valley: adequate
+// support on both sides, a concrete multiplicative valley, and a tonic lower that clears the fast ceiling.
+@Test
+func modeSeparationReliableWhenFastAndTonicBothSupported() {
+    let fam = d3Derive([d3Train("bimodal", isis: d3BurstISIs + d3TonicISIs)], floor: 0.001).dataset
+    let sep = fam.separation
+    #expect(sep.reliability == .reliable)
+    #expect(sep.fastModeSupportCount == 5)                      // the 5 burst ISIs
+    #expect(sep.tonicModeSupportCount == 10)                    // the 10 tonic ISIs
+    #expect(sep.fastTonicValleySec != nil)
+    #expect(sep.valleyGapRatio != nil && (sep.valleyGapRatio ?? 0) > 1.0)
+    #expect(d3Close(sep.fastCeilingSec, 0.015, tol: 1e-9))      // 15 × refractory floor
+    #expect(sep.tonicLowerReliable == true)                     // tonic lower (~0.045) ≥ fast ceiling
+    // The valley sits between the burst core and the tonic mode.
+    #expect((sep.fastTonicValleySec ?? 0) > (fam.burst?.upperSec ?? 0))
+    #expect((sep.fastTonicValleySec ?? .infinity) < (fam.tonic?.lowerSec ?? 0))
+}
+
+// D3HF-2 — a SINGLE fast ISI below a tonic cluster gives a DEGENERATE valley: it exists, but one side has
+// too little support to be a trustworthy mode boundary (a refractory/outlier artifact).
+@Test
+func modeSeparationDegenerateWhenFastSideIsSinglePoint() {
+    let isis = [0.004] + [0.043, 0.045, 0.044, 0.047, 0.046, 0.045, 0.044, 0.046]
+    let fam = d3Derive([d3Train("oneFast", isis: isis)], floor: 0.001).dataset
+    let sep = fam.separation
+    #expect(sep.reliability == .degenerate)
+    #expect(sep.fastModeSupportCount == 1)                      // single fast ISI
+    #expect(sep.fastModeSupportCount < sep.tonicModeSupportCount)
+    #expect(sep.fastTonicValleySec != nil)                      // a valley exists, just not trustworthy
+}
+
+// D3HF-3 — a fast-dominated train with graded fast ISIs and NO clean multiplicative gap is NOT SEPARABLE:
+// substantial mass below the fast ceiling but no valley, and the tonic lower is itself fast-regime.
+@Test
+func modeSeparationNotSeparableForGradedFastMass() {
+    let isis = (0..<12).map { 0.006 + 0.0005 * Double($0) }     // 0.006..0.0115, continuous, no 2× gap
+    let fam = d3Derive([d3Train("gradedFast", isis: isis)], floor: 0.001).dataset
+    let sep = fam.separation
+    #expect(fam.burst == nil)                                   // no clean burst valley
+    #expect(sep.reliability == .notSeparable)
+    #expect(sep.fastTonicValleySec == nil)
+    #expect(sep.valleyGapRatio == nil)
+    #expect(sep.fastModeSupportCount > 0)                       // mass below the fast ceiling
+    #expect(sep.tonicLowerReliable == false)                    // any tonic lower is below the fast ceiling
+}
+
+// D3HF-4 — a clean slow tonic-only train has NO FAST MODE: negligible mass below the fast ceiling, no
+// valley, and a tonic lower that clears the ceiling (a trustworthy classic-tonic boundary).
+@Test
+func modeSeparationNoFastModeForCleanSlowTonic() {
+    let isis = (0..<12).map { 0.44 + 0.004 * Double($0) }       // 0.440..0.484, all ≫ fast ceiling
+    let fam = d3Derive([d3Train("slowTonic", isis: isis)], floor: 0.001).dataset
+    let sep = fam.separation
+    #expect(sep.reliability == .noFastMode)
+    #expect(sep.fastTonicValleySec == nil)
+    #expect(sep.fastModeSupportCount == 0)
+    #expect(sep.tonicLowerReliable == true)
+}
+
+// D3HF-5 — separation is computed PER SCOPE: a fast-dominated train and a clean slow train each keep their
+// own train-local reliability, and neither is overridden by the pooled dataset (which, mixing the two
+// clusters, manufactures a valley that neither train has on its own).
+@Test
+func modeSeparationIsPerScopeNotOverriddenByDataset() {
+    let fast = d3Train("fast", isis: (0..<12).map { 0.006 + 0.0005 * Double($0) })
+    let slow = d3Train("slow", isis: (0..<12).map { 0.44 + 0.004 * Double($0) })
+    let derived = d3Derive([fast, slow], floor: 0.001)
+
+    let sepFast = derived.perTrain[fast.id]?.separation
+    let sepSlow = derived.perTrain[slow.id]?.separation
+    #expect(sepFast?.reliability == .notSeparable)
+    #expect(sepFast?.tonicLowerReliable == false)
+    #expect(sepSlow?.reliability == .noFastMode)
+    #expect(sepSlow?.tonicLowerReliable == true)
+    // The pooled dataset separates the two clusters into a reliable valley — a boundary NEITHER train has.
+    #expect(derived.dataset.separation.reliability == .reliable)
+    #expect(derived.dataset.separation.reliability != sepFast?.reliability)
+    #expect(derived.dataset.separation.reliability != sepSlow?.reliability)
+}
+
+// D3HF-6 — separation is scale-invariant: scaling every ISI and the floor by 10 scales the seconds fields
+// (valley, fast ceiling) by 10 and leaves the counts, gap ratio, reliability class, and tonicLowerReliable
+// flag unchanged. Proves no fixed absolute-ms cutoff leaked into the D3-HF characterization.
+@Test
+func modeSeparationIsScaleInvariant() {
+    let isis = d3BurstISIs + d3TonicISIs
+    let base = d3Derive([d3Train("s1", isis: isis)], floor: 0.001).dataset.separation
+    let scaled = d3Derive([d3Train("s10", isis: isis.map { $0 * 10 })], floor: 0.010).dataset.separation
+    #expect(base.reliability == scaled.reliability)
+    #expect(base.fastModeSupportCount == scaled.fastModeSupportCount)
+    #expect(base.tonicModeSupportCount == scaled.tonicModeSupportCount)
+    #expect(base.tonicLowerReliable == scaled.tonicLowerReliable)
+    #expect(d3Close(base.fastCeilingSec * 10, scaled.fastCeilingSec, tol: 1e-6))
+    #expect(d3Close(base.fastTonicValleySec.map { $0 * 10 }, scaled.fastTonicValleySec, tol: 1e-6))
+    #expect(d3Close(base.valleyGapRatio, scaled.valleyGapRatio, tol: 1e-6))   // dimensionless ratio
+}
+
+// D3HF-7 — the sentinel `.unavailable` is a DISTINCT reliability state, not a computed `.noFastMode`. A
+// degenerate sample (too few ISIs to characterize) carries `.unavailable`; a clean slow train that WAS
+// characterized carries `.noFastMode`. Downstream must never read "not computed" as "confirmed clean".
+@Test
+func modeSeparationUnavailableIsDistinctFromNoFastMode() {
+    #expect(ModeSeparationEvidence.unavailable.reliability == .unavailable)
+    // A single-ISI train can't be characterized → the derived family carries the unavailable sentinel.
+    let degenerate = d3Derive([d3Train("one", isis: [0.05])], floor: 0.001).dataset
+    #expect(degenerate.separation.reliability == .unavailable)
+    // A clean slow tonic train WAS characterized as genuinely having no fast mode.
+    let slow = d3Derive([d3Train("slow", isis: (0..<12).map { 0.44 + 0.004 * Double($0) })], floor: 0.001).dataset
+    #expect(slow.separation.reliability == .noFastMode)
+    #expect(slow.separation.reliability != .unavailable)
+}

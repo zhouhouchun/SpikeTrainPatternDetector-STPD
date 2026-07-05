@@ -123,6 +123,47 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
     }
 }
 
+/// TSW-3 — which edge of a window a refinement acted on.
+public enum TonicWindowEdge: String, Hashable, Sendable {
+    case low       // the fast/burst side (leading ISIs)
+    case high      // the slow/pause side (trailing ISIs)
+}
+
+/// TSW-3 — boundary-refinement provenance: how the refined span differs from the raw scan span it came
+/// from. All counts are dimensionless. Refinement only ever SHRINKS the fast/slow edges or recovers a
+/// SINGLE bounded bridge ISI — it never invents structure, so `originalSpan ⊇ refined` except for the
+/// at-most-one bridged ISI.
+public struct TonicWindowRefinement: Hashable, Sendable {
+    /// The pre-refinement (raw scan) span this candidate was derived from.
+    public let originalStartISIIndex: Int
+    public let originalEndISIIndex: Int
+    /// Leading ISIs trimmed off the LOW (fast/burst) side because they sat below the classic-tonic floor.
+    public let lowSideTrimmed: Int
+    /// Trailing ISIs trimmed off the HIGH (slow/pause) side because they were pause-like (≥ pause floor).
+    public let highSideTrimmed: Int
+    /// Bridge ISIs recovered by merging two adjacent runs across a single bounded ISI (0 or 1).
+    public let bridgeCount: Int
+    /// Which side the bridge extended toward (nil when no bridge).
+    public let bridgeSide: TonicWindowEdge?
+    /// True when a TRUSTED D3 burst valley (support ≥ min) bounded the low-side/bridge decisions, rather
+    /// than a refractory-relative fallback floor.
+    public let usedReliableBurstBoundary: Bool
+
+    public init(
+        originalStartISIIndex: Int, originalEndISIIndex: Int,
+        lowSideTrimmed: Int, highSideTrimmed: Int, bridgeCount: Int,
+        bridgeSide: TonicWindowEdge?, usedReliableBurstBoundary: Bool
+    ) {
+        self.originalStartISIIndex = originalStartISIIndex
+        self.originalEndISIIndex = originalEndISIIndex
+        self.lowSideTrimmed = lowSideTrimmed
+        self.highSideTrimmed = highSideTrimmed
+        self.bridgeCount = bridgeCount
+        self.bridgeSide = bridgeSide
+        self.usedReliableBurstBoundary = usedReliableBurstBoundary
+    }
+}
+
 /// A first-stage tonic STRUCTURAL candidate — a span the sequence-local detector judged tonic-regular and
 /// burst-clean. Carries no final-label authority.
 public struct TonicStructuralWindowCandidate: Hashable, Sendable {
@@ -137,17 +178,24 @@ public struct TonicStructuralWindowCandidate: Hashable, Sendable {
     /// TSW-2A family/magnitude route. `.classicTonic` only when the window is regular AND magnitude-
     /// compatible with the tonic family; otherwise a non-classic route (kept as structural evidence).
     public let route: TonicStructuralWindowRoute
+    /// TSW-3 boundary-refinement provenance; nil when the span equals the raw scan span (source ≠ .refined).
+    public let refinement: TonicWindowRefinement?
+    /// TSW-3 the raw scan span this refined candidate came from; nil when unrefined.
+    public let originalSpan: ISISpan?
 
     public init(
         span: ISISpan, metrics: ISISpanMetrics, source: TonicWindowSource,
         signals: [EvidenceSignal], reviewRequired: Bool,
         boundaryReason: TonicWindowBoundaryReason?, decisionPath: String,
-        route: TonicStructuralWindowRoute = .classicTonic
+        route: TonicStructuralWindowRoute = .classicTonic,
+        refinement: TonicWindowRefinement? = nil,
+        originalSpan: ISISpan? = nil
     ) {
         self.span = span; self.metrics = metrics; self.source = source
         self.signals = signals; self.reviewRequired = reviewRequired
         self.boundaryReason = boundaryReason; self.decisionPath = decisionPath
         self.route = route
+        self.refinement = refinement; self.originalSpan = originalSpan
     }
 
     /// Span → spike mapping per the codebase convention: ISI index `i` is the interval between spikes
@@ -268,29 +316,31 @@ public enum TonicStructuralWindowDetector {
     /// a train-local tonic core-lower fallback → otherwise NO reliable guard (route to review). The
     /// refractory floor is only a protective floor-of-floors, never the classifier. Degenerate / low-
     /// support valleys are not trusted. Returns the route, a provenance signal, a trust tag, and the floor.
-    public static func classicTonicMagnitudeGate(
-        metrics: ISISpanMetrics,
+    /// TSW-2A/3 — the classic-tonic magnitude FLOOR and its reliability, computed from the distribution
+    /// evidence ALONE (independent of any particular window's metrics). Shared by the routing gate and the
+    /// TSW-3 low-side trim so both use the SAME floor. Reliability classes / `trust`:
+    ///  d3_valley           — a trusted burst/HF boundary (support >= min; degenerate valleys excluded)
+    ///  d3_tonic_core_lower — a trusted classic-tonic lower (q25 clear of the fast/HF regime)
+    ///  ambiguous_fast_q25  — a train-local q25 that itself sits in the fast/HF regime (NOT trusted)
+    ///  unavailable         — no distribution guard at all
+    public static func classicTonicMagnitudeFloor(
         burstValleySec: Double?,
         burstValleySupportCount: Int?,
         fallbackFloorSec: Double?,
         config: TonicStructuralWindowConfig
-    ) -> (route: TonicStructuralWindowRoute, signal: EvidenceSignal, trust: String, floorSec: Double) {
+    ) -> (floorSec: Double, distReliable: Bool, reliableBurstBoundary: Bool, trust: String) {
         // PHYSIOLOGICAL fast/HF exclusion floor — refractory-relative (scale-free), independent of any
         // train-local quantile. A regular window below this is too fast to be classic tonic, period.
         let physiologicalFloor = config.classicTonicMinRefractoryMultiple * config.refractoryFloorSec
-
-        // Distribution-derived boundary + its RELIABILITY CLASS:
-        //  d3_valley           — a trusted burst/HF boundary (support >= min; degenerate valleys excluded)
-        //  d3_tonic_core_lower — a trusted classic-tonic lower (q25 clear of the fast/HF regime)
-        //  ambiguous_fast_q25  — a train-local q25 that itself sits in the fast/HF regime (NOT trusted)
-        //  unavailable         — no distribution guard at all
         var distFloor: Double?
         var distReliable = false
+        var reliableBurstBoundary = false
         var trust: String
         if let valley = burstValleySec, valley.isFinite, valley > 0,
            (burstValleySupportCount ?? 0) >= config.minBurstSupportCountForValley {
             distFloor = valley * config.classicTonicBurstFloorRatio      // burst boundary → need 25% above
             distReliable = true
+            reliableBurstBoundary = true
             trust = "d3_valley"
         } else if let fallback = fallbackFloorSec, fallback.isFinite, fallback > 0 {
             distFloor = fallback
@@ -304,6 +354,21 @@ public enum TonicStructuralWindowDetector {
         } else {
             trust = "unavailable"
         }
+        let floorSec = distReliable ? Swift.max(physiologicalFloor, distFloor ?? physiologicalFloor) : physiologicalFloor
+        return (floorSec, distReliable, reliableBurstBoundary, trust)
+    }
+
+    public static func classicTonicMagnitudeGate(
+        metrics: ISISpanMetrics,
+        burstValleySec: Double?,
+        burstValleySupportCount: Int?,
+        fallbackFloorSec: Double?,
+        config: TonicStructuralWindowConfig
+    ) -> (route: TonicStructuralWindowRoute, signal: EvidenceSignal, trust: String, floorSec: Double) {
+        let physiologicalFloor = config.classicTonicMinRefractoryMultiple * config.refractoryFloorSec
+        let floorInfo = classicTonicMagnitudeFloor(
+            burstValleySec: burstValleySec, burstValleySupportCount: burstValleySupportCount,
+            fallbackFloorSec: fallbackFloorSec, config: config)
 
         let median = metrics.medianSec ?? .infinity
         let route: TonicStructuralWindowRoute
@@ -311,10 +376,10 @@ public enum TonicStructuralWindowDetector {
         if median < physiologicalFloor {
             // Hard physiological exclusion — clearly too fast for classic tonic.
             route = .tooFastForClassicTonic
-        } else if distReliable, let distFloor {
+        } else if floorInfo.distReliable {
             // Above the physiological floor AND with reliable distribution evidence: classic tonic requires
             // magnitude compatibility with BOTH floors.
-            floor = Swift.max(physiologicalFloor, distFloor)
+            floor = floorInfo.floorSec
             if median >= floor {
                 route = .classicTonic
             } else if median >= floor / config.tonicReviewBufferRatio {
@@ -331,8 +396,8 @@ public enum TonicStructuralWindowDetector {
         let signal = EvidenceSignal(
             key: "tonic_magnitude_floor", status: route == .classicTonic ? .pass : .fail,
             role: .priorCompatibility, observedValue: metrics.medianSec, requiredValue: floor,
-            message: "route=\(route.rawValue) floor=\(trust)")
-        return (route, signal, trust, floor)
+            message: "route=\(route.rawValue) floor=\(floorInfo.trust)")
+        return (route, signal, floorInfo.trust, floor)
     }
 
     /// Evaluate one span of a real train end-to-end: compute `ISISpanMetrics` (QC-filtered, parity with
@@ -461,6 +526,150 @@ public enum TonicStructuralWindowDetector {
         }
     }
 
+    // MARK: TSW-3 — boundary refinement
+
+    /// Refine the raw `scan` candidates by (a) trimming ISIs that are incompatible with classic tonic off
+    /// the boundaries — ASYMMETRICALLY: the LOW (fast/burst) side is trimmed against the classic-tonic
+    /// magnitude floor, while the HIGH (slow/pause) side is trimmed only for genuinely pause-like ISIs —
+    /// and (b) recovering AT MOST ONE bounded bridge ISI to merge two adjacent tonic runs separated by a
+    /// single tonic-magnitude-compatible ISI (never a burst-floor or pause-floor ISI, so bursts and pauses
+    /// are never swallowed). Refinement only SHRINKS the edges or adds the single bridge — it never invents
+    /// structure, so the output stays disjoint and sorted. A candidate whose span is unchanged is returned
+    /// verbatim (source preserved); a changed one is re-evaluated for fresh metrics/route and carries TSW-3
+    /// provenance (`refinement` + `originalSpan`, source = .refined).
+    public static func scanRefined(
+        train: SpikeTrain,
+        config: TonicStructuralWindowConfig = TonicStructuralWindowConfig(),
+        burstValleySec: Double? = nil,
+        minTonicSpikes: Int? = nil,
+        burstValleySupportCount: Int? = nil,
+        fallbackFloorSec: Double? = nil,
+        pauseFloorSec: Double? = nil
+    ) -> [TonicStructuralWindowCandidate] {
+        let base = scan(
+            train: train, config: config, burstValleySec: burstValleySec, minTonicSpikes: minTonicSpikes,
+            burstValleySupportCount: burstValleySupportCount, fallbackFloorSec: fallbackFloorSec)
+        guard !base.isEmpty else { return [] }
+
+        let lastValidIndex = train.isiSec.count - 1
+        let floor = Swift.max(0, config.thresholds.minimumValidISISec)
+        let baseMinSpikes = minTonicSpikes ?? config.thresholds.tonicMinSpikes
+        let seedISI = Swift.max(2, baseMinSpikes - 1)
+
+        // The SAME classic-tonic floor the magnitude gate uses (distribution-only, window-independent), plus
+        // the burst-contamination floor. Both bound the trim/bridge so TSW-3 agrees with TSW-2A routing.
+        let floorInfo = classicTonicMagnitudeFloor(
+            burstValleySec: burstValleySec, burstValleySupportCount: burstValleySupportCount,
+            fallbackFloorSec: fallbackFloorSec, config: config)
+        let burstFloor = effectiveBurstFloorSec(burstValleySec: burstValleySec, config: config).floorSec
+
+        // 1) Asymmetric edge trim (shrink-only, independent per candidate).
+        struct Work { var start: Int; var end: Int; let base: TonicStructuralWindowCandidate
+                      var low: Int; var high: Int; var bridge: Int }
+        var items: [Work] = base.map {
+            Work(start: $0.span.startISIIndex, end: $0.span.endISIIndex, base: $0, low: 0, high: 0, bridge: 0)
+        }
+        for k in items.indices {
+            // LOW side: drop leading ISIs below the classic-tonic magnitude floor (fast/burst contamination),
+            // keeping at least a seed's worth of ISIs. GUARD: only trim when the window actually has a tonic
+            // core ABOVE the floor to preserve — a uniformly-fast window (every ISI below the floor) has no
+            // boundary to clean, so it is left intact for the magnitude gate to route non-classic rather than
+            // arbitrarily truncated down to the seed length.
+            let hasTonicCore = (items[k].start...items[k].end).contains {
+                (validISIValue(train, $0, floor: floor) ?? 0) >= floorInfo.floorSec
+            }
+            if hasTonicCore {
+                while items[k].end - items[k].start + 1 > seedISI,
+                      let v = validISIValue(train, items[k].start, floor: floor), v < floorInfo.floorSec {
+                    items[k].start += 1; items[k].low += 1
+                }
+            }
+            // HIGH side: drop trailing PAUSE-like ISIs only (asymmetric — a much looser slow-side condition
+            // that never trims legitimate slow tonic ISIs). Requires a known pause floor.
+            if let pause = pauseFloorSec {
+                while items[k].end - items[k].start + 1 > seedISI,
+                      let v = validISIValue(train, items[k].end, floor: floor), v >= pause {
+                    items[k].end -= 1; items[k].high += 1
+                }
+            }
+        }
+
+        // 2) Bounded single-bridge pass: merge candidate i with i+1 when EXACTLY ONE bounded ISI separates
+        //    them and the merged span re-passes the gate/guard with the adjacent-ratio cap relaxed (CV/CV2/
+        //    LV kept strict — so only the single junction step is tolerated). The bridge ISI must be neither
+        //    burst-floor (fast) nor pause-floor (slow), so bursts/pauses are never bridged over.
+        var relaxed = config
+        relaxed.adjacentRatioMax = .infinity
+        var merged: [Work] = []
+        var i = 0
+        while i < items.count {
+            var cur = items[i]
+            if i + 1 < items.count {
+                let nxt = items[i + 1]
+                let gapIndex = cur.end + 1
+                let gapValue = validISIValue(train, gapIndex, floor: floor)
+                let bounded = nxt.start == cur.end + 2                        // exactly one ISI between runs
+                    && gapValue != nil
+                    && (gapValue ?? 0) >= burstFloor                          // not burst (fast) contamination
+                    && (pauseFloorSec == nil || (gapValue ?? .infinity) < pauseFloorSec!)   // not a pause ISI
+                if bounded {
+                    let mergedSpan = ISISpan(trainID: train.id, startISIIndex: cur.start,
+                                             endISIIndex: nxt.end, familyHint: .tonic)
+                    if case .accepted = evaluateWindow(
+                        train: train, span: mergedSpan, burstValleySec: burstValleySec,
+                        burstValleySupportCount: burstValleySupportCount, fallbackFloorSec: fallbackFloorSec,
+                        config: relaxed) {
+                        cur.end = nxt.end
+                        cur.bridge = 1
+                        merged.append(cur)
+                        i += 2                                                // absorb the next candidate
+                        continue
+                    }
+                }
+            }
+            merged.append(cur)
+            i += 1
+        }
+
+        // 3) Finalize: unchanged spans return verbatim; changed spans are re-evaluated (bridged spans under
+        //    the relaxed-adjacent config so the tolerated junction survives) and carry TSW-3 provenance.
+        var out: [TonicStructuralWindowCandidate] = []
+        for it in merged {
+            let changed = it.start != it.base.span.startISIIndex
+                || it.end != it.base.span.endISIIndex || it.bridge > 0
+            guard changed else { out.append(it.base); continue }
+            let useConfig = it.bridge > 0 ? relaxed : config
+            guard let refined = finalizeCandidate(
+                train: train, startISIIndex: it.start, endISIIndex: it.end, source: .refined,
+                burstValleySec: burstValleySec, burstValleySupportCount: burstValleySupportCount,
+                fallbackFloorSec: fallbackFloorSec, config: useConfig,
+                lastValidIndex: lastValidIndex, floor: floor) else {
+                out.append(it.base)                                          // refinement failed → keep raw
+                continue
+            }
+            let refinement = TonicWindowRefinement(
+                originalStartISIIndex: it.base.span.startISIIndex,
+                originalEndISIIndex: it.base.span.endISIIndex,
+                lowSideTrimmed: it.low, highSideTrimmed: it.high, bridgeCount: it.bridge,
+                bridgeSide: it.bridge > 0 ? .high : nil,
+                usedReliableBurstBoundary: floorInfo.reliableBurstBoundary)
+            var path = refined.decisionPath + "/tsw3=refined"
+            if it.low > 0 { path += "/low_trim=\(it.low)" }
+            if it.high > 0 { path += "/high_trim=\(it.high)" }
+            if it.bridge > 0 { path += "/bridge=\(it.bridge)" }
+            out.append(TonicStructuralWindowCandidate(
+                span: refined.span, metrics: refined.metrics, source: .refined, signals: refined.signals,
+                reviewRequired: refined.reviewRequired, boundaryReason: refined.boundaryReason,
+                decisionPath: path, route: refined.route, refinement: refinement,
+                originalSpan: it.base.span))
+        }
+        return out.sorted {
+            $0.span.startISIIndex != $1.span.startISIIndex
+                ? $0.span.startISIIndex < $1.span.startISIIndex
+                : $0.span.endISIIndex < $1.span.endISIIndex
+        }
+    }
+
     /// Build the final candidate for `[startISIIndex, endISIIndex]`, attaching right-edge boundary
     /// provenance: if the next ISI exists and the one-ISI-expanded span FAILS, record the failure reason
     /// (the failing ISI is NOT included) and flag `reviewRequired`. A train that simply ends (no next ISI)
@@ -517,6 +726,13 @@ public enum TonicStructuralWindowDetector {
     private static func isValidISI(_ isi: [Double?], _ index: Int, floor: Double) -> Bool {
         guard index >= 1, index < isi.count, let value = isi[index], value.isFinite, value >= floor else { return false }
         return true
+    }
+
+    /// The QC-valid ISI value at `index`, or nil when the slot is a placeholder / sub-floor / non-finite.
+    private static func validISIValue(_ train: SpikeTrain, _ index: Int, floor: Double) -> Double? {
+        let isi = train.isiSec
+        guard index >= 1, index < isi.count, let value = isi[index], value.isFinite, value >= floor else { return nil }
+        return value
     }
 
     private static func maxConsecutiveTrue(_ flags: [Bool]) -> Int {

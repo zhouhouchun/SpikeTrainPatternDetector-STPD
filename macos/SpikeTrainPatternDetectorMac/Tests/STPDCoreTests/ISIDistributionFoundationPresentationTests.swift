@@ -421,3 +421,30 @@ func presentationTSWPhysiologicalFloorTracksQCFloor() {
     #expect(low.contains { $0.route == "classicTonic" })              // physiological floor 15 ms < 20 ms → classic
     #expect(high.allSatisfy { $0.route == "tooFastForClassicTonic" }) // physiological floor 22.5 ms > 20 ms → too fast
 }
+
+// 23 — TSW-3: a train whose scan window includes a leading fast ISI (below the classic-tonic floor)
+// surfaces a REFINED row through the presentation — low-side trimmed, source "refined", original span kept.
+@Test
+func presentationTSWSurfacesRefinedLowSideTrim() {
+    let train = presTrain("fast_lead", isis: [0.012, 0.020, 0.021, 0.019, 0.020, 0.021])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [train])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    guard let row = p.tswCandidatesByTrainID[train.id]?.first else { #expect(Bool(false), "expected a row"); return }
+    #expect(row.isRefined)
+    #expect(row.source == "refined")
+    #expect(row.startISIIndex == 2)                    // leading fast ISI trimmed off the low side
+    #expect(row.lowSideTrimmed == 1)
+    #expect(row.originalStartISIIndex == 1)            // provenance back to the raw scan span
+}
+
+// 24 — D3-HF: the train's mode-separation reliability + tonicLowerReliable flag propagate onto its TSW
+// rows. A clean slow tonic train has no fast mode and a trustworthy tonic lower.
+@Test
+func presentationTSWRowsCarryModeSeparationEvidence() {
+    let tonic = presTrain("slow_tonic", isis: [0.44, 0.46, 0.45, 0.47, 0.45, 0.46, 0.44, 0.46, 0.45, 0.47])
+    let dataset = SpikeDataset(name: "tsw", sourceDescription: "unit-test", trains: [tonic])
+    let p = ISIDistributionFoundationPresentation.from(dataset: dataset, runDistribution: nil, minimumValidISISec: 0.001)
+    guard let row = p.tswCandidatesByTrainID[tonic.id]?.first else { #expect(Bool(false), "expected a row"); return }
+    #expect(row.modeReliability == "noFastMode")
+    #expect(row.tonicLowerReliable == true)
+}
