@@ -61,6 +61,14 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     /// behavior is unchanged; only the manual-threshold resolver sets these.
     public var manualTonicHardLowerSec: Double? = nil
     public var manualTonicHardUpperSec: Double? = nil
+    /// TSW-INTEGRATION: when true (the default), the PRIMARY tonic run source is the from-sequence
+    /// expandable sliding window (`TonicStructuralWindowDetector.scanRefined`) instead of the adaptive
+    /// band-membership run scan. The per-run classic/irregular gates, burst / fast-packet guards, subtype
+    /// routing, boundary rescue, and arbitration are UNCHANGED — only the run SEED changes, so a slower /
+    /// wider tonic run stays ONE maximal candidate rather than being clipped by the band upper and
+    /// fragmented. Set false to restore the legacy band-membership seed (A/B / rollback). Not an init
+    /// parameter, so every existing construction defaults to the new primary path.
+    public var tonicStructuralWindowPrimary: Bool = true
 
     public init(
         isEnabled: Bool = true,
@@ -1518,18 +1526,37 @@ public enum StatePatternDetector {
 
         var candidates: [ClassicAnchorCandidate] = []
         var nextCandidateIndex = 1
-        let tonicRuns = mergeTonicSupportRuns(
-            boolRuns(strictFlags),
-            train: train,
-            settings: settings
-        )
-        for run in tonicRuns {
+
+        // PRIMARY tonic run source. Default (tonicStructuralWindowPrimary): the from-sequence expandable
+        // sliding window — seed = tonicMinSpikes-1 ISIs, scan left→right by one ISI, expand while the whole
+        // span passes the tonic structural gates, emit the maximal window, resume after it. It is NOT
+        // constrained to the adaptive tonic band, so a slower / wider tonic run stays ONE candidate instead
+        // of being clipped by the band upper into sub-minSpikes fragments. Legacy band-membership seed kept
+        // behind the flag. Either way, the SAME per-run gates / subtype routing / guards below run on the runs.
+        let tonicRunSpecs: [(run: (start: Int, end: Int), tsw: TonicStructuralWindowCandidate?)]
+        if settings.tonicStructuralWindowPrimary {
+            tonicRunSpecs = tonicStructuralWindowRuns(train: train, settings: settings, bounds: bounds)
+                .map { ((start: $0.span.startISIIndex, end: $0.span.endISIIndex), $0) }
+        } else {
+            tonicRunSpecs = mergeTonicSupportRuns(boolRuns(strictFlags), train: train, settings: settings)
+                .map { ($0, nil) }
+        }
+
+        for spec in tonicRunSpecs {
+            let run = spec.run
             guard let metrics = metrics(train: train, run: run, settings: settings, localContext: localContext),
                   metrics.nSpikes >= settings.tonicMinSpikes else {
                 continue
             }
+            let tswProvenance = spec.tsw.map(tonicStructuralWindowProvenance) ?? []
 
-            let bridgeCount = tonicBridgeCount(run: run, strictFlags: strictFlags)
+            // A TSW run is a WHOLE validated regular window (TSW enforced CV/CV2/LV + adjacent-ratio +
+            // burst-cleanliness on the full span), so the band-coupled "bridge" audit — which counts ISIs
+            // that fall outside the narrow support band — does not apply: every ISI in the window is tonic-
+            // supported by construction. Applying it would re-introduce the exact band-clipping the sliding
+            // window removes (a clean run whose jitter pokes just outside the band would be spuriously
+            // rejected). bridgeCount is 0 for TSW runs; the legacy band path keeps its strict-flag audit.
+            let bridgeCount = spec.tsw != nil ? 0 : tonicBridgeCount(run: run, strictFlags: strictFlags)
             let bridgeFraction = Double(bridgeCount) / Double(max(1, metrics.nValidISI))
             let bridgeFractionPass = bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12
             let burstSeedFraction = fraction(metrics.values) { $0 <= settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec) }
@@ -1631,7 +1658,7 @@ public enum StatePatternDetector {
                         "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                         "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                         "regularity_score=\(format(regularityScore))"
-                    ] + subtypeAudit
+                    ] + subtypeAudit + tswProvenance
                 )
                 candidates.append(
                     candidate(
@@ -1685,7 +1712,7 @@ public enum StatePatternDetector {
                     "fast_packet_core_occupancy_max=\(format(fastPacketOccupancyMax))",
                     "structural_burst_support_weight=\(format(settings.structuralBurstSupportWeight))",
                     "regularity_score=\(format(regularityScore))"
-                ] + subtypeAudit
+                ] + subtypeAudit + tswProvenance
             )
             candidates.append(
                 candidate(
@@ -1721,21 +1748,106 @@ public enum StatePatternDetector {
             bounds: bounds
         )
 
-        let acceptedRanges = candidates
-            .filter { $0.finalLabel == .tonic && $0.action == "accept" }
-            .map { (start: $0.startISIIndex, end: $0.endISIIndex) }
-        candidates.append(
-            contentsOf: detectTonicStructuralWindows(
-                train: train,
-                settings: settings,
-                localContext: localContext,
-                bounds: bounds,
-                occupiedAcceptedRanges: acceptedRanges,
-                nextCandidateIndex: &nextCandidateIndex
+        // The legacy band-gated, length-capped (≤32 ISI) structural-window FILL is redundant once the
+        // primary run source is itself the uncapped from-sequence sliding window: TSW already emits maximal
+        // tonic windows, so this secondary gap-fill would only re-derive shorter, band-clipped copies. Keep
+        // it only on the legacy path.
+        if !settings.tonicStructuralWindowPrimary {
+            let acceptedRanges = candidates
+                .filter { $0.finalLabel == .tonic && $0.action == "accept" }
+                .map { (start: $0.startISIIndex, end: $0.endISIIndex) }
+            candidates.append(
+                contentsOf: detectTonicStructuralWindows(
+                    train: train,
+                    settings: settings,
+                    localContext: localContext,
+                    bounds: bounds,
+                    occupiedAcceptedRanges: acceptedRanges,
+                    nextCandidateIndex: &nextCandidateIndex
+                )
             )
-        )
+        }
 
         return candidates
+    }
+
+    /// TSW-INTEGRATION primary tonic run generator: the from-sequence expandable sliding window. Reads the
+    /// train's QC ISI series directly (NOT the adaptive tonic band) via `TonicStructuralWindowDetector`
+    /// and returns maximal tonic structural windows. Burst contamination is vetoed with the SAME burst
+    /// boundary the burst detector uses (`burstSeedUpperSec`), and the tonic-core lower (`bounds.lower`,
+    /// which already folds in the manual tonic hard gate) is the classic-tonic magnitude / low-side-trim
+    /// floor — so burst-core ISIs never seed a tonic window and manual gates still bound it. Expansion stops
+    /// at a large / irregular ISI, leaving that ISI for the pause detector. The emitted spans still flow
+    /// through every per-run gate + subtype route + boundary rescue + arbitration in `detectTonic`.
+    private static func tonicStructuralWindowRuns(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        bounds: (lower: Double, upper: Double)
+    ) -> [TonicStructuralWindowCandidate] {
+        // Drive the sliding window with the WIDEST tonic regularity bands (the irregular tier), so a single
+        // maximal window can span both classic AND irregular tonic instead of fragmenting a moderately-
+        // variable run into classic-only cores. The per-run gate in `detectTonic` then re-assigns the
+        // classic-vs-irregular subtype from the span's ACTUAL cv/cv2/lv, so a clean run still routes classic.
+        // Magnitude / burst-contamination protection is unchanged (it keys off burstSeedUpperSec, not CV).
+        let thresholds = StructuralEvidenceThresholds(
+            minimumValidISISec: settings.minValidISISec,
+            burstSeedUpperSec: settings.burstSeedUpperSec,
+            tonicMinSpikes: settings.tonicMinSpikes,
+            tonicCVMax: settings.irregularTonicCVMax,
+            tonicCV2Max: settings.irregularTonicCV2Max,
+            tonicLVMax: settings.irregularTonicLVMax
+        )
+        let config = TonicStructuralWindowConfig(
+            thresholds: thresholds,
+            refractoryFloorSec: settings.minValidISISec
+        )
+        // Pause floor for the high-side trim / bounded bridge: well above the tonic ceiling, so only a
+        // genuine pause (≫ tonic) is excluded. Expansion already stops at large ISIs and the bridge's CV
+        // re-check already refuses to span a pause, so this is a conservative secondary safety.
+        let pauseFloor = max(settings.tonicBridgeUpperSec, bounds.upper) * 2.0
+        let windows = TonicStructuralWindowDetector.scanRefined(
+            train: train,
+            config: config,
+            burstValleySec: settings.burstSeedUpperSec,
+            minTonicSpikes: settings.tonicMinSpikes,
+            burstValleySupportCount: nil,
+            fallbackFloorSec: bounds.lower,
+            pauseFloorSec: pauseFloor
+        )
+        // A manual tonic ISI HARD gate is an explicit magnitude constraint the sliding window (which is
+        // magnitude-agnostic above the burst floor) does not otherwise honor. When set, drop any window that
+        // strays outside [manualLower, manualUpper] — a hard-gated tonic candidate must lie entirely within
+        // the user's band (mirrors the legacy per-ISI band membership, which excludes out-of-band ISIs).
+        // No manual gate ⇒ this is a no-op and the maximal windows pass through unchanged.
+        if settings.manualTonicHardLowerSec != nil || settings.manualTonicHardUpperSec != nil {
+            let lo = settings.manualTonicHardLowerSec ?? 0
+            let hi = settings.manualTonicHardUpperSec ?? .infinity
+            return windows.filter { window in
+                (window.span.startISIIndex...window.span.endISIIndex).allSatisfy { index in
+                    guard let value = finiteValidISI(train.isiSec[index], settings: settings) else { return false }
+                    return value >= lo - tolerance(for: lo) && value <= hi + tolerance(for: hi)
+                }
+            }
+        }
+        return windows
+    }
+
+    /// TSW-INTEGRATION provenance tokens for a tonic run seeded by the sliding window, appended to the
+    /// candidate decisionPath: `tonic_structural_window`, `seed_window`/`expanded_window`, the route/source,
+    /// `stopped_by=<boundaryReason>` (or `train_end`), and `refined_from=[start...end]` when TSW-3
+    /// refinement changed the span.
+    private static func tonicStructuralWindowProvenance(_ window: TonicStructuralWindowCandidate) -> [String] {
+        var tokens = [
+            "tonic_structural_window",
+            window.source == .seed ? "seed_window" : "expanded_window",
+            "tsw_source=\(window.source.rawValue)",
+            "tsw_route=\(window.route.rawValue)",
+            "stopped_by=\(window.boundaryReason?.rawValue ?? "train_end")"
+        ]
+        if let original = window.originalSpan {
+            tokens.append("refined_from=[\(original.startISIIndex)...\(original.endISIIndex)]")
+        }
+        return tokens
     }
 
     /// Local post-pass for a narrow failure mode in the structure-first tonic detector: a stable tonic run can be
