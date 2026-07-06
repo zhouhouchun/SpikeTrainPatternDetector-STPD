@@ -107,3 +107,73 @@ func tswIntegrationFlagIsReversible() {
     #expect(on.contains { $0.decisionPath.contains("tonic_structural_window") })  // ON = sliding window
     #expect(off.allSatisfy { !$0.decisionPath.contains("tonic_structural_window") })  // OFF = legacy band scan
 }
+
+// MARK: - TSW-D5B — relative pause-like outlier carve (a pause-scale ISI must not be swallowed as tonic).
+
+// 6 — the reported regression: pause_response_1_s ISI 11 (1.063 s, ~2.3x the ~0.45 s tonic core) was
+// swallowed into a broad irregular tonic window [1...15] via the TSW-3 bridge. It must be CARVED OUT:
+// no tonic candidate covers ISI 11, the true-tonic segments before (…10) and after (12…) remain tonic,
+// and the carve provenance is recorded.
+@Test
+func tswPauseLikeCarveRemovesPauseResponse1SISI11() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_1_s" })
+
+    // Detector level: the tonic candidate set no longer covers the pause ISI; neighbors stay tonic.
+    let accepted = tswiAcceptedTonic(train)
+    #expect(!accepted.contains { $0.startISIIndex <= 11 && $0.endISIIndex >= 11 })   // ISI 11 NOT tonic
+    #expect(accepted.contains { $0.startISIIndex <= 10 && $0.endISIIndex >= 10 })    // segment before stays tonic
+    #expect(accepted.contains { $0.startISIIndex <= 12 && $0.endISIIndex >= 12 })    // segment after stays tonic
+    #expect(accepted.contains { $0.decisionPath.contains("tonic_pause_like_outlier") })
+    #expect(accepted.contains { $0.decisionPath.contains("carved_from_tsw=[1...15]") })
+
+    // Pipeline level: the final selected label at ISI 11 is not canonical tonic.
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: SpikeDataset(name: "one", sourceDescription: dataset.sourceDescription, trains: [train]),
+        bandSettings: TrainAdaptiveBandSettings()
+    )
+    let cs = run.result(for: train.id)?.candidates ?? []
+    #expect(!cs.contains { $0.selectedForAuto && $0.finalLabel == .tonic
+        && $0.startISIIndex <= 11 && $0.endISIIndex >= 11 })
+}
+
+// 7 — a moderate (bridge-spannable) internal pause between two tonic runs is carved, not swallowed: the
+// pause ISI is excluded (available to pause detection) and both flanking tonic segments survive.
+@Test
+func tswPauseLikeCarveSplitsInternalBridgePause() {
+    let isis = Array(repeating: 0.050, count: 8) + [0.120] + Array(repeating: 0.050, count: 8)  // pause @ ISI 9
+    let train = tswiTrain("tonic_pause_tonic_bridge", isis)
+    let accepted = tswiAcceptedTonic(train)
+    #expect(!accepted.contains { ($0.startISIIndex...$0.endISIIndex).contains(9) })   // pause carved out
+    #expect(accepted.contains { $0.startISIIndex == 1 && $0.endISIIndex == 8 })       // left tonic segment
+    #expect(accepted.contains { $0.startISIIndex == 10 && $0.endISIIndex == 17 })     // right tonic segment
+    #expect(accepted.contains { $0.decisionPath.contains("split_by_pause_like_isi") })
+}
+
+// 8 — a genuinely IRREGULAR tonic run whose largest beats sit near its own q90 (a fat unimodal tail, NOT
+// a bimodal pause gap) is NOT carved: it stays a single sustained tonic candidate. Guards against the
+// carve destroying legitimate irregular tonic.
+@Test
+func tswPauseLikeCarvePreservesIrregularTonic() {
+    // CV ~0.35, max beat ~1.3x q90 — within the bulk, no isolated 2x+ gap.
+    let isis: [Double] = [0.030, 0.048, 0.036, 0.052, 0.033, 0.050, 0.038, 0.046,
+                          0.031, 0.049, 0.035, 0.051, 0.034, 0.047, 0.037, 0.050]
+    let train = tswiTrain("irregular_no_pause", isis)
+    let accepted = tswiAcceptedTonic(train)
+    #expect(!accepted.isEmpty)
+    #expect(accepted.allSatisfy { !$0.decisionPath.contains("tonic_pause_like_outlier") })  // NOT carved
+    // Coverage is not fragmented into sub-seed shards: the run is captured as (at most a couple of) sustained
+    // tonic candidates, and at least one spans a long stretch.
+    #expect(accepted.contains { ($0.endISIIndex - $0.startISIIndex + 1) >= 10 })
+}
+
+// 9 — a large pause ISI at the tonic boundary (not bridge-spannable) stops expansion and is not swallowed,
+// AND is not resurrected by the carve path. Complements tswIntegrationStopsBeforeLargePause.
+@Test
+func tswPauseLikeCarveKeepsBoundaryPauseExcluded() {
+    let isis = Array(repeating: 0.050, count: 10) + [1.4] + Array(repeating: 0.050, count: 4)  // pause @ ISI 11
+    let train = tswiTrain("tonic_then_bigpause", isis)
+    let accepted = tswiAcceptedTonic(train)
+    #expect(!accepted.contains { ($0.startISIIndex...$0.endISIIndex).contains(11) })  // pause never tonic
+    #expect(accepted.contains { $0.startISIIndex == 1 && $0.endISIIndex == 10 })      // pre-pause tonic intact
+}

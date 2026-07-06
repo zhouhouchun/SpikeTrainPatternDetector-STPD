@@ -1533,13 +1533,13 @@ public enum StatePatternDetector {
         // constrained to the adaptive tonic band, so a slower / wider tonic run stays ONE candidate instead
         // of being clipped by the band upper into sub-minSpikes fragments. Legacy band-membership seed kept
         // behind the flag. Either way, the SAME per-run gates / subtype routing / guards below run on the runs.
-        let tonicRunSpecs: [(run: (start: Int, end: Int), tsw: TonicStructuralWindowCandidate?)]
+        let tonicRunSpecs: [(run: (start: Int, end: Int), tsw: TonicStructuralWindowCandidate?, carve: [String])]
         if settings.tonicStructuralWindowPrimary {
             tonicRunSpecs = tonicStructuralWindowRuns(train: train, settings: settings, bounds: bounds)
-                .map { ((start: $0.span.startISIIndex, end: $0.span.endISIIndex), $0) }
+                .map { ($0.run, $0.window, $0.carve) }
         } else {
             tonicRunSpecs = mergeTonicSupportRuns(boolRuns(strictFlags), train: train, settings: settings)
-                .map { ($0, nil) }
+                .map { ($0, nil, []) }
         }
 
         for spec in tonicRunSpecs {
@@ -1548,7 +1548,7 @@ public enum StatePatternDetector {
                   metrics.nSpikes >= settings.tonicMinSpikes else {
                 continue
             }
-            let tswProvenance = spec.tsw.map(tonicStructuralWindowProvenance) ?? []
+            let tswProvenance = (spec.tsw.map(tonicStructuralWindowProvenance) ?? []) + spec.carve
 
             // A TSW run is a WHOLE validated regular window (TSW enforced CV/CV2/LV + adjacent-ratio +
             // burst-cleanliness on the full span), so the band-coupled "bridge" audit — which counts ISIs
@@ -1779,11 +1779,18 @@ public enum StatePatternDetector {
     /// floor — so burst-core ISIs never seed a tonic window and manual gates still bound it. Expansion stops
     /// at a large / irregular ISI, leaving that ISI for the pause detector. The emitted spans still flow
     /// through every per-run gate + subtype route + boundary rescue + arbitration in `detectTonic`.
+    /// A pause-like ISI is at least this multiple of the tonic-window CORE median (scale-free relative gap).
+    private static let tonicPauseLikeCoreRatio = 2.0
+    /// …AND at least this multiple of the window's own q90 — the discriminator between a genuine bimodal
+    /// PAUSE (well beyond the bulk of the run) and an ordinary IRREGULAR-tonic outlier (whose largest beats
+    /// sit near q90). Dimensionless, so legitimate irregular tonic is preserved.
+    private static let tonicPauseLikeQ90Ratio = 1.5
+
     private static func tonicStructuralWindowRuns(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings,
         bounds: (lower: Double, upper: Double)
-    ) -> [TonicStructuralWindowCandidate] {
+    ) -> [(run: (start: Int, end: Int), window: TonicStructuralWindowCandidate, carve: [String])] {
         // Drive the sliding window with the WIDEST tonic regularity bands (the irregular tier), so a single
         // maximal window can span both classic AND irregular tonic instead of fragmenting a moderately-
         // variable run into classic-only cores. The per-run gate in `detectTonic` then re-assigns the
@@ -1819,17 +1826,99 @@ public enum StatePatternDetector {
         // strays outside [manualLower, manualUpper] — a hard-gated tonic candidate must lie entirely within
         // the user's band (mirrors the legacy per-ISI band membership, which excludes out-of-band ISIs).
         // No manual gate ⇒ this is a no-op and the maximal windows pass through unchanged.
+        let gated: [TonicStructuralWindowCandidate]
         if settings.manualTonicHardLowerSec != nil || settings.manualTonicHardUpperSec != nil {
             let lo = settings.manualTonicHardLowerSec ?? 0
             let hi = settings.manualTonicHardUpperSec ?? .infinity
-            return windows.filter { window in
+            gated = windows.filter { window in
                 (window.span.startISIIndex...window.span.endISIIndex).allSatisfy { index in
                     guard let value = finiteValidISI(train.isiSec[index], settings: settings) else { return false }
                     return value >= lo - tolerance(for: lo) && value <= hi + tolerance(for: hi)
                 }
             }
+        } else {
+            gated = windows
         }
-        return windows
+        // CARVE each window at pause-like OUTLIERS: the TSW-3 bounded bridge can span a single large ISI to
+        // merge two tonic runs; when that ISI is actually a pause (bimodal gap) rather than a tonic beat, the
+        // merged window would swallow the pause as tonic. Split the window at any such ISI (excluded → left
+        // for pause detection), keeping the adjacent true-tonic segments. Pause-like is RELATIVE only.
+        let adjacentRatioHigh = thresholds.tonicLocalRatioHigh
+        return gated.flatMap { window in
+            carveTonicWindowAtPauseLikeOutliers(
+                window: window, train: train, settings: settings, adjacentRatioHigh: adjacentRatioHigh)
+        }
+    }
+
+    /// Split a tonic structural window at internal/boundary PAUSE-LIKE ISIs and return the surviving tonic
+    /// segments (each ≥ the seed length) as runs, with carve provenance. An ISI is pause-like only on
+    /// RELATIVE evidence (no fixed ms): it is ≥ `tonicPauseLikeCoreRatio`× the window CORE median, ≥
+    /// `tonicPauseLikeQ90Ratio`× the window's own q90 (so it is beyond the bulk — a bimodal gap, not an
+    /// irregular-tonic tail beat), AND an isolated jump (≥ `adjacentRatioHigh`× BOTH existing neighbors — the
+    /// gap signature the bridge relaxed to admit it). Uncarved windows return one run with empty provenance.
+    private static func carveTonicWindowAtPauseLikeOutliers(
+        window: TonicStructuralWindowCandidate,
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        adjacentRatioHigh: Double
+    ) -> [(run: (start: Int, end: Int), window: TonicStructuralWindowCandidate, carve: [String])] {
+        let start = window.span.startISIIndex
+        let end = window.span.endISIIndex
+        guard start <= end else { return [] }
+        let indices = Array(start...end)
+        let values = indices.map { finiteValidISI(train.isiSec[$0], settings: settings) ?? .nan }
+        let sample = SortedFiniteSample(values.filter(\.isFinite), positiveOnly: true)
+        let whole: [(run: (start: Int, end: Int), window: TonicStructuralWindowCandidate, carve: [String])]
+            = [(run: (start, end), window: window, carve: [])]
+        guard let coreMedian = sample.quantile(0.5), coreMedian > 0,
+              let q90 = sample.quantile(0.90), q90 > 0 else {
+            return whole
+        }
+
+        func isPauseLike(_ k: Int) -> Bool {
+            let v = values[k]
+            guard v.isFinite, v > 0 else { return false }
+            guard v / coreMedian >= tonicPauseLikeCoreRatio,
+                  v / q90 >= tonicPauseLikeQ90Ratio else { return false }
+            var jumps: [Double] = []
+            if k > 0, values[k - 1].isFinite, values[k - 1] > 0 { jumps.append(v / values[k - 1]) }
+            if k < values.count - 1, values[k + 1].isFinite, values[k + 1] > 0 { jumps.append(v / values[k + 1]) }
+            return !jumps.isEmpty && jumps.allSatisfy { $0 >= adjacentRatioHigh }
+        }
+
+        let pauseLike = indices.indices.filter(isPauseLike)
+        guard !pauseLike.isEmpty else { return whole }
+
+        // Provenance uses the WORST (largest relative) carved ISI.
+        let worst = pauseLike.max { values[$0] / coreMedian < values[$1] / coreMedian }!
+        let carveProvenance = [
+            "tonic_pause_like_outlier",
+            "split_by_pause_like_isi",
+            "pause_ratio_to_tonic_core=\(format(values[worst] / coreMedian))",
+            "pause_ratio_to_tonic_q90=\(format(values[worst] / q90))",
+            "carved_from_tsw=[\(start)...\(end)]"
+        ]
+        let seedISI = max(2, settings.tonicMinSpikes - 1)
+        let pauseSet = Set(pauseLike)
+        var out: [(run: (start: Int, end: Int), window: TonicStructuralWindowCandidate, carve: [String])] = []
+        var segStart: Int?
+        func flush(_ segEndK: Int) {
+            guard let s = segStart else { return }
+            let runStart = indices[s], runEnd = indices[segEndK]
+            if runEnd - runStart + 1 >= seedISI {
+                out.append((run: (runStart, runEnd), window: window, carve: carveProvenance))
+            }
+            segStart = nil
+        }
+        for k in indices.indices {
+            if pauseSet.contains(k) {
+                flush(k - 1)
+            } else if segStart == nil {
+                segStart = k
+            }
+        }
+        flush(indices.count - 1)
+        return out
     }
 
     /// TSW-INTEGRATION provenance tokens for a tonic run seeded by the sliding window, appended to the
