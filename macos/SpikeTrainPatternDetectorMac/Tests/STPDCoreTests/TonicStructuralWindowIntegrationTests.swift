@@ -177,3 +177,164 @@ func tswPauseLikeCarveKeepsBoundaryPauseExcluded() {
     #expect(!accepted.contains { ($0.startISIIndex...$0.endISIIndex).contains(11) })  // pause never tonic
     #expect(accepted.contains { $0.startISIIndex == 1 && $0.endISIIndex == 10 })      // pre-pause tonic intact
 }
+
+// MARK: - Short tonic segments are a CONFIGURABLE first-stage property (minTonicSpikes), not a pause miss.
+
+// 10 — CONTEXT-AWARE short tonic is recovered BY DEFAULT in a clean context: a 3-ISI / 4-spike tonic-range
+// segment (pause_response_1_s [17...19]) is promoted to canonical tonic via the context-aware short path
+// (train is tonic-dominated + classic, magnitude-consistent, pause-separated). Still works when explicitly
+// configured to minTonicSpikes=3 (the primary sliding-window path).
+@Test
+func tswShortTonicRecoveredByDefaultInCleanContext() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_1_s" })
+
+    let atDefault = tswiAcceptedTonic(train)                                      // default minTonicSpikes = 5
+    #expect(atDefault.contains {                                                  // recovered by default…
+        $0.startISIIndex <= 17 && $0.endISIIndex >= 19
+            && $0.decisionPath.contains("short_tonic_island")                    // …via the pause-separated island path
+            && $0.decisionPath.contains("short_tonic_context_clean")
+    })
+
+    var s3 = StatePatternDetectorSettings(); s3.tonicMinSpikes = 3               // explicit config still works
+    let atThree = StatePatternDetector.detect(train: train, settings: s3).candidates
+        .filter { $0.finalLabel == .tonic && $0.action == "accept" }
+    #expect(atThree.contains { $0.startISIIndex <= 17 && $0.endISIIndex >= 19 })
+}
+
+// 11 — the short segment is recovered end-to-end through the PIPELINE by default, and also under explicit
+// minTonicSpikes=3 (via stateTuning and via a manual tonic minSpikes hard gate).
+@Test
+func tswShortTonicRecoveredThroughPipeline() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_1_s" })
+    let single = SpikeDataset(name: "one", sourceDescription: dataset.sourceDescription, trains: [train])
+    func shortSelected(_ run: ClassicAnchorDetectionRun) -> Bool {
+        (run.result(for: train.id)?.candidates ?? []).contains {
+            $0.selectedForAuto && $0.finalLabel == .tonic && $0.startISIIndex <= 17 && $0.endISIIndex >= 19
+        }
+    }
+    #expect(shortSelected(ClassicAnchorDetectionPipeline.run(dataset: single)))                  // by default now
+    #expect(shortSelected(ClassicAnchorDetectionPipeline.run(                                     // via tuning
+        dataset: single, stateTuning: StatePatternDetectorTuning(tonicMinSpikes: 3))))
+    let profile = ManualThresholdProfile(tonic: TonicManualThresholds(
+        minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 3)))
+    #expect(shortSelected(ClassicAnchorDetectionPipeline.run(                                     // via manual gate
+        dataset: single, manualThresholdProfile: profile)))
+}
+
+// 12 — the miss is first-stage GENERATION, NOT pause arbitration: in this non-overlapping fixture the
+// short segment's ISIs are in the tonic magnitude range and NO selected pause candidate covers them.
+@Test
+func tswShortTonicMissIsGenerationNotPause() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_1_s" })
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: SpikeDataset(name: "one", sourceDescription: dataset.sourceDescription, trains: [train]))
+    let cs = run.result(for: train.id)?.candidates ?? []
+    let vals = (1...(train.isiSec.count - 1)).compactMap { train.isiSec[$0] }.sorted()
+    let median = vals[vals.count / 2]
+    for i in 17...19 {
+        #expect((train.isiSec[i] ?? 0) < median * 1.8)                            // tonic-range, not a pause gap
+        #expect(!cs.contains { $0.selectedForAuto && $0.finalLabel == .pause
+            && $0.startISIIndex <= i && $0.endISIIndex >= i })                    // no pause claims it
+    }
+}
+
+// MARK: - TSW context-aware short tonic — noisy/irregular/bursty trains must NOT gain canonical short tonic.
+
+private func tswiGrechishnikova() throws -> SpikeDataset? {
+    let repo = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+    let url = repo.appendingPathComponent("inst/extdata/Grechishnikova_STN_2017_subset.csv")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    return try CSVSpikeMatrixParser.parse(contents: try String(contentsOf: url, encoding: .utf8),
+                                          datasetName: "grech", sourceDescription: url.path, allowDerivedCSV: true)
+}
+private func tswiShortContextCanonical(_ train: SpikeTrain) -> [ClassicAnchorCandidate] {
+    StatePatternDetector.detect(train: train).candidates.filter {
+        $0.finalLabel == .tonic && $0.action == "accept"
+            && $0.decisionPath.contains("short_tonic_island")
+    }
+}
+
+// 13 — high-jitter (globally irregular) train: its locally-regular short windows must NOT be promoted to
+// canonical tonic — the dominant tonic is not a tight classic mode (dominant_tonic_classic=false).
+@Test
+func tswShortTonicRejectedInHighJitterTrain() {
+    var sim = SpikeTrainSimulator(seed: 42)
+    let train = sim.tonicTrain(durationSec: 30, sdSec: 0.30, lowerSec: 0.05, upperSec: 2.0)
+    #expect(tswiShortContextCanonical(train).isEmpty)
+    // Any short island it did scan is at most possible_tonic_review, never canonical tonic.
+    let review = StatePatternDetector.detect(train: train).candidates
+        .filter { $0.decisionPath.contains("short_tonic_island") }
+    #expect(review.allSatisfy { $0.action != "accept" || $0.finalLabel != .tonic })
+}
+
+// 14 — a lone short regular cluster embedded in otherwise irregular activity (no dominant classic tonic)
+// is NOT canonical tonic.
+@Test
+func tswShortTonicLoneClusterNotCanonical() {
+    let isis: [Double] = [0.9, 1.1, 0.8, 1.2, 0.050, 0.052, 0.049, 0.7, 1.0, 0.85, 1.15]  // 3-ISI cluster @5..7
+    let train = tswiTrain("lone_cluster", isis)
+    #expect(tswiShortContextCanonical(train).isEmpty)
+}
+
+// 15 — bursty STN (Grechishnikova): short regular micro-epochs must NOT be canonical tonic (burst-dominated,
+// not tonic-dominated). Complements tonicBoundaryRescueIsInertOnBurstyGrechishnikova.
+@Test
+func tswShortTonicBurstyMicroEpochNotCanonical() throws {
+    guard let ds = try tswiGrechishnikova() else { return }   // graceful skip if fixture absent
+    for tr in ds.trains {
+        #expect(tswiShortContextCanonical(tr).isEmpty, "\(tr.name): bursty short micro-epoch must not be canonical tonic")
+    }
+}
+
+// MARK: - TSW short tonic ISLAND recovery (pause-separated islands captured in full, by default).
+
+// 16 — the exact reported case: pause_response_5_s island [21...23] is recovered as ONE tonic candidate
+// that INCLUDES ISI 21 (413ms, below the adaptive band lower — the sliding window would have trimmed it),
+// together with 22/23.
+@Test
+func tswShortTonicIslandIncludesLeftEdgeISI() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_5_s" })
+    let acc = tswiAcceptedTonic(train)
+    let island = acc.first { $0.startISIIndex <= 21 && $0.endISIIndex >= 23 }
+    #expect(island != nil)                                                     // full island incl. ISI 21
+    #expect(island?.decisionPath.contains("short_tonic_island") == true)
+    #expect(island?.decisionPath.contains("pause_separated_tonic_island=true") == true)
+}
+
+// 17 — later pause_response_* short islands between pauses are all recovered BY DEFAULT (not just the first),
+// including ones the sliding window previously failed to generate.
+@Test
+func tswShortTonicLaterIslandsRecoveredByDefault() throws {
+    let dataset = try tswiFixture5x5()
+    let cases: [(String, Int, Int)] = [
+        ("pause_response_2_s", 28, 30),   // previously "no candidate generated"
+        ("pause_response_5_s", 21, 23),   // previously only [22...23]
+        ("pause_response_1_s", 30, 32),
+    ]
+    for (name, s, e) in cases {
+        let train = try #require(dataset.trains.first { $0.name == name })
+        let acc = tswiAcceptedTonic(train)
+        #expect(acc.contains { $0.startISIIndex <= s && $0.endISIIndex >= e },
+                "\(name) [\(s)...\(e)] should be canonical tonic")
+    }
+}
+
+// 18 — large pause ISIs flanking the islands remain NOT tonic (island recovery never swallows a pause).
+@Test
+func tswShortTonicIslandsLeaveLargePausesUnclaimed() throws {
+    let dataset = try tswiFixture5x5()
+    let train = try #require(dataset.trains.first { $0.name == "pause_response_5_s" })
+    let acc = tswiAcceptedTonic(train)
+    let vals = (1...(train.isiSec.count - 1)).compactMap { train.isiSec[$0] }.sorted()
+    let median = vals[vals.count / 2]
+    for i in [20, 24] {   // the pauses flanking island [21...23]
+        #expect((train.isiSec[i] ?? 0) > median * 1.8)                          // it IS a large pause
+        #expect(!acc.contains { $0.startISIIndex <= i && $0.endISIIndex >= i })  // …and never tonic
+    }
+}

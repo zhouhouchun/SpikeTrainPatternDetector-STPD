@@ -1748,6 +1748,25 @@ public enum StatePatternDetector {
             bounds: bounds
         )
 
+        // CONTEXT-AWARE SHORT-TONIC recovery (TSW primary only): the base minTonicSpikes gate omits genuine
+        // 3–4 spike tonic runs. Recover them as canonical tonic ONLY when the train context clearly supports
+        // tonic (dominated by accepted long tonic of a consistent magnitude, not burst-adjacent); otherwise
+        // emit them as possible_tonic_review, never canonical. Runs AFTER long tonic + rescue so the accepted
+        // long-tonic anchors are known.
+        if settings.tonicStructuralWindowPrimary {
+            let acceptedLongTonic = candidates.filter { $0.finalLabel == .tonic && $0.action == "accept" }
+            candidates.append(
+                contentsOf: shortTonicContextRecovery(
+                    train: train,
+                    settings: settings,
+                    localContext: localContext,
+                    bounds: bounds,
+                    acceptedLongTonic: acceptedLongTonic,
+                    nextCandidateIndex: &nextCandidateIndex
+                )
+            )
+        }
+
         // The legacy band-gated, length-capped (≤32 ISI) structural-window FILL is redundant once the
         // primary run source is itself the uncapped from-sequence sliding window: TSW already emits maximal
         // tonic windows, so this secondary gap-fill would only re-derive shorter, band-clipped copies. Keep
@@ -1937,6 +1956,175 @@ public enum StatePatternDetector {
             tokens.append("refined_from=[\(original.startISIIndex)...\(original.endISIIndex)]")
         }
         return tokens
+    }
+
+    /// Fixed exception floor for the context-aware short-tonic path: 3 spikes / 2 ISIs (scale-free count).
+    private static let shortTonicMinSpikes = 3
+    /// The train must be tonic-DOMINATED — accepted long tonic must cover at least this fraction of the
+    /// train's valid ISIs — before an isolated short island can be recovered as canonical tonic. Dimensionless.
+    private static let shortTonicTonicDominanceFractionMin = 0.5
+    /// A neighbor ISI is PAUSE-LIKE (separating a tonic island) when it is at least this multiple of the
+    /// dominant tonic anchor median. Scale-free — it scales with the train's own tonic rate.
+    private static let shortTonicPauseSeparationRatio = 1.8
+
+    /// Context-aware SHORT-TONIC ISLAND recovery. Instead of relying on the sliding window (whose trim / seed /
+    /// carve can clip a pause-bounded island), this scans the GAPS between pause-like regions directly, so it
+    /// captures the FULL island. A 2–3 ISI (3–4 spike) tonic-magnitude island between pauses is promoted to
+    /// CANONICAL tonic only in a clean context, else emitted as `possible_tonic_review` (never canonical). All
+    /// signals are relative (no fixed ms): local short-window regularity/compactness (A), magnitude consistency
+    /// with the accepted long-tonic anchor (B), a tonic-DOMINATED + tight CLASSIC anchor (C), pause-separation
+    /// on both sides (E), and not burst-adjacent (D).
+    private static func shortTonicContextRecovery(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        bounds: (lower: Double, upper: Double),
+        acceptedLongTonic: [ClassicAnchorCandidate],
+        nextCandidateIndex: inout Int
+    ) -> [ClassicAnchorCandidate] {
+        // Only meaningful when the base floor actually excludes short runs.
+        guard settings.tonicMinSpikes > shortTonicMinSpikes else { return [] }
+        let lastValidIndex = train.isiSec.count - 1
+        guard lastValidIndex >= 1 else { return [] }
+
+        // --- Train context (C): a tonic ANCHOR — the accepted long tonic must exist AND be a tight CLASSIC
+        // mode (pooled CV ≤ tonicCVMax) with substantial coverage. This is what separates a genuine tonic-
+        // with-pauses train (5x5, pooled CV ≈ 0.07) from a globally-irregular one whose locally-regular chunks
+        // merely look dominant (high-jitter, pooled CV > 0.30), and from a bursty/lone-cluster train (no anchor).
+        let totalValidISI = (1...lastValidIndex).reduce(into: 0) { acc, index in
+            if finiteValidISI(train.isiSec[index], settings: settings) != nil { acc += 1 }
+        }
+        let longCoverage = acceptedLongTonic.reduce(into: 0) { $0 += max(0, $1.endISIIndex - $1.startISIIndex + 1) }
+        let coverageFraction = totalValidISI > 0 ? Double(longCoverage) / Double(totalValidISI) : 0
+        let longTonicISIs = acceptedLongTonic.flatMap { candidate in
+            (candidate.startISIIndex...candidate.endISIIndex).compactMap { finiteValidISI(train.isiSec[$0], settings: settings) }
+        }
+        let anchorMedian = SortedFiniteSample(longTonicISIs, positiveOnly: true).quantile(0.5)
+        let dominantTonicClassic = (STPDStatistics.coefficientOfVariation(longTonicISIs) ?? .infinity) <= settings.tonicCVMax + 1e-12
+        let tonicDominant = coverageFraction >= shortTonicTonicDominanceFractionMin
+            && dominantTonicClassic && (anchorMedian ?? 0) > 0
+
+        let thresholds = StructuralEvidenceThresholds()
+        let burstCeil = settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec)
+        // Pause separation threshold, relative to the tonic anchor (falls back to the band upper if no anchor).
+        let pauseThreshold = (anchorMedian ?? bounds.upper) * shortTonicPauseSeparationRatio
+        // ISI-slot kind: 0 = invalid, 1 = burst (fast), 2 = tonic-magnitude, 3 = pause (large). -1 = train edge.
+        func kind(_ index: Int) -> Int {
+            guard index >= 1, index <= lastValidIndex, let value = finiteValidISI(train.isiSec[index], settings: settings) else { return -1 }
+            if value <= burstCeil { return 1 }
+            if value >= pauseThreshold { return 3 }
+            return 2
+        }
+
+        var out: [ClassicAnchorCandidate] = []
+        var i = 1
+        while i <= lastValidIndex {
+            guard kind(i) == 2 else { i += 1; continue }
+            var j = i
+            while j + 1 <= lastValidIndex, kind(j + 1) == 2 { j += 1 }
+            let start = i, end = j
+            i = j + 1                                                                // advance past the island
+
+            let nISI = end - start + 1
+            // SHORT exception band only: 2 … (tonicMinSpikes-2) ISIs. Longer islands are the main loop's job.
+            guard nISI >= shortTonicMinSpikes - 1, nISI <= settings.tonicMinSpikes - 2 else { continue }
+            if acceptedLongTonic.contains(where: { $0.startISIIndex <= start && $0.endISIIndex >= end }) { continue }
+            let span = (start: start, end: end)
+            guard let metrics = metrics(train: train, run: span, settings: settings, localContext: localContext),
+                  let islandMedian = metrics.q50, islandMedian > 0 else { continue }
+
+            // --- Signal A: short-window compactness + local adjacent-ratio regularity (short candidates use
+            // compactness, not CV/CV2/LV). Burst/fast contamination cannot occur — an island is tonic-magnitude
+            // by construction (no burst or pause ISI is inside it).
+            let compact = metrics.values.allSatisfy {
+                $0 >= islandMedian * thresholds.tonicLocalRatioLow && $0 <= islandMedian * thresholds.tonicLocalRatioHigh
+            }
+            let adjacentOK = (TonicStructuralWindowDetector.maxAdjacentRatio(metrics.values) ?? .infinity)
+                <= thresholds.tonicLocalRatioHigh + 1e-12
+            let localRegular = compact && adjacentOK
+            // Subtype from actual cv (classic if tight, else irregular) — for auditability.
+            let classicPass = (metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true)
+            let subtype = classicPass ? "classic" : "irregular"
+
+            // --- Signal B: magnitude consistency with the anchor.
+            let magnitudeConsistent: Bool = {
+                guard let anchor = anchorMedian, anchor > 0 else { return false }
+                let ratio = islandMedian / anchor
+                return ratio >= thresholds.tonicLocalRatioLow && ratio <= thresholds.tonicLocalRatioHigh
+            }()
+            // --- Signals E / D: pause-separated (both boundaries pause-like or train edge) and NOT burst-adjacent;
+            // at least ONE side must be an actual pause (a whole-train island is not a pause-separated island).
+            let leftKind = kind(start - 1), rightKind = kind(end + 1)
+            let burstAdjacent = leftKind == 1 || rightKind == 1
+            let boundaryOK = { (k: Int) in k == 3 || k == -1 }                        // pause or train edge
+            let pauseSeparated = boundaryOK(leftKind) && boundaryOK(rightKind) && (leftKind == 3 || rightKind == 3)
+
+            let contextClean = tonicDominant && magnitudeConsistent && localRegular && pauseSeparated && !burstAdjacent
+            let regularityScore = mean([
+                metrics.cv.map { 1 / (1 + $0) }, metrics.cv2.map { 1 / (1 + $0) }, metrics.lv.map { 1 / (1 + $0) }
+            ].compactMap { $0 }) ?? 0
+            // An edge ISI below the adaptive band lower would have been clipped by the sliding window's low-side
+            // trim; the gap-scan keeps it, so mark the island as expanded on that side.
+            let leftExpanded = (finiteValidISI(train.isiSec[start], settings: settings) ?? .infinity) < bounds.lower
+            let rightExpanded = (finiteValidISI(train.isiSec[end], settings: settings) ?? .infinity) < bounds.lower
+            var contextTokens = [
+                "short_tonic_island",
+                "pause_separated_tonic_island=\(pauseSeparated)",
+                "short_tonic_regular=\(localRegular)",
+                "short_tonic_min_spikes=\(shortTonicMinSpikes)",
+                "tonic_dominant=\(tonicDominant)",
+                "long_tonic_coverage_fraction=\(format(coverageFraction))",
+                "dominant_tonic_classic=\(dominantTonicClassic)",
+                "magnitude_consistent=\(magnitudeConsistent)",
+                "island_median_sec=\(format(islandMedian))",
+                "tonic_anchor_median_sec=\(format(anchorMedian))",
+                "burst_adjacent=\(burstAdjacent)"
+            ]
+            if leftExpanded { contextTokens.append("expanded_short_tonic_left") }
+            if rightExpanded { contextTokens.append("expanded_short_tonic_right") }
+
+            if contextClean {
+                let decisionPath = stateDecisionPath(
+                    base: "stable_mid_isi_tonic_state_short_island",
+                    metrics: metrics,
+                    extra: ["tonic_subtype=\(subtype)", "short_tonic_context_clean", "tonic_context=clean"] + contextTokens)
+                out.append(candidate(
+                    train: train, run: span, metrics: metrics, label: .tonic,
+                    layer: "event_core_tonic_state_short_context",
+                    candidateClass: "event_core_short_context_tonic",
+                    gateStatus: "event_core_short_context_tonic_pass",
+                    decisionPath: decisionPath, action: "accept",
+                    score: 2.5 + regularityScore + localStabilityScore(metrics), priority: 1_090,
+                    bandLower: bounds.lower, bandUpper: bounds.upper,
+                    contrastMinRequired: settings.tonicLVMax, contrastGeomRequired: settings.tonicCV2Max,
+                    stateRegularityScore: regularityScore, stateTonicSubtype: subtype,
+                    index: nextCandidateIndex))
+            } else {
+                var reasons: [String] = []
+                if !tonicDominant { reasons.append("not_tonic_dominant") }
+                if !magnitudeConsistent { reasons.append("magnitude_inconsistent") }
+                if !localRegular { reasons.append("not_regular") }
+                if !pauseSeparated { reasons.append("not_pause_separated") }
+                if burstAdjacent { reasons.append("burst_adjacent") }
+                let decisionPath = stateDecisionPath(
+                    base: "possible_tonic_review_short_island",
+                    metrics: metrics,
+                    extra: ["possible_tonic_review", "tonic_context=ambiguous", "tonic_subtype=\(subtype)",
+                            "rejected_short_tonic_reason=\(reasons.joined(separator: "|"))"] + contextTokens)
+                out.append(candidate(
+                    train: train, run: span, metrics: metrics, label: .reject,
+                    layer: "event_core_short_context_tonic_review",
+                    candidateClass: "possible_tonic_review",
+                    gateStatus: "event_core_short_context_tonic_review",
+                    decisionPath: decisionPath, action: "reject",
+                    score: 0, priority: 0,
+                    bandLower: bounds.lower, bandUpper: bounds.upper,
+                    contrastMinRequired: settings.tonicLVMax, contrastGeomRequired: settings.tonicCV2Max,
+                    index: nextCandidateIndex))
+            }
+            nextCandidateIndex += 1
+        }
+        return out
     }
 
     /// Local post-pass for a narrow failure mode in the structure-first tonic detector: a stable tonic run can be
