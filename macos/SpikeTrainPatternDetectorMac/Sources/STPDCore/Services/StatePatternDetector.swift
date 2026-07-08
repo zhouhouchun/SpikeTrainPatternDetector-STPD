@@ -1974,6 +1974,22 @@ public enum StatePatternDetector {
     /// signals are relative (no fixed ms): local short-window regularity/compactness (A), magnitude consistency
     /// with the accepted long-tonic anchor (B), a tonic-DOMINATED + tight CLASSIC anchor (C), pause-separation
     /// on both sides (E), and not burst-adjacent (D).
+    /// A manual tonic ISI HARD gate constrains recovered short-tonic islands the same way it constrains the TSW
+    /// primary windows (`tonicStructuralWindowRuns`): every ISI of the island must lie within [manualLower,
+    /// manualUpper] (± tolerance). No manual gate ⇒ always satisfied (the adaptive-band recovery is unchanged).
+    private static func manualTonicHardGateSatisfied(
+        train: SpikeTrain, start: Int, end: Int, settings: StatePatternDetectorSettings
+    ) -> Bool {
+        guard settings.manualTonicHardLowerSec != nil || settings.manualTonicHardUpperSec != nil else { return true }
+        guard start <= end else { return false }
+        let lo = settings.manualTonicHardLowerSec ?? 0
+        let hi = settings.manualTonicHardUpperSec ?? .infinity
+        return (start...end).allSatisfy { index in
+            guard let value = finiteValidISI(train.isiSec[index], settings: settings) else { return false }
+            return value >= lo - tolerance(for: lo) && value <= hi + tolerance(for: hi)
+        }
+    }
+
     private static func shortTonicContextRecovery(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings,
@@ -1994,11 +2010,25 @@ public enum StatePatternDetector {
         let totalValidISI = (1...lastValidIndex).reduce(into: 0) { acc, index in
             if finiteValidISI(train.isiSec[index], settings: settings) != nil { acc += 1 }
         }
-        let longCoverage = acceptedLongTonic.reduce(into: 0) { $0 += max(0, $1.endISIIndex - $1.startISIIndex + 1) }
-        let coverageFraction = totalValidISI > 0 ? Double(longCoverage) / Double(totalValidISI) : 0
-        let longTonicISIs = acceptedLongTonic.flatMap { candidate in
-            (candidate.startISIIndex...candidate.endISIIndex).compactMap { finiteValidISI(train.isiSec[$0], settings: settings) }
+        // Coverage and anchor statistics are computed over the UNION of ISI indices claimed by the accepted long
+        // tonic — NOT a per-candidate sum. There is NO EXPLICIT cross-candidate disjointness guard: the TSW runs are
+        // disjoint by construction, but boundary rescue (`tonicBoundaryRescuedCandidates`) extends each accepted
+        // candidate independently and could in principle make two claim the same index. In practice an emergent
+        // ratio invariant prevents it — a gap ISI that breaks a window's expansion (> ~1.85× the core) exceeds the
+        // rescue high-side ceiling (≈ bounds.upper × 1.05), so rescue cannot claim a gap a neighbour's scan rejected.
+        // Computing over a set of UNIQUE indices is correct regardless: it can never double-count a shared index
+        // (which would inflate coverageFraction toward a spurious tonicDominant flip, or skew the anchor median / CV),
+        // and it stays correct even if the rescue eligibility is later loosened.
+        var coveredValidIndices = Set<Int>()
+        for candidate in acceptedLongTonic where candidate.startISIIndex <= candidate.endISIIndex {
+            for index in candidate.startISIIndex...candidate.endISIIndex
+            where finiteValidISI(train.isiSec[index], settings: settings) != nil {
+                coveredValidIndices.insert(index)
+            }
         }
+        let longCoverage = coveredValidIndices.count
+        let coverageFraction = totalValidISI > 0 ? Double(longCoverage) / Double(totalValidISI) : 0
+        let longTonicISIs = coveredValidIndices.sorted().compactMap { finiteValidISI(train.isiSec[$0], settings: settings) }
         let anchorMedian = SortedFiniteSample(longTonicISIs, positiveOnly: true).quantile(0.5)
         let dominantTonicClassic = (STPDStatistics.coefficientOfVariation(longTonicISIs) ?? .infinity) <= settings.tonicCVMax + 1e-12
         let tonicDominant = coverageFraction >= shortTonicTonicDominanceFractionMin
@@ -2059,7 +2089,12 @@ public enum StatePatternDetector {
             let boundaryOK = { (k: Int) in k == 3 || k == -1 }                        // pause or train edge
             let pauseSeparated = boundaryOK(leftKind) && boundaryOK(rightKind) && (leftKind == 3 || rightKind == 3)
 
-            let contextClean = tonicDominant && magnitudeConsistent && localRegular && pauseSeparated && !burstAdjacent
+            // Signal F: manual hard tonic gate — every island ISI must lie within the user's [manualLower,
+            // manualUpper] band (parity with the TSW primary path). This also blocks the low-side expansion below a
+            // manual hard lower; with no manual gate it is a no-op and the adaptive-band recovery is unchanged.
+            let manualGateOK = manualTonicHardGateSatisfied(train: train, start: start, end: end, settings: settings)
+            let contextClean = tonicDominant && magnitudeConsistent && localRegular && pauseSeparated
+                && !burstAdjacent && manualGateOK
             let regularityScore = mean([
                 metrics.cv.map { 1 / (1 + $0) }, metrics.cv2.map { 1 / (1 + $0) }, metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
@@ -2106,6 +2141,7 @@ public enum StatePatternDetector {
                 if !localRegular { reasons.append("not_regular") }
                 if !pauseSeparated { reasons.append("not_pause_separated") }
                 if burstAdjacent { reasons.append("burst_adjacent") }
+                if !manualGateOK { reasons.append("outside_manual_tonic_hard_gate") }
                 let decisionPath = stateDecisionPath(
                     base: "possible_tonic_review_short_island",
                     metrics: metrics,

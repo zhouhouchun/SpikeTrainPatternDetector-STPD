@@ -37,48 +37,115 @@ private func inBandSelectedBursts(_ isis: [Double],
         .filter { $0.selectedForAuto && $0.finalLabel.isBurstEventFamily }
 }
 
-// MARK: 1 — in-band leading contamination: 105 ms edge trimmed, compact core kept as canonical burst
+/// Detect, then run the arbitration path `arbitrations` times (simulating the pipeline's re-arbitration after its
+/// demotion passes), returning the selected burst-family candidates.
+private func inBandReArbitratedBurstFamily(_ isis: [Double],
+                                           lower: Double, upper: Double, bridge: Double,
+                                           arbitrations: Int) -> [ClassicAnchorCandidate] {
+    let train = SpikeTrain(name: "bcb1_in_band_synthetic", timestampsSec: inBandCumulative(isis))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.001,
+        burstBandLowerSec: lower,
+        burstBandUpperSec: upper,
+        burstBridgeUpperSec: bridge,
+        burstBandSource: .structure,
+        burstBandIsStructureDerived: true,
+        burstCoreReferenceUpperSec: upper
+    )
+    var candidates = ClassicAnchorDetector.detect(train: train, settings: settings).candidates
+    for _ in 0..<max(1, arbitrations) {
+        candidates = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(candidates)
+    }
+    return candidates.filter { $0.selectedForAuto && $0.finalLabel.isBurstEventFamily }
+}
+
+// MARK: 1 — real 5x5 burst_response_1_s [84...86] pattern: trim the GROSS 105.4 ms leading edge, KEEP the retained
+// 2-ISI core [85..86] = {44.3, 8.5} as a canonical minimum-size burst (do NOT demote for internal breadth). (AUDIT F1)
 
 @Test
-func bcb1InBand_leadingContamination105msTrimmedCompactCorePreserved() {
-    // Wide band (upper 0.200) so the 105 ms leading ISI is IN-BAND (a seed) — the original !isSeed criterion cannot
-    // touch it. Span [2..4] = {0.105, 0.044, 0.009}. 105/median({44,9})=3.96× and 44/9=4.9× both exceed the 2.0×
-    // leading ratio → both incompatible leading edges trimmed; the compact core (ISI 4) survives as a burst.
-    let bursts = inBandSelectedBursts([0.5, 0.105, 0.044, 0.009, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
-    // The 105 ms leading contamination (ISI index 2) is in NO selected burst.
+func bcb1InBand_grossLeadingEdgeTrimmed_retainedMinCoreStaysCanonical_105_44_9() {
+    // ISI 2 = 105.4 ms (gross boundary/noise, IN-BAND under the wide band) is trimmed; ISI 3..4 = {44.3, 8.5} ms
+    // remain — a 2-ISI / 3-spike minimum-size burst — kept canonical even though the retained core is internally broad.
+    let bursts = inBandSelectedBursts([0.5, 0.1054, 0.0443, 0.0085, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
+    #expect(!bursts.contains { ($0.startISIIndex...$0.endISIIndex).contains(2) })   // ISI 84-equivalent (105.4) excluded
+    let core = try? #require(bursts.first { $0.startISIIndex == 3 && $0.endISIIndex == 4 })
+    #expect(core?.finalLabel.isCanonicalBurstFamily ?? false)                       // ISI 85..86 kept canonical
+    #expect(core?.decisionPath.contains("retained_core_meets_min_size") ?? false)
+    #expect(core?.decisionPath.contains("bcb1_inband_trim(") ?? false)
+}
+
+// MARK: 2 — same for a 164.1 ms in-band leading contamination: keep {33.2, 11.5} canonical
+
+@Test
+func bcb1InBand_grossLeadingEdgeTrimmed_retainedMinCoreStaysCanonical_164_33_11() {
+    let bursts = inBandSelectedBursts([0.5, 0.1641, 0.0332, 0.0115, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
+    #expect(!bursts.contains { ($0.startISIIndex...$0.endISIIndex).contains(2) })   // 164.1 excluded
+    let core = try? #require(bursts.first { $0.startISIIndex == 3 && $0.endISIIndex == 4 })
+    #expect(core?.finalLabel.isCanonicalBurstFamily ?? false)                       // {33.2, 11.5} kept canonical
+    #expect(core?.decisionPath.contains("retained_core_meets_min_size") ?? false)
+}
+
+// MARK: 3 — a gross edge that CANNOT be removed without dropping below minimum → demote to possible_burst
+
+@Test
+func bcb1InBand_grossEdgeBlockedByMinSizeDemotedToPossibleBurst() {
+    // [105.4, 8.5]: to remove the gross 105.4 ms leading edge, only the single ISI {8.5} would remain — below the
+    // minimum burst size. The gross edge cannot be kept canonical, so the packet is routed to possible_burst.
+    let bursts = inBandSelectedBursts([0.5, 0.1054, 0.0085, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
+    #expect(!bursts.contains { $0.finalLabel.isCanonicalBurstFamily })              // no canonical burst
+    #expect(!bursts.contains { $0.startISIIndex == $0.endISIIndex })               // never a one-ISI burst
+    let possible = bursts.first { $0.finalLabel == .possibleBurst }
+    #expect(possible != nil)
+    #expect(possible?.decisionPath.contains("bcb1_inband_trim_blocked_core_below_min") ?? false)
+    #expect(possible?.decisionPath.contains("routed_to_possible_burst_below_min_core") ?? false)
+}
+
+// MARK: 3d — the blocked-below-min demotion is NEVER re-promoted to canonical by a later arbitration pass
+
+@Test
+func bcb1InBand_blockedDemotionNotRePromotedUnderReArbitration() {
+    // The pipeline re-arbitrates after its demotion passes; running the arbitration path repeatedly must keep the
+    // blocked-below-min packet a possible_burst — never re-promoted to a canonical burst.
+    let bursts = inBandReArbitratedBurstFamily([0.5, 0.1054, 0.0085, 0.5],
+                                               lower: 0.001, upper: 0.200, bridge: 0.300, arbitrations: 3)
+    #expect(!bursts.contains { $0.finalLabel.isCanonicalBurstFamily })   // never re-promoted to canonical
+    #expect(bursts.contains { $0.finalLabel == .possibleBurst })         // stays possible_burst
+}
+
+// MARK: 3b — a true contaminated burst with a VALID (>= minimum) clean core trims the edge and stays canonical
+
+@Test
+func bcb1InBand_leadingContaminationWithValidCore_105_10_11_staysCanonical() {
+    // Span [2..4] = {0.105, 0.010, 0.011}: 105 is an in-band leading edge, and the clean core {10,11} is exactly the
+    // minimum burst size (2 ISIs) — so the 105 is excluded and the compact core survives as a canonical burst.
+    let bursts = inBandSelectedBursts([0.5, 0.105, 0.010, 0.011, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
+    #expect(!bursts.contains { ($0.startISIIndex...$0.endISIIndex).contains(2) })   // 105 excluded from any burst
+    let core = bursts.first { $0.finalLabel.isCanonicalBurstFamily }
+    #expect(core != nil)
+    #expect((core.map { $0.endISIIndex - $0.startISIIndex + 1 } ?? 0) >= 2)         // >= minimum size
+}
+
+@Test
+func bcb1InBand_leadingContaminationWithValidCore_105_10_11_12_staysCanonical() {
+    // Clean core {10,11,12} is 3 ISIs (comfortably >= minimum) → 105 excluded, compact core canonical.
+    let bursts = inBandSelectedBursts([0.5, 0.105, 0.010, 0.011, 0.012, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
     #expect(!bursts.contains { ($0.startISIIndex...$0.endISIIndex).contains(2) })
-    // A compact core survives as a canonical burst, anchored on the tightest ISI (index 4).
-    let core = bursts.first { $0.endISIIndex == 4 }
+    let core = bursts.first { $0.finalLabel.isCanonicalBurstFamily }
     #expect(core != nil)
-    #expect(core?.finalLabel.isCanonicalBurstFamily ?? false)
-    #expect(core?.decisionPath.contains("in_band_edge_incompatible_with_compact_core") ?? false)
+    #expect((core.map { $0.endISIIndex - $0.startISIIndex + 1 } ?? 0) >= 3)
 }
 
-// MARK: 2 — in-band leading contamination: 164 ms edge trimmed, compact core kept as canonical burst
+// MARK: 3c — INVARIANT: no selected canonical burst is ever below the minimum size (2 ISIs / 3 spikes)
 
 @Test
-func bcb1InBand_leadingContamination164msTrimmedCompactCorePreserved() {
-    // Span [2..4] = {0.164, 0.033, 0.012}. 164/median({33,12})=7.3× and 33/12=2.75× exceed the 2.0× leading ratio →
-    // trimmed; the compact core (ISI 4) survives as a canonical burst.
-    let bursts = inBandSelectedBursts([0.5, 0.164, 0.033, 0.012, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
-    #expect(!bursts.contains { ($0.startISIIndex...$0.endISIIndex).contains(2) })   // 164 ms edge excluded
-    let core = bursts.first { $0.endISIIndex == 4 }
-    #expect(core != nil)
-    #expect(core?.finalLabel.isCanonicalBurstFamily ?? false)
-    #expect(core?.decisionPath.contains("in_band_edge_incompatible_with_compact_core") ?? false)
-}
-
-// MARK: 3 — in-band trim carries the required provenance tokens
-
-@Test
-func bcb1InBand_provenanceTokensPresentOnInBandTrim() {
-    let bursts = inBandSelectedBursts([0.5, 0.105, 0.044, 0.009, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
-    let core = try? #require(bursts.first { $0.endISIIndex == 4 })
-    let path = core?.decisionPath ?? ""
-    #expect(path.contains("core_first_boundary_trim"))
-    #expect(path.contains("in_band_edge_incompatible_with_compact_core"))
-    #expect(path.contains("edge_ratio_to_candidate_core"))
-    #expect(path.contains("compact_core_preserved"))
+func bcb1InBand_noCanonicalBurstIsBelowMinimumSize() {
+    for arr in [[0.5, 0.105, 0.044, 0.009, 0.5], [0.5, 0.164, 0.033, 0.012, 0.5]] {
+        let bursts = inBandSelectedBursts(arr, lower: 0.001, upper: 0.200, bridge: 0.300)
+        for b in bursts where b.finalLabel.isCanonicalBurstFamily {
+            #expect(b.endISIIndex - b.startISIIndex + 1 >= 2)
+            #expect(b.nSpikes >= 3)
+        }
+    }
 }
 
 // MARK: 4 — a WHOLE compact moderate burst [31,40] ms is KEPT (not demoted for being slower than a HF core)

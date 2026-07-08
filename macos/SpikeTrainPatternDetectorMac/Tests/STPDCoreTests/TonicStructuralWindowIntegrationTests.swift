@@ -338,3 +338,43 @@ func tswShortTonicIslandsLeaveLargePausesUnclaimed() throws {
         #expect(!acc.contains { $0.startISIIndex <= i && $0.endISIIndex >= i })  // …and never tonic
     }
 }
+
+// MARK: - AUDIT F3 — short-tonic island recovery honors the manual hard tonic gate.
+
+// An 8-ISI classic tonic anchor (~100 ms), a pause, a 3-ISI island (~140 ms = 1.4× the anchor: magnitude-consistent
+// and below the pause threshold, but ABOVE a manual hard upper of 120 ms), a pause. The island is at ISI [10...12].
+private func tswiManualGateIslandTrain() -> SpikeTrain {
+    let anchor = [0.098, 0.101, 0.099, 0.100, 0.102, 0.098, 0.101, 0.100]   // ISI 1...8, classic anchor
+    let island = [0.140, 0.139, 0.141]                                       // ISI 10...12
+    return tswiTrain("short_island_manual_gate", anchor + [0.5] + island + [0.5])
+}
+private func tswiShortIslandCanonical(_ train: SpikeTrain, manualLower: Double?, manualUpper: Double?) -> [ClassicAnchorCandidate] {
+    var settings = StatePatternDetectorSettings()
+    settings.tonicStructuralWindowPrimary = true
+    settings.manualTonicHardLowerSec = manualLower
+    settings.manualTonicHardUpperSec = manualUpper
+    return StatePatternDetector.detect(train: train, settings: settings).candidates
+        .filter { $0.finalLabel == .tonic && $0.action == "accept" && $0.decisionPath.contains("short_tonic_island") }
+}
+
+// 19a — an island OUTSIDE the manual hard tonic band is NOT recovered as canonical tonic (routed to review).
+@Test
+func tswShortIslandOutsideManualHardGateNotCanonical() {
+    let train = tswiManualGateIslandTrain()
+    let canonical = tswiShortIslandCanonical(train, manualLower: 0.001, manualUpper: 0.120)   // 0.120 < island 0.140
+    #expect(!canonical.contains { $0.startISIIndex <= 10 && $0.endISIIndex >= 12 })
+    // It appears as possible_tonic_review carrying the manual-gate reason.
+    var s = StatePatternDetectorSettings(); s.manualTonicHardLowerSec = 0.001; s.manualTonicHardUpperSec = 0.120
+    let scanned = StatePatternDetector.detect(train: train, settings: s).candidates
+        .filter { $0.decisionPath.contains("short_tonic_island") }
+    #expect(scanned.contains { $0.decisionPath.contains("outside_manual_tonic_hard_gate") })
+    #expect(scanned.allSatisfy { $0.finalLabel != .tonic || $0.action != "accept" })
+}
+
+// 19b — the SAME island INSIDE a wider manual hard band IS recovered as canonical tonic.
+@Test
+func tswShortIslandInsideManualHardGateRecovered() {
+    let train = tswiManualGateIslandTrain()
+    let canonical = tswiShortIslandCanonical(train, manualLower: 0.001, manualUpper: 0.200)   // 0.200 > island 0.140
+    #expect(canonical.contains { $0.startISIIndex <= 10 && $0.endISIIndex >= 12 })
+}

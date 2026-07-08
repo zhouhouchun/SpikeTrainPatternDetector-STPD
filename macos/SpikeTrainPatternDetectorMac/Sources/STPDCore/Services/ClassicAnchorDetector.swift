@@ -3257,37 +3257,72 @@ public enum ClassicAnchorDetector {
                 let ratio = isTrailing ? coreFirstBoundaryTrailingEdgeRatioMax : coreFirstBoundaryLeadingEdgeRatioMax
                 return v > restMedian * ratio
             }
+            // MINIMUM BURST SIZE: a canonical burst needs a compact core of at least this many ISIs (the same
+            // expression the seed-run generators use). BCB-1 trimming is BOUNDED by it — see below.
+            let minSpanISI = Swift.max(settings.burstCoreMinISI, settings.minSpikes - 1)
+            // Is the boundary ISI a trimmable edge? Seed-band edge (original !isSeed criterion) OR candidate-internal
+            // edge (in-band ISI grossly incompatible with the rest of the span). Returns whether it is an internal edge
+            // (for provenance).
+            func leadingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
+                guard let v = train.isiSec[index], v.isFinite else { return (false, false) }
+                if !isSeed(index) && v > leadingRatioLimit { return (true, false) }
+                if internalEdge(index, isTrailing: false) { return (true, true) }
+                return (false, false)
+            }
+            func trailingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
+                guard let v = train.isiSec[index], v.isFinite else { return (false, false) }
+                if !isSeed(index) && v > trailingRatioLimit { return (true, false) }
+                if internalEdge(index, isTrailing: true) { return (true, true) }
+                return (false, false)
+            }
             var internalEdgeTrims = 0
-            while newStart < newEnd, dropLeft < coreFirstBoundaryMaxTrimPerSide,
-                  let v = train.isiSec[newStart], v.isFinite {
-                let seedEdge = !isSeed(newStart) && v > leadingRatioLimit
-                let inBandEdge = !seedEdge && internalEdge(newStart, isTrailing: false)
-                guard seedEdge || inBandEdge else { break }
-                if inBandEdge { internalEdgeTrims += 1 }
+            // BOUNDED core-first trim: remove incompatible boundary edges but NEVER below the minimum burst size.
+            // Trimming the GROSS edge is what matters; a retained core that is merely internally broad (e.g. a moderate
+            // [44,9] left after trimming a 105 ms boundary) is a legitimate minimum-size burst and is KEPT, not demoted.
+            while dropLeft < coreFirstBoundaryMaxTrimPerSide, (newEnd - newStart + 1) > minSpanISI {
+                let k = leadingEdge(newStart)
+                guard k.edge else { break }
+                if k.isInternal { internalEdgeTrims += 1 }
                 newStart += 1
                 dropLeft += 1
             }
-            while newEnd > newStart, dropRight < coreFirstBoundaryMaxTrimPerSide,
-                  let v = train.isiSec[newEnd], v.isFinite {
-                let seedEdge = !isSeed(newEnd) && v > trailingRatioLimit
-                let inBandEdge = !seedEdge && internalEdge(newEnd, isTrailing: true)
-                guard seedEdge || inBandEdge else { break }
-                if inBandEdge { internalEdgeTrims += 1 }
+            while dropRight < coreFirstBoundaryMaxTrimPerSide, (newEnd - newStart + 1) > minSpanISI {
+                let k = trailingEdge(newEnd)
+                guard k.edge else { break }
+                if k.isInternal { internalEdgeTrims += 1 }
                 newEnd -= 1
                 dropRight += 1
             }
-            guard dropLeft > 0 || dropRight > 0,
-                  newEnd >= newStart,
+            if dropLeft == 0, dropRight == 0 {
+                // Nothing was trimmed. If a gross edge REMAINS at a boundary but was blocked by the min-size floor
+                // (removing it would drop the span below the minimum burst size), the packet cannot be cleaned to a
+                // valid minimum-size canonical burst without keeping the incompatible edge — e.g. an in-band
+                // [105,8.5] whose only clean core is a single ISI. Route it to possible_burst / review instead.
+                let blocked = leadingEdge(newStart).edge || trailingEdge(newEnd).edge
+                guard blocked, (newEnd - newStart + 1) <= minSpanISI else { return candidate }
+                let demoteNote = candidate.decisionPath
+                    + ";bcb1_inband_trim_blocked_core_below_min"
+                    + ";in_band_edge_incompatible_with_compact_core"
+                    + ";edge_ratio_to_candidate_core"
+                    + ";routed_to_possible_burst_below_min_core"
+                return candidate.withDiagnosticOverride(
+                    finalLabel: .possibleBurst,
+                    gateStatus: "core_first_boundary_trim_below_min_core_possible_burst",
+                    decisionPath: demoteNote,
+                    action: "demote_to_possible")
+            }
+            guard newEnd >= newStart,
                   let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return candidate }
-            // Provenance: the original band-relative reason plus, when an in-band contamination edge was trimmed
-            // against the candidate's own compact core, the internal-core tokens. compact_core_preserved records
-            // that a non-empty compact core remained after trimming (never erased).
+            // Provenance: the original band-relative reason; when an in-band edge was trimmed against the candidate's
+            // own compact core, the internal-core tokens; and `retained_core_meets_min_size` recording that the gross
+            // edge was removed and the retained span still satisfies the minimum burst size (kept canonical).
             var note = ";core_first_boundary_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_core)"
             if internalEdgeTrims > 0 {
-                note += ";in_band_edge_incompatible_with_compact_core"
+                note += ";bcb1_inband_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_internal_core)"
+                    + ";in_band_edge_incompatible_with_compact_core"
                     + ";edge_ratio_to_candidate_core"
-                    + ";compact_core_preserved"
             }
+            note += ";retained_core_meets_min_size"
             return candidate.withGeometry(
                 startISIIndex: newStart, endISIIndex: newEnd,
                 startSpikeIndex: candidate.startSpikeIndex + dropLeft, endSpikeIndex: candidate.endSpikeIndex - dropRight,
