@@ -3170,6 +3170,25 @@ public enum ClassicAnchorDetector {
     private static let coreFirstBoundaryTrailingEdgeRatioMax = 3.0
     private static let coreFirstBoundaryMaxTrimPerSide = 2
 
+    /// Median (sec) of the finite, non-artifact ISIs in the inclusive index range `[lo, hi]` of `train`.
+    /// Used by BCB-1 boundary trimming to characterise a candidate's OWN compact-core timescale (as opposed to
+    /// the train-wide burst seed band), so an in-band boundary ISI that is grossly incompatible with the rest of
+    /// the span can be recognised as contamination. Returns nil when the range holds no usable ISI.
+    private static func compactCoreMedianSec(
+        _ train: SpikeTrain,
+        _ lo: Int,
+        _ hi: Int,
+        settings: ClassicAnchorSettings
+    ) -> Double? {
+        guard lo <= hi else { return nil }
+        let vals: [Double] = (lo...hi).compactMap { idx in
+            guard train.isiSec.indices.contains(idx), let v = train.isiSec[idx], v.isFinite,
+                  !isArtifactISI(v, threshold: settings.minValidISISec) else { return nil }
+            return v
+        }
+        return quantile(vals, probability: 0.5)
+    }
+
     /// BCB-1 — CORE-FIRST burst boundary trim (default path; runs regardless of the Adaptive-v2 flag). For each CANONICAL
     /// burst candidate the COMPACT CORE — ISIs inside the automatic/structural core reference band — is the anchor; edge
     /// ISIs outside that core are optional extensions. A leading extension > `coreFirstBoundaryLeadingEdgeRatioMax ×
@@ -3222,20 +3241,53 @@ public enum ClassicAnchorDetector {
             var newEnd = end
             var dropLeft = 0
             var dropRight = 0
-            while newStart < end, dropLeft < coreFirstBoundaryMaxTrimPerSide, !isSeed(newStart),
-                  let v = train.isiSec[newStart], v.isFinite, v > leadingRatioLimit {
+            // An edge ISI is trimmed when it is incompatible with the burst core. Two kinds of "core":
+            //  (1) SEED-band core — a non-seed boundary ISI above coreMedian×ratio (the original criterion);
+            //  (2) CANDIDATE-INTERNAL core — a boundary ISI that is a clear outlier vs the median of the REST
+            //      of the span (so IN-BAND boundary CONTAMINATION, e.g. a 105/164 ms ISI on a compact core, is
+            //      trimmed too). The internal core is the candidate's own compact timescale — this never trims
+            //      a whole compact moderate burst (e.g. [31,40] ms: 40/31 ≈ 1.3 ≪ ratio) and, using the same
+            //      lenient trailing ratio, keeps natural burst tails.
+            func internalEdge(_ index: Int, isTrailing: Bool) -> Bool {
+                guard let v = train.isiSec[index], v.isFinite else { return false }
+                let restLo = isTrailing ? newStart : index + 1
+                let restHi = isTrailing ? index - 1 : newEnd
+                guard let restMedian = compactCoreMedianSec(train, restLo, restHi, settings: settings),
+                      restMedian > 0 else { return false }
+                let ratio = isTrailing ? coreFirstBoundaryTrailingEdgeRatioMax : coreFirstBoundaryLeadingEdgeRatioMax
+                return v > restMedian * ratio
+            }
+            var internalEdgeTrims = 0
+            while newStart < newEnd, dropLeft < coreFirstBoundaryMaxTrimPerSide,
+                  let v = train.isiSec[newStart], v.isFinite {
+                let seedEdge = !isSeed(newStart) && v > leadingRatioLimit
+                let inBandEdge = !seedEdge && internalEdge(newStart, isTrailing: false)
+                guard seedEdge || inBandEdge else { break }
+                if inBandEdge { internalEdgeTrims += 1 }
                 newStart += 1
                 dropLeft += 1
             }
-            while newEnd > newStart, dropRight < coreFirstBoundaryMaxTrimPerSide, !isSeed(newEnd),
-                  let v = train.isiSec[newEnd], v.isFinite, v > trailingRatioLimit {
+            while newEnd > newStart, dropRight < coreFirstBoundaryMaxTrimPerSide,
+                  let v = train.isiSec[newEnd], v.isFinite {
+                let seedEdge = !isSeed(newEnd) && v > trailingRatioLimit
+                let inBandEdge = !seedEdge && internalEdge(newEnd, isTrailing: true)
+                guard seedEdge || inBandEdge else { break }
+                if inBandEdge { internalEdgeTrims += 1 }
                 newEnd -= 1
                 dropRight += 1
             }
             guard dropLeft > 0 || dropRight > 0,
                   newEnd >= newStart,
                   let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return candidate }
-            let note = ";core_first_boundary_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_core)"
+            // Provenance: the original band-relative reason plus, when an in-band contamination edge was trimmed
+            // against the candidate's own compact core, the internal-core tokens. compact_core_preserved records
+            // that a non-empty compact core remained after trimming (never erased).
+            var note = ";core_first_boundary_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_core)"
+            if internalEdgeTrims > 0 {
+                note += ";in_band_edge_incompatible_with_compact_core"
+                    + ";edge_ratio_to_candidate_core"
+                    + ";compact_core_preserved"
+            }
             return candidate.withGeometry(
                 startISIIndex: newStart, endISIIndex: newEnd,
                 startSpikeIndex: candidate.startSpikeIndex + dropLeft, endSpikeIndex: candidate.endSpikeIndex - dropRight,
