@@ -3189,6 +3189,24 @@ public enum ClassicAnchorDetector {
         return quantile(vals, probability: 0.5)
     }
 
+    /// Maximum (sec) of the finite, non-artifact ISIs in the inclusive index range `[lo, hi]` — the high end of the
+    /// retained interior's own spread. BCB-1 uses it as a guard on the in-band internal-edge trim: a boundary ISI is
+    /// only contamination if it lies BEYOND the interior's spread, not merely above a (fast-skewed) median. This keeps a
+    /// legitimate slow in-band ISI that is no larger than some retained interior ISI (a bimodal/alternating burst).
+    private static func compactCoreMaxSec(
+        _ train: SpikeTrain,
+        _ lo: Int,
+        _ hi: Int,
+        settings: ClassicAnchorSettings
+    ) -> Double? {
+        guard lo <= hi else { return nil }
+        return (lo...hi).compactMap { idx -> Double? in
+            guard train.isiSec.indices.contains(idx), let v = train.isiSec[idx], v.isFinite,
+                  !isArtifactISI(v, threshold: settings.minValidISISec) else { return nil }
+            return v
+        }.max()
+    }
+
     /// BCB-1 — CORE-FIRST burst boundary trim (default path; runs regardless of the Adaptive-v2 flag). For each CANONICAL
     /// burst candidate the COMPACT CORE — ISIs inside the automatic/structural core reference band — is the anchor; edge
     /// ISIs outside that core are optional extensions. A leading extension > `coreFirstBoundaryLeadingEdgeRatioMax ×
@@ -3248,14 +3266,20 @@ public enum ClassicAnchorDetector {
             //      trimmed too). The internal core is the candidate's own compact timescale — this never trims
             //      a whole compact moderate burst (e.g. [31,40] ms: 40/31 ≈ 1.3 ≪ ratio) and, using the same
             //      lenient trailing ratio, keeps natural burst tails.
+            // INTERIOR-SPREAD GUARD: an in-band edge must ALSO lie beyond the retained interior's own high end
+            // (> restMax), not merely above a (possibly fast-skewed) median. Without this, a bimodal / alternating
+            // burst — e.g. burst_response_4_s [23.1, 9.6, 25.3, 7.2] ms — has its leading 23.1 ms trimmed as an
+            // "edge" (23.1 > 2×median 9.6) even though the retained interior keeps a LARGER 25.3 ms ISI. A boundary
+            // ISI that is no larger than some interior ISI belongs to the burst's spread and is not contamination.
             func internalEdge(_ index: Int, isTrailing: Bool) -> Bool {
                 guard let v = train.isiSec[index], v.isFinite else { return false }
                 let restLo = isTrailing ? newStart : index + 1
                 let restHi = isTrailing ? index - 1 : newEnd
                 guard let restMedian = compactCoreMedianSec(train, restLo, restHi, settings: settings),
-                      restMedian > 0 else { return false }
+                      restMedian > 0,
+                      let restMax = compactCoreMaxSec(train, restLo, restHi, settings: settings) else { return false }
                 let ratio = isTrailing ? coreFirstBoundaryTrailingEdgeRatioMax : coreFirstBoundaryLeadingEdgeRatioMax
-                return v > restMedian * ratio
+                return v > restMedian * ratio && v > restMax
             }
             // MINIMUM BURST SIZE: a canonical burst needs a compact core of at least this many ISIs (the same
             // expression the seed-run generators use). BCB-1 trimming is BOUNDED by it — see below.

@@ -8,8 +8,9 @@ import Testing
 // that is technically INSIDE a wide burst band but grossly incompatible with the candidate's OWN compact core (e.g. a
 // 105 ms / 164 ms leading ISI attached to a ~10 ms core) slipped through. This adds a candidate-INTERNAL compact-core
 // criterion: a boundary ISI is trimmed when it exceeds the median of the REST of the span by the SAME asymmetric
-// ratios (leading 2.0× / trailing 3.0×). It is scale-free (a ratio to the candidate's own compact core — no fixed-ms
-// cutoff), applies only to boundary ISIs, preserves whole compact moderate bursts, and preserves tolerated tails.
+// ratios (leading 2.0× / trailing 3.0×) AND lies beyond the retained interior's high end (> restMax — the
+// interior-spread guard, so a slow-but-in-range ISI of a bimodal burst is not trimmed). It is scale-free (ratios and
+// the candidate's own interior max — no fixed-ms cutoff), applies only to boundary ISIs, and preserves tolerated tails.
 //
 // These exercise ONLY ClassicAnchorDetector.detect + ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack.
 
@@ -182,4 +183,38 @@ func bcb1InBand_moderateToleratedTail_11_17_33_isKept() {
     #expect(burst != nil)
     #expect(burst?.finalLabel.isCanonicalBurstFamily ?? false)
     #expect(!(burst?.decisionPath.contains("right=1") ?? true))   // trailing tail NOT trimmed
+}
+
+// MARK: 7 — INTERIOR-SPREAD GUARD: a leading in-band ISI that is NOT larger than a retained interior ISI is KEPT
+// (a bimodal/alternating burst) — it is not an in-band contamination edge just because it beats the fast-skewed median.
+
+@Test
+func bcb1InBand_leadingISIWithinInteriorSpreadIsNotTrimmed() {
+    // [23.1, 9.6, 25.3, 7.2] ms — alternating slow/fast. Leading 23.1 ms is 2.4× the rest median (9.6 ms) so the old
+    // criterion trimmed it, but it is SMALLER than the retained interior 25.3 ms → within the burst's own spread → KEPT.
+    let bursts = inBandSelectedBursts([0.5, 0.0231, 0.0096, 0.0253, 0.0072, 0.5], lower: 0.001, upper: 0.200, bridge: 0.300)
+    let core = bursts.first { $0.finalLabel.isCanonicalBurstFamily }
+    #expect(core != nil)
+    #expect(core.map { $0.startISIIndex <= 2 && $0.endISIIndex >= 5 } ?? false)   // leading 23.1 (ISI 2) NOT trimmed
+    #expect(bursts.contains { $0.finalLabel.isCanonicalBurstFamily && ($0.startISIIndex...$0.endISIIndex).contains(2) })
+}
+
+// MARK: 8 — real 5x5 burst_response_4_s: ISI 34 (~23.1 ms) is in a selected canonical burst; span covers ISI 34..37
+
+@Test
+func bcb1InBand_burstResponse4S_isi34IsCanonicalBurst() throws {
+    let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/tonic_baseline_5x5.csv")
+    let ds = try CSVSpikeMatrixParser.parse(contents: try String(contentsOf: url, encoding: .utf8),
+                                            datasetName: "5x5", sourceDescription: url.path)
+    let train = try #require(ds.trains.first { $0.name == "burst_response_4_s" })
+    let run = ClassicAnchorDetectionPipeline.run(dataset: ds, bandSettings: TrainAdaptiveBandSettings())
+    let selected = (run.result(for: train.id)?.candidates ?? [])
+        .filter { $0.selectedForAuto && $0.finalLabel.isCanonicalBurstFamily }
+    // ISI 34 (23.1 ms) is inside a selected canonical burst (no longer "Other").
+    #expect(selected.contains { $0.startISIIndex <= 34 && $0.endISIIndex >= 34 })
+    // The selected burst covering the packet spans at least ISI 34..37 (the four in-band ISIs).
+    let packet = try #require(selected.first { $0.startISIIndex <= 34 && $0.endISIIndex >= 34 })
+    #expect(packet.startISIIndex <= 34)
+    #expect(packet.endISIIndex >= 37)
 }
