@@ -3244,14 +3244,21 @@ public enum ClassicAnchorDetector {
                   // Do not undo the tolerated-internal-tail rescue (it accepted a tail under strong two-sided boundaries).
                   !candidate.gateStatus.contains("tolerated_internal_tail") else { return candidate }
             let start = candidate.startISIIndex, end = candidate.endISIIndex
-            // Core = the candidate's seed-band ISIs; we need a real core to anchor (never erase it).
+            // SEED CORE = the candidate's seed-band ISIs — the compact core the seed band PROPOSES. ONE seed is enough
+            // to anchor: a candidate does NOT bypass trimming merely for holding fewer than burstCoreMinISI seed-band
+            // ISIs (that was the burst_response_1_s ISI-84 = 105.4 ms miss — its lone seed 8.5 ms blocked the trim).
+            //
+            // NON-SEED boundary reference = the TRAIN-ADAPTIVE SEED-BAND UPPER (`upper`) — the stable burst-core high
+            // end. The candidate's OBSERVED seed-core maximum is TOO UNSTABLE for short packets (even two seeds under-
+            // sample the core: burst_response_4_s [8.3, 9.5, 32.9] ms has observed max 9.5 → 32.9/9.5 = 3.46× > 3.0 and
+            // would wrongly trim a physiologically plausible decelerating tail). The observed max is therefore recorded
+            // as DIAGNOSTIC evidence only (`observed_seed_core_max_sec`), NOT used as the rejection reference.
             let coreISIs: [Double] = (start...end).compactMap { isSeed($0) ? train.isiSec[$0] ?? nil : nil }
-            guard coreISIs.count >= Swift.max(1, settings.burstCoreMinISI) else { return candidate }
-            let sortedCore = coreISIs.sorted()
-            let coreMedian = sortedCore[sortedCore.count / 2]
-            guard coreMedian > 0 else { return candidate }
-            let leadingRatioLimit = coreMedian * coreFirstBoundaryLeadingEdgeRatioMax
-            let trailingRatioLimit = coreMedian * coreFirstBoundaryTrailingEdgeRatioMax
+            guard !coreISIs.isEmpty else { return candidate }
+            let observedSeedCoreMax = coreISIs.max() ?? upper   // DIAGNOSTIC ONLY (audit), never the hard reference
+            let coreReferenceUpper = upper                       // train-local seed-band upper: the stable reference
+            let leadingRatioLimit = coreReferenceUpper * coreFirstBoundaryLeadingEdgeRatioMax
+            let trailingRatioLimit = coreReferenceUpper * coreFirstBoundaryTrailingEdgeRatioMax
             // Walk inward from both edges, trimming only INCOMPATIBLE non-core extensions; stop at the core or a
             // compatible bridge. This keeps the compact core and any compatible extension intact. The leading edge uses
             // the strict onset ratio; the trailing edge uses the lenient offset ratio so natural burst tails survive.
@@ -3259,13 +3266,11 @@ public enum ClassicAnchorDetector {
             var newEnd = end
             var dropLeft = 0
             var dropRight = 0
-            // An edge ISI is trimmed when it is incompatible with the burst core. Two kinds of "core":
-            //  (1) SEED-band core — a non-seed boundary ISI above coreMedian×ratio (the original criterion);
-            //  (2) CANDIDATE-INTERNAL core — a boundary ISI that is a clear outlier vs the median of the REST
-            //      of the span (so IN-BAND boundary CONTAMINATION, e.g. a 105/164 ms ISI on a compact core, is
-            //      trimmed too). The internal core is the candidate's own compact timescale — this never trims
-            //      a whole compact moderate burst (e.g. [31,40] ms: 40/31 ≈ 1.3 ≪ ratio) and, using the same
-            //      lenient trailing ratio, keeps natural burst tails.
+            // internalEdge — the IN-SEED (candidate-internal) contamination test. It flags a boundary ISI that is a
+            // clear outlier vs the median of the REST of the span (so IN-BAND boundary CONTAMINATION, e.g. a 105/164 ms
+            // ISI on a compact core inside a WIDE seed band, is trimmed). It uses the candidate's OWN compact timescale
+            // (rest median / rest max), never the seed band; it never trims a whole compact moderate burst (e.g.
+            // [31,40] ms: 40/31 ≈ 1.3 ≪ ratio) and, with the lenient trailing ratio, keeps natural burst tails.
             // INTERIOR-SPREAD GUARD: an in-band edge must ALSO lie beyond the retained interior's own high end
             // (> restMax), not merely above a (possibly fast-skewed) median. Without this, a bimodal / alternating
             // burst — e.g. burst_response_4_s [23.1, 9.6, 25.3, 7.2] ms — has its leading 23.1 ms trimmed as an
@@ -3284,56 +3289,109 @@ public enum ClassicAnchorDetector {
             // MINIMUM BURST SIZE: a canonical burst needs a compact core of at least this many ISIs (the same
             // expression the seed-run generators use). BCB-1 trimming is BOUNDED by it — see below.
             let minSpanISI = Swift.max(settings.burstCoreMinISI, settings.minSpikes - 1)
-            // Is the boundary ISI a trimmable edge? Seed-band edge (original !isSeed criterion) OR candidate-internal
-            // edge (in-band ISI grossly incompatible with the rest of the span). Returns whether it is an internal edge
-            // (for provenance).
+            // TWO-EVIDENCE boundary edge, MUTUALLY EXCLUSIVE by seed membership. The decision is made AT a candidate
+            // boundary, but the two paths use DIFFERENT numeric references:
+            //  - NON-SEED boundary → judged against the TRAIN-LOCAL SEED-BAND UPPER (`coreReferenceUpper`), NOT a
+            //    candidate-internal statistic: a COMPATIBLE EXTENSION iff within coreReferenceUpper×ratio (kept), else
+            //    CONTAMINATION (trimmed). An out-of-band neighbour is NOT auto-removed for being outside the band — only
+            //    when it exceeds coreReferenceUpper×ratio (keeps 40.6/33.1 ms just above the band; trims 105/137 ms).
+            //  - IN-SEED boundary → CANDIDATE-INTERNAL contamination (internalEdge, restMedian×ratio && restMax): the
+            //    candidate-relative evidence path — seed membership is EVIDENCE, not immunity, so a gross ISI inside a
+            //    WIDE seed band (e.g. 105/164 ms over a compact core) is still trimmed (bc72614 preserved). internalEdge
+            //    applies ONLY to seed boundaries; a non-seed neighbour is judged solely by the band-upper extension rule.
             func leadingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
                 guard let v = train.isiSec[index], v.isFinite else { return (false, false) }
-                if !isSeed(index) && v > leadingRatioLimit { return (true, false) }
-                if internalEdge(index, isTrailing: false) { return (true, true) }
-                return (false, false)
+                if isSeed(index) { return (internalEdge(index, isTrailing: false), true) }
+                return (v > leadingRatioLimit, false)
             }
             func trailingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
                 guard let v = train.isiSec[index], v.isFinite else { return (false, false) }
-                if !isSeed(index) && v > trailingRatioLimit { return (true, false) }
-                if internalEdge(index, isTrailing: true) { return (true, true) }
-                return (false, false)
+                if isSeed(index) { return (internalEdge(index, isTrailing: true), true) }
+                return (v > trailingRatioLimit, false)
             }
-            var internalEdgeTrims = 0
+            var internalEdgeTrims = 0   // IN-SEED (candidate-internal) edges trimmed
+            var nonSeedTrims = 0        // NON-SEED (train-local band-upper) edges trimmed
             // BOUNDED core-first trim: remove incompatible boundary edges but NEVER below the minimum burst size.
             // Trimming the GROSS edge is what matters; a retained core that is merely internally broad (e.g. a moderate
             // [44,9] left after trimming a 105 ms boundary) is a legitimate minimum-size burst and is KEPT, not demoted.
             while dropLeft < coreFirstBoundaryMaxTrimPerSide, (newEnd - newStart + 1) > minSpanISI {
                 let k = leadingEdge(newStart)
                 guard k.edge else { break }
-                if k.isInternal { internalEdgeTrims += 1 }
+                if k.isInternal { internalEdgeTrims += 1 } else { nonSeedTrims += 1 }
                 newStart += 1
                 dropLeft += 1
             }
             while dropRight < coreFirstBoundaryMaxTrimPerSide, (newEnd - newStart + 1) > minSpanISI {
                 let k = trailingEdge(newEnd)
                 guard k.edge else { break }
-                if k.isInternal { internalEdgeTrims += 1 }
+                if k.isInternal { internalEdgeTrims += 1 } else { nonSeedTrims += 1 }
                 newEnd -= 1
                 dropRight += 1
             }
+            // PATH-SPECIFIC boundary reference provenance. The FORMAL numeric reference differs by boundary type, so the
+            // token must NOT claim `train_local_seed_band_upper` for an in-seed edge (whose reference is the candidate's
+            // own rest median/max) nor `candidate_internal_rest_median_and_max` for a non-seed edge. When BOTH types are
+            // involved in one candidate, emit explicit separate `non_seed_boundary_ref` / `in_seed_boundary_ref` tokens.
+            func boundaryRefTokens(nonSeed: Bool, inSeed: Bool) -> String {
+                let seedRefUpper = ";seed_core_reference_upper_sec=\(String(format: "%.4f", coreReferenceUpper))"
+                if nonSeed, inSeed {
+                    return ";non_seed_boundary_ref=train_local_seed_band_upper" + seedRefUpper
+                        + ";in_seed_boundary_ref=candidate_internal_rest_median_and_max"
+                }
+                if inSeed { return ";boundary_ref=candidate_internal_rest_median_and_max" }
+                return ";boundary_ref=train_local_seed_band_upper" + seedRefUpper   // non-seed (default)
+            }
             if dropLeft == 0, dropRight == 0 {
-                // Nothing was trimmed. If a gross edge REMAINS at a boundary but was blocked by the min-size floor
-                // (removing it would drop the span below the minimum burst size), the packet cannot be cleaned to a
-                // valid minimum-size canonical burst without keeping the incompatible edge — e.g. an in-band
-                // [105,8.5] whose only clean core is a single ISI. Route it to possible_burst / review instead.
-                let blocked = leadingEdge(newStart).edge || trailingEdge(newEnd).edge
-                guard blocked, (newEnd - newStart + 1) <= minSpanISI else { return candidate }
-                let demoteNote = candidate.decisionPath
-                    + ";bcb1_inband_trim_blocked_core_below_min"
-                    + ";in_band_edge_incompatible_with_compact_core"
-                    + ";edge_ratio_to_candidate_core"
-                    + ";routed_to_possible_burst_below_min_core"
-                return candidate.withDiagnosticOverride(
-                    finalLabel: .possibleBurst,
-                    gateStatus: "core_first_boundary_trim_below_min_core_possible_burst",
-                    decisionPath: demoteNote,
-                    action: "demote_to_possible")
+                let leadEdge = leadingEdge(newStart)
+                let trailEdge = trailingEdge(newEnd)
+                if (leadEdge.edge || trailEdge.edge), (newEnd - newStart + 1) <= minSpanISI {
+                    // A contamination edge REMAINS but was blocked by the min-size floor (removing it would drop below
+                    // the minimum burst size) → route to possible_burst / review. Tag it by the BLOCKED boundary's TYPE:
+                    // isInternal == true ⇒ IN-SEED (judged by internalEdge inside a wide band); false ⇒ NON-SEED
+                    // (judged vs the train-local band upper). Do NOT describe a non-seed edge as in-band.
+                    let blockedInSeed = (leadEdge.edge && leadEdge.isInternal) || (trailEdge.edge && trailEdge.isInternal)
+                    let blockedNonSeed = (leadEdge.edge && !leadEdge.isInternal) || (trailEdge.edge && !trailEdge.isInternal)
+                    var demoteNote = candidate.decisionPath
+                        + boundaryRefTokens(nonSeed: blockedNonSeed, inSeed: blockedInSeed)
+                        + ";observed_seed_core_max_sec=\(String(format: "%.4f", observedSeedCoreMax))"
+                        + ";seed_core_count=\(coreISIs.count)"
+                    if blockedNonSeed {
+                        demoteNote += ";non_seed_boundary_contamination_blocked_by_min_size"
+                    }
+                    if blockedInSeed {
+                        demoteNote += ";candidate_internal_in_seed_contamination"
+                            + ";bcb1_inband_trim_blocked_core_below_min"
+                            + ";in_band_edge_incompatible_with_compact_core"
+                            + ";edge_ratio_to_candidate_core"
+                    }
+                    demoteNote += ";core_below_min_after_trim;routed_to_possible_burst_below_min_core"
+                    return candidate.withDiagnosticOverride(
+                        finalLabel: .possibleBurst,
+                        gateStatus: "core_first_boundary_trim_below_min_core_possible_burst",
+                        decisionPath: demoteNote,
+                        action: "demote_to_possible")
+                }
+                // No trim and nothing blocked. If a RETAINED boundary is a NON-SEED COMPATIBLE EXTENSION (kept because it
+                // is within the train-local band-upper ratio, not because it is a seed), record boundary provenance so
+                // such kept extensions (e.g. burst_response_2_s ISI 64, burst_response_4_s ISI 33/26) are auditable.
+                // Geometry, metrics, score, label, priority and selection are untouched — only the decisionPath grows.
+                guard (!isSeed(newStart) && !leadEdge.edge) || (!isSeed(newEnd) && !trailEdge.edge) else { return candidate }
+                let extNote = candidate.decisionPath
+                    + boundaryRefTokens(nonSeed: true, inSeed: false)
+                    + ";observed_seed_core_max_sec=\(String(format: "%.4f", observedSeedCoreMax))"
+                    + ";seed_core_count=\(coreISIs.count)"
+                    + ";candidate_relative_compatible_extension"
+                    + ";compatibility_reference=train_local_seed_band_upper"
+                return candidate.withGeometry(
+                    startISIIndex: candidate.startISIIndex, endISIIndex: candidate.endISIIndex,
+                    startSpikeIndex: candidate.startSpikeIndex, endSpikeIndex: candidate.endSpikeIndex,
+                    nISI: candidate.nISI, nValidISI: candidate.nValidISI, nSpikes: candidate.nSpikes, durationSec: candidate.durationSec,
+                    intraQ10Sec: candidate.intraQ10Sec, intraQ40Sec: candidate.intraQ40Sec, intraQ50Sec: candidate.intraQ50Sec,
+                    intraQ90Sec: candidate.intraQ90Sec, intraQ95Sec: candidate.intraQ95Sec,
+                    maxIntraISISec: candidate.maxIntraISISec, meanIntraISISec: candidate.meanIntraISISec, cv: candidate.cv, lv: candidate.lv,
+                    preGapSec: candidate.preGapSec, postGapSec: candidate.postGapSec, preRatioQ90: candidate.preRatioQ90, postRatioQ90: candidate.postRatioQ90,
+                    edgeContrastMinQ90: candidate.edgeContrastMinQ90, edgeContrastGeomQ90: candidate.edgeContrastGeomQ90,
+                    decisionPath: extNote)
             }
             guard newEnd >= newStart,
                   let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return candidate }
@@ -3341,11 +3399,17 @@ public enum ClassicAnchorDetector {
             // own compact core, the internal-core tokens; and `retained_core_meets_min_size` recording that the gross
             // edge was removed and the retained span still satisfies the minimum burst size (kept canonical).
             var note = ";core_first_boundary_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_core)"
+                + boundaryRefTokens(nonSeed: nonSeedTrims > 0, inSeed: internalEdgeTrims > 0)
+                + ";observed_seed_core_max_sec=\(String(format: "%.4f", observedSeedCoreMax))"
+                + ";seed_core_count=\(coreISIs.count)"
+                + ";boundary_contamination_trim"
             if internalEdgeTrims > 0 {
-                note += ";bcb1_inband_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_internal_core)"
+                note += ";candidate_internal_in_seed_contamination"
+                    + ";bcb1_inband_trim(left=\(dropLeft),right=\(dropRight),reason=edge_ratio_to_internal_core)"
                     + ";in_band_edge_incompatible_with_compact_core"
                     + ";edge_ratio_to_candidate_core"
             }
+            if !isSeed(newStart) || !isSeed(newEnd) { note += ";candidate_relative_compatible_extension" }
             note += ";retained_core_meets_min_size"
             return candidate.withGeometry(
                 startISIIndex: newStart, endISIIndex: newEnd,

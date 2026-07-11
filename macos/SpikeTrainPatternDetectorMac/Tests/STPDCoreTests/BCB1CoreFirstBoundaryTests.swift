@@ -59,14 +59,18 @@ private func bcb1BurstResponse2SInline() -> SpikeTrain {
     return SpikeTrain(name: "burst_response_2_s", timestampsSec: bcb1Cumulative(isis))
 }
 
-// MARK: 1 — headline regression: burst_response_2_s [64...67], leading 0.041 excluded, compact core stays burst
-
+// MARK: 1 — REVISED GROUND TRUTH: burst_response_2_s [64...67] — the leading ~41 ms onset is INCLUDED.
+//
+// HISTORICAL NOTE (scientific ground-truth revision, not a code correction). This case was previously
+// `bcb1_burstResponse2S_leadingSlowEdgeExcluded_detectorOnly`, which required the ~41 ms leading ISI (detector index
+// 64) to be TRIMMED, leaving a compact core [65,66] — the "compact-core-only" interpretation. After the user reviewed
+// the SIMULATED ground truth, the expectation was REVISED: the ~41 ms onset is a COMPATIBLE MODERATE ONSET of the
+// burst packet and must be INCLUDED. Under the two-evidence boundary rule a NON-SEED onset is judged against the
+// FORMAL reference = the TRAIN-LOCAL SEED-BAND UPPER (here 0.035 s), NOT the observed seed-core maximum (which is
+// recorded as diagnostic only): on the real fixture 40.6 / 35.2 ≈ 1.15 (here 0.041 / 0.035 ≈ 1.17), below the 2.0×
+// leading-extension limit → a compatible extension, kept. This supersedes the earlier compact-core-only interpretation.
 @Test
-func bcb1_burstResponse2S_leadingSlowEdgeExcluded_detectorOnly() {
-    // Explicit structural band approximating the train's adaptive resolution (seedUpper ≈ 0.035, so 0.041 is a bridge
-    // and 0.033 is a seed; bridgeUpper 0.060 admits the 0.041 leading bridge so BCB-1 can trim it). coreMedian
-    // {0.011,0.017,0.033}=0.017 → leading 2.0× limit 0.034 < 0.041 (trimmed); trailing 3.0× limit 0.051 and 0.033 is
-    // a seed anyway (kept). No pipeline / band resolver / CSV parser involved.
+func bcb1_burstResponse2S_compatibleModerateOnsetIncluded() {
     let settings = ClassicAnchorSettings(
         minValidISISec: 0.001,
         burstBandLowerSec: 0.001,
@@ -81,13 +85,14 @@ func bcb1_burstResponse2S_leadingSlowEdgeExcluded_detectorOnly() {
         .arbitrateBySemanticTrack(result.candidates)
         .filter { $0.selectedForAuto && $0.finalLabel.isBurstEventFamily }
 
-    let core = selected.first { $0.startISIIndex >= 64 && $0.endISIIndex <= 70 && $0.endISIIndex >= 66 }
-    #expect(core?.startISIIndex == 65)                                        // leading 0.041 (ISI 64) excluded
-    #expect(core.map { $0.startISIIndex <= 65 && $0.endISIIndex >= 66 } ?? false)  // compact core 65,66 retained
-    #expect(core?.finalLabel.isCanonicalBurstFamily ?? false)                // stays a canonical burst
-    #expect(core?.decisionPath.contains("core_first_boundary_trim") ?? false)
-    // No selected burst-family candidate still swallows the slow leading edge at ISI 64.
-    #expect(!selected.contains { $0.startISIIndex <= 64 && $0.endISIIndex >= 64 })
+    // ISI 64 (~41 ms) is now INSIDE a selected canonical burst spanning at least 64...67.
+    let burst = selected.first { $0.startISIIndex <= 64 && $0.endISIIndex >= 66 }
+    #expect(burst != nil)
+    #expect(burst?.startISIIndex == 64)                                       // leading ~41 ms onset INCLUDED
+    #expect((burst?.endISIIndex ?? 0) >= 67)                                  // span at least 64...67
+    #expect(burst?.finalLabel.isCanonicalBurstFamily ?? false)               // canonical burst
+    // The onset is no longer excluded to a 65-start compact core.
+    #expect(!selected.contains { $0.startISIIndex == 65 && $0.endISIIndex >= 66 })
 }
 
 // MARK: 2 — a compatible (modestly larger) boundary extension is PRESERVED
