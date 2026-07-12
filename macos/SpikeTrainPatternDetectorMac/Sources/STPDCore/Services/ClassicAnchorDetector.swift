@@ -3225,24 +3225,133 @@ public enum ClassicAnchorDetector {
         train: SpikeTrain,
         settings: ClassicAnchorSettings
     ) -> [ClassicAnchorCandidate] {
+        // Birth-time BCB-1 pass inside `detect`: normalizes the canonical burst family only, byte-identically to before.
+        boundaryConsistentBurstCandidates(candidates, train: train, settings: settings,
+                                          shouldProcess: { $0.finalLabel.isCanonicalBurstFamily })
+    }
+
+    /// Candidate-layer token of the adaptive local-HF burst packet route (`adaptiveLocalHFBurstPacketCandidates`). Such a
+    /// packet is emitted with its own local-background core ceiling precisely WHEN the train's seed band collapses, so at
+    /// its birth `detect` stage BCB-1's train-local seed-band reference is degenerate and cannot normalize its boundaries.
+    public static let adaptiveLocalHFBurstPacketLayer = "adaptive_local_hf_burst_packet"
+
+    /// Base provenance key recorded on EVERY adaptive-HF packet the seam resolver processes, as
+    /// `adaptive_hf_boundary_consistency=<outcome>` where outcome ∈ {`trimmed`, `demoted_below_min`,
+    /// `compatible_extension_kept`, `checked_no_change`, `exempt_tolerated_internal_tail`, `exempt_user_burst_gate`,
+    /// `exempt_no_valid_band_reference`, `exempt_invalid_geometry`}. Proves the shared boundary-consistency rule ran on a route that previously
+    /// bypassed it — including packets that needed no geometry change — so no normalized packet reaches final output
+    /// without provenance or an explicit documented exemption.
+    public static let adaptiveHFBoundaryConsistencyToken = "adaptive_hf_boundary_consistency"
+
+    /// Re-apply the SAME two-evidence boundary-consistency trim (BCB-1) to adaptive local-HF burst packets, callable from
+    /// the dataset-seed-aware pipeline seam where a VALID train-local seed-band reference exists (the packet's own birth
+    /// stage ran under a collapsed band). This closes the bypass by which a gross incompatible boundary ISI — several×
+    /// the train-local seed-band upper — survived on an adaptive/local-compression packet and could then win Adaptive-V2
+    /// selection as a possible-burst. Non-packet candidates pass through untouched; the rule is the same scale-free ratio
+    /// (asymmetric 2.0× leading / 3.0× trailing), never a fixed-ms cutoff, applied to every structure-first burst.
+    ///
+    /// `allowToleratedInternalTailWholeCandidateExemption: false` — a `tolerated_internal_tail` gate does NOT grant the
+    /// packet blanket immunity here: the two-evidence rule still evaluates BOTH boundary sides independently, so a gross
+    /// incompatible LEADING edge is trimmed while a genuinely compatible trailing tail (within the 3.0× trailing ratio)
+    /// is preserved by that same rule — not by a whole-candidate exemption. Idempotent: repeat calls keep exactly one
+    /// terminal outcome token.
+    public static func boundaryNormalizedAdaptiveHFBurstPackets(
+        _ candidates: [ClassicAnchorCandidate],
+        train: SpikeTrain,
+        settings: ClassicAnchorSettings
+    ) -> [ClassicAnchorCandidate] {
+        boundaryConsistentBurstCandidates(candidates, train: train, settings: settings,
+                                          shouldProcess: {
+                                              $0.candidateLayer == adaptiveLocalHFBurstPacketLayer
+                                                  && $0.finalLabel.isBurstEventFamily
+                                          },
+                                          allowToleratedInternalTailWholeCandidateExemption: false,
+                                          normalizationTag: adaptiveHFBoundaryConsistencyToken)
+    }
+
+    /// Shared BCB-1 two-evidence boundary-consistency trim. `shouldProcess` selects which candidates are normalized —
+    /// canonical bursts at the detector's birth-time pass, adaptive-HF packets at the seed-aware seam — so no rescue,
+    /// bridge, adaptive-HF, possible-burst, or canonicalization route can grant immunity to a gross boundary ISI. When
+    /// `normalizationTag` is non-nil it is appended to the decisionPath of any candidate this pass actually re-shapes,
+    /// so a seam-normalized packet is auditable and never silently loses provenance.
+    private static func boundaryConsistentBurstCandidates(
+        _ candidates: [ClassicAnchorCandidate],
+        train: SpikeTrain,
+        settings: ClassicAnchorSettings,
+        shouldProcess: (ClassicAnchorCandidate) -> Bool,
+        allowToleratedInternalTailWholeCandidateExemption: Bool = true,
+        normalizationTag: String? = nil
+    ) -> [ClassicAnchorCandidate] {
+        // Outcome provenance (Correction 2): when `normalizationTag` is set (the adaptive-HF seam call), EVERY candidate
+        // this pass commits to (`shouldProcess`) records exactly one `<tag>=<outcome>` — including packets that need no
+        // geometry change and packets exempted by a gate — so no normalized burst-family route can reach final output
+        // without provenance. The birth-time detector call passes `normalizationTag == nil` and is untouched.
+        //
+        // IDEMPOTENT (Blocker 2, Semantic A): recording strips any prior `<tag>=…` token and writes exactly one. A prior
+        // TERMINAL outcome (`trimmed` / `demoted_below_min`) is RETAINED across a later no-op pass — repeat execution
+        // never erases the scientifically important transformation history, and never accumulates duplicate tokens.
+        let terminalOutcomes: Set<String> = ["trimmed", "demoted_below_min"]
+        func priorOutcome(_ path: String) -> String? {
+            guard let tag = normalizationTag else { return nil }
+            let prefix = "\(tag)="
+            return path.split(separator: ";", omittingEmptySubsequences: false)
+                .last { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+        }
+        func stampOutcome(_ path: String, _ newOutcome: String) -> String {
+            guard let tag = normalizationTag else { return path }   // birth-time canonical pass: byte-identical, no token
+            let prefix = "\(tag)="
+            let prior = priorOutcome(path)
+            // Semantic A: keep an earlier terminal transformation when this pass is a mere no-op / compatible check.
+            let finalOutcome = (prior.map(terminalOutcomes.contains) ?? false) && !terminalOutcomes.contains(newOutcome)
+                ? prior! : newOutcome
+            let base = path.split(separator: ";", omittingEmptySubsequences: false)
+                .filter { !$0.hasPrefix(prefix) }.joined(separator: ";")
+            return base + ";\(tag)=\(finalOutcome)"
+        }
+        // Append/replace the single outcome token WITHOUT touching geometry, label, score, priority or selection.
+        func recordingOutcome(_ c: ClassicAnchorCandidate, _ outcome: String) -> ClassicAnchorCandidate {
+            guard normalizationTag != nil else { return c }
+            return c.withGeometry(
+                startISIIndex: c.startISIIndex, endISIIndex: c.endISIIndex,
+                startSpikeIndex: c.startSpikeIndex, endSpikeIndex: c.endSpikeIndex,
+                nISI: c.nISI, nValidISI: c.nValidISI, nSpikes: c.nSpikes, durationSec: c.durationSec,
+                intraQ10Sec: c.intraQ10Sec, intraQ40Sec: c.intraQ40Sec, intraQ50Sec: c.intraQ50Sec,
+                intraQ90Sec: c.intraQ90Sec, intraQ95Sec: c.intraQ95Sec,
+                maxIntraISISec: c.maxIntraISISec, meanIntraISISec: c.meanIntraISISec, cv: c.cv, lv: c.lv,
+                preGapSec: c.preGapSec, postGapSec: c.postGapSec, preRatioQ90: c.preRatioQ90, postRatioQ90: c.postRatioQ90,
+                edgeContrastMinQ90: c.edgeContrastMinQ90, edgeContrastGeomQ90: c.edgeContrastGeomQ90,
+                decisionPath: stampOutcome(c.decisionPath, outcome))
+        }
+        func earlyExempt(_ reason: String) -> [ClassicAnchorCandidate] {
+            normalizationTag == nil ? candidates : candidates.map { shouldProcess($0) ? recordingOutcome($0, reason) : $0 }
+        }
+        // AUTOMATIC-ONLY: a user burst hard gate / user pattern-ISI band takes precedence (matches BCB-1's own guard);
+        // the pass is a documented exemption there, not a silent rewrite of user-pinned geometry.
         guard !settings.burstHardThresholdEnabled,
-              settings.burstBandSource != .userPatternISILimit else { return candidates }
+              settings.burstBandSource != .userPatternISILimit else { return earlyExempt("exempt_user_burst_gate") }
         let lower = settings.effectiveBurstBandLowerSec
         let coreReferenceUpper = settings.burstCoreReferenceUpperSec ?? settings.effectiveBurstBandUpperSec
         let upper = min(settings.effectiveBurstBandUpperSec, coreReferenceUpper)
-        guard lower.isFinite, upper.isFinite, upper > 0, lower >= 0, upper >= lower else { return candidates }
+        guard lower.isFinite, upper.isFinite, upper > 0, lower >= 0, upper >= lower else { return earlyExempt("exempt_no_valid_band_reference") }
         func isSeed(_ index: Int) -> Bool {
             guard train.isiSec.indices.contains(index), let v = train.isiSec[index], v.isFinite,
                   !isArtifactISI(v, threshold: settings.minValidISISec) else { return false }
             return v >= lower && v <= upper
         }
         return candidates.map { candidate in
-            guard candidate.finalLabel.isCanonicalBurstFamily,
-                  candidate.startISIIndex >= 0,
+            // Not selected for this pass (e.g. a non-adaptive-HF candidate at the seam) → untouched and unrecorded.
+            guard shouldProcess(candidate) else { return candidate }
+            // Malformed geometry → could NOT be evaluated (distinct from "checked and scientifically compatible").
+            guard candidate.startISIIndex >= 0,
                   candidate.endISIIndex < train.isiSec.count,
-                  candidate.endISIIndex > candidate.startISIIndex,
-                  // Do not undo the tolerated-internal-tail rescue (it accepted a tail under strong two-sided boundaries).
-                  !candidate.gateStatus.contains("tolerated_internal_tail") else { return candidate }
+                  candidate.endISIIndex > candidate.startISIIndex else { return recordingOutcome(candidate, "exempt_invalid_geometry") }
+            // The tolerated-internal-tail rescue accepted a tail under strong two-sided boundaries. The BIRTH-TIME
+            // canonical pass keeps its historical WHOLE-candidate exemption (byte-identical). The adaptive-HF SEAM does
+            // NOT: a `tolerated_internal_tail` gate must not grant immunity to a gross OPPOSITE-side edge, so the
+            // two-evidence rule still evaluates both sides (a genuinely compatible tail survives the 3.0× trailing test).
+            if allowToleratedInternalTailWholeCandidateExemption, candidate.gateStatus.contains("tolerated_internal_tail") {
+                return recordingOutcome(candidate, "exempt_tolerated_internal_tail")
+            }
             let start = candidate.startISIIndex, end = candidate.endISIIndex
             // SEED CORE = the candidate's seed-band ISIs — the compact core the seed band PROPOSES. ONE seed is enough
             // to anchor: a candidate does NOT bypass trimming merely for holding fewer than burstCoreMinISI seed-band
@@ -3254,7 +3363,7 @@ public enum ClassicAnchorDetector {
             // would wrongly trim a physiologically plausible decelerating tail). The observed max is therefore recorded
             // as DIAGNOSTIC evidence only (`observed_seed_core_max_sec`), NOT used as the rejection reference.
             let coreISIs: [Double] = (start...end).compactMap { isSeed($0) ? train.isiSec[$0] ?? nil : nil }
-            guard !coreISIs.isEmpty else { return candidate }
+            guard !coreISIs.isEmpty else { return recordingOutcome(candidate, "checked_no_change") }
             let observedSeedCoreMax = coreISIs.max() ?? upper   // DIAGNOSTIC ONLY (audit), never the hard reference
             let coreReferenceUpper = upper                       // train-local seed-band upper: the stable reference
             let leadingRatioLimit = coreReferenceUpper * coreFirstBoundaryLeadingEdgeRatioMax
@@ -3328,6 +3437,26 @@ public enum ClassicAnchorDetector {
                 newEnd -= 1
                 dropRight += 1
             }
+            // Whether a contamination edge REMAINS at each boundary after the (possibly zero-length) trim. A BLOCKED edge
+            // is present but not removed because trimming it would drop below the minimum burst size — so `dropLeft`/`Right`
+            // are 0 yet `blockedLeft`/`blockedRight` is true; that candidate must still reach the demote branch below.
+            let leadEdge = leadingEdge(newStart)
+            let trailEdge = trailingEdge(newEnd)
+            let blockedLeft = leadEdge.edge
+            let blockedRight = trailEdge.edge
+            // IDEMPOTENCE (Blocker 2): a REPEAT pass that finds NO edge on EITHER side (not merely one blocked by the
+            // min-size floor) retains the earlier outcome verbatim and re-appends no provenance — so the public resolver
+            // is safe to call twice (the pipeline calls it once) without accumulating duplicate boundary_ref / outcome
+            // tokens or changing geometry, label or selection. A blocked-edge candidate instead falls through to the
+            // demote branch (a later pass can still strengthen a non-terminal outcome to `demoted_below_min`); a first
+            // pass carries no prior outcome and falls through to the branches below.
+            if dropLeft == 0,
+               dropRight == 0,
+               blockedLeft == false,
+               blockedRight == false,
+               let prior = priorOutcome(candidate.decisionPath) {
+                return recordingOutcome(candidate, prior)
+            }
             // PATH-SPECIFIC boundary reference provenance. The FORMAL numeric reference differs by boundary type, so the
             // token must NOT claim `train_local_seed_band_upper` for an in-seed edge (whose reference is the candidate's
             // own rest median/max) nor `candidate_internal_rest_median_and_max` for a non-seed edge. When BOTH types are
@@ -3342,8 +3471,7 @@ public enum ClassicAnchorDetector {
                 return ";boundary_ref=train_local_seed_band_upper" + seedRefUpper   // non-seed (default)
             }
             if dropLeft == 0, dropRight == 0 {
-                let leadEdge = leadingEdge(newStart)
-                let trailEdge = trailingEdge(newEnd)
+                // `leadEdge`/`trailEdge` were computed above (reused so the blocked-edge decision is identical here).
                 if (leadEdge.edge || trailEdge.edge), (newEnd - newStart + 1) <= minSpanISI {
                     // A contamination edge REMAINS but was blocked by the min-size floor (removing it would drop below
                     // the minimum burst size) → route to possible_burst / review. Tag it by the BLOCKED boundary's TYPE:
@@ -3368,14 +3496,17 @@ public enum ClassicAnchorDetector {
                     return candidate.withDiagnosticOverride(
                         finalLabel: .possibleBurst,
                         gateStatus: "core_first_boundary_trim_below_min_core_possible_burst",
-                        decisionPath: demoteNote,
+                        decisionPath: stampOutcome(demoteNote, "demoted_below_min"),
                         action: "demote_to_possible")
                 }
                 // No trim and nothing blocked. If a RETAINED boundary is a NON-SEED COMPATIBLE EXTENSION (kept because it
                 // is within the train-local band-upper ratio, not because it is a seed), record boundary provenance so
                 // such kept extensions (e.g. burst_response_2_s ISI 64, burst_response_4_s ISI 33/26) are auditable.
                 // Geometry, metrics, score, label, priority and selection are untouched — only the decisionPath grows.
-                guard (!isSeed(newStart) && !leadEdge.edge) || (!isSeed(newEnd) && !trailEdge.edge) else { return candidate }
+                guard (!isSeed(newStart) && !leadEdge.edge) || (!isSeed(newEnd) && !trailEdge.edge) else {
+                    // Both boundaries are compact in-band seeds with no edge — nothing to normalize.
+                    return recordingOutcome(candidate, "checked_no_change")
+                }
                 let extNote = candidate.decisionPath
                     + boundaryRefTokens(nonSeed: true, inSeed: false)
                     + ";observed_seed_core_max_sec=\(String(format: "%.4f", observedSeedCoreMax))"
@@ -3391,10 +3522,12 @@ public enum ClassicAnchorDetector {
                     maxIntraISISec: candidate.maxIntraISISec, meanIntraISISec: candidate.meanIntraISISec, cv: candidate.cv, lv: candidate.lv,
                     preGapSec: candidate.preGapSec, postGapSec: candidate.postGapSec, preRatioQ90: candidate.preRatioQ90, postRatioQ90: candidate.postRatioQ90,
                     edgeContrastMinQ90: candidate.edgeContrastMinQ90, edgeContrastGeomQ90: candidate.edgeContrastGeomQ90,
-                    decisionPath: extNote)
+                    decisionPath: stampOutcome(extNote, "compatible_extension_kept"))
             }
             guard newEnd >= newStart,
-                  let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else { return candidate }
+                  let m = spanMetrics(train: train, start: newStart, end: newEnd, settings: settings) else {
+                return recordingOutcome(candidate, "checked_no_change")
+            }
             // Provenance: the original band-relative reason; when an in-band edge was trimmed against the candidate's
             // own compact core, the internal-core tokens; and `retained_core_meets_min_size` recording that the gross
             // edge was removed and the retained span still satisfies the minimum burst size (kept canonical).
@@ -3420,7 +3553,7 @@ public enum ClassicAnchorDetector {
                 maxIntraISISec: m.maxIntraISISec, meanIntraISISec: m.meanIntraISISec, cv: m.cv, lv: m.lv,
                 preGapSec: m.preGapSec, postGapSec: m.postGapSec, preRatioQ90: m.preRatioQ90, postRatioQ90: m.postRatioQ90,
                 edgeContrastMinQ90: m.edgeContrastMinQ90, edgeContrastGeomQ90: m.edgeContrastGeomQ90,
-                decisionPath: candidate.decisionPath + note)
+                decisionPath: stampOutcome(candidate.decisionPath + note, "trimmed"))
         }
     }
 

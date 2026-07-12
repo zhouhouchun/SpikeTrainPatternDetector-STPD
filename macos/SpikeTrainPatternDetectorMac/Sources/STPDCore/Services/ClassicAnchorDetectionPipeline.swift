@@ -862,7 +862,17 @@ public enum ClassicAnchorDetectionPipeline {
                             applyingAdaptiveV2BurstCanonicalization(
                                 demotingTonicRateRegularBurstsAndRearbitrating(
                                     enforcingBurstHardGateAndRearbitrating(
-                                        finalPhase1BResolution.candidates,
+                                        // BCB-HF: normalize adaptive local-HF burst packets here, at the seed-aware seam,
+                                        // BEFORE Adaptive-V2 canonicalization and the final arbitration. These packets are
+                                        // born under a collapsed band that starves BCB-1's seed-band reference at `detect`,
+                                        // so a gross incompatible boundary ISI (several× the train-local seed-band upper)
+                                        // could survive and win Adaptive-V2 possible-burst selection. The seam re-applies
+                                        // the same scale-free two-evidence trim with the VALID seed-aware band reference.
+                                        ClassicAnchorDetector.boundaryNormalizedAdaptiveHFBurstPackets(
+                                            finalPhase1BResolution.candidates,
+                                            train: train,
+                                            settings: finalDetectorSettings
+                                        ),
                                         settings: finalDetectorSettings
                                     ),
                                     settings: finalDetectorSettings,
