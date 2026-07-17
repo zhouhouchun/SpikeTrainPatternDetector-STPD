@@ -1513,6 +1513,26 @@ public enum ClassicAnchorDetectionPipeline {
               BurstCanonicalizationGate.decide(candidate: trimmed, evidence: trimmedEvidence, verdict: trimmedVerdict) == .keepCanonical else {
             return nil
         }
+        // BURST-BOUNDARY-AUTH: the trimmed core re-passes, so this Adaptive-V2 demotion is a BOUNDARY-ONLY failure. Every
+        // slow edge here is out-of-band (> the eligibility ceiling ≥ the seed band), so BCB's NON-SEED extension rule is
+        // the governing evidence. Classify each via `nonSeedBoundaryExtensionClass` (BCB's non-seed 2.0×/3.0× rule, the
+        // subset relevant to a slow edge): if EVERY slow edge is a BCB-vetted COMPATIBLE EXTENSION (not a contaminant BCB
+        // would itself trim), keep the FULL candidate canonical rather than re-trimming against the tighter V2 ceiling.
+        // A BCB `contaminant` boundary still trims as before; a non-boundary failure already returned nil above.
+        let slowLeftClass = slowLeft ? ClassicAnchorDetector.nonSeedBoundaryExtensionClass(of: candidate, trailing: false, train: train, settings: settings) : .none
+        let slowRightClass = slowRight ? ClassicAnchorDetector.nonSeedBoundaryExtensionClass(of: candidate, trailing: true, train: train, settings: settings) : .none
+        let anySlowContaminant = slowLeftClass == .contaminant || slowRightClass == .contaminant
+        let everySlowCompatible = (!slowLeft || slowLeftClass == .compatibleExtension)
+            && (!slowRight || slowRightClass == .compatibleExtension)
+        if everySlowCompatible, !anySlowContaminant {
+            return candidate.withDiagnosticOverride(
+                gateStatus: "keep_adaptive_v2_bcb_compatible_boundary",
+                decisionPath: candidate.decisionPath
+                    + ";adaptive_v2_canonicalization=bcb_compatible_boundary_kept(left:\(slowLeft ? "1" : "0"),right:\(slowRight ? "1" : "0"))",
+                action: "bcb_compatible_boundary_kept",
+                selectedForAuto: candidate.selectedForAuto,
+                selectionStatus: candidate.selectionStatus)
+        }
         return trimmed
     }
 

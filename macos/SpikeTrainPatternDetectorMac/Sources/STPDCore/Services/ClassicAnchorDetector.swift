@@ -3169,6 +3169,14 @@ public enum ClassicAnchorDetector {
     private static let coreFirstBoundaryLeadingEdgeRatioMax = 2.0
     private static let coreFirstBoundaryTrailingEdgeRatioMax = 3.0
     private static let coreFirstBoundaryMaxTrimPerSide = 2
+    /// BCB-specific dimensionless MAXIMUM for short-in-seed-onset preservation: a leading in-seed onset is preserved only
+    /// when onset / retained-core-MIN ≤ this value. It is a distinct, oppositely-monotone quantity from the structural
+    /// RESCUE MINIMUM (`burstStructuralRescueStrongCompressionMin`, a `>=` gate): here a LARGER value is MORE permissive,
+    /// so the two must never be conflated. The 4.0 value is measured, not screenshot-tuned: across 5x5 + Grechishnikova
+    /// the legitimate in-band accelerating onsets cluster at ≤ 3.63× (24.9 ms) and 2.70× (Grech 10.0 ms) while genuine
+    /// in-band contaminants sit at ≥ 12.4× (105.4 ms) and 14.3× (164.1 ms) — a clean 3.4× gap; 4.0 is a ~10% margin above
+    /// the highest onset and ~3× below the lowest contaminant. PRIVATE: not user-configurable yet (no public setting).
+    private static let coreFirstBoundaryOnsetMaxSpreadToRestMin = 4.0
 
     /// Median (sec) of the finite, non-artifact ISIs in the inclusive index range `[lo, hi]` of `train`.
     /// Used by BCB-1 boundary trimming to characterise a candidate's OWN compact-core timescale (as opposed to
@@ -3205,6 +3213,54 @@ public enum ClassicAnchorDetector {
                   !isArtifactISI(v, threshold: settings.minValidISISec) else { return nil }
             return v
         }.max()
+    }
+
+    /// Classification of a burst candidate's CURRENT boundary ISI by BCB's NON-SEED extension rule only. This is the
+    /// SUBSET of BCB boundary evidence Adaptive-V2 needs for Case A: whether an out-of-band slow boundary is a
+    /// BCB-vetted `compatibleExtension` (kept) or a `contaminant` (trimmed). It deliberately does NOT re-derive BCB's
+    /// IN-SEED internalEdge / short-onset decision — an in-band boundary returns `.seedCore` (that call was already made
+    /// at BCB's birth-time pass and is not re-litigated here). `.none` = not applicable (user gate / degenerate band).
+    public enum BurstBoundaryClass: String, Sendable, Equatable {
+        case seedCore, compatibleExtension, contaminant, none
+    }
+
+    /// Classify the leading (`trailing: false`) or trailing (`trailing: true`) NON-SEED boundary ISI of `candidate` under
+    /// BCB's asymmetric 2.0×/3.0× train-local-seed-band-upper extension ratio: `compatibleExtension` iff within the ratio,
+    /// else `contaminant`. In-band → `.seedCore` (see enum note; the in-seed decision is BCB's, not re-derived here). No
+    /// fixed-ms cutoff; tonic-independent; typed result (never a decisionPath substring). NOTE: this recomputes from
+    /// `settings`; it is a targeted non-seed re-classification, not a shared evaluator that returns BCB's exact prior verdict.
+    public static func nonSeedBoundaryExtensionClass(
+        of candidate: ClassicAnchorCandidate, trailing: Bool, train: SpikeTrain, settings: ClassicAnchorSettings
+    ) -> BurstBoundaryClass {
+        guard !settings.burstHardThresholdEnabled, settings.burstBandSource != .userPatternISILimit else { return .none }
+        let index = trailing ? candidate.endISIIndex : candidate.startISIIndex
+        guard train.isiSec.indices.contains(index), let v = train.isiSec[index], v.isFinite,
+              !isArtifactISI(v, threshold: settings.minValidISISec) else { return .none }
+        let lower = settings.effectiveBurstBandLowerSec
+        let coreReferenceUpper = settings.burstCoreReferenceUpperSec ?? settings.effectiveBurstBandUpperSec
+        let upper = min(settings.effectiveBurstBandUpperSec, coreReferenceUpper)
+        guard lower.isFinite, upper.isFinite, upper > 0, lower >= 0, upper >= lower else { return .none }
+        if v >= lower && v <= upper { return .seedCore }
+        let ratio = trailing ? coreFirstBoundaryTrailingEdgeRatioMax : coreFirstBoundaryLeadingEdgeRatioMax
+        return v > upper * ratio ? .contaminant : .compatibleExtension
+    }
+
+    /// Minimum non-artifact ISI over [lo...hi]. Mirrors `compactCoreMaxSec`; used by the short-in-seed-onset preservation
+    /// as the FASTEST retained-core interval — the boundary-to-rest-MIN ratio is the scale-free measure that separates a
+    /// legitimate accelerating-burst onset (a MODEST multiple of the fastest core ISI) from a gross in-band contaminant
+    /// (an EXTREME multiple), where the rest median/max cannot (a two-sample fast rest under-supports them).
+    private static func compactCoreMinSec(
+        _ train: SpikeTrain,
+        _ lo: Int,
+        _ hi: Int,
+        settings: ClassicAnchorSettings
+    ) -> Double? {
+        guard lo <= hi else { return nil }
+        return (lo...hi).compactMap { idx -> Double? in
+            guard train.isiSec.indices.contains(idx), let v = train.isiSec[idx], v.isFinite,
+                  !isArtifactISI(v, threshold: settings.minValidISISec) else { return nil }
+            return v
+        }.min()
     }
 
     /// BCB-1 — CORE-FIRST burst boundary trim (default path; runs regardless of the Adaptive-v2 flag). For each CANONICAL
@@ -3398,6 +3454,30 @@ public enum ClassicAnchorDetector {
             // MINIMUM BURST SIZE: a canonical burst needs a compact core of at least this many ISIs (the same
             // expression the seed-run generators use). BCB-1 trimming is BOUNDED by it — see below.
             let minSpanISI = Swift.max(settings.burstCoreMinISI, settings.minSpikes - 1)
+            // SHORT IN-SEED ONSET PRESERVATION (BURST-BOUNDARY-AUTH). `internalEdge` compares a leading in-seed ISI to the
+            // retained rest's MEDIAN/MAX. When the rest is an atypically fast, short core (e.g. {6.8, 9.1} ms), that
+            // reference is UNDER-SUPPORTED and a plausible accelerating-burst ONSET (24.9 ms) is wrongly flagged. Preserve
+            // such an onset only under a CONJUNCTION of independent scale-free signals — never a fixed-ms cutoff, never
+            // tonic: (1) in-band seed; (2) a supported rest core (≥ minSpanISI); (3) strong pause-flank isolation before
+            // the onset (pre-flank ≥ classicBurstFlankPauseContrastMin × onset); (4) NON-extreme candidate-internal spread
+            // (onset ≤ `coreFirstBoundaryOnsetMaxSpreadToRestMin` × the rest MIN — a DEDICATED dimensionless maximum, NOT
+            // the oppositely-monotone structural-rescue minimum). A genuine in-band contaminant (105/164 ms) fails (4) —
+            // its onset/rest-min ratio is extreme (12–14× ≫ 4×) — and is still trimmed.
+            var preservedOnsetNote: String? = nil
+            func preservableLeadingInSeedOnset(_ index: Int) -> Bool {
+                guard let v = train.isiSec[index], v.isFinite, isSeed(index) else { return false }        // (1) in-band seed
+                let restLo = index + 1, restHi = newEnd
+                guard (restHi - restLo + 1) >= minSpanISI else { return false }                             // (2) supported rest
+                guard let restMin = compactCoreMinSec(train, restLo, restHi, settings: settings), restMin > 0 else { return false }
+                let spread = v / restMin
+                guard spread <= coreFirstBoundaryOnsetMaxSpreadToRestMin else { return false }               // (4) non-extreme spread
+                guard index - 1 >= 0, let preFlank = train.isiSec[index - 1], preFlank.isFinite,
+                      preFlank >= v * settings.classicBurstFlankPauseContrastMin else { return false }       // (3) strong flank
+                preservedOnsetNote = ";in_seed_onset_preserved(edge_to_rest_min="
+                    + String(format: "%.2f", spread) + ",flank_contrast="
+                    + String(format: "%.2f", preFlank / v) + ");boundary_ref=candidate_internal_rest_min_supported_onset"
+                return true
+            }
             // TWO-EVIDENCE boundary edge, MUTUALLY EXCLUSIVE by seed membership. The decision is made AT a candidate
             // boundary, but the two paths use DIFFERENT numeric references:
             //  - NON-SEED boundary → judged against the TRAIN-LOCAL SEED-BAND UPPER (`coreReferenceUpper`), NOT a
@@ -3410,7 +3490,12 @@ public enum ClassicAnchorDetector {
             //    applies ONLY to seed boundaries; a non-seed neighbour is judged solely by the band-upper extension rule.
             func leadingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
                 guard let v = train.isiSec[index], v.isFinite else { return (false, false) }
-                if isSeed(index) { return (internalEdge(index, isTrailing: false), true) }
+                if isSeed(index) {
+                    // A short in-seed accelerating-burst onset (strong flanks, supported rest, non-extreme spread) is a
+                    // compatible onset, not candidate-internal contamination — the under-supported restMedian mis-flags it.
+                    if preservableLeadingInSeedOnset(index) { return (false, true) }
+                    return (internalEdge(index, isTrailing: false), true)
+                }
                 return (v > leadingRatioLimit, false)
             }
             func trailingEdge(_ index: Int) -> (edge: Bool, isInternal: Bool) {
@@ -3498,6 +3583,20 @@ public enum ClassicAnchorDetector {
                         gateStatus: "core_first_boundary_trim_below_min_core_possible_burst",
                         decisionPath: stampOutcome(demoteNote, "demoted_below_min"),
                         action: "demote_to_possible")
+                }
+                // A short in-seed leading ONSET was PRESERVED (BURST-BOUNDARY-AUTH). Record its supported-onset provenance
+                // (geometry/label/selection untouched) so the kept onset — e.g. burst_response_4_s ISI 85 — is auditable.
+                if let onsetNote = preservedOnsetNote {
+                    return candidate.withGeometry(
+                        startISIIndex: candidate.startISIIndex, endISIIndex: candidate.endISIIndex,
+                        startSpikeIndex: candidate.startSpikeIndex, endSpikeIndex: candidate.endSpikeIndex,
+                        nISI: candidate.nISI, nValidISI: candidate.nValidISI, nSpikes: candidate.nSpikes, durationSec: candidate.durationSec,
+                        intraQ10Sec: candidate.intraQ10Sec, intraQ40Sec: candidate.intraQ40Sec, intraQ50Sec: candidate.intraQ50Sec,
+                        intraQ90Sec: candidate.intraQ90Sec, intraQ95Sec: candidate.intraQ95Sec,
+                        maxIntraISISec: candidate.maxIntraISISec, meanIntraISISec: candidate.meanIntraISISec, cv: candidate.cv, lv: candidate.lv,
+                        preGapSec: candidate.preGapSec, postGapSec: candidate.postGapSec, preRatioQ90: candidate.preRatioQ90, postRatioQ90: candidate.postRatioQ90,
+                        edgeContrastMinQ90: candidate.edgeContrastMinQ90, edgeContrastGeomQ90: candidate.edgeContrastGeomQ90,
+                        decisionPath: stampOutcome(candidate.decisionPath + onsetNote, "compatible_extension_kept"))
                 }
                 // No trim and nothing blocked. If a RETAINED boundary is a NON-SEED COMPATIBLE EXTENSION (kept because it
                 // is within the train-local band-upper ratio, not because it is a seed), record boundary provenance so
