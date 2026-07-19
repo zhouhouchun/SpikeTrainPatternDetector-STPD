@@ -8,7 +8,8 @@ import Foundation
 /// 3. reselect the final event/gap tracks;
 /// 4. split states at selected gap/event boundaries;
 /// 5. resolve HFS packet dominance from selected canonical events;
-/// 6. perform final four-track arbitration.
+/// 6. merge caller-authorized irregular-tonic fragments with full-span revalidation;
+/// 7. perform final four-track arbitration.
 ///
 /// State splitting deliberately precedes event-derived HFS rejection. Otherwise
 /// an HFS parent that spans a selected pause could be rejected as a whole before
@@ -48,8 +49,9 @@ public enum MultiTrackPhase1BResolver {
 
     /// Phase 1B resolution plus a diagnostic-only HFS-vs-burst audit.
     ///
-    /// Existing candidate generation and selection are unchanged. The audit is
-    /// built after final four-track arbitration from the exact pre-protection,
+    /// Detection candidate generation is unchanged. Resolution may add fully revalidated,
+    /// caller-authorized irregular-tonic continuity states before final arbitration. The
+    /// audit is built after final four-track arbitration from the exact pre-protection,
     /// packet-evidence, protected, and final candidate pools.
     public static func resolveWithAudit(
         train: SpikeTrain,
@@ -67,7 +69,7 @@ public enum MultiTrackPhase1BResolver {
             )
         }
 
-        let initialPool = uniqueCandidatesByID(candidates)
+        let initialPool = uniqueCandidatesByIdentity(candidates)
         let preliminary = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(initialPool)
 
         let burstLocalCompletions = tagPipelineStage(
@@ -78,7 +80,7 @@ public enum MultiTrackPhase1BResolver {
             ),
             "\(stagePrefix)_burst_local_completion"
         )
-        let withCompletedBursts = uniqueCandidatesByID(initialPool + burstLocalCompletions)
+        let withCompletedBursts = uniqueCandidatesByIdentity(initialPool + burstLocalCompletions)
         let burstResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
             withCompletedBursts
         )
@@ -92,7 +94,7 @@ public enum MultiTrackPhase1BResolver {
             ),
             "\(stagePrefix)_pause_floor_completion"
         )
-        let withCompletedGaps = uniqueCandidatesByID(withCompletedBursts + pauseCompletions)
+        let withCompletedGaps = uniqueCandidatesByIdentity(withCompletedBursts + pauseCompletions)
         let eventGapResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
             withCompletedGaps
         )
@@ -113,7 +115,7 @@ public enum MultiTrackPhase1BResolver {
             ),
             "\(stagePrefix)_state_track_split"
         )
-        let withSplitStates = uniqueCandidatesByID(eventGapResolved + splitStates)
+        let withSplitStates = uniqueCandidatesByIdentity(eventGapResolved + splitStates)
 
         // Selected canonical events are the authoritative packet evidence.
         // Raw, duplicate, and unselected burst proposals never decide HFS
@@ -124,9 +126,76 @@ public enum MultiTrackPhase1BResolver {
             selectedEvents: selectedEvents,
             mode: .multiTrack
         )
-        let finalCandidates = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+        // Conservative state-level continuity: merge adjacent irregular-tonic fragments across
+        // tiny non-event, non-pause gaps (revalidated). Runs after event/gap selection so it
+        // can refuse selected pauses/events, and before final arbitration so the merged state
+        // is chosen deterministically over its child fragments.
+        // Freeze state-track authority before continuity transformation. Only states selected
+        // in this pass may be merged, and state candidates that already lost this pass remain
+        // audit-visible but cannot be re-promoted merely because their winning fragments were
+        // consumed into one longer candidate.
+        let eligibleStateIdentities = Set(
+            protectedPool.lazy.filter {
+                $0.arbitrationTrack == .state && $0.isEligibleForAutoSelection
+            }.map(StatePatternDetector.CandidateIdentity.init)
+        )
+        let continuityArbitrated = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
             protectedPool
         )
+        let selectedStateIdentities = Set(
+            continuityArbitrated.lazy.filter {
+                $0.arbitrationTrack == .state &&
+                    $0.selectedForAuto &&
+                    $0.isEligibleForAutoSelection
+            }.map(StatePatternDetector.CandidateIdentity.init)
+        )
+        let continuityAuthorityPool = continuityArbitrated.map { candidate in
+            let identity = StatePatternDetector.CandidateIdentity(candidate)
+            guard eligibleStateIdentities.contains(identity),
+                  !selectedStateIdentities.contains(identity) else {
+                return candidate
+            }
+            var frozen = candidate
+            frozen.stateContinuityAuthorityFrozen = true
+            return frozen
+        }
+        let authorizedIrregularTonicFragmentIDs = Set(
+            continuityAuthorityPool.lazy.filter {
+                $0.selectedForAuto &&
+                    $0.isEligibleForAutoSelection &&
+                    !$0.stateContinuityMergeTerminal &&
+                    $0.finalLabel == .tonic &&
+                    $0.stateTonicSubtype == "irregular"
+            }.map(\.id)
+        )
+        let mergeResult = StatePatternDetector.mergeIrregularTonicMicroGapsWithAuthority(
+            train: train,
+            candidates: continuityAuthorityPool,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: effectiveStateSettings,
+            authorizedFragmentIDs: authorizedIrregularTonicFragmentIDs
+        )
+        let mergedPool = uniqueCandidatesByIdentity(mergeResult.candidates)
+        let finalSelectionPool = mergedPool.filter {
+            $0.arbitrationTrack != .state ||
+                $0.selectedForAuto ||
+                mergeResult.generatedCandidateIdentities.contains(
+                    StatePatternDetector.CandidateIdentity($0)
+                )
+        }
+        let finalResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+            uniqueCandidatesByIdentity(finalSelectionPool)
+        )
+        var finalResolvedByIdentity: [
+            StatePatternDetector.CandidateIdentity: ClassicAnchorCandidate
+        ] = [:]
+        for candidate in finalResolved {
+            finalResolvedByIdentity[StatePatternDetector.CandidateIdentity(candidate)] = candidate
+        }
+        let finalCandidates = mergedPool.map { candidate in
+            finalResolvedByIdentity[StatePatternDetector.CandidateIdentity(candidate)] ?? candidate
+        }
 
         let effectiveAuditSettings = auditSettings.fillingMissingFallbacks(
             pauseLikeThresholdSec: effectiveStateSettings.highFrequencySpikingPauseBreakSec ??
@@ -172,20 +241,23 @@ public enum MultiTrackPhase1BResolver {
         }
     }
 
-    private static func uniqueCandidatesByID(
+    private static func uniqueCandidatesByIdentity(
         _ candidates: [ClassicAnchorCandidate]
     ) -> [ClassicAnchorCandidate] {
-        var latestByID: [String: ClassicAnchorCandidate] = [:]
-        var order: [String] = []
+        var latestByIdentity: [
+            StatePatternDetector.CandidateIdentity: ClassicAnchorCandidate
+        ] = [:]
+        var order: [StatePatternDetector.CandidateIdentity] = []
         order.reserveCapacity(candidates.count)
 
         for candidate in candidates {
-            if latestByID[candidate.id] == nil {
-                order.append(candidate.id)
+            let identity = StatePatternDetector.CandidateIdentity(candidate)
+            if latestByIdentity[identity] == nil {
+                order.append(identity)
             }
-            latestByID[candidate.id] = candidate
+            latestByIdentity[identity] = candidate
         }
-        return order.compactMap { latestByID[$0] }
+        return order.compactMap { latestByIdentity[$0] }
     }
 
     private static func tagPipelineStage(

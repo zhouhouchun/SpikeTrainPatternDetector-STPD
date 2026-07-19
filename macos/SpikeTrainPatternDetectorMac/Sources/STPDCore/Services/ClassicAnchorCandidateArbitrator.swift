@@ -1,6 +1,20 @@
 import Foundation
 
 public enum ClassicAnchorCandidateArbitrator {
+    private struct CandidateIdentity: Hashable {
+        let trainID: String
+        let candidateID: String
+
+        init(trainID: String, candidateID: String) {
+            self.trainID = trainID
+            self.candidateID = candidateID
+        }
+
+        init(_ candidate: ClassicAnchorCandidate) {
+            self.init(trainID: candidate.trainID, candidateID: candidate.id)
+        }
+    }
+
     /// Backward-compatible arbitration for event, gap, and review tracks.
     /// State candidates are intentionally handled by `arbitrateBySemanticTrack`.
     public static func arbitrate(_ candidates: [ClassicAnchorCandidate]) -> [ClassicAnchorCandidate] {
@@ -8,16 +22,17 @@ public enum ClassicAnchorCandidateArbitrator {
             return []
         }
 
-        var selectedStatusByID: [String: String] = [:]
-        var unselectedStatusByID: [String: String] = [:]
+        var selectedStatusByIdentity: [CandidateIdentity: String] = [:]
+        var unselectedStatusByIdentity: [CandidateIdentity: String] = [:]
         let grouped = Dictionary(grouping: candidates, by: \.trainID)
 
-        for trainCandidates in grouped.values {
+        for (trainID, trainCandidates) in grouped {
             let eventCandidates = trainCandidates.filter { $0.arbitrationTrack == .event }
             let eventSelectionIDs = weightedSelectionIDs(for: eventCandidates)
             let selectedEvents = eventCandidates.filter { eventSelectionIDs.contains($0.id) }
             for id in eventSelectionIDs {
-                selectedStatusByID[id] = "selected_by_event_core_weighted_interval_grammar"
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] =
+                    "selected_by_event_core_weighted_interval_grammar"
             }
 
             let gapCandidates = trainCandidates.filter { $0.arbitrationTrack == .gap }
@@ -25,17 +40,23 @@ public enum ClassicAnchorCandidateArbitrator {
                 gapCandidates,
                 selectedEvents: selectedEvents
             )
-            selectedStatusByID.merge(gapResolution.selectedStatusByID) { current, _ in current }
-            unselectedStatusByID.merge(gapResolution.unselectedStatusByID) { current, _ in current }
+            for (id, status) in gapResolution.selectedStatusByID {
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] = status
+            }
+            for (id, status) in gapResolution.unselectedStatusByID {
+                unselectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] = status
+            }
 
             let reviewCandidates = trainCandidates.filter { $0.arbitrationTrack == .review }
             for id in weightedSelectionIDs(for: reviewCandidates) {
-                selectedStatusByID[id] = "selected_by_review_track_weighted_interval_grammar"
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] =
+                    "selected_by_review_track_weighted_interval_grammar"
             }
         }
 
         return candidates.map { candidate in
-            if let selectionStatus = selectedStatusByID[candidate.id] {
+            let identity = CandidateIdentity(candidate)
+            if let selectionStatus = selectedStatusByIdentity[identity] {
                 return candidate.withAutoSelection(
                     selectedForAuto: true,
                     selectionStatus: selectionStatus
@@ -43,7 +64,7 @@ public enum ClassicAnchorCandidateArbitrator {
             }
             return candidate.withAutoSelection(
                 selectedForAuto: false,
-                selectionStatus: unselectedStatusByID[candidate.id] ?? "not_selected"
+                selectionStatus: unselectedStatusByIdentity[identity] ?? "not_selected"
             )
         }
     }
@@ -61,12 +82,12 @@ public enum ClassicAnchorCandidateArbitrator {
             return []
         }
 
-        var selectedStatusByID: [String: String] = [:]
-        var unselectedStatusByID: [String: String] = [:]
-        var hfBurstPacketIDs: Set<String> = []
+        var selectedStatusByIdentity: [CandidateIdentity: String] = [:]
+        var unselectedStatusByIdentity: [CandidateIdentity: String] = [:]
+        var hfBurstPacketIdentities: Set<CandidateIdentity> = []
         let grouped = Dictionary(grouping: candidates, by: \.trainID)
 
-        for trainCandidates in grouped.values {
+        for (trainID, trainCandidates) in grouped {
             let eventCandidates = trainCandidates.filter { $0.arbitrationTrack == .event }
             let gapCandidates = trainCandidates.filter { $0.arbitrationTrack == .gap }
             let stateCandidates = trainCandidates.filter { $0.arbitrationTrack == .state }
@@ -82,15 +103,20 @@ public enum ClassicAnchorCandidateArbitrator {
             let eventSelectionIDs = weightedSelectionIDs(for: eventCandidates)
             let selectedEvents = eventCandidates.filter { eventSelectionIDs.contains($0.id) }
             for id in eventSelectionIDs {
-                selectedStatusByID[id] = "selected_by_event_track_weighted_interval_grammar"
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] =
+                    "selected_by_event_track_weighted_interval_grammar"
             }
 
             let gapResolution = GapTrackResolver.resolve(
                 gapCandidates,
                 selectedEvents: selectedEvents
             )
-            selectedStatusByID.merge(gapResolution.selectedStatusByID) { current, _ in current }
-            unselectedStatusByID.merge(gapResolution.unselectedStatusByID) { current, _ in current }
+            for (id, status) in gapResolution.selectedStatusByID {
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] = status
+            }
+            for (id, status) in gapResolution.unselectedStatusByID {
+                unselectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] = status
+            }
             let selectedGaps = gapCandidates.filter {
                 gapResolution.selectedIDs.contains($0.id)
             }
@@ -100,13 +126,14 @@ public enum ClassicAnchorCandidateArbitrator {
                 reviewSelectionIDs.contains($0.id)
             }
             for id in reviewSelectionIDs {
-                selectedStatusByID[id] = "selected_by_review_track_weighted_interval_grammar"
+                selectedStatusByIdentity[CandidateIdentity(trainID: trainID, candidateID: id)] =
+                    "selected_by_review_track_weighted_interval_grammar"
             }
 
             if !strongHFStates.isEmpty {
                 for event in eventCandidates where event.finalLabel.isBurstEventFamily {
                     if strongHFStates.contains(where: { fullyContains($0, event) }) {
-                        hfBurstPacketIDs.insert(event.id)
+                        hfBurstPacketIdentities.insert(CandidateIdentity(event))
                     }
                 }
             }
@@ -114,15 +141,23 @@ public enum ClassicAnchorCandidateArbitrator {
             var compatibleStateCandidates: [ClassicAnchorCandidate] = []
             var compatibleStateStatusByID: [String: String] = [:]
             for state in stateCandidates {
+                let stateIdentity = CandidateIdentity(state)
                 guard state.isEligibleForAutoSelection else {
-                    unselectedStatusByID[state.id] = "not_selected__state_candidate_ineligible"
+                    let isConsumedContinuityAudit =
+                        state.stateContinuityAuthorityFrozen &&
+                        state.decisionPath.split(separator: ";").contains {
+                            $0 == "state_continuity_consumed=true"
+                        }
+                    unselectedStatusByIdentity[stateIdentity] = isConsumedContinuityAudit
+                        ? state.selectionStatus
+                        : "not_selected__state_candidate_ineligible"
                     continue
                 }
                 // An embedded tonic window fully contained inside a strong HF state belongs to
                 // the HF envelope; demote it so it cannot out-vote the long HF state.
                 if state.finalLabel == .tonic,
                    strongHFStates.contains(where: { $0.id != state.id && fullyContains($0, state) }) {
-                    unselectedStatusByID[state.id] = "not_selected__contained_in_strong_hf_state"
+                    unselectedStatusByIdentity[stateIdentity] = "not_selected__contained_in_strong_hf_state"
                     continue
                 }
                 let status = stateSelectionStatus(
@@ -135,18 +170,19 @@ public enum ClassicAnchorCandidateArbitrator {
                     compatibleStateCandidates.append(state)
                     compatibleStateStatusByID[state.id] = status.selectionStatus
                 } else {
-                    unselectedStatusByID[state.id] = status.selectionStatus
+                    unselectedStatusByIdentity[stateIdentity] = status.selectionStatus
                 }
             }
 
             let stateSelectionIDs = weightedSelectionIDs(for: compatibleStateCandidates)
             for state in compatibleStateCandidates {
+                let stateIdentity = CandidateIdentity(state)
                 if stateSelectionIDs.contains(state.id) {
-                    selectedStatusByID[state.id] =
+                    selectedStatusByIdentity[stateIdentity] =
                         compatibleStateStatusByID[state.id] ??
                         "selected_by_state_track_weighted_interval_grammar"
                 } else {
-                    unselectedStatusByID[state.id] =
+                    unselectedStatusByIdentity[stateIdentity] =
                         "not_selected__state_track_weighted_interval_grammar"
                 }
             }
@@ -168,29 +204,33 @@ public enum ClassicAnchorCandidateArbitrator {
                     }) else {
                         continue
                     }
-                    selectedStatusByID.removeValue(forKey: hfs.id)
-                    unselectedStatusByID[hfs.id] = "not_selected__hfs_burst_packet_dominance"
+                    let hfsIdentity = CandidateIdentity(hfs)
+                    selectedStatusByIdentity.removeValue(forKey: hfsIdentity)
+                    unselectedStatusByIdentity[hfsIdentity] = "not_selected__hfs_burst_packet_dominance"
                 }
             }
 
             let selectedStateCandidates = compatibleStateCandidates.filter { state in
                 stateSelectionIDs.contains(state.id) &&
-                    selectedStatusByID[state.id] != nil
+                    selectedStatusByIdentity[CandidateIdentity(state)] != nil
             }
             if !selectedStateCandidates.isEmpty {
                 for gap in selectedGaps {
                     guard selectedStateCandidates.contains(where: { overlapCount(gap, $0) > 0 }) else {
                         continue
                     }
-                    selectedStatusByID.removeValue(forKey: gap.id)
-                    unselectedStatusByID[gap.id] = "not_selected__gap_track_overlapped_higher_priority_state_track"
+                    let gapIdentity = CandidateIdentity(gap)
+                    selectedStatusByIdentity.removeValue(forKey: gapIdentity)
+                    unselectedStatusByIdentity[gapIdentity] =
+                        "not_selected__gap_track_overlapped_higher_priority_state_track"
                 }
             }
         }
 
         return candidates.map { candidate -> ClassicAnchorCandidate in
+            let identity = CandidateIdentity(candidate)
             let resolved: ClassicAnchorCandidate
-            if let selectionStatus = selectedStatusByID[candidate.id] {
+            if let selectionStatus = selectedStatusByIdentity[identity] {
                 resolved = candidate.withAutoSelection(
                     selectedForAuto: true,
                     selectionStatus: selectionStatus
@@ -198,12 +238,12 @@ public enum ClassicAnchorCandidateArbitrator {
             } else {
                 resolved = candidate.withAutoSelection(
                     selectedForAuto: false,
-                    selectionStatus: unselectedStatusByID[candidate.id] ?? "not_selected"
+                    selectionStatus: unselectedStatusByIdentity[identity] ?? "not_selected"
                 )
             }
             // Audit-only: a burst event inside a strong HF envelope is an HF burst packet. It
             // stays a burst event (finalLabel unchanged); only the additive subtype is set.
-            guard hfBurstPacketIDs.contains(candidate.id), resolved.stateHighFrequencySubtype == nil else {
+            guard hfBurstPacketIdentities.contains(identity), resolved.stateHighFrequencySubtype == nil else {
                 return resolved
             }
             var tagged = resolved
@@ -572,7 +612,8 @@ public extension ClassicAnchorCandidate {
     var isEligibleForAutoSelection: Bool {
         let normalizedAction = action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let normalizedGate = gateStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard finalLabel != .profile,
+        guard !stateContinuityAuthorityFrozen,
+              finalLabel != .profile,
               normalizedAction != "reject",
               normalizedAction != "audit_only",
               normalizedAction != "profile",
@@ -839,6 +880,8 @@ public extension ClassicAnchorCandidate {
             stateLocalStabilityScore: stateLocalStabilityScore,
             stateCoreBurstRunLength: stateCoreBurstRunLength,
             stateTonicSubtype: stateTonicSubtype,
+            stateContinuityAuthorityFrozen: stateContinuityAuthorityFrozen,
+            stateContinuityMergeTerminal: stateContinuityMergeTerminal,
             stateHighFrequencySubtype: stateHighFrequencySubtype,
             stateTrainPercentileMedian: stateTrainPercentileMedian,
             stateLocalPercentileMedian: stateLocalPercentileMedian,
@@ -985,6 +1028,8 @@ public extension ClassicAnchorCandidate {
             stateLocalStabilityScore: stateLocalStabilityScore,
             stateCoreBurstRunLength: stateCoreBurstRunLength,
             stateTonicSubtype: stateTonicSubtype,
+            stateContinuityAuthorityFrozen: stateContinuityAuthorityFrozen,
+            stateContinuityMergeTerminal: stateContinuityMergeTerminal,
             stateHighFrequencySubtype: stateHighFrequencySubtype,
             stateTrainPercentileMedian: stateTrainPercentileMedian,
             stateLocalPercentileMedian: stateLocalPercentileMedian,
@@ -1136,6 +1181,8 @@ public extension ClassicAnchorCandidate {
             stateLocalStabilityScore: stateLocalStabilityScore,
             stateCoreBurstRunLength: stateCoreBurstRunLength,
             stateTonicSubtype: stateTonicSubtype,
+            stateContinuityAuthorityFrozen: stateContinuityAuthorityFrozen,
+            stateContinuityMergeTerminal: stateContinuityMergeTerminal,
             stateHighFrequencySubtype: stateHighFrequencySubtype,
             stateTrainPercentileMedian: stateTrainPercentileMedian,
             stateLocalPercentileMedian: stateLocalPercentileMedian,

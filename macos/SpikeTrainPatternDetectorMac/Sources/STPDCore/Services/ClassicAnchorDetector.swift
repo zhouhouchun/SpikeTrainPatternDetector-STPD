@@ -382,6 +382,14 @@ public struct ClassicAnchorCandidate: Identifiable, Hashable, Sendable {
     /// Auditable only — `finalLabel` is unchanged, so arbitration/UI/CSV consumers keep
     /// working; this field exposes the biological tonic-family distinction.
     public var stateTonicSubtype: String? = nil
+    /// A typed, durable authority marker for state-track candidates that lost the
+    /// pre-continuity arbitration. Frozen candidates remain audit-visible but are
+    /// never eligible for later auto-selection or continuity merging.
+    public var stateContinuityAuthorityFrozen: Bool = false
+    /// A successful continuity merge is terminal for later continuity passes. It remains
+    /// eligible for ordinary state selection, but cannot be treated as a fresh fragment and
+    /// thereby lose the leaf-rate and cumulative-gap evidence from its original merge.
+    public var stateContinuityMergeTerminal: Bool = false
     /// High-frequency family subtype, additive and `finalLabel`-preserving. One of:
     /// `"hf_tonic_spiking"` (sustained regular HF, i.e. `.highFrequencyTonic`),
     /// `"hf_irregular_spiking"` (sustained irregular HF state, i.e. non-burst-dominated

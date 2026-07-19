@@ -29,6 +29,9 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     public var irregularTonicCVMax: Double
     public var irregularTonicCV2Max: Double
     public var irregularTonicLVMax: Double
+    /// Maximum scale-free separation between robust median ISIs of irregular-tonic
+    /// fragments that may be joined by the continuity pass.
+    public var irregularTonicFragmentMedianRatioMax: Double
     public var tonicBurstSeedFractionMax: Double
     public var highFrequencyTonicFloorSec: Double
     public var highFrequencyTonicUpperSec: Double
@@ -86,6 +89,7 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         irregularTonicCVMax: Double = 0.60,
         irregularTonicCV2Max: Double = 0.60,
         irregularTonicLVMax: Double = 0.80,
+        irregularTonicFragmentMedianRatioMax: Double = 1.35,
         tonicBurstSeedFractionMax: Double = 0.20,
         highFrequencyTonicFloorSec: Double = 0,
         highFrequencyTonicUpperSec: Double = 0,
@@ -130,6 +134,10 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
         self.irregularTonicCVMax = max(self.tonicCVMax, positive(irregularTonicCVMax, fallback: 0.60))
         self.irregularTonicCV2Max = max(self.tonicCV2Max, positive(irregularTonicCV2Max, fallback: 0.60))
         self.irregularTonicLVMax = max(self.tonicLVMax, positive(irregularTonicLVMax, fallback: 0.80))
+        self.irregularTonicFragmentMedianRatioMax = max(
+            1,
+            positive(irregularTonicFragmentMedianRatioMax, fallback: 1.35)
+        )
         self.tonicBurstSeedFractionMax = clampedFraction(tonicBurstSeedFractionMax, fallback: 0.20)
         self.highFrequencyTonicFloorSec = positive(highFrequencyTonicFloorSec, fallback: self.minValidISISec)
         self.highFrequencyTonicUpperSec = max(
@@ -224,6 +232,32 @@ public struct StatePatternDetectorTuning: Hashable, Sendable {
 }
 
 public enum StatePatternDetector {
+    struct CandidateIdentity: Hashable, Sendable {
+        let trainID: String
+        let candidateID: String
+
+        init(trainID: String, candidateID: String) {
+            self.trainID = trainID
+            self.candidateID = candidateID
+        }
+
+        init(_ candidate: ClassicAnchorCandidate) {
+            self.init(trainID: candidate.trainID, candidateID: candidate.id)
+        }
+    }
+
+    struct IrregularTonicMicroGapMergeResult: Sendable {
+        let candidates: [ClassicAnchorCandidate]
+        let generatedCandidateIdentities: Set<CandidateIdentity>
+        let consumedCandidateIdentities: Set<CandidateIdentity>
+    }
+
+    private struct TonicMicroGapBoundaryEvidence {
+        let count: Int
+        let maxISISec: Double
+        let capSec: Double
+    }
+
     public static func detect(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings = StatePatternDetectorSettings()
@@ -291,25 +325,59 @@ public enum StatePatternDetector {
     /// Conservatively merge adjacent selectable irregular-tonic state fragments of the same
     /// train across a tiny, non-event, non-pause gap. State-level continuity only — not a
     /// threshold relaxation. The merged span is re-validated through the same tonic-family
-    /// structural-eligibility and irregular regularity gates; the child fragments are consumed
-    /// (removed) so the merged state is selected deterministically over them.
+    /// structural-eligibility and irregular regularity gates. The convenience projection omits
+    /// consumed child fragments, while the resolver's detailed result retains them as frozen,
+    /// non-selectable audit records so their original metrics remain inspectable.
     ///
     /// A large gap is never bridged just because the neighbors are irregular tonic: selected
-    /// pauses, selected burst-family events, and HFS / HF-tonic regions inside the gap block
+    /// pauses, selected burst-family events, and any already-selected state inside the gap block
     /// the merge, and the gap must also satisfy the adaptive micro-gap cap.
+    /// Only fragments explicitly authorized by the caller's prior selection pass may
+    /// participate; an empty authorization set disables the merge. This prevents an
+    /// unselected proposal from being re-promoted by the continuity pass. The bridge-count
+    /// limit applies at each boundary, while the whole-span bridge fraction limits cumulative
+    /// bridging across a longer chain.
     public static func mergeIrregularTonicMicroGaps(
         train: SpikeTrain,
         candidates: [ClassicAnchorCandidate],
         selectedEvents: [ClassicAnchorCandidate],
         selectedGaps: [ClassicAnchorCandidate],
-        settings: StatePatternDetectorSettings
+        settings: StatePatternDetectorSettings,
+        authorizedFragmentIDs: Set<String> = []
     ) -> [ClassicAnchorCandidate] {
+        let result = mergeIrregularTonicMicroGapsWithAuthority(
+            train: train,
+            candidates: candidates,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: settings,
+            authorizedFragmentIDs: authorizedFragmentIDs
+        )
+        return result.candidates.filter {
+            let identity = CandidateIdentity($0)
+            return result.generatedCandidateIdentities.contains(identity) ||
+                !result.consumedCandidateIdentities.contains(identity)
+        }
+    }
+
+    /// Detailed continuity result used by the resolver. Generated identities are
+    /// first-class authority; provenance text never grants selection authority.
+    static func mergeIrregularTonicMicroGapsWithAuthority(
+        train: SpikeTrain,
+        candidates: [ClassicAnchorCandidate],
+        selectedEvents: [ClassicAnchorCandidate],
+        selectedGaps: [ClassicAnchorCandidate],
+        settings: StatePatternDetectorSettings,
+        authorizedFragmentIDs: Set<String>
+    ) -> IrregularTonicMicroGapMergeResult {
         let fragments = candidates
             .filter {
                 $0.trainID == train.id &&
                     $0.finalLabel == .tonic &&
                     $0.stateTonicSubtype == "irregular" &&
-                    $0.isEligibleForAutoSelection
+                    !$0.stateContinuityMergeTerminal &&
+                    $0.isEligibleForAutoSelection &&
+                    authorizedFragmentIDs.contains($0.id)
             }
             .sorted {
                 if $0.startISIIndex != $1.startISIIndex {
@@ -318,7 +386,11 @@ public enum StatePatternDetector {
                 return $0.endISIIndex < $1.endISIIndex
             }
         guard fragments.count >= 2 else {
-            return candidates
+            return IrregularTonicMicroGapMergeResult(
+                candidates: candidates,
+                generatedCandidateIdentities: [],
+                consumedCandidateIdentities: []
+            )
         }
 
         let localContext = SpikeISILocalContextTable.build(
@@ -337,16 +409,27 @@ public enum StatePatternDetector {
             return isTonicStructuralSupport(index: index, value: value, bounds: bounds, localContext: localContext)
         }
 
-        var consumed = Set<String>()
+        var consumed = Set<CandidateIdentity>()
         var mergedCandidates: [ClassicAnchorCandidate] = []
 
         var i = 0
         while i < fragments.count {
             let first = fragments[i]
-            var accStart = min(first.startISIIndex, first.endISIIndex)
+            let accStart = min(first.startISIIndex, first.endISIIndex)
             var accEnd = max(first.startISIIndex, first.endISIIndex)
             var childIDs = [first.id]
+            guard let firstMedian = fragmentMedianSec(
+                train: train,
+                start: accStart,
+                end: accEnd,
+                settings: settings
+            ) else {
+                i += 1
+                continue
+            }
+            var childMediansSec = [firstMedian]
             var gapISIs: [Double] = []
+            var gapBoundaries: [TonicMicroGapBoundaryEvidence] = []
             var bestMerge: ClassicAnchorCandidate?
 
             var j = i + 1
@@ -355,6 +438,12 @@ public enum StatePatternDetector {
                 let nextStart = min(next.startISIIndex, next.endISIIndex)
                 let nextEnd = max(next.startISIIndex, next.endISIIndex)
                 guard nextStart > accEnd else { break }
+                guard let nextMedian = fragmentMedianSec(
+                    train: train,
+                    start: nextStart,
+                    end: nextEnd,
+                    settings: settings
+                ) else { break }
 
                 let gapLower = accEnd + 1
                 let gapUpper = nextStart - 1
@@ -367,7 +456,14 @@ public enum StatePatternDetector {
                     : []
                 let gapCount = hasGap ? (gapUpper - gapLower + 1) : 0
 
+                // `compactMap` must never make an invalid/sub-floor ISI disappear and thereby
+                // turn a real structural break into an apparently empty, mergeable gap.
+                guard gapISIValues.count == gapCount else {
+                    break
+                }
+
                 if hasGap, microGapBlockedByBoundary(
+                    trainID: train.id,
                     gapLower: gapLower,
                     gapUpper: gapUpper,
                     selectedEvents: selectedEvents,
@@ -384,6 +480,11 @@ public enum StatePatternDetector {
                     settings: settings
                 )
                 let maxGap = gapISIValues.max() ?? 0
+                let boundaryEvidence = TonicMicroGapBoundaryEvidence(
+                    count: gapCount,
+                    maxISISec: maxGap,
+                    capSec: cap
+                )
                 // Respect tonicMaxBridgeISI exactly: 0 disables bridging entirely (only directly
                 // adjacent fragments with no intervening gap may merge), and never allows more
                 // intervening ISIs than the setting permits.
@@ -398,9 +499,10 @@ public enum StatePatternDetector {
                     settings: settings, localContext: localContext,
                     bounds: bounds, strictFlags: strictFlags,
                     childIDs: childIDs + [next.id],
+                    childMediansSec: childMediansSec + [nextMedian],
                     gapISIs: gapISIs + gapISIValues,
-                    gapCount: gapISIs.count + gapCount,
-                    cap: cap
+                    gapBoundaries: gapBoundaries + [boundaryEvidence],
+                    gapCount: gapISIs.count + gapCount
                 ) else {
                     break
                 }
@@ -408,13 +510,19 @@ public enum StatePatternDetector {
                 bestMerge = merged
                 accEnd = nextEnd
                 childIDs.append(next.id)
+                childMediansSec.append(nextMedian)
                 gapISIs.append(contentsOf: gapISIValues)
+                gapBoundaries.append(boundaryEvidence)
                 j += 1
             }
 
             if let merged = bestMerge, childIDs.count >= 2 {
                 mergedCandidates.append(merged)
-                consumed.formUnion(childIDs)
+                consumed.formUnion(
+                    childIDs.map {
+                        CandidateIdentity(trainID: train.id, candidateID: $0)
+                    }
+                )
                 i = j
             } else {
                 i += 1
@@ -422,12 +530,49 @@ public enum StatePatternDetector {
         }
 
         guard !mergedCandidates.isEmpty else {
-            return candidates
+            return IrregularTonicMicroGapMergeResult(
+                candidates: candidates,
+                generatedCandidateIdentities: [],
+                consumedCandidateIdentities: []
+            )
         }
-        return candidates.filter { !consumed.contains($0.id) } + mergedCandidates
+        let generatedIdentities = Set(mergedCandidates.map(CandidateIdentity.init))
+        let retainedCandidates = candidates.compactMap { candidate -> ClassicAnchorCandidate? in
+            let identity = CandidateIdentity(candidate)
+            guard !generatedIdentities.contains(identity) else {
+                return nil
+            }
+            guard consumed.contains(identity) else {
+                return candidate
+            }
+            var auditCandidate = candidate.withDiagnosticOverride(
+                decisionPath: appendingDecisionToken(
+                    "state_continuity_consumed=true",
+                    to: candidate.decisionPath
+                ),
+                selectedForAuto: false,
+                selectionStatus: "not_selected__consumed_by_irregular_tonic_micro_gap_merge"
+            )
+            auditCandidate.stateContinuityAuthorityFrozen = true
+            return auditCandidate
+        }
+        return IrregularTonicMicroGapMergeResult(
+            candidates: retainedCandidates + mergedCandidates,
+            generatedCandidateIdentities: generatedIdentities,
+            consumedCandidateIdentities: consumed
+        )
+    }
+
+    private static func appendingDecisionToken(_ token: String, to decisionPath: String) -> String {
+        let tokens = decisionPath.split(separator: ";").map(String.init)
+        guard !tokens.contains(token) else {
+            return decisionPath
+        }
+        return decisionPath.isEmpty ? token : "\(decisionPath);\(token)"
     }
 
     private static func microGapBlockedByBoundary(
+        trainID: String,
         gapLower: Int,
         gapUpper: Int,
         selectedEvents: [ClassicAnchorCandidate],
@@ -436,6 +581,7 @@ public enum StatePatternDetector {
     ) -> Bool {
         guard gapLower <= gapUpper else { return false }
         func overlapsGap(_ candidate: ClassicAnchorCandidate) -> Bool {
+            guard candidate.trainID == trainID else { return false }
             let start = min(candidate.startISIIndex, candidate.endISIIndex)
             let end = max(candidate.startISIIndex, candidate.endISIIndex)
             return start <= gapUpper && end >= gapLower
@@ -446,9 +592,14 @@ public enum StatePatternDetector {
         if selectedEvents.contains(where: { $0.finalLabel.isBurstEventFamily && overlapsGap($0) }) {
             return true
         }
+        // A selected state is already authoritative evidence for the gap's identity. Treating
+        // only HFS / HF-tonic as blockers would let a selected classic-tonic rate regime vanish
+        // inside an irregular-tonic merge without participating in the rate-continuity test.
         if candidates.contains(where: {
-            ($0.finalLabel == .highFrequencySpiking || $0.finalLabel == .highFrequencyTonic) &&
-                $0.isEligibleForAutoSelection && overlapsGap($0)
+            $0.arbitrationTrack == .state &&
+                $0.selectedForAuto &&
+                $0.isEligibleForAutoSelection &&
+                overlapsGap($0)
         }) {
             return true
         }
@@ -485,6 +636,19 @@ public enum StatePatternDetector {
         }
     }
 
+    private static func fragmentMedianSec(
+        train: SpikeTrain,
+        start: Int,
+        end: Int,
+        settings: StatePatternDetectorSettings
+    ) -> Double? {
+        guard start > 0, start <= end else { return nil }
+        let expectedCount = end - start + 1
+        let values = microGapISIValues(train: train, start: start, end: end, settings: settings)
+        guard values.count == expectedCount else { return nil }
+        return quantile(values, probability: 0.50)
+    }
+
     private static func revalidatedIrregularTonicMerge(
         train: SpikeTrain,
         start: Int, end: Int,
@@ -493,19 +657,68 @@ public enum StatePatternDetector {
         bounds: (lower: Double, upper: Double),
         strictFlags: [Bool],
         childIDs: [String],
+        childMediansSec: [Double],
         gapISIs: [Double],
-        gapCount: Int,
-        cap: Double
+        gapBoundaries: [TonicMicroGapBoundaryEvidence],
+        gapCount: Int
     ) -> ClassicAnchorCandidate? {
         let run = (start: start, end: end)
         guard let metrics = metrics(train: train, run: run, settings: settings, localContext: localContext),
-              metrics.nSpikes >= settings.tonicMinSpikes else {
+              metrics.nSpikes >= settings.tonicMinSpikes,
+              metrics.nValidISI == metrics.nISI else {
+            return nil
+        }
+
+        // A manual hard gate is an absolute user constraint, not a bridge-tolerance hint.
+        // Every ISI in the merged span, including the gap, must remain inside the hard band.
+        let manualLower = settings.manualTonicHardLowerSec
+        let manualUpper = settings.manualTonicHardUpperSec
+        let manualGateConfigured = manualLower != nil || manualUpper != nil
+        let manualGateDefinitionValid =
+            (manualLower.map { $0.isFinite && $0 >= 0 } ?? true) &&
+            (manualUpper.map { $0.isFinite && $0 >= 0 } ?? true) &&
+            {
+                guard let lower = manualLower, let upper = manualUpper else { return true }
+                return lower <= upper
+            }()
+        guard manualGateDefinitionValid else { return nil }
+        let manualGatePass = metrics.values.allSatisfy { value in
+            if let lower = manualLower,
+               value < lower - tolerance(for: lower) {
+                return false
+            }
+            if let upper = manualUpper,
+               value > upper + tolerance(for: upper) {
+                return false
+            }
+            return true
+        }
+        guard manualGatePass else { return nil }
+
+        // CV2/LV can dilute one rate transition across a long merged span. Compare the
+        // child fragments' robust locations directly on the log-ISI scale so distinct
+        // tonic rate regimes cannot merge merely because each regime is internally smooth.
+        guard childMediansSec.count == childIDs.count,
+              childMediansSec.allSatisfy({ $0.isFinite && $0 > 0 }) else {
+            return nil
+        }
+        let logMedians = childMediansSec.map { log($0) }
+        guard let minLogMedian = logMedians.min(),
+              let maxLogMedian = logMedians.max() else {
+            return nil
+        }
+        let fragmentMedianLogSpan = maxLogMedian - minLogMedian
+        let fragmentMedianRatio = exp(fragmentMedianLogSpan)
+        guard fragmentMedianRatio <= settings.irregularTonicFragmentMedianRatioMax + 1e-12 else {
             return nil
         }
 
         let bridgeCount = tonicBridgeCount(run: run, strictFlags: strictFlags)
         let bridgeFraction = Double(bridgeCount) / Double(max(1, metrics.nValidISI))
-        let bridgeFractionPass = bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12
+        let mergedGapFraction = Double(gapCount) / Double(max(1, metrics.nValidISI))
+        let bridgeFractionPass =
+            bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12 &&
+            mergedGapFraction <= settings.tonicBridgeFractionMax + 1e-12
         let burstSeedFraction = fraction(metrics.values) {
             $0 <= settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec)
         }
@@ -537,6 +750,10 @@ public enum StatePatternDetector {
             metrics.lv.map { 1 / (1 + $0) }
         ].compactMap { $0 }) ?? 0
         let maxGap = gapISIs.max() ?? 0
+        let maxBoundaryCap = gapBoundaries.map(\.capSec).max() ?? 0
+        let boundaryEvidenceToken = gapBoundaries.map {
+            "n=\($0.count),max=\(format($0.maxISISec)),cap=\(format($0.capSec))"
+        }.joined(separator: "|")
         let decisionPath = stateDecisionPath(
             base: "irregular_tonic_micro_gap_merge_state",
             metrics: metrics,
@@ -547,8 +764,18 @@ public enum StatePatternDetector {
                 "merged_fragment_count=\(childIDs.count)",
                 "merged_gap_count=\(gapCount)",
                 "max_merged_gap_sec=\(format(maxGap))",
-                "micro_gap_cap_sec=\(format(cap))",
+                "micro_gap_cap_sec=\(format(maxBoundaryCap))",
+                "micro_gap_cap_summary=max_boundary_cap",
+                "micro_gap_boundary_evidence=\(boundaryEvidenceToken)",
                 "micro_gap_source=adaptive_neighbor_tonic_scale",
+                "merge_fragment_authority=caller_authorized_fragment_ids",
+                "merged_span_qc_complete=true",
+                "manual_tonic_hard_gate_status=\(manualGateConfigured ? "configured_pass" : "not_configured")",
+                "fragment_rate_continuity_pass=true",
+                "fragment_median_ratio=\(format(fragmentMedianRatio))",
+                "fragment_median_ratio_max=\(format(settings.irregularTonicFragmentMedianRatioMax))",
+                "fragment_median_log_span=\(format(fragmentMedianLogSpan))",
+                "fragment_medians_sec=\(childMediansSec.map { format($0) }.joined(separator: "|"))",
                 "merged_child_ids=\(childIDs.joined(separator: "|"))",
                 "cv=\(format(metrics.cv))",
                 "cv2=\(format(metrics.cv2))",
@@ -558,13 +785,14 @@ public enum StatePatternDetector {
                 "core_burst_run_length=\(coreRunLength)",
                 "fast_packet_fraction=\(format(fastPacketFraction))",
                 "bridge_fraction=\(format(bridgeFraction))",
+                "merged_gap_fraction=\(format(mergedGapFraction))",
                 "classic_regularity_pass=\(classicRegularityPass)",
                 "irregular_regularity_pass=\(irregularRegularityPass)",
                 "tonic_family_structural_eligibility_pass=\(structuralEligibilityPass)"
             ]
         )
         let score = 3 + regularityScore + localStabilityScore(metrics)
-        return candidate(
+        var mergedCandidate = candidate(
             train: train,
             run: run,
             metrics: metrics,
@@ -586,6 +814,8 @@ public enum StatePatternDetector {
             index: 0,
             id: "\(train.id)-irregular-tonic-micro-merge-\(start)-\(end)"
         )
+        mergedCandidate.stateContinuityMergeTerminal = true
+        return mergedCandidate
     }
 
     /// Context-sharing overload used by `StateEventCompatibilityResolver` when
@@ -627,9 +857,10 @@ public enum StatePatternDetector {
             "fragment_n_spikes=\(metrics.nSpikes)"
         ]
 
+        let rebuilt: ClassicAnchorCandidate?
         switch parent.finalLabel {
         case .tonic:
-            return rebuildTonicSplitCandidate(
+            rebuilt = rebuildTonicSplitCandidate(
                 train: train,
                 parent: parent,
                 run: (range.lowerBound, range.upperBound),
@@ -640,7 +871,7 @@ public enum StatePatternDetector {
             )
 
         case .highFrequencyTonic:
-            return rebuildHighFrequencyTonicSplitCandidate(
+            rebuilt = rebuildHighFrequencyTonicSplitCandidate(
                 train: train,
                 parent: parent,
                 run: (range.lowerBound, range.upperBound),
@@ -651,7 +882,7 @@ public enum StatePatternDetector {
             )
 
         case .highFrequencySpiking:
-            return rebuildHighFrequencySpikingSplitCandidate(
+            rebuilt = rebuildHighFrequencySpikingSplitCandidate(
                 train: train,
                 parent: parent,
                 run: (range.lowerBound, range.upperBound),
@@ -662,8 +893,16 @@ public enum StatePatternDetector {
             )
 
         default:
+            rebuilt = nil
+        }
+        guard var rebuilt else {
             return nil
         }
+        // A split changes geometry, not authority. Never let a later state split thaw a
+        // pre-continuity loser or erase terminal merge lineage.
+        rebuilt.stateContinuityAuthorityFrozen = parent.stateContinuityAuthorityFrozen
+        rebuilt.stateContinuityMergeTerminal = parent.stateContinuityMergeTerminal
+        return rebuilt
     }
 
     private struct StateMetrics {
