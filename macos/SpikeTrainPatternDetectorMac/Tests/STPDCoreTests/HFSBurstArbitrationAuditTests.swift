@@ -222,7 +222,6 @@ final class HFSBurstArbitrationAuditTests: XCTestCase {
             meanIntraISISec: q50,
             cv: cv,
             lv: 0.10,
-            mm: 1.0,
             preGapSec: nil,
             postGapSec: nil,
             preRatioQ90: nil,

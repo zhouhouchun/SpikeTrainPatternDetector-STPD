@@ -150,8 +150,6 @@ struct DetectorParametersView: View {
                     doubleParameter("CV max", keyPath: \.detectorTonicCVMax, lower: 0.01, upper: 5)
                     doubleParameter("CV2 max", keyPath: \.detectorTonicCV2Max, lower: 0.01, upper: 5)
                     doubleParameter("LV max", keyPath: \.detectorTonicLVMax, lower: 0.01, upper: 5)
-                    doubleParameter("MM min", keyPath: \.detectorTonicMMMin, lower: 0.01, upper: 10)
-                    doubleParameter("MM max", keyPath: \.detectorTonicMMMax, lower: document.detectorTonicMMMin, upper: 10)
                     doubleParameter("Burst frac", keyPath: \.detectorTonicBurstSeedFractionMax, lower: 0, upper: 1)
                 }
 
@@ -161,7 +159,6 @@ struct DetectorParametersView: View {
                     doubleParameter("CV max", keyPath: \.detectorHighFrequencyTonicCVMax, lower: 0.01, upper: 5)
                     doubleParameter("CV2 max", keyPath: \.detectorHighFrequencyTonicCV2Max, lower: 0.01, upper: 5)
                     doubleParameter("LV max", keyPath: \.detectorHighFrequencyTonicLVMax, lower: 0.01, upper: 5)
-                    doubleParameter("MM max", keyPath: \.detectorHighFrequencyTonicMMMax, lower: 0.01, upper: 10)
                 }
 
                 parameterCard(title: "HFS") {

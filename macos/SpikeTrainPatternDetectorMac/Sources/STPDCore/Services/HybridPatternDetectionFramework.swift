@@ -177,7 +177,10 @@ public enum HybridPatternDetectionFramework {
         qualitySettings: SpikeQualitySettings = SpikeQualitySettings(),
         refractoryAction: ClassicAnchorRefractoryAction = .warnOnly,
         stateTuning: StatePatternDetectorTuning = StatePatternDetectorTuning(),
-        detectorParameters: PatternDetectionParameterSettings = .defaults
+        detectorParameters: PatternDetectionParameterSettings = .defaults,
+        manualThresholdProfile: ManualThresholdProfile = .automatic,
+        useAdaptiveV2Canonicalization: Bool = false,
+        manualThresholdScope: ManualThresholdScope = .allTrains
     ) -> ClassicAnchorDetectionRun {
         let run = ClassicAnchorDetectionPipeline.run(
             dataset: dataset,
@@ -186,7 +189,10 @@ public enum HybridPatternDetectionFramework {
             refractoryAction: refractoryAction,
             stateTuning: stateTuning,
             detectorParameters: detectorParameters,
-            frameworkPolicy: plan.policy
+            manualThresholdProfile: manualThresholdProfile,
+            frameworkPolicy: plan.policy,
+            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+            manualThresholdScope: manualThresholdScope
         )
         return tagRun(run, plan: plan)
     }

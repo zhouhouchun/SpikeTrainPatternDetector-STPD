@@ -108,15 +108,12 @@ final class RasterDocument {
     var detectorTonicCVMax = 0.30
     var detectorTonicCV2Max = 0.30
     var detectorTonicLVMax = 0.35
-    var detectorTonicMMMin = 0.85
-    var detectorTonicMMMax = 1.25
     var detectorTonicBurstSeedFractionMax = 0.20
     var detectorHighFrequencyTonicMinSpikes = 6
     var detectorHighFrequencyTonicLowTailFractionMax = 0.05
     var detectorHighFrequencyTonicCVMax = 0.30
     var detectorHighFrequencyTonicCV2Max = 0.30
     var detectorHighFrequencyTonicLVMax = 0.35
-    var detectorHighFrequencyTonicMMMax = 1.25
     var detectorHighFrequencySpikingMinSpikes = 30
     var detectorHighFrequencySpikingShortFractionMin = 0.70
     var detectorHighFrequencySpikingAllowedLargeFraction = 0.25
@@ -173,15 +170,12 @@ final class RasterDocument {
             tonicCVMax: detectorTonicCVMax,
             tonicCV2Max: detectorTonicCV2Max,
             tonicLVMax: detectorTonicLVMax,
-            tonicMMMin: detectorTonicMMMin,
-            tonicMMMax: detectorTonicMMMax,
             tonicBurstSeedFractionMax: detectorTonicBurstSeedFractionMax,
             highFrequencyTonicMinSpikes: detectorHighFrequencyTonicMinSpikes,
             highFrequencyTonicLowTailFractionMax: detectorHighFrequencyTonicLowTailFractionMax,
             highFrequencyTonicCVMax: detectorHighFrequencyTonicCVMax,
             highFrequencyTonicCV2Max: detectorHighFrequencyTonicCV2Max,
             highFrequencyTonicLVMax: detectorHighFrequencyTonicLVMax,
-            highFrequencyTonicMMMax: detectorHighFrequencyTonicMMMax,
             highFrequencySpikingMinSpikes: detectorHighFrequencySpikingMinSpikes,
             highFrequencySpikingShortFractionMin: detectorHighFrequencySpikingShortFractionMin,
             highFrequencySpikingAllowedLargeFraction: detectorHighFrequencySpikingAllowedLargeFraction,

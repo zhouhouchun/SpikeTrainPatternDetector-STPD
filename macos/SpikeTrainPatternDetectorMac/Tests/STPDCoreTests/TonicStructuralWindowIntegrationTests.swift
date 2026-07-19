@@ -263,8 +263,24 @@ private func tswiShortContextCanonical(_ train: SpikeTrain) -> [ClassicAnchorCan
 // canonical tonic — the dominant tonic is not a tight classic mode (dominant_tonic_classic=false).
 @Test
 func tswShortTonicRejectedInHighJitterTrain() {
-    var sim = SpikeTrainSimulator(seed: 42)
-    let train = sim.tonicTrain(durationSec: 30, sdSec: 0.30, lowerSec: 0.05, upperSec: 2.0)
+    // Frozen output of the former seed-42 high-jitter simulator fixture. Keeping the
+    // realized ISIs here makes this detector regression self-contained: simulator
+    // implementation/adoption is a separate concern and cannot silently change the case.
+    let isis: [Double] = [
+        0.574415925, 0.182434136, 0.968877926, 0.613686131, 0.125876114,
+        0.106314471, 0.528135162, 0.205516571, 0.529430236, 0.228652437,
+        0.332062653, 0.501269001, 0.414343994, 0.560963677, 0.506169297,
+        0.242468109, 0.378973948, 0.635634334, 0.632759140, 0.524965406,
+        0.333194065, 0.866998061, 0.794269035, 0.609836695, 0.202559216,
+        0.806443170, 0.204400962, 0.601769593, 0.931008429, 0.736730503,
+        0.128288555, 0.432370773, 0.577834984, 0.384837552, 0.741045718,
+        0.532155165, 0.688697885, 0.341840365, 0.156338747, 0.515865266,
+        0.420259752, 0.414452713, 0.234693956, 0.692890440, 0.512464978,
+        0.486116647, 0.580948189, 0.527463865, 0.688056391, 0.670899940,
+        0.909323739, 0.051609332, 0.804506622, 0.803956171, 0.535069359,
+        0.859936460, 0.875033092, 0.242735822,
+    ]
+    let train = tswiTrain("high_jitter_seed_42", isis)
     #expect(tswiShortContextCanonical(train).isEmpty)
     // Any short island it did scan is at most possible_tonic_review, never canonical tonic.
     let review = StatePatternDetector.detect(train: train).candidates

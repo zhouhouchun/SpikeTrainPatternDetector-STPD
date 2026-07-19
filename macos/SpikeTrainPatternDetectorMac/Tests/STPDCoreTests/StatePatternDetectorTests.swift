@@ -841,7 +841,6 @@ private func testCandidate(
         meanIntraISISec: nil,
         cv: nil,
         lv: nil,
-        mm: nil,
         preGapSec: nil,
         postGapSec: nil,
         preRatioQ90: nil,

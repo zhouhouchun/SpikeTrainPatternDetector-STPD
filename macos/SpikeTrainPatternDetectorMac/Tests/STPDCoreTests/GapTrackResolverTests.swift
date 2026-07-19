@@ -330,7 +330,6 @@ final class GapTrackResolverTests: XCTestCase {
             meanIntraISISec: 0.01,
             cv: 0.1,
             lv: 0.1,
-            mm: 0.1,
             preGapSec: nil,
             postGapSec: nil,
             preRatioQ90: nil,
