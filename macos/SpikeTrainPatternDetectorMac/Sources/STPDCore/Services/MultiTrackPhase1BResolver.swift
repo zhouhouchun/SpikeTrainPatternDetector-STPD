@@ -5,8 +5,8 @@ import Foundation
 /// The order is intentional:
 /// 1. select events and initial gaps;
 /// 2. complete the monotonic pause floor;
-/// 3. reselect the final event/gap tracks;
-/// 4. split states at selected gap/event boundaries;
+/// 3. reselect authoritative event/gap tracks independently of state;
+/// 4. split states at selected gap/event boundaries and consume spanning parents;
 /// 5. resolve HFS packet dominance from selected canonical events;
 /// 6. merge caller-authorized irregular-tonic fragments with full-span revalidation;
 /// 7. perform final four-track arbitration.
@@ -81,41 +81,60 @@ public enum MultiTrackPhase1BResolver {
             "\(stagePrefix)_burst_local_completion"
         )
         let withCompletedBursts = uniqueCandidatesByIdentity(initialPool + burstLocalCompletions)
-        let burstResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+
+        // Pause completion is calibrated from the event/gap tracks before any
+        // state candidate can out-rank an established pause. A selected pause
+        // is authoritative gap evidence treated as a hard HFS state boundary in
+        // this pass, and must remain available as the monotonic-floor seed even
+        // when the unsplit HFS parent overlaps it.
+        let pauseCompletionAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
             withCompletedBursts
         )
 
         let pauseCompletions = tagPipelineStage(
             PauseMonotonicCompletionDetector.detect(
                 train: train,
-                candidates: burstResolved,
+                candidates: pauseCompletionAuthority,
                 settings: pauseSettings,
                 additionalBlockedISIIndices: additionalBlockedPauseISIIndices
             ),
             "\(stagePrefix)_pause_floor_completion"
         )
         let withCompletedGaps = uniqueCandidatesByIdentity(withCompletedBursts + pauseCompletions)
+        // Event/gap authority must be established before state competition. In
+        // particular, a selected pause is authoritative gap evidence treated as
+        // a hard HFS state boundary in this pass; it cannot first be deselected
+        // merely because the unsplit HFS parent overlaps it.
+        let eventGapAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
+            withCompletedGaps
+        )
+        let selectedEvents = selectedEventCandidates(in: eventGapAuthority)
+        let selectedGaps = selectedGapCandidates(in: eventGapAuthority)
         let eventGapResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
             withCompletedGaps
         )
-        let selectedEvents = selectedEventCandidates(in: eventGapResolved)
-        let selectedGaps = selectedGapCandidates(in: eventGapResolved)
 
         var effectiveStateSettings = stateSettings
         effectiveStateSettings.highFrequencySpikingInternalPacketizationPolicy =
             .multiTrackEventOverlay
 
+        let splitResolution = StateEventCompatibilityResolver.resolveStateCandidates(
+            train: train,
+            candidates: eventGapResolved,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: effectiveStateSettings
+        )
         let splitStates = tagPipelineStage(
-            StateEventCompatibilityResolver.splitStateCandidates(
-                train: train,
-                candidates: eventGapResolved,
-                selectedEvents: selectedEvents,
-                selectedGaps: selectedGaps,
-                settings: effectiveStateSettings
-            ),
+            splitResolution.fragments,
             "\(stagePrefix)_state_track_split"
         )
-        let withSplitStates = uniqueCandidatesByIdentity(eventGapResolved + splitStates)
+        let boundaryConsumedPool = markingHardBoundaryConsumedStates(
+            eventGapResolved,
+            resolution: splitResolution,
+            stage: "\(stagePrefix)_state_track_split"
+        )
+        let withSplitStates = uniqueCandidatesByIdentity(boundaryConsumedPool + splitStates)
 
         // Selected canonical events are the authoritative packet evidence.
         // Raw, duplicate, and unselected burst proposals never decide HFS
@@ -238,6 +257,50 @@ public enum MultiTrackPhase1BResolver {
                 $0.isEligibleForAutoSelection &&
                 $0.arbitrationTrack == .gap &&
                 $0.finalLabel == .pause
+        }
+    }
+
+    private static func markingHardBoundaryConsumedStates(
+        _ candidates: [ClassicAnchorCandidate],
+        resolution: StateEventCompatibilityResolution,
+        stage: String
+    ) -> [ClassicAnchorCandidate] {
+        guard !resolution.consumedStateCandidateIdentities.isEmpty else {
+            return candidates
+        }
+
+        return candidates.map { candidate in
+            let identity = StatePatternDetector.CandidateIdentity(candidate)
+            guard resolution.consumedStateCandidateIdentities.contains(identity) else {
+                return candidate
+            }
+
+            let boundaryIDs = resolution
+                .boundaryCandidateIDsByConsumedStateCandidateIdentity[identity] ?? []
+            let tokens = [
+                "state_hard_boundary_consumed=true",
+                "state_hard_boundary_ids=\(boundaryIDs.isEmpty ? "none" : boundaryIDs.joined(separator: ","))",
+                "pipeline_stage=\(stage)_parent_consumed"
+            ]
+            let existingTokens = Set(
+                candidate.decisionPath
+                    .split(separator: ";")
+                    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            )
+            let additions = tokens.filter { !existingTokens.contains($0) }
+            let decisionPath = additions.reduce(candidate.decisionPath) { partial, token in
+                let trimmed = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? token : "\(partial);\(token)"
+            }
+            var consumed = candidate.withDiagnosticOverride(
+                decisionPath: decisionPath,
+                selectedForAuto: false,
+                selectionStatus: "not_selected__state_parent_consumed_by_hard_boundary"
+            )
+            // Reuse the typed pre-continuity authority lock: a consumed parent
+            // remains audit-visible but can never be reselected or merged later.
+            consumed.stateContinuityAuthorityFrozen = true
+            return consumed
         }
     }
 

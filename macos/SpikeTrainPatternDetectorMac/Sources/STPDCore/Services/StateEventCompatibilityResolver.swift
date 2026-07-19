@@ -4,11 +4,21 @@ import Foundation
 ///
 /// Phase 1B rules:
 /// - selected burst events split tonic and HF-tonic;
-/// - selected burst events and pause gaps split HFS into independent fragments,
-///   so HFS never shares a final ISI label with burst and pause-separated
-///   packets are not interpreted as one continuous HFS;
+/// - selected pause gaps split HFS into independent fragments, so pause-separated
+///   packets are not interpreted as one continuous HFS. Selected burst events do
+///   NOT fragment HFS — a sustained high-frequency state may contain internal
+///   burst-like packets that are retained as overlays; true burst dominance is
+///   decided by `HFSpikingProtection` / arbitration, not by cutting here;
 /// - review candidates never split state;
 /// - every child is rebuilt through `StatePatternDetector` gates.
+struct StateEventCompatibilityResolution: Sendable {
+    let fragments: [ClassicAnchorCandidate]
+    let consumedStateCandidateIdentities: Set<StatePatternDetector.CandidateIdentity>
+    let boundaryCandidateIDsByConsumedStateCandidateIdentity: [
+        StatePatternDetector.CandidateIdentity: [String]
+    ]
+}
+
 public enum StateEventCompatibilityResolver {
     /// Backward-compatible convenience entry point. Adaptive production code
     /// should pass the exact state settings used for candidate generation.
@@ -47,13 +57,39 @@ public enum StateEventCompatibilityResolver {
         selectedGaps: [ClassicAnchorCandidate],
         settings: StatePatternDetectorSettings = StatePatternDetectorSettings()
     ) -> [ClassicAnchorCandidate] {
+        resolveStateCandidates(
+            train: train,
+            candidates: candidates,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: settings
+        ).fragments
+    }
+
+    /// Detailed Phase 1B resolution used by the multi-track pipeline.
+    ///
+    /// A state parent intersected by a selected hard boundary is consumed even
+    /// when neither resulting side is large enough to pass the primary state
+    /// gates. This prevents an unsplittable parent from leaking back into later
+    /// arbitration and swallowing the selected boundary.
+    static func resolveStateCandidates(
+        train: SpikeTrain,
+        candidates: [ClassicAnchorCandidate],
+        selectedEvents: [ClassicAnchorCandidate],
+        selectedGaps: [ClassicAnchorCandidate],
+        settings: StatePatternDetectorSettings = StatePatternDetectorSettings()
+    ) -> StateEventCompatibilityResolution {
         let trainStates = candidates.filter {
             $0.trainID == train.id &&
                 $0.arbitrationTrack == .state &&
                 $0.isEligibleForAutoSelection
         }
         guard !trainStates.isEmpty else {
-            return []
+            return StateEventCompatibilityResolution(
+                fragments: [],
+                consumedStateCandidateIdentities: [],
+                boundaryCandidateIDsByConsumedStateCandidateIdentity: [:]
+            )
         }
 
         let burstEvents = selectedEvents.filter {
@@ -69,7 +105,11 @@ public enum StateEventCompatibilityResolver {
                 $0.finalLabel == .pause
         }
         guard !burstEvents.isEmpty || !pauseGaps.isEmpty else {
-            return []
+            return StateEventCompatibilityResolution(
+                fragments: [],
+                consumedStateCandidateIdentities: [],
+                boundaryCandidateIDsByConsumedStateCandidateIdentity: [:]
+            )
         }
 
         let localContext = SpikeISILocalContextTable.build(
@@ -81,60 +121,94 @@ public enum StateEventCompatibilityResolver {
         )
         let stateGroups = Dictionary(grouping: trainStates, by: rootCandidateID)
         var fragmentsByID: [String: ClassicAnchorCandidate] = [:]
+        var consumedStateCandidateIdentities = Set<StatePatternDetector.CandidateIdentity>()
+        var boundaryIDsByConsumedStateCandidateIdentity: [
+            StatePatternDetector.CandidateIdentity: [String]
+        ] = [:]
 
         for group in stateGroups.values {
-            guard let parent = preferredParent(in: group) else {
-                continue
-            }
-            let stateStart = min(parent.startISIIndex, parent.endISIIndex)
-            let stateEnd = max(parent.startISIIndex, parent.endISIIndex)
-            guard stateStart > 0, stateStart <= stateEnd else {
-                continue
-            }
-
-            let cuts = cuttingCandidates(
-                for: parent,
-                selectedEvents: burstEvents,
-                selectedGaps: pauseGaps
-            )
-            let clippedCuts = cuts.compactMap { cut -> CutInterval? in
-                let lower = max(stateStart, min(cut.startISIIndex, cut.endISIIndex))
-                let upper = min(stateEnd, max(cut.startISIIndex, cut.endISIIndex))
-                guard lower <= upper else {
-                    return nil
-                }
-                return CutInterval(
-                    range: lower...upper,
-                    candidateID: cut.id
-                )
-            }
-            guard !clippedCuts.isEmpty else {
-                continue
-            }
-
-            let mergedCuts = mergedIntervals(clippedCuts.map(\.range))
-            let cleanFragments = cleanIntervals(
-                stateRange: stateStart...stateEnd,
-                cuts: mergedCuts
-            )
-            let cutIDs = Array(Set(clippedCuts.map(\.candidateID))).sorted()
-
-            for range in cleanFragments {
-                guard let fragment = StatePatternDetector.rebuildSplitCandidate(
-                    train: train,
-                    parent: parent,
-                    range: range,
-                    settings: settings,
-                    localContext: localContext,
-                    splitByCandidateIDs: cutIDs
-                ) else {
+            // A first pass normally has one unsplit parent. Later passes may
+            // contain only disjoint split siblings because the original parent
+            // has already been frozen. Resolve the maximal non-overlapping
+            // frontier so every current sibling is checked without rebuilding
+            // nested descendants twice.
+            for parent in sourceFrontier(in: group) {
+                guard let stateRange = candidateRange(parent) else {
                     continue
                 }
-                fragmentsByID[fragment.id] = fragment
+                let clippedCuts = cuttingCandidates(
+                    for: parent,
+                    selectedEvents: burstEvents,
+                    selectedGaps: pauseGaps
+                ).compactMap { cut -> CutInterval? in
+                    let lower = max(
+                        stateRange.lowerBound,
+                        min(cut.startISIIndex, cut.endISIIndex)
+                    )
+                    let upper = min(
+                        stateRange.upperBound,
+                        max(cut.startISIIndex, cut.endISIIndex)
+                    )
+                    guard lower <= upper else {
+                        return nil
+                    }
+                    return CutInterval(range: lower...upper, candidateID: cut.id)
+                }
+                guard !clippedCuts.isEmpty else {
+                    continue
+                }
+
+                // Consume every lineage member crossed by this parent's hard
+                // boundaries. Existing siblings wholly on another side remain
+                // eligible; a spanning parent or stale spanning child cannot be
+                // re-promoted when no rebuilt fragment passes its state gates.
+                for candidate in group {
+                    guard let candidateRange = candidateRange(candidate) else {
+                        continue
+                    }
+                    let boundaryIDs = Array(Set(clippedCuts.compactMap { cut -> String? in
+                        guard candidateRange.overlaps(cut.range) else {
+                            return nil
+                        }
+                        return cut.candidateID
+                    })).sorted()
+                    guard !boundaryIDs.isEmpty else {
+                        continue
+                    }
+                    let identity = StatePatternDetector.CandidateIdentity(candidate)
+                    consumedStateCandidateIdentities.insert(identity)
+                    boundaryIDsByConsumedStateCandidateIdentity[identity] = boundaryIDs
+                }
+
+                let mergedCuts = mergedIntervals(clippedCuts.map(\.range))
+                let cleanFragments = cleanIntervals(
+                    stateRange: stateRange,
+                    cuts: mergedCuts
+                )
+                let cutIDs = Array(Set(clippedCuts.map(\.candidateID))).sorted()
+
+                for range in cleanFragments {
+                    guard let fragment = StatePatternDetector.rebuildSplitCandidate(
+                        train: train,
+                        parent: parent,
+                        range: range,
+                        settings: settings,
+                        localContext: localContext,
+                        splitByCandidateIDs: cutIDs
+                    ) else {
+                        continue
+                    }
+                    fragmentsByID[fragment.id] = fragment
+                }
             }
         }
 
-        return fragmentsByID.values.sorted(by: candidateOrder)
+        return StateEventCompatibilityResolution(
+            fragments: fragmentsByID.values.sorted(by: candidateOrder),
+            consumedStateCandidateIdentities: consumedStateCandidateIdentities,
+            boundaryCandidateIDsByConsumedStateCandidateIdentity:
+                boundaryIDsByConsumedStateCandidateIdentity
+        )
     }
 
     private struct CutInterval {
@@ -152,22 +226,26 @@ public enum StateEventCompatibilityResolver {
             return selectedEvents
 
         case .highFrequencySpiking:
-            // Burst has higher final-label priority than HFS. Cutting HFS at
-            // selected burst events preserves non-overlapping HFS fragments
-            // instead of rejecting a long state because of one compact packet.
-            // Selected pause evidence also breaks HFS, because multiple
+            // Only selected pause/gap evidence splits HFS, because multiple
             // pause-separated packets should not become one continuous HFS.
-            return selectedEvents + selectedGaps
+            // Selected burst events no longer fragment HFS: a sustained
+            // high-frequency state may contain internal burst-like packets, which
+            // are retained as overlays. Whether those packets are mere internal
+            // packetization or true burst dominance is decided downstream by
+            // HFSpikingProtection / arbitration (embedded coverage and group
+            // count), not by chopping the sustained state into sub-threshold
+            // fragments here.
+            return selectedGaps
 
         default:
             return []
         }
     }
 
-    private static func preferredParent(
+    private static func sourceFrontier(
         in candidates: [ClassicAnchorCandidate]
-    ) -> ClassicAnchorCandidate? {
-        candidates.sorted { lhs, rhs in
+    ) -> [ClassicAnchorCandidate] {
+        let ordered = candidates.sorted { lhs, rhs in
             let lhsIsFragment = isSplitFragment(lhs)
             let rhsIsFragment = isSplitFragment(rhs)
             if lhsIsFragment != rhsIsFragment {
@@ -180,7 +258,35 @@ public enum StateEventCompatibilityResolver {
                 return lhs.priority > rhs.priority
             }
             return lhs.id < rhs.id
-        }.first
+        }
+
+        var frontier: [ClassicAnchorCandidate] = []
+        for candidate in ordered {
+            guard let range = candidateRange(candidate) else {
+                continue
+            }
+            // Generated siblings are disjoint. If malformed or stale lineage
+            // members overlap, the higher-ranked maximal member owns that area,
+            // preventing duplicate fragments with the same root/range identity.
+            guard !frontier.contains(where: { existing in
+                candidateRange(existing)?.overlaps(range) == true
+            }) else {
+                continue
+            }
+            frontier.append(candidate)
+        }
+        return frontier.sorted(by: candidateOrder)
+    }
+
+    private static func candidateRange(
+        _ candidate: ClassicAnchorCandidate
+    ) -> ClosedRange<Int>? {
+        let lower = min(candidate.startISIIndex, candidate.endISIIndex)
+        let upper = max(candidate.startISIIndex, candidate.endISIIndex)
+        guard lower > 0, lower <= upper else {
+            return nil
+        }
+        return lower...upper
     }
 
     private static func rootCandidateID(

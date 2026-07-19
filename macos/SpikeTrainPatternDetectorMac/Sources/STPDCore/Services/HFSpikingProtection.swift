@@ -7,14 +7,19 @@ public enum HFSpikingProtectionMode: String, CaseIterable, Hashable, Sendable {
     /// states and strong HFS states may suppress embedded compact bursts.
     case legacySingleLabel = "legacy_single_label"
 
-    /// Multi-track behavior: HFS is a state. This pass only annotates HFS
-    /// packetization and burst-dominance evidence; final HFS-vs-burst mutual
-    /// exclusion is applied by the semantic-track arbitrator after state
-    /// selection.
+    /// Multi-track behavior: HFS is a state. This pass annotates packetization
+    /// evidence and rejects only HFS children with explicit burst-dominance
+    /// evidence; final coexistence for non-dominated HFS and burst overlays is
+    /// resolved by the semantic-track arbitrator after state selection.
     case multiTrack = "multi_track"
 }
 
 public enum HFSpikingProtection {
+    private static let distributedBurstGroupFloor = 6
+    private static let distributedBurstGroupFraction = 0.055
+    private static let distributedBurstCoverageMin = 0.25
+    private static let majorityBurstCoverageMin = 0.50
+
     /// Backward-compatible entry point. The production default is now the
     /// non-destructive multi-track policy.
     public static func apply(
@@ -54,7 +59,9 @@ public enum HFSpikingProtection {
             return []
         }
 
-        var overrides: [String: ClassicAnchorCandidate] = [:]
+        var overrides: [
+            StatePatternDetector.CandidateIdentity: ClassicAnchorCandidate
+        ] = [:]
         let grouped = Dictionary(grouping: candidates, by: \.trainID)
         let explicitEventsByTrain = explicitlySelectedEvents.map {
             Dictionary(grouping: $0, by: \.trainID)
@@ -75,10 +82,22 @@ public enum HFSpikingProtection {
                 mode: mode
             )
             for state in highFrequencyStates {
+                let stateIdentity = StatePatternDetector.CandidateIdentity(state)
                 let overlappingBursts = canonicalBurstFamily.filter { state.overlaps($0) }
                 let embedded = intervalUnionStats(overlappingBursts, container: state)
-                let minGroups = max(6, Int(ceil(0.055 * Double(max(1, state.nISI)))))
-                let burstDominated = embedded.groupCount >= minGroups && embedded.coverage >= 0.25
+                let minGroups = max(
+                    distributedBurstGroupFloor,
+                    Int(ceil(distributedBurstGroupFraction * Double(max(1, state.nISI))))
+                )
+                let distributedBurstDominance =
+                    embedded.groupCount >= minGroups &&
+                    embedded.coverage >= distributedBurstCoverageMin
+                // Group count captures distributed packetization, but one long
+                // selected canonical event can itself occupy most of an HFS
+                // envelope. Majority union coverage is therefore independently
+                // sufficient evidence that the envelope is burst-dominated.
+                let majorityBurstDominance = embedded.coverage >= majorityBurstCoverageMin
+                let burstDominated = distributedBurstDominance || majorityBurstDominance
                 let selectedEventPacketLike = state.isVariableHFSpikingState && (
                     (embedded.groupCount >= 2 && embedded.coverage >= 0.08) ||
                         (embedded.groupCount >= 1 && embedded.coverage >= 0.18)
@@ -98,16 +117,37 @@ public enum HFSpikingProtection {
                     annotated.hfSpikingAcceptanceRoute,
                     "selected_event_packetization"
                 )
+                if distributedBurstDominance {
+                    annotated.hfSpikingAcceptanceRoute = appendRoute(
+                        annotated.hfSpikingAcceptanceRoute,
+                        "burst_dominance_distributed_packets"
+                    )
+                }
+                if majorityBurstDominance {
+                    annotated.hfSpikingAcceptanceRoute = appendRoute(
+                        annotated.hfSpikingAcceptanceRoute,
+                        "burst_dominance_majority_coverage"
+                    )
+                }
+                annotated = annotated.annotatedByHFProtection(
+                    reason: [
+                        "hf_burst_dominance_min_groups=\(minGroups)",
+                        "hf_burst_dominance_distributed_coverage_min=\(formatHFDiagnostic(distributedBurstCoverageMin))",
+                        "hf_burst_dominance_majority_coverage_min=\(formatHFDiagnostic(majorityBurstCoverageMin))",
+                        "hf_burst_dominance_distributed_pass=\(distributedBurstDominance)",
+                        "hf_burst_dominance_majority_pass=\(majorityBurstDominance)"
+                    ].joined(separator: ";")
+                )
 
                 if burstDominated {
-                    overrides[state.id] = annotated.rejectedByHFProtection(
+                    overrides[stateIdentity] = annotated.rejectedByHFProtection(
                         reason: "reject_burst_dominated_hf_spiking_state"
                     )
                     continue
                 }
 
                 if mode == .legacySingleLabel, packetLike {
-                    overrides[state.id] = annotated.rejectedByHFProtection(
+                    overrides[stateIdentity] = annotated.rejectedByHFProtection(
                         reason: "reject_burst_packet_like_hf_spiking_state"
                     )
                     continue
@@ -125,17 +165,18 @@ public enum HFSpikingProtection {
                     ].joined(separator: ";")
                     : "hfs_not_burst_dominated__retain_state"
                 annotated = annotated.annotatedByHFProtection(reason: policyReason)
-                overrides[state.id] = annotated
+                overrides[stateIdentity] = annotated
             }
 
             let packetStates = highFrequencyStates.compactMap { state -> ClassicAnchorCandidate? in
-                let candidate = overrides[state.id] ?? state
+                let candidate = overrides[StatePatternDetector.CandidateIdentity(state)] ?? state
                 return candidate.hfSpikingBurstPacketLike == true ? candidate : nil
             }
 
             if !packetStates.isEmpty {
                 for state in highFrequencyStates {
-                    let current = overrides[state.id] ?? state
+                    let stateIdentity = StatePatternDetector.CandidateIdentity(state)
+                    let current = overrides[stateIdentity] ?? state
                     guard current.isEligibleForAutoSelection,
                           current.isVariableHFSpikingState,
                           packetStates.contains(where: { current.isPacketNeighbor(of: $0) }) else {
@@ -152,11 +193,11 @@ public enum HFSpikingProtection {
                     )
 
                     if mode == .legacySingleLabel {
-                        overrides[state.id] = annotated.rejectedByHFProtection(
+                        overrides[stateIdentity] = annotated.rejectedByHFProtection(
                             reason: "reject_burst_packet_neighbor_hf_spiking_state"
                         )
                     } else {
-                        overrides[state.id] = annotated.annotatedByHFProtection(
+                        overrides[stateIdentity] = annotated.annotatedByHFProtection(
                             reason: "hfs_packet_neighbor__retain_for_state_track_arbitration"
                         )
                     }
@@ -171,7 +212,7 @@ public enum HFSpikingProtection {
             }
 
             for state in highFrequencyStates {
-                let currentState = overrides[state.id] ?? state
+                let currentState = overrides[StatePatternDetector.CandidateIdentity(state)] ?? state
                 guard currentState.isEligibleForAutoSelection else {
                     continue
                 }
@@ -181,11 +222,12 @@ public enum HFSpikingProtection {
                     candidate.isEligibleForAutoSelection &&
                     suppressibleLabels.contains(candidate.finalLabel) &&
                     candidate.overlaps(currentState) {
-                    let existing = overrides[candidate.id] ?? candidate
+                    let candidateIdentity = StatePatternDetector.CandidateIdentity(candidate)
+                    let existing = overrides[candidateIdentity] ?? candidate
                     guard existing.isEligibleForAutoSelection else {
                         continue
                     }
-                    overrides[candidate.id] = existing.suppressedByHFProtection(
+                    overrides[candidateIdentity] = existing.suppressedByHFProtection(
                         suppressorID: currentState.id,
                         reason: "suppressed_by_long_hf_spiking_state",
                         action: "suppress_for_hf_spiking_state"
@@ -203,11 +245,12 @@ public enum HFSpikingProtection {
                         ($0.durationSec == nil || ($0.durationSec ?? .infinity) <= 0.25)
                 }
                 for candidate in compactEmbeddedBursts {
-                    let existing = overrides[candidate.id] ?? candidate
+                    let candidateIdentity = StatePatternDetector.CandidateIdentity(candidate)
+                    let existing = overrides[candidateIdentity] ?? candidate
                     guard existing.isEligibleForAutoSelection else {
                         continue
                     }
-                    overrides[candidate.id] = existing.suppressedByHFProtection(
+                    overrides[candidateIdentity] = existing.suppressedByHFProtection(
                         suppressorID: currentState.id,
                         reason: "compact_burst_kernel_suppressed_inside_long_hf_spiking_state",
                         action: "suppress_embedded_burst_for_hf_spiking_state"
@@ -219,7 +262,9 @@ public enum HFSpikingProtection {
         guard !overrides.isEmpty else {
             return candidates
         }
-        return candidates.map { overrides[$0.id] ?? $0 }
+        return candidates.map {
+            overrides[StatePatternDetector.CandidateIdentity($0)] ?? $0
+        }
     }
 
     private static func canonicalEvents(

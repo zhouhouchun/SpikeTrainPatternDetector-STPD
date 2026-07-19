@@ -554,11 +554,16 @@ final class Phase1BTests: XCTestCase {
         let selectedHFS = resolved.filter {
             $0.selectedForAuto && $0.finalLabel == .highFrequencySpiking
         }
-        XCTAssertTrue(selectedGaps.isEmpty)
-        XCTAssertEqual(selectedHFS.map(\.startISIIndex), [1])
-        XCTAssertEqual(selectedHFS.map(\.endISIIndex), [60])
-        XCTAssertTrue(
+        XCTAssertEqual(selectedGaps.map(\.startISIIndex), [20, 30])
+        XCTAssertEqual(selectedHFS.map(\.startISIIndex), [1, 21, 31])
+        XCTAssertEqual(selectedHFS.map(\.endISIIndex), [19, 29, 60])
+        XCTAssertFalse(
             selectedHFS.contains { $0.startISIIndex <= 30 && $0.endISIIndex >= 30 }
+        )
+        let parent = resolved.first { $0.id == "hfs-parent" }
+        XCTAssertEqual(
+            parent?.selectionStatus,
+            "not_selected__state_parent_consumed_by_hard_boundary"
         )
     }
 
@@ -582,9 +587,9 @@ final class Phase1BTests: XCTestCase {
             priority: 900,
             q50: 0.20
         )
-        // Seven disjoint burst groups make the HFS parent incompatible with
-        // the higher-priority burst event track. The selected pause splits the
-        // parent first, so any surviving HFS child must be gap-bounded.
+        // Seven disjoint burst groups make the left HFS child burst-dominated.
+        // The selected pause splits the parent first, so dominance is evaluated
+        // per gap-bounded child rather than against the unsplit envelope.
         let burstRanges = [
             2...6, 10...14, 18...22, 26...30,
             34...38, 42...46, 50...54
@@ -620,8 +625,27 @@ final class Phase1BTests: XCTestCase {
         XCTAssertFalse(selectedHFS.contains { $0.startISIIndex <= 60 && $0.endISIIndex >= 60 })
 
         let parent = resolved.first { $0.id == "hfs-parent" }
-        XCTAssertEqual(parent?.finalLabel, .reject)
-        XCTAssertEqual(parent?.hfSpikingBurstDominated, true)
+        XCTAssertEqual(parent?.finalLabel, .highFrequencySpiking)
+        XCTAssertEqual(
+            parent?.selectionStatus,
+            "not_selected__state_parent_consumed_by_hard_boundary"
+        )
+        XCTAssertTrue(
+            resolved.contains {
+                $0.finalLabel == .reject &&
+                    $0.startISIIndex == 1 &&
+                    $0.endISIIndex == 59 &&
+                    $0.hfSpikingBurstDominated == true
+            }
+        )
+        XCTAssertTrue(
+            resolved.contains {
+                $0.selectedForAuto &&
+                    $0.finalLabel == .highFrequencySpiking &&
+                    $0.startISIIndex == 61 &&
+                    $0.endISIIndex == 120
+            }
+        )
     }
 
     func testStateDetectorDefersInternalPacketizationInMultiTrackMode() {

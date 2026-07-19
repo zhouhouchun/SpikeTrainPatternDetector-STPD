@@ -143,12 +143,16 @@ public enum ClassicAnchorCandidateArbitrator {
             for state in stateCandidates {
                 let stateIdentity = CandidateIdentity(state)
                 guard state.isEligibleForAutoSelection else {
-                    let isConsumedContinuityAudit =
+                    let consumedAuditTokens = Set(
+                        state.decisionPath.split(separator: ";").map(String.init)
+                    )
+                    let isConsumedStateAudit =
                         state.stateContinuityAuthorityFrozen &&
-                        state.decisionPath.split(separator: ";").contains {
-                            $0 == "state_continuity_consumed=true"
-                        }
-                    unselectedStatusByIdentity[stateIdentity] = isConsumedContinuityAudit
+                        (
+                            consumedAuditTokens.contains("state_continuity_consumed=true") ||
+                                consumedAuditTokens.contains("state_hard_boundary_consumed=true")
+                        )
+                    unselectedStatusByIdentity[stateIdentity] = isConsumedStateAudit
                         ? state.selectionStatus
                         : "not_selected__state_candidate_ineligible"
                     continue
