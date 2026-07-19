@@ -243,7 +243,9 @@ public enum StructuralSeedBandResolver {
                 weight: pauseWeight
             ),
             pausePoolSource: local.pausePoolSource != "none" ? local.pausePoolSource : datasetSummary.pausePoolSource,
-            source: datasetShrinkageSource(local: local, datasetSummary: datasetSummary)
+            source: datasetShrinkageSource(local: local, datasetSummary: datasetSummary),
+            origin: .datasetApplied,
+            datasetSummaryIncludedTargetTrain: datasetSummary.isSelfInclusive
         )
         return attachingSummary(to: resolution, summary: merged)
     }
