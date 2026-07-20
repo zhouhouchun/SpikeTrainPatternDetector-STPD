@@ -11,19 +11,44 @@ private struct SimulatorIntervalRow {
     let isiIndex: Int
 }
 
+private let simulatorSpikeMatrixFixture = """
+train_1
+0.000
+0.100
+0.200
+0.300
+0.400
+0.406
+0.412
+0.512
+0.612
+0.712
+0.812
+"""
+
+private let simulatorIntervalTableFixture = """
+Train,StartSec,EndSec,ISISec,Segment,Label
+1,0.000,0.100,0.100,baseline,Tonic
+1,0.100,0.200,0.100,baseline,Tonic
+1,0.200,0.300,0.100,baseline,Tonic
+1,0.300,0.400,0.100,baseline,Tonic
+1,0.400,0.406,0.006,event,Burst
+1,0.406,0.412,0.006,event,Burst
+1,0.412,0.512,0.100,baseline,Tonic
+1,0.512,0.612,0.100,baseline,Tonic
+1,0.612,0.712,0.100,baseline,Tonic
+1,0.712,0.812,0.100,baseline,Tonic
+"""
+
 @Test
-func simulatorCurrentPipelineDiagnosticScratch() throws {
-    let rawPath = "/Users/zark/Desktop/SPIKE_TRAIN_SIMULATOR.csv"
-    let labelPath = "/Users/zark/Desktop/SPIKE_TRAIN_SIMULATOR_V13_4_12_interval_table.csv"
-    let rawURL = URL(fileURLWithPath: rawPath)
-    let labelURL = URL(fileURLWithPath: labelPath)
+func simulatorCurrentPipelineDiagnosticUsesSyntheticFixture() throws {
     let dataset = try CSVSpikeMatrixParser.parse(
-        contents: String(contentsOf: rawURL, encoding: .utf8),
+        contents: simulatorSpikeMatrixFixture,
         datasetName: "SPIKE_TRAIN_SIMULATOR",
-        sourceDescription: rawPath,
+        sourceDescription: "inline simulator fixture",
         unit: .seconds
     )
-    let rows = try parseIntervalRows(String(contentsOf: labelURL, encoding: .utf8))
+    let rows = try parseIntervalRows(simulatorIntervalTableFixture)
     let run = ClassicAnchorDetectionPipeline.run(
         dataset: dataset,
         bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005),
@@ -189,12 +214,13 @@ func simulatorCurrentPipelineDiagnosticScratch() throws {
         )
     }
 
-    try report.joined(separator: "\n").write(
-        to: URL(fileURLWithPath: "/tmp/stpd_simulator_diagnostic.txt"),
-        atomically: true,
-        encoding: .utf8
-    )
-
+    #expect(dataset.trains.count == 1)
+    #expect(dataset.totalSpikeCount == 11)
+    #expect(rows.count == 10)
+    #expect(rows.map(\.isiIndex) == Array(1...10))
+    #expect(confusion["Tonic"]?["Tonic"] == 8)
+    #expect(confusion["Burst"]?["Burst"] == 2)
+    #expect(report.first == "SIMULATOR_CURRENT_PIPELINE_DIAGNOSTIC")
     #expect(falseBurstRows.isEmpty)
     #expect(tonicAsBurstRows.isEmpty)
     #expect(missedBurstRows.isEmpty)

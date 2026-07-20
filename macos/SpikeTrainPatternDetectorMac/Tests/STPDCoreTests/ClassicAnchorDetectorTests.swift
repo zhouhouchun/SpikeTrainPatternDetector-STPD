@@ -321,7 +321,33 @@ func classicAnchorAcceptsEndBoundaryBurstWithSinglePreFlank() throws {
 }
 
 @Test
-func classicAnchorCanDemoteRefractorySuspectBursts() throws {
+func classicAnchorDemotesOnlyMinimalRefractorySuspectBurst() throws {
+    let train = SpikeTrain(
+        name: "unit_minimal_refractory",
+        timestampsSec: [0, 0.100, 0.1011, 0.1022, 0.205]
+    )
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.001,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.010,
+        refractorySuspectSec: 0.0015,
+        refractoryAction: .demoteToPossible
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    let candidate = try #require(result.candidates.first {
+        $0.startISIIndex == 2 && $0.endISIIndex == 3
+    })
+
+    #expect(candidate.nISI == 2)
+    #expect(candidate.finalLabel == .possibleBurst)
+    #expect(candidate.refractorySuspectCount == 2)
+    #expect(candidate.refractorySuspectAction == .demoteToPossible)
+    #expect(candidate.anchorLockLevel == .strongCandidate)
+}
+
+@Test
+func classicAnchorKeepsLongerRefractorySuspectBurstCanonical() throws {
     let train = SpikeTrain(
         name: "unit_refractory",
         timestampsSec: [0, 0.100, 0.1011, 0.1022, 0.1033, 0.205]
@@ -335,12 +361,15 @@ func classicAnchorCanDemoteRefractorySuspectBursts() throws {
     )
 
     let result = ClassicAnchorDetector.detect(train: train, settings: settings)
-    let candidate = try #require(result.candidates.first)
+    let candidate = try #require(result.candidates.first {
+        $0.startISIIndex == 2 && $0.endISIIndex == 4
+    })
 
-    #expect(candidate.finalLabel == .possibleBurst)
+    #expect(candidate.nISI == 3)
+    #expect(candidate.finalLabel == .burst)
     #expect(candidate.refractorySuspectCount == 3)
-    #expect(candidate.refractorySuspectAction == .demoteToPossible)
-    #expect(candidate.anchorLockLevel == .strongCandidate)
+    #expect(candidate.refractorySuspectAction == .warnOnly)
+    #expect(candidate.anchorLockLevel == .lockedClassic)
 }
 
 @Test
