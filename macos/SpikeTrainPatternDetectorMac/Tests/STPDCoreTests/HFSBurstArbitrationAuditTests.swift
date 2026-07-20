@@ -2,7 +2,7 @@ import XCTest
 @testable import STPDCore
 
 final class HFSBurstArbitrationAuditTests: XCTestCase {
-    func testHFSBurstOverlapProducesExplainableBurstWinsAuditRow() throws {
+    func testHFSBurstOverlapProducesExplainableHFSRetainedAuditRow() throws {
         let train = makeTrain(
             name: "train-1",
             intervals: [
@@ -57,7 +57,8 @@ final class HFSBurstArbitrationAuditTests: XCTestCase {
         )
 
         let row = try XCTUnwrap(rows.first)
-        XCTAssertEqual(row.finalDecision, .burstSelectedHFSNotSelected)
+        // The non-dominated HFS remains selected alongside the burst overlay.
+        XCTAssertEqual(row.finalDecision, .hfsSelectedWithBurstConflict)
         XCTAssertEqual(row.hfsRawScore, 27.5, accuracy: 1e-12)
         XCTAssertEqual(row.packetCount, 1)
         XCTAssertEqual(row.pauseLikeBreakCount, 1)

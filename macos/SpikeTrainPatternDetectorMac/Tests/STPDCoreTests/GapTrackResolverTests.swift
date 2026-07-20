@@ -191,7 +191,7 @@ final class GapTrackResolverTests: XCTestCase {
         )
     }
 
-    func testBurstFamilyEventHasPriorityOverOverlappingHFSpiking() {
+    func testNonDominatedHFSRetainedAsOverlayWhenBurstEventOverlaps() {
         let hfs = makeCandidate(
             id: "hfs-1",
             label: .highFrequencySpiking,
@@ -214,11 +214,13 @@ final class GapTrackResolverTests: XCTestCase {
         ])
         let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
 
-        XCTAssertEqual(byID["hfs-1"]?.selectedForAuto, false)
+        // A selected burst remains an event overlay; it does not erase a
+        // non-dominated sustained HFS state.
+        XCTAssertEqual(byID["hfs-1"]?.selectedForAuto, true)
         XCTAssertEqual(byID["burst-1"]?.selectedForAuto, true)
         XCTAssertEqual(
             byID["hfs-1"]?.selectionStatus,
-            "not_selected__hfs_state_overlaps_selected_burst_event"
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
         )
     }
 

@@ -2,7 +2,7 @@ import XCTest
 @testable import STPDCore
 
 final class Phase1BTests: XCTestCase {
-    func testMultiTrackHFSLeavesBurstForFinalArbitration() {
+    func testMultiTrackHFSRetainedAsOverlayWhenBurstOverlaps() {
         var hfs = makeCandidate(
             id: "hfs",
             label: .highFrequencySpiking,
@@ -37,11 +37,11 @@ final class Phase1BTests: XCTestCase {
         XCTAssertNil(byID["burst"]?.suppressedOriginalLabel)
         XCTAssertNotEqual(byID["burst"]?.suppressedByHFSpikingState, true)
         XCTAssertEqual(byID["hfs"]?.hfSpikingBurstDominated, false)
-        XCTAssertEqual(finalByID["hfs"]?.selectedForAuto, false)
+        XCTAssertEqual(finalByID["hfs"]?.selectedForAuto, true)
         XCTAssertEqual(finalByID["burst"]?.selectedForAuto, true)
         XCTAssertEqual(
             finalByID["hfs"]?.selectionStatus,
-            "not_selected__hfs_state_overlaps_selected_burst_event"
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
         )
     }
 
@@ -126,7 +126,11 @@ final class Phase1BTests: XCTestCase {
         XCTAssertEqual(protectedBurst?.action, "accept")
         XCTAssertNotEqual(protectedBurst?.suppressedByHFSpikingState, true)
         let final = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(protected)
-        XCTAssertEqual(final.first { $0.id == "hfs" }?.selectedForAuto, false)
+        XCTAssertEqual(final.first { $0.id == "hfs" }?.selectedForAuto, true)
+        XCTAssertEqual(
+            final.first { $0.id == "hfs" }?.selectionStatus,
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
+        )
         XCTAssertEqual(final.first { $0.id == "burst" }?.selectedForAuto, true)
     }
 
@@ -164,7 +168,7 @@ final class Phase1BTests: XCTestCase {
         XCTAssertEqual(protectedHFS?.hfSpikingEmbeddedBurstCoverage, 0)
     }
 
-    func testHFSIsSplitBySelectedBurstAndGap() {
+    func testHFSIsSplitBySelectedGapButNotByInternalBurst() {
         let train = makeTrain(
             name: "train-1",
             intervals: Array(repeating: 0.01, count: 29) +
@@ -210,8 +214,10 @@ final class Phase1BTests: XCTestCase {
             settings: settings
         )
 
-        XCTAssertEqual(fragments.map(\.startISIIndex), [1, 14, 31])
-        XCTAssertEqual(fragments.map(\.endISIIndex), [9, 29, 60])
+        // Pause/gap boundaries split sustained HFS; an internal burst remains an
+        // event overlay and is handled by downstream dominance arbitration.
+        XCTAssertEqual(fragments.map(\.startISIIndex), [1, 31])
+        XCTAssertEqual(fragments.map(\.endISIIndex), [29, 60])
         XCTAssertTrue(fragments.allSatisfy { $0.finalLabel == .highFrequencySpiking })
     }
 

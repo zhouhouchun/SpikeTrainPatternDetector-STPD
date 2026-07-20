@@ -248,7 +248,14 @@ func legacyHFSProtectionSuppressesCompactBurstKernelsInsideLongHFState() throws 
     #expect(protectedPossible.action == "accept")
     #expect(protectedPossible.isEligibleForAutoSelection)
     #expect(protectedOutside.action == "accept")
-    #expect(arbitrated.first { $0.id == "hfs" }?.selectedForAuto == false)
+    // The compact burst is suppressed by the legacy protection pass. The
+    // generic possible-burst packet remains on the event track, but an
+    // overlapping packet does not erase a non-dominated sustained HFS state.
+    #expect(arbitrated.first { $0.id == "hfs" }?.selectedForAuto == true)
+    #expect(
+        arbitrated.first { $0.id == "hfs" }?.selectionStatus ==
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
+    )
     #expect(arbitrated.first { $0.id == "compact_burst" }?.selectedForAuto == false)
     #expect(arbitrated.first { $0.id == "possible_kernel" }?.selectedForAuto == true)
     #expect(arbitrated.first { $0.id == "outside_burst" }?.selectedForAuto == true)
@@ -422,7 +429,7 @@ func legacyHFSProtectionRejectsBurstPacketLikeVariableHFState() throws {
 }
 
 @Test
-func hfsProtectionMultiTrackRetainsPacketLikeHFStateUntilBurstWinsFinalLabel() throws {
+func hfsProtectionMultiTrackRetainsPacketLikeHFStateAsBurstOverlay() throws {
     var hfs = testCandidate(
         id: "packet_like_hfs",
         label: .highFrequencySpiking,
@@ -463,11 +470,11 @@ func hfsProtectionMultiTrackRetainsPacketLikeHFStateUntilBurstWinsFinalLabel() t
     #expect(protectedBurst.action == "accept")
     #expect(protectedBurst.suppressedOriginalLabel == nil)
     #expect(protectedBurst.suppressedByHFSpikingState != true)
-    #expect(arbitrated.first { $0.id == "packet_like_hfs" }?.selectedForAuto == false)
+    #expect(arbitrated.first { $0.id == "packet_like_hfs" }?.selectedForAuto == true)
     #expect(arbitrated.first { $0.id == "embedded_packet" }?.selectedForAuto == true)
     #expect(
         arbitrated.first { $0.id == "packet_like_hfs" }?.selectionStatus ==
-            "not_selected__hfs_state_overlaps_selected_burst_event"
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
     )
 }
 
@@ -574,7 +581,10 @@ func selectedGapDoesNotSplitHigherPriorityTonicState() throws {
 }
 
 @Test
-func stateSplitCutsHFSAtSelectedBurstWithoutGap() throws {
+func stateSplitDoesNotCutHFSAtSelectedBurstWithoutGap() throws {
+    // A selected burst is an overlay inside sustained HFS. Without a selected
+    // pause/gap boundary, state splitting must leave the HFS parent intact;
+    // burst dominance is evaluated downstream rather than by cutting here.
     let train = SpikeTrain(
         name: "arbitration_train",
         timestampsSec: cumulativeTimestamps(repeating: 0.005, count: 70)
@@ -610,13 +620,7 @@ func stateSplitCutsHFSAtSelectedBurstWithoutGap() throws {
         settings: settings
     )
 
-    #expect(fragments.map(\.startISIIndex) == [1, 13])
-    #expect(fragments.map(\.endISIIndex) == [9, 60])
-    #expect(fragments.allSatisfy { $0.finalLabel == .highFrequencySpiking })
-    #expect(fragments.allSatisfy { fragment in
-        fragment.endISIIndex < selectedBurst.startISIIndex ||
-            fragment.startISIIndex > selectedBurst.endISIIndex
-    })
+    #expect(fragments.isEmpty)
 }
 
 @Test
