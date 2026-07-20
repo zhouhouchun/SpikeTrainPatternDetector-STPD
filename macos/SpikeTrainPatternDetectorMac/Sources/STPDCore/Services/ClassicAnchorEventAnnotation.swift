@@ -11,6 +11,9 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
     public let auditReviewStatus: String
     public let label: ClassicAnchorLabel
     public let lockLevel: ClassicAnchorLockLevel
+    /// Tonic-family subtype carried from the source candidate (`classic`, `irregular`,
+    /// `high_frequency`), or `nil` for non-tonic annotations. Auditable display only.
+    public let stateTonicSubtype: String?
     public let startSpikeIndex: Int
     public let endSpikeIndex: Int
     public let startISISecIndex: Int
@@ -34,6 +37,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         auditReviewStatus: String,
         label: ClassicAnchorLabel,
         lockLevel: ClassicAnchorLockLevel,
+        stateTonicSubtype: String?,
         startSpikeIndex: Int,
         endSpikeIndex: Int,
         startISISecIndex: Int,
@@ -56,6 +60,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         self.auditReviewStatus = auditReviewStatus
         self.label = label
         self.lockLevel = lockLevel
+        self.stateTonicSubtype = Self.normalizedTonicSubtype(stateTonicSubtype, for: label)
         self.startSpikeIndex = startSpikeIndex
         self.endSpikeIndex = endSpikeIndex
         self.startISISecIndex = startISISecIndex
@@ -91,6 +96,10 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         self.auditReviewStatus = candidate.auditReviewStatus
         self.label = candidate.finalLabel
         self.lockLevel = candidate.anchorLockLevel
+        self.stateTonicSubtype = Self.normalizedTonicSubtype(
+            candidate.stateTonicSubtype,
+            for: candidate.finalLabel
+        )
         self.startSpikeIndex = candidate.startSpikeIndex
         self.endSpikeIndex = candidate.endSpikeIndex
         self.startISISecIndex = candidate.startISIIndex
@@ -148,7 +157,14 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         case .possibleBurst:
             return eventTrackClass == ClassicAnchorLabel.burst.rawValue ? "Burst II" : "Possible burst"
         case .tonic:
-            return "Tonic"
+            switch stateTonicSubtype {
+            case "irregular":
+                return "Irregular tonic"
+            case "classic":
+                return "Classic tonic"
+            default:
+                return "Tonic"
+            }
         case .highFrequencyTonic:
             return "HF tonic"
         case .highFrequencySpiking:
@@ -207,6 +223,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
             auditReviewStatus: auditReviewStatus,
             label: label,
             lockLevel: lockLevel,
+            stateTonicSubtype: stateTonicSubtype,
             startSpikeIndex: clippedStartSpikeIndex,
             endSpikeIndex: clippedEndSpikeIndex,
             startISISecIndex: lowerISI,
@@ -242,6 +259,18 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
             return 0
         }
         return min(max(index, 0), train.timestampsSec.count - 1)
+    }
+
+    private static func normalizedTonicSubtype(
+        _ subtype: String?,
+        for label: ClassicAnchorLabel
+    ) -> String? {
+        switch label {
+        case .tonic, .highFrequencyTonic:
+            return subtype
+        default:
+            return nil
+        }
     }
 
     private static func timestampBounds(
