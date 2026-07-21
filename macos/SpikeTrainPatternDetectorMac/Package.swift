@@ -13,7 +13,12 @@ let package = Package(
     targets: [
         .target(
             name: "STPDCore",
-            path: "Sources/STPDCore"
+            path: "Sources/STPDCore",
+            swiftSettings: [
+                // Use Accelerate's modern (non-deprecated) LAPACK headers (`__LAPACK_int`, `dsyevd_`, …) for the
+                // shared symmetric eigensolver. Default 32-bit LAPACK ints (no ILP64).
+                .unsafeFlags(["-Xcc", "-DACCELERATE_NEW_LAPACK=1"])
+            ]
         ),
         .executableTarget(
             name: "SpikeTrainPatternDetectorMac",
@@ -23,7 +28,9 @@ let package = Package(
         .testTarget(
             name: "STPDCoreTests",
             dependencies: ["STPDCore"],
-            path: "Tests/STPDCoreTests"
+            path: "Tests/STPDCoreTests",
+            // P6B-0: the 5x5 characterization dataset is loaded at runtime via #filePath, not compiled/bundled.
+            exclude: ["Fixtures"]
         )
     ]
 )
