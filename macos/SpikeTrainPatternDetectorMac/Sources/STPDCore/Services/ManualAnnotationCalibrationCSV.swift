@@ -3,6 +3,10 @@ import Foundation
 /// Exports the manual-derived calibration summary to a CSV (preview/audit only). Separate from the
 /// manual-annotation CSV and the public auto-event CSV. Every row carries provenance: `source`,
 /// `applied_to_detector` (always `false` in this phase), and `method`.
+///
+/// `annotation_count` remains in its original position as a compatibility alias for legacy CSV
+/// consumers. The canonical `evidence_run_count` field is appended so positional readers of the
+/// original schema continue to work while new readers can use the corrected scientific term.
 public enum ManualAnnotationCalibrationCSVExporter {
     public static let headers: [String] = [
         "label",
@@ -19,7 +23,8 @@ public enum ManualAnnotationCalibrationCSVExporter {
         "usable_for_calibration",
         "source",
         "applied_to_detector",
-        "method"
+        "method",
+        "evidence_run_count"
     ]
 
     public static func csv(summary: ManualAnnotationCalibrationSummary) -> String {
@@ -40,7 +45,8 @@ public enum ManualAnnotationCalibrationCSVExporter {
                 row.isUsableForCalibration ? "true" : "false",
                 row.source,
                 row.appliedToDetector ? "true" : "false",
-                row.method
+                row.method,
+                String(row.evidenceRunCount)
             ]
             lines.append(fields.map(csvEscaped).joined(separator: ","))
         }

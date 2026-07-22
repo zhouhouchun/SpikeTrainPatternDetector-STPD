@@ -1,8 +1,98 @@
 import Foundation
 
+/// One detector candidate's automatic evidence carried through public-event projection.
+///
+/// Public burst events may temporarily merge several candidates through validated manual support.
+/// Keeping this source-level mapping prevents a later split from inheriting the merged event's
+/// aggregate label or identity.
+public struct ClassicAnchorAutomaticEventSource: Hashable, Sendable {
+    public let annotationID: String
+    public let candidateID: String
+    public let trainID: String
+    /// Automatic support established before manual projection. Automatic exclusive projection may
+    /// narrow this baseline, but manual lock/veto projection must never mutate it: removing a manual
+    /// action must be able to reconstruct the same automatic evidence that entered the manual layer.
+    public let supportISIIndices: [Int]
+    public let semanticTrack: ClassicAnchorSemanticTrack
+    public let eventTrackClass: String
+    public let auditRecommendedSubtype: String
+    public let auditReviewStatus: String
+    public let label: ClassicAnchorLabel
+    public let lockLevel: ClassicAnchorLockLevel
+    public let stateTonicSubtype: String?
+    public let score: Double
+    public let priority: Int
+    public let decisionPath: String
+
+    init(
+        annotationID: String,
+        candidateID: String,
+        trainID: String,
+        supportISIIndices: [Int],
+        semanticTrack: ClassicAnchorSemanticTrack,
+        eventTrackClass: String,
+        auditRecommendedSubtype: String,
+        auditReviewStatus: String,
+        label: ClassicAnchorLabel,
+        lockLevel: ClassicAnchorLockLevel,
+        stateTonicSubtype: String?,
+        score: Double,
+        priority: Int,
+        decisionPath: String
+    ) {
+        self.annotationID = annotationID
+        self.candidateID = candidateID
+        self.trainID = trainID
+        self.supportISIIndices = Array(Set(supportISIIndices)).sorted()
+        self.semanticTrack = semanticTrack
+        self.eventTrackClass = eventTrackClass
+        self.auditRecommendedSubtype = auditRecommendedSubtype
+        self.auditReviewStatus = auditReviewStatus
+        self.label = label
+        self.lockLevel = lockLevel
+        self.stateTonicSubtype = stateTonicSubtype
+        self.score = score
+        self.priority = priority
+        self.decisionPath = decisionPath
+    }
+
+    /// Narrow the automatic baseline itself. This is reserved for automatic projection (for example,
+    /// exclusive winner clipping) before the event enters the manual-annotation layer.
+    func retainingSupport(_ retainedISIs: Set<Int>) -> ClassicAnchorAutomaticEventSource? {
+        let retained = Set(supportISIIndices).intersection(retainedISIs)
+        guard !retained.isEmpty else { return nil }
+        return ClassicAnchorAutomaticEventSource(
+            annotationID: annotationID,
+            candidateID: candidateID,
+            trainID: trainID,
+            supportISIIndices: retained.sorted(),
+            semanticTrack: semanticTrack,
+            eventTrackClass: eventTrackClass,
+            auditRecommendedSubtype: auditRecommendedSubtype,
+            auditReviewStatus: auditReviewStatus,
+            label: label,
+            lockLevel: lockLevel,
+            stateTonicSubtype: stateTonicSubtype,
+            score: score,
+            priority: priority,
+            decisionPath: decisionPath
+        )
+    }
+}
+
 public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
     public let id: String
     public let candidateID: String
+    /// All raw detector candidates that contribute automatic evidence to this public event.
+    /// `candidateID` remains the deterministic primary source for backward-compatible review links.
+    public let sourceCandidateIDs: [String]
+    /// Automatic detector support retained inside this public event. Manual burst support may extend
+    /// the displayed geometry, but is intentionally excluded here so removing a manual annotation can
+    /// reconstruct the automatic component without treating prior manual coverage as detector evidence.
+    public let automaticSupportISIIndices: [Int]
+    /// Source-level automatic evidence. Unlike the aggregate fields above, this preserves which
+    /// candidate supplied each ISI and that candidate's original authority across merge/split cycles.
+    public let automaticEventSources: [ClassicAnchorAutomaticEventSource]
     public let trainID: String
     public let trainName: String
     public let semanticTrack: ClassicAnchorSemanticTrack
@@ -29,6 +119,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
     private init(
         id: String,
         candidateID: String,
+        automaticEventSources: [ClassicAnchorAutomaticEventSource],
         trainID: String,
         trainName: String,
         semanticTrack: ClassicAnchorSemanticTrack,
@@ -52,6 +143,15 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
     ) {
         self.id = id
         self.candidateID = candidateID
+        let normalizedSources = Self.normalizedAutomaticSources(automaticEventSources)
+        self.sourceCandidateIDs = Array(Set(normalizedSources.map(\.candidateID))).sorted()
+        let visibleLowerISI = max(1, min(startISISecIndex, endISISecIndex))
+        let visibleUpperISI = max(visibleLowerISI, max(startISISecIndex, endISISecIndex))
+        let visibleISIs = Set(visibleLowerISI...visibleUpperISI)
+        self.automaticSupportISIIndices = Array(
+            Set(normalizedSources.flatMap(\.supportISIIndices)).intersection(visibleISIs)
+        ).sorted()
+        self.automaticEventSources = normalizedSources
         self.trainID = trainID
         self.trainName = trainName
         self.semanticTrack = semanticTrack
@@ -88,6 +188,34 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
 
         self.id = candidate.id
         self.candidateID = candidate.id
+        let automaticLower = max(1, min(candidate.startISIIndex, candidate.endISIIndex))
+        let automaticUpper = min(train.spikeCount - 1, max(candidate.startISIIndex, candidate.endISIIndex))
+        let automaticSupport = automaticLower <= automaticUpper
+            ? Array(automaticLower...automaticUpper)
+            : []
+        self.sourceCandidateIDs = [candidate.id]
+        self.automaticSupportISIIndices = automaticSupport
+        self.automaticEventSources = [
+            ClassicAnchorAutomaticEventSource(
+                annotationID: candidate.id,
+                candidateID: candidate.id,
+                trainID: candidate.trainID,
+                supportISIIndices: automaticSupport,
+                semanticTrack: candidate.auditRecommendedTrack,
+                eventTrackClass: candidate.auditRecommendedEventTrackClass,
+                auditRecommendedSubtype: candidate.auditRecommendedSubtype,
+                auditReviewStatus: candidate.auditReviewStatus,
+                label: candidate.finalLabel,
+                lockLevel: candidate.anchorLockLevel,
+                stateTonicSubtype: Self.normalizedTonicSubtype(
+                    candidate.stateTonicSubtype,
+                    for: candidate.finalLabel
+                ),
+                score: candidate.score,
+                priority: candidate.priority,
+                decisionPath: candidate.decisionPath
+            )
+        ]
         self.trainID = candidate.trainID
         self.trainName = candidate.trainName
         self.semanticTrack = candidate.auditRecommendedTrack
@@ -215,6 +343,9 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         return ClassicAnchorEventAnnotation(
             id: "\(id)-isi-\(lowerISI)-\(upperISI)",
             candidateID: candidateID,
+            automaticEventSources: automaticEventSources.compactMap {
+                $0.retainingSupport(Set(lowerISI...upperISI))
+            },
             trainID: trainID,
             trainName: trainName,
             semanticTrack: semanticTrack,
@@ -235,6 +366,202 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
             score: score,
             priority: priority,
             decisionPath: decisionPath
+        )
+    }
+
+    /// Reframe one non-burst automatic source after a positive-manual lock. The source's automatic
+    /// baseline is intentionally preserved even when the visible component is clipped, so a later
+    /// projection without that lock can restore the original automatic geometry.
+    func projectedAutomaticComponent(
+        source: ClassicAnchorAutomaticEventSource,
+        to isiRange: ClosedRange<Int>,
+        in train: SpikeTrain
+    ) -> ClassicAnchorEventAnnotation? {
+        guard source.trainID == trainID, train.id == trainID else {
+            return nil
+        }
+
+        return Self.materializedAutomaticComponent(
+            source: source,
+            to: isiRange,
+            in: train,
+            manualLockApplied: true
+        )
+    }
+
+    /// Materialize one automatic source without borrowing mutable public-event geometry or
+    /// provenance. The explicit lock flag lets stateful re-projection remove an obsolete manual
+    /// marker when a positive lock is deleted.
+    static func materializedAutomaticComponent(
+        source: ClassicAnchorAutomaticEventSource,
+        to isiRange: ClosedRange<Int>,
+        in train: SpikeTrain,
+        manualLockApplied: Bool
+    ) -> ClassicAnchorEventAnnotation? {
+        guard source.trainID == train.id,
+              train.spikeCount >= 2,
+              !train.timestampsSec.isEmpty,
+              train.alignedTimestampsSec.count == train.timestampsSec.count else {
+            return nil
+        }
+
+        let lowerISI = max(1, min(isiRange.lowerBound, isiRange.upperBound))
+        let upperISI = min(train.spikeCount - 1, max(isiRange.lowerBound, isiRange.upperBound))
+        guard lowerISI <= upperISI else { return nil }
+
+        let startSpike = lowerISI
+        let endSpike = upperISI + 1
+        let startArrayIndex = startSpike - 1
+        let endArrayIndex = endSpike - 1
+        guard train.timestampsSec.indices.contains(startArrayIndex),
+              train.timestampsSec.indices.contains(endArrayIndex) else {
+            return nil
+        }
+
+        let existingTokens = source.decisionPath.split(separator: ";").map(String.init)
+        var normalizedTokens = existingTokens.filter { !$0.hasPrefix("manual_projection_") }
+        if manualLockApplied {
+            normalizedTokens.append("manual_projection_non_burst_lock=true")
+        }
+        let normalizedPath = normalizedTokens.joined(separator: ";")
+
+        return ClassicAnchorEventAnnotation(
+            id: "\(source.candidateID)-public-\(source.label.rawValue)-isi-\(lowerISI)-\(upperISI)",
+            candidateID: source.candidateID,
+            automaticEventSources: [source],
+            trainID: source.trainID,
+            trainName: train.name,
+            semanticTrack: source.semanticTrack,
+            eventTrackClass: source.eventTrackClass,
+            auditRecommendedSubtype: source.auditRecommendedSubtype,
+            auditReviewStatus: source.auditReviewStatus,
+            label: source.label,
+            lockLevel: source.lockLevel,
+            stateTonicSubtype: source.stateTonicSubtype,
+            startSpikeIndex: startSpike,
+            endSpikeIndex: endSpike,
+            startISISecIndex: lowerISI,
+            endISISecIndex: upperISI,
+            rawStartSec: train.timestampsSec[startArrayIndex],
+            rawEndSec: train.timestampsSec[endArrayIndex],
+            alignedStartSec: train.alignedTimestampsSec[startArrayIndex],
+            alignedEndSec: train.alignedTimestampsSec[endArrayIndex],
+            score: source.score,
+            priority: source.priority,
+            decisionPath: normalizedPath
+        )
+    }
+
+    /// Reframe one final, train-level burst component after manual lock/veto projection. The event
+    /// may combine automatic evidence from several candidates and may include validated manual burst
+    /// support. Raw candidates remain unchanged; this method creates only the public representation.
+    public func projectedBurstComponent(
+        to isiRange: ClosedRange<Int>,
+        in train: SpikeTrain,
+        automaticEventSources contributingSources: [ClassicAnchorAutomaticEventSource],
+        includesManualSupport: Bool
+    ) -> ClassicAnchorEventAnnotation? {
+        guard train.id == trainID,
+              train.spikeCount >= 2,
+              !train.timestampsSec.isEmpty,
+              train.alignedTimestampsSec.count == train.timestampsSec.count else {
+            return nil
+        }
+
+        let lowerISI = max(1, min(isiRange.lowerBound, isiRange.upperBound))
+        let upperISI = min(train.spikeCount - 1, max(isiRange.lowerBound, isiRange.upperBound))
+        guard lowerISI <= upperISI else {
+            return nil
+        }
+
+        let componentISIs = Set(lowerISI...upperISI)
+        // Contributing sources carry the immutable automatic baseline. Current visible automatic
+        // support is derived from the component geometry by the event initializer; do not destroy the
+        // baseline here, because a later manual re-projection may need to restore suppressed ISIs.
+        let normalizedSources = Self.normalizedAutomaticSources(contributingSources)
+        guard let primarySource = normalizedSources.sorted(by: Self.automaticSourceIsOrderedBefore).first else {
+            return nil
+        }
+        let authoritySource = normalizedSources
+            .filter { $0.label == .possibleBurst }
+            .sorted(by: Self.automaticSourceIdentityIsOrderedBefore)
+            .first ?? primarySource
+        let normalizedSourceIDs = Array(Set(normalizedSources.map(\.candidateID))).sorted()
+        let normalizedAutomaticSupport = Array(
+            Set(normalizedSources.flatMap(\.supportISIIndices)).intersection(componentISIs)
+        ).sorted()
+        let unchangedRange = lowerISI == min(startISISecIndex, endISISecIndex)
+            && upperISI == max(startISISecIndex, endISISecIndex)
+        let projectionTokens = [
+            "manual_projection_source_candidate_count=\(normalizedSourceIDs.count)",
+            "manual_projection_includes_manual_burst_support=\(includesManualSupport)",
+            "manual_projection_burst_authority=possible_if_any_source_possible"
+        ]
+        let existingTokens = primarySource.decisionPath.split(separator: ";").map(String.init)
+        let currentTokens = decisionPath.split(separator: ";").map(String.init)
+        let wasProjected = currentTokens.contains { $0.hasPrefix("manual_projection_") }
+        let normalizedPath = (
+            existingTokens.filter { !$0.hasPrefix("manual_projection_") } + projectionTokens
+        ).joined(separator: ";")
+        let projectedID = "\(primarySource.candidateID)-public-burst-isi-\(lowerISI)-\(upperISI)"
+        let authorityUnchanged = label == authoritySource.label
+            && semanticTrack == authoritySource.semanticTrack
+            && eventTrackClass == authoritySource.eventTrackClass
+            && auditRecommendedSubtype == authoritySource.auditRecommendedSubtype
+            && auditReviewStatus == authoritySource.auditReviewStatus
+            && lockLevel == authoritySource.lockLevel
+            && stateTonicSubtype == authoritySource.stateTonicSubtype
+        if unchangedRange,
+           normalizedSourceIDs == sourceCandidateIDs,
+           normalizedAutomaticSupport == automaticSupportISIIndices,
+           normalizedSources == automaticEventSources,
+           candidateID == primarySource.candidateID,
+           score == primarySource.score,
+           priority == primarySource.priority,
+           authorityUnchanged {
+            if !wasProjected && !includesManualSupport {
+                return self
+            }
+            if wasProjected,
+               id == projectedID,
+               decisionPath == normalizedPath {
+                return self
+            }
+        }
+
+        let startSpike = lowerISI
+        let endSpike = upperISI + 1
+        let startArrayIndex = startSpike - 1
+        let endArrayIndex = endSpike - 1
+        guard train.timestampsSec.indices.contains(startArrayIndex),
+              train.timestampsSec.indices.contains(endArrayIndex) else {
+            return nil
+        }
+
+        return ClassicAnchorEventAnnotation(
+            id: projectedID,
+            candidateID: primarySource.candidateID,
+            automaticEventSources: normalizedSources,
+            trainID: trainID,
+            trainName: trainName,
+            semanticTrack: authoritySource.semanticTrack,
+            eventTrackClass: authoritySource.eventTrackClass,
+            auditRecommendedSubtype: authoritySource.auditRecommendedSubtype,
+            auditReviewStatus: authoritySource.auditReviewStatus,
+            label: authoritySource.label,
+            lockLevel: authoritySource.lockLevel,
+            stateTonicSubtype: authoritySource.stateTonicSubtype,
+            startSpikeIndex: startSpike,
+            endSpikeIndex: endSpike,
+            startISISecIndex: lowerISI,
+            endISISecIndex: upperISI,
+            rawStartSec: train.timestampsSec[startArrayIndex],
+            rawEndSec: train.timestampsSec[endArrayIndex],
+            alignedStartSec: train.alignedTimestampsSec[startArrayIndex],
+            alignedEndSec: train.alignedTimestampsSec[endArrayIndex],
+            score: primarySource.score,
+            priority: primarySource.priority,
+            decisionPath: normalizedPath
         )
     }
 
@@ -259,6 +586,87 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
             return 0
         }
         return min(max(index, 0), train.timestampsSec.count - 1)
+    }
+
+    /// Canonicalize automatic sources by stable source identity while unioning their support.
+    ///
+    /// Manual projection uses the same canonicalization for its hidden source archive so visible
+    /// fragments and their later merged representation cannot accumulate as distinct archive values.
+    static func normalizedAutomaticSources(
+        _ sources: [ClassicAnchorAutomaticEventSource]
+    ) -> [ClassicAnchorAutomaticEventSource] {
+        let ordered = sources
+            .filter { !$0.supportISIIndices.isEmpty }
+            .sorted(by: automaticSourceIdentityIsOrderedBefore)
+        var normalized: [ClassicAnchorAutomaticEventSource] = []
+        for source in ordered {
+            if let index = normalized.firstIndex(where: { automaticSourceIdentityMatches($0, source) }) {
+                let existing = normalized[index]
+                normalized[index] = ClassicAnchorAutomaticEventSource(
+                    annotationID: existing.annotationID,
+                    candidateID: existing.candidateID,
+                    trainID: existing.trainID,
+                    supportISIIndices: Array(
+                        Set(existing.supportISIIndices).union(source.supportISIIndices)
+                    ).sorted(),
+                    semanticTrack: existing.semanticTrack,
+                    eventTrackClass: existing.eventTrackClass,
+                    auditRecommendedSubtype: existing.auditRecommendedSubtype,
+                    auditReviewStatus: existing.auditReviewStatus,
+                    label: existing.label,
+                    lockLevel: existing.lockLevel,
+                    stateTonicSubtype: existing.stateTonicSubtype,
+                    score: existing.score,
+                    priority: existing.priority,
+                    decisionPath: existing.decisionPath
+                )
+            } else {
+                normalized.append(source)
+            }
+        }
+        return normalized.sorted(by: automaticSourceIdentityIsOrderedBefore)
+    }
+
+    private static func automaticSourceIdentityMatches(
+        _ lhs: ClassicAnchorAutomaticEventSource,
+        _ rhs: ClassicAnchorAutomaticEventSource
+    ) -> Bool {
+        lhs.annotationID == rhs.annotationID
+            && lhs.candidateID == rhs.candidateID
+            && lhs.trainID == rhs.trainID
+            && lhs.semanticTrack == rhs.semanticTrack
+            && lhs.eventTrackClass == rhs.eventTrackClass
+            && lhs.auditRecommendedSubtype == rhs.auditRecommendedSubtype
+            && lhs.auditReviewStatus == rhs.auditReviewStatus
+            && lhs.label == rhs.label
+            && lhs.lockLevel == rhs.lockLevel
+            && lhs.stateTonicSubtype == rhs.stateTonicSubtype
+            && lhs.score == rhs.score
+            && lhs.priority == rhs.priority
+            && lhs.decisionPath == rhs.decisionPath
+    }
+
+    private static func automaticSourceIsOrderedBefore(
+        _ lhs: ClassicAnchorAutomaticEventSource,
+        _ rhs: ClassicAnchorAutomaticEventSource
+    ) -> Bool {
+        if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+        if lhs.score != rhs.score { return lhs.score > rhs.score }
+        return automaticSourceIdentityIsOrderedBefore(lhs, rhs)
+    }
+
+    private static func automaticSourceIdentityIsOrderedBefore(
+        _ lhs: ClassicAnchorAutomaticEventSource,
+        _ rhs: ClassicAnchorAutomaticEventSource
+    ) -> Bool {
+        if lhs.candidateID != rhs.candidateID { return lhs.candidateID < rhs.candidateID }
+        if lhs.supportISIIndices.first != rhs.supportISIIndices.first {
+            return (lhs.supportISIIndices.first ?? Int.max) < (rhs.supportISIIndices.first ?? Int.max)
+        }
+        if lhs.supportISIIndices.last != rhs.supportISIIndices.last {
+            return (lhs.supportISIIndices.last ?? Int.max) < (rhs.supportISIIndices.last ?? Int.max)
+        }
+        return lhs.annotationID < rhs.annotationID
     }
 
     private static func normalizedTonicSubtype(

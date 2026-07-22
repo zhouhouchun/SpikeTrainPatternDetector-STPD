@@ -73,7 +73,7 @@ public struct ClassicAnchorReviewQueueItem: Hashable, Sendable {
         self.id = id; self.trainID = trainID; self.trainName = trainName; self.label = label
         self.isStrongCandidate = isStrongCandidate; self.priority = priority
         self.startISIIndex = startISIIndex; self.rank = rank
-        self.representativeISISec = representativeISISec
+        self.representativeISISec = representativeISISec.flatMap { $0.isFinite ? $0 : nil }
     }
 }
 

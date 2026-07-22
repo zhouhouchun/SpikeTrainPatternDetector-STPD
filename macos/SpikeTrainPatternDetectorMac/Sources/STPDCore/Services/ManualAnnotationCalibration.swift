@@ -12,7 +12,13 @@ public struct ManualAnnotationCalibrationLabelSummary: Hashable, Sendable {
     public let displayName: String
     public let isPositive: Bool       // false for the not_burst veto row
     public let isFamily: Bool
-    public let annotationCount: Int
+    /// Contiguous resolved evidence runs that retain at least one uniquely owned, QC-valid ISI after
+    /// version folding, overlap arbitration, and structural validation. Adjacent or overlapping marks
+    /// for the same resolved label collapse to one run. This is not the number of serialized records.
+    public let evidenceRunCount: Int
+    /// Compatibility spelling retained for callers written when this value counted serialized marks.
+    /// The value is the number of contiguous resolved evidence runs, not annotation records.
+    public var annotationCount: Int { evidenceRunCount }
     public let trainCount: Int
     public let coveredISICount: Int
     public let minISISeconds: Double?
@@ -29,6 +35,22 @@ public struct ManualAnnotationCalibrationLabelSummary: Hashable, Sendable {
     public let appliedToDetector: Bool
     public let method: String
     public let recommendationText: String
+
+    /// Whether more than one disjoint resolved evidence run contributes. This does not imply biological
+    /// independence: two runs can come from the same train or recording episode.
+    public var hasMultipleEvidenceRuns: Bool { evidenceRunCount >= 2 }
+
+    /// Compatibility spelling retained for callers written before evidence was de-duplicated by run.
+    public var hasMultipleEvidenceBearingAnnotations: Bool { hasMultipleEvidenceRuns }
+
+    /// Compatibility spelling retained for callers that previously displayed "independent" replication.
+    /// Independence cannot be established without biological-unit/session identity, so this is always false.
+    /// Use `hasCrossTrainReplication` for the train-level fact that is actually observed.
+    public var hasIndependentAnnotationReplication: Bool { false }
+
+    /// Whether evidence for this label was observed in more than one train. Useful for audit/support scoring,
+    /// but deliberately not required for producing a provisional, preview-only soft threshold.
+    public var hasCrossTrainReplication: Bool { trainCount >= 2 }
 
     public init(
         label: String,
@@ -57,7 +79,7 @@ public struct ManualAnnotationCalibrationLabelSummary: Hashable, Sendable {
         self.displayName = displayName
         self.isPositive = isPositive
         self.isFamily = isFamily
-        self.annotationCount = annotationCount
+        self.evidenceRunCount = annotationCount
         self.trainCount = trainCount
         self.coveredISICount = coveredISICount
         self.minISISeconds = minISISeconds
@@ -80,7 +102,8 @@ public struct ManualAnnotationCalibrationLabelSummary: Hashable, Sendable {
 /// The full manual-derived calibration summary across all labels/families present. Preview-only.
 public struct ManualAnnotationCalibrationSummary: Hashable, Sendable {
     public let rows: [ManualAnnotationCalibrationLabelSummary]
-    /// Annotations that did not resolve to the current dataset (wrong train / out of range).
+    /// Serialized annotation records that were superseded, did not resolve to the current dataset,
+    /// lost all final ISI ownership, failed a structural minimum, or retained no QC-valid ISI.
     public let skippedAnnotationCount: Int
     public let source: String
     public let appliedToDetector: Bool
@@ -115,33 +138,143 @@ public enum ManualAnnotationCalibrationSummarizer {
         minValidISISeconds: Double = 0.001
     ) -> ManualAnnotationCalibrationSummary {
         let trainsByID = Dictionary(trains.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let minValid = minValidISISeconds.isFinite ? minValidISISeconds : 0.001
+        let minValid = minValidISISeconds.isFinite ? max(0, minValidISISeconds) : 0.001
 
         struct Accumulator {
             var values: [Double] = []
-            var annotationCount = 0
             var trainIDs: Set<String> = []
+            var evidenceIndicesByTrain: [String: Set<Int>] = [:]
+        }
+        struct ResolvedEvidence {
+            let annotation: ManualAnnotation
+            let train: SpikeTrain
+            let coveredIndices: [Int]
         }
         var byLabel: [ManualAnnotationLabel: Accumulator] = [:]
-        var skipped = 0
+        let canonicalAnnotations = ManualAnnotationProjector.canonicalizedAnnotations(annotations)
+        var skipped = annotations.count - canonicalAnnotations.count
+        var resolvedEvidence: [ResolvedEvidence] = []
+        resolvedEvidence.reserveCapacity(canonicalAnnotations.count)
 
-        for annotation in annotations {
-            guard let resolved = ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible(annotation, in: trains),
-                  let train = trainsByID[resolved.trainID] else {
+        for annotation in canonicalAnnotations {
+            guard let train = trainsByID[annotation.trainID] else {
                 skipped += 1
                 continue
             }
-            var accumulator = byLabel[resolved.label] ?? Accumulator()
-            accumulator.annotationCount += 1
-            accumulator.trainIDs.insert(resolved.trainID)
-            if let start = resolved.startISIIndex, let end = resolved.endISIIndex, start <= end {
-                for index in start...end where train.isiSec.indices.contains(index) {
-                    if let value = train.isiSec[index], value.isFinite, value > minValid {
-                        accumulator.values.append(value)
-                    }
+            let geometry = ManualAnnotationGeometryResolver.resolve(annotation: annotation, in: train)
+            guard geometry.isWithinTrain, let covered = geometry.coveredISIIndices else {
+                skipped += 1
+                continue
+            }
+            let coveredIndices = covered.filter { train.isiSec.indices.contains($0) }
+            guard !coveredIndices.isEmpty else {
+                skipped += 1
+                continue
+            }
+            resolvedEvidence.append(ResolvedEvidence(
+                annotation: annotation,
+                train: train,
+                coveredIndices: coveredIndices
+            ))
+        }
+
+        // Resolve ownership independently for positive labels and negative vetoes. Positive labels
+        // compete with other positive labels old-to-new; veto annotations compete only with vetoes.
+        // This mirrors projection semantics while keeping the two biological channels distinct.
+        var positiveOwnerByTrain: [String: [Int: UUID]] = [:]
+        var positiveLabelByTrain: [String: [Int: String]] = [:]
+        var vetoOwnerByTrain: [String: [Int: UUID]] = [:]
+        for evidence in resolvedEvidence {
+            let annotation = evidence.annotation
+            switch annotation.label.polarity {
+            case .positive:
+                guard let pattern = annotation.label.finalPatternString else { continue }
+                for index in evidence.coveredIndices {
+                    positiveOwnerByTrain[annotation.trainID, default: [:]][index] = annotation.id
+                    positiveLabelByTrain[annotation.trainID, default: [:]][index] = pattern
+                }
+            case .negative:
+                guard ManualAnnotationLabel.consumedVetoLabels.contains(annotation.label) else { continue }
+                for index in evidence.coveredIndices {
+                    vetoOwnerByTrain[annotation.trainID, default: [:]][index] = annotation.id
                 }
             }
-            byLabel[resolved.label] = accumulator
+        }
+
+        // Apply QC to the ownership maps before the burst minimum. Otherwise a raw two-ISI burst with
+        // one sub-floor/non-finite interval would retain a single QC-valid ISI and incorrectly teach a
+        // burst threshold. The value extraction below repeats the checks defensively.
+        for trainID in Array(positiveLabelByTrain.keys) {
+            guard let train = trainsByID[trainID] else { continue }
+            for index in Array(positiveLabelByTrain[trainID]?.keys ?? Dictionary<Int, String>().keys) {
+                guard train.isiSec.indices.contains(index),
+                      let value = train.isiSec[index],
+                      value.isFinite,
+                      value >= minValid else {
+                    positiveLabelByTrain[trainID]?.removeValue(forKey: index)
+                    positiveOwnerByTrain[trainID]?.removeValue(forKey: index)
+                    continue
+                }
+            }
+        }
+        for trainID in Array(vetoOwnerByTrain.keys) {
+            guard let train = trainsByID[trainID] else { continue }
+            for index in Array(vetoOwnerByTrain[trainID]?.keys ?? Dictionary<Int, UUID>().keys) {
+                guard train.isiSec.indices.contains(index),
+                      let value = train.isiSec[index],
+                      value.isFinite,
+                      value >= minValid else {
+                    vetoOwnerByTrain[trainID]?.removeValue(forKey: index)
+                    continue
+                }
+            }
+        }
+
+        // Re-apply the burst minimum after both overlap ownership and QC. Removing an edge from a
+        // two-ISI mark must not leave a singleton burst contributing calibration evidence or support.
+        for trainID in Array(positiveLabelByTrain.keys) {
+            let invalid = ManualAnnotationProjector.invalidBurstFragmentISIs(
+                in: positiveLabelByTrain[trainID] ?? [:]
+            )
+            for index in invalid {
+                positiveLabelByTrain[trainID]?.removeValue(forKey: index)
+                positiveOwnerByTrain[trainID]?.removeValue(forKey: index)
+            }
+        }
+
+        for evidence in resolvedEvidence {
+            let annotation = evidence.annotation
+            let ownerByISI: [Int: UUID]
+            switch annotation.label.polarity {
+            case .positive:
+                ownerByISI = positiveOwnerByTrain[annotation.trainID] ?? [:]
+            case .negative:
+                ownerByISI = vetoOwnerByTrain[annotation.trainID] ?? [:]
+            }
+
+            let validEvidence = evidence.coveredIndices.compactMap { index -> (Int, Double)? in
+                guard ownerByISI[index] == annotation.id,
+                      let value = evidence.train.isiSec[index],
+                      value.isFinite,
+                      value >= minValid else {
+                    return nil
+                }
+                return (index, value)
+            }
+
+            // Only uniquely-owned QC-valid evidence can contribute to a resolved run. Superseded,
+            // fully-overwritten, structurally-invalid, and QC-empty records cannot inflate support.
+            guard !validEvidence.isEmpty else {
+                skipped += 1
+                continue
+            }
+
+            var accumulator = byLabel[annotation.label] ?? Accumulator()
+            accumulator.trainIDs.insert(annotation.trainID)
+            accumulator.values.append(contentsOf: validEvidence.map { $0.1 })
+            accumulator.evidenceIndicesByTrain[annotation.trainID, default: []]
+                .formUnion(validEvidence.map { $0.0 })
+            byLabel[annotation.label] = accumulator
         }
 
         var rows: [ManualAnnotationCalibrationLabelSummary] = []
@@ -153,8 +286,10 @@ public enum ManualAnnotationCalibrationSummarizer {
             for label in burstFamilyLabels {
                 if let accumulator = byLabel[label] {
                     combined.values.append(contentsOf: accumulator.values)
-                    combined.annotationCount += accumulator.annotationCount
                     combined.trainIDs.formUnion(accumulator.trainIDs)
+                    for (trainID, indices) in accumulator.evidenceIndicesByTrain {
+                        combined.evidenceIndicesByTrain[trainID, default: []].formUnion(indices)
+                    }
                 }
             }
             rows.append(makePositiveRow(
@@ -162,10 +297,10 @@ public enum ManualAnnotationCalibrationSummarizer {
                 displayName: "Burst family",
                 isFamily: true,
                 values: combined.values,
-                annotationCount: combined.annotationCount,
+                annotationCount: evidenceRunCount(combined.evidenceIndicesByTrain),
                 trainCount: combined.trainIDs.count,
                 minUsableCount: 3,
-                recommendationText: "Preview: seed/profile upper ≈ q90, bridge/profile upper ≈ q95, dense-core ref ≈ q40 (ms). Not applied to the detector."
+                recommendationText: "Preview: seed/profile upper ≈ q90, bridge/profile upper ≈ q95, dense-core ref ≈ q40 (ms). Cross-train evidence is reported separately; the support score is capped by contributing-train coverage, not raw ISI or within-train run count, and does not claim biological independence. Not applied to the detector."
             ))
         }
 
@@ -177,7 +312,7 @@ public enum ManualAnnotationCalibrationSummarizer {
                 displayName: label.displayName,
                 isFamily: false,
                 values: accumulator.values,
-                annotationCount: accumulator.annotationCount,
+                annotationCount: evidenceRunCount(accumulator.evidenceIndicesByTrain),
                 trainCount: accumulator.trainIDs.count,
                 minUsableCount: minUsableCount(for: label),
                 recommendationText: recommendation(for: label)
@@ -191,7 +326,7 @@ public enum ManualAnnotationCalibrationSummarizer {
                 displayName: ManualAnnotationLabel.notBurst.displayName,
                 isPositive: false,
                 isFamily: false,
-                annotationCount: vetoAccumulator.annotationCount,
+                annotationCount: evidenceRunCount(vetoAccumulator.evidenceIndicesByTrain),
                 trainCount: vetoAccumulator.trainIDs.count,
                 coveredISICount: vetoAccumulator.values.count,
                 minISISeconds: nil,
@@ -247,6 +382,18 @@ public enum ManualAnnotationCalibrationSummarizer {
             return "Summary only; not used for calibration. Not applied to the detector."
         case .notBurst:
             return "Negative/veto coverage; excluded from positive calibration ranges. Not applied to the detector."
+        }
+    }
+
+    private static func evidenceRunCount(_ indicesByTrain: [String: Set<Int>]) -> Int {
+        indicesByTrain.values.reduce(into: 0) { total, indices in
+            var prior: Int?
+            for index in indices.sorted() {
+                if prior.map({ index != $0 + 1 }) ?? true {
+                    total += 1
+                }
+                prior = index
+            }
         }
     }
 

@@ -22,8 +22,8 @@ public struct ReviewedISIExportRow: Hashable, Sendable {
     /// Reviewed/public label for this ISI (use this for downstream analysis), `""` when none.
     public let finalPattern: String
     public let finalSubtype: String
-    /// `auto_projected` / `manual_positive` / `manual_veto_removed` / `invalid_single_isi_burst_fragment`
-    /// / `none`.
+    /// `auto_projected` / `manual_positive` / `manual_veto_removed` / `manual_review_rejected` /
+    /// `invalid_single_isi_burst_fragment` / `none`.
     public let finalSource: String
     public let manualVetoSuppressed: Bool
     public let reviewNote: String
@@ -49,7 +49,7 @@ public struct ReviewedISIExportRow: Hashable, Sendable {
 /// `auto` is left untouched for traceability.
 public enum ReviewedISIExportBuilder {
     /// A reviewed/final burst-family run must span at least this many ISIs (R / biological minimum).
-    public static let burstMinimumISIRunLength = 2
+    public static let burstMinimumISIRunLength = ManualAnnotationProjector.burstMinimumISIRunLength
 
     public static let sourceAutoProjected = "auto_projected"
     public static let sourceManualPositive = "manual_positive"
@@ -132,16 +132,13 @@ public enum ReviewedISIExportBuilder {
                 }
             }
 
-            // Reviewed/final burst-minimum rule: drop any auto-projected burst-family run (same
-            // candidate, contiguous) shorter than 2 ISIs. `auto*` is untouched; positive manual labels
-            // are exempt (they must still appear).
+            // Reviewed/final burst-minimum rule: drop any auto-projected or manual-positive
+            // burst-family run shorter than 2 ISIs. `auto*` remains untouched for traceability.
             applyBurstMinimumRun(
-                spikeCount: n,
                 finalLabel: &finalLabel,
                 finalSubtype: &finalSubtype,
                 finalSource: &finalSource,
                 reviewNote: &reviewNote,
-                autoCandidate: autoCandidate,
                 burstFamilyLabels: burstFamilyLabels
             )
 
@@ -164,7 +161,7 @@ public enum ReviewedISIExportBuilder {
                         autoCandidateID: autoCandidate[k] ?? "",
                         finalPattern: finalLabel[k] ?? "", finalSubtype: finalSubtype[k] ?? "",
                         finalSource: finalSource[k] ?? sourceNone,
-                        manualVetoSuppressed: vetoedBurstISIs.contains(k),
+                        manualVetoSuppressed: finalSource[k] == sourceManualVetoRemoved,
                         reviewNote: reviewNote[k] ?? ""
                     ))
                 }
@@ -173,40 +170,26 @@ public enum ReviewedISIExportBuilder {
         return rows
     }
 
-    /// Drop reviewed/final burst-family runs shorter than `burstMinimumISIRunLength`. A run is a maximal
-    /// contiguous span of ISIs that are all auto-projected, burst-family, and from the same candidate —
-    /// i.e. exactly the public-projected burst sub-runs left after the veto/positive split.
+    /// Drop reviewed/final burst-family runs shorter than `burstMinimumISIRunLength`. Structural
+    /// validity follows contiguous final burst-family coverage, independent of whether adjacent ISIs
+    /// came from an auto candidate or a manual positive override.
     private static func applyBurstMinimumRun(
-        spikeCount n: Int,
         finalLabel: inout [Int: String],
         finalSubtype: inout [Int: String],
         finalSource: inout [Int: String],
         reviewNote: inout [Int: String],
-        autoCandidate: [Int: String],
         burstFamilyLabels: Set<String>
     ) {
-        func isAutoBurst(_ isi: Int) -> Bool {
-            finalSource[isi] == sourceAutoProjected
-                && (finalLabel[isi].map { burstFamilyLabels.contains($0) } ?? false)
-        }
-        guard n >= 2 else { return }
-        var isi = 1
-        while isi < n {
-            guard isAutoBurst(isi) else { isi += 1; continue }
-            let candidate = autoCandidate[isi] ?? ""
-            var end = isi
-            while end + 1 < n, isAutoBurst(end + 1), (autoCandidate[end + 1] ?? "") == candidate {
-                end += 1
-            }
-            if (end - isi + 1) < burstMinimumISIRunLength {
-                for k in isi...end {
-                    finalLabel[k] = ""
-                    finalSubtype[k] = ""
-                    finalSource[k] = sourceInvalidBurstFragment
-                    reviewNote[k] = "burst_run_below_min_isi"
-                }
-            }
-            isi = end + 1
+        let invalid = ManualAnnotationProjector.invalidBurstFragmentISIs(
+            in: finalLabel,
+            minimumRunLength: burstMinimumISIRunLength,
+            burstLabels: burstFamilyLabels
+        )
+        for isi in invalid {
+            finalLabel[isi] = ""
+            finalSubtype[isi] = ""
+            finalSource[isi] = sourceInvalidBurstFragment
+            reviewNote[isi] = "burst_run_below_min_isi"
         }
     }
 }

@@ -1,8 +1,8 @@
 import Foundation
 
 /// A **read-only** per-ISI diagnostic: for an arbitrary inter-spike interval on the raster (especially an
-/// unlabeled / "Other" one that visually looks like a missed burst/pause), it explains the ISI's relationship to
-/// the train's resolved adaptive burst seed band, and why it did not become a selected burst seed. It is a pure
+/// unlabeled / "Other" one that visually looks like a missed burst/pause), it reports the ISI's relationship to
+/// the train's resolved adaptive burst seed band and its observed candidate membership. It is a pure
 /// projection of EXISTING detector outputs (the per-train `AdaptiveBand` seed/bridge bounds + whether a public
 /// candidate already covers the ISI) — it never re-runs detection, changes selection, or invents thresholds.
 ///
@@ -57,54 +57,74 @@ public enum PerISIDiagnosticBuilder {
         bridgeUpperSec: Double?,
         manualPauseLowerSec: Double?
     ) -> PerISIDiagnostic {
+        guard isiSec.isFinite, isiSec >= 0 else {
+            return PerISIDiagnostic(
+                belongsToCandidate: false,
+                candidateLabel: nil,
+                seedLowerSec: nil,
+                seedUpperSec: nil,
+                bridgeUpperSec: nil,
+                bandRelationTag: "invalid ISI",
+                explanation: "This ISI is non-finite or negative, so no detector-band comparison is valid."
+            )
+        }
+
+        let band = validBand(lowerSec: seedLowerSec, upperSec: seedUpperSec)
+        let bridge = band.flatMap { bounds -> Double? in
+            guard let value = bridgeUpperSec, value.isFinite, value >= bounds.upper else { return nil }
+            return value
+        }
+        let pause = manualPauseLowerSec.flatMap { value in
+            value.isFinite && value > 0 ? value : nil
+        }
+
         if let label = coveringCandidateLabel, !label.isEmpty {
             return PerISIDiagnostic(
                 belongsToCandidate: true,
                 candidateLabel: readable(label),
-                seedLowerSec: seedLowerSec,
-                seedUpperSec: seedUpperSec,
-                bridgeUpperSec: bridgeUpperSec,
+                seedLowerSec: band?.lower,
+                seedUpperSec: band?.upper,
+                bridgeUpperSec: bridge,
                 bandRelationTag: "in candidate",
                 explanation: "Part of a \(readable(label)) candidate — click to focus it and inspect the full label explanation."
             )
         }
 
-        guard let lower = seedLowerSec, let upper = seedUpperSec,
-              lower.isFinite, upper.isFinite, upper > 0 else {
+        guard let (lower, upper) = band else {
             return PerISIDiagnostic(
                 belongsToCandidate: false,
                 candidateLabel: nil,
-                seedLowerSec: seedLowerSec,
-                seedUpperSec: seedUpperSec,
-                bridgeUpperSec: bridgeUpperSec,
+                seedLowerSec: nil,
+                seedUpperSec: nil,
+                bridgeUpperSec: nil,
                 bandRelationTag: "no band",
-                explanation: "No adaptive burst seed band for this train yet — run the detector to diagnose why this ISI was not selected."
+                explanation: "No adaptive burst seed band is available for this train yet — run the detector to populate the band comparison."
             )
         }
 
-        let band = "\(ms(lower))–\(ms(upper)) ms"
+        let bandText = "\(ms(lower))–\(ms(upper)) ms"
         let tag: String
         var why: String
         if isiSec < lower {
             tag = "below seed lower"
-            why = "This ISI (\(ms(isiSec)) ms) is shorter than the burst seed band \(band) — faster than the burst-core ISIs here, so it is not a burst seed."
+            why = "This ISI (\(ms(isiSec)) ms) is below the burst seed band \(bandText) and is not part of a selected burst. This comparison alone does not identify which detector gate excluded it."
         } else if isiSec <= upper {
             tag = "in seed band"
-            why = "This ISI (\(ms(isiSec)) ms) falls inside the burst seed band \(band), but this interval is not part of a selected burst — it lacks enough contiguous seed ISIs / spikes to form one."
-        } else if let bridge = bridgeUpperSec, bridge.isFinite, isiSec <= bridge {
+            why = "This ISI (\(ms(isiSec)) ms) falls inside the burst seed band \(bandText), but it is not part of a selected burst. Possible explanations include run length, boundary evidence, arbitration, or selection; this diagnostic does not carry the causal provenance needed to choose among them."
+        } else if let bridge, isiSec <= bridge {
             tag = "within bridge"
-            why = "This ISI (\(ms(isiSec)) ms) is above the seed upper (\(band)) but within the bridge tolerance (\(ms(bridge)) ms) — it was not bridged into a burst here."
+            why = "This ISI (\(ms(isiSec)) ms) is above the seed upper (\(bandText)) but within the bridge tolerance (\(ms(bridge)) ms), and it is not part of a selected burst. The available inputs do not establish whether bridging, boundary evidence, or later arbitration excluded it."
         } else {
             tag = "above seed upper"
-            let bridgePart = (bridgeUpperSec?.isFinite == true) ? " / bridge \(ms(bridgeUpperSec!)) ms" : ""
-            why = "This ISI (\(ms(isiSec)) ms) is above the burst seed band \(band)\(bridgePart) — the gap is too long to be a burst-core ISI."
+            let bridgePart = bridge.map { " / bridge \(ms($0)) ms" } ?? ""
+            why = "This ISI (\(ms(isiSec)) ms) is above the burst seed band \(bandText)\(bridgePart) and is not part of a selected burst. This magnitude comparison is observational and does not by itself prove the detector's causal rejection path."
         }
 
-        if let pause = manualPauseLowerSec, pause.isFinite, pause > 0 {
+        if let pause {
             if isiSec >= pause {
-                why += " It is at/above the manual pause threshold (\(ms(pause)) ms); if it is not labeled a pause, state/precedence took priority."
+                why += " It is at/above the configured manual pause threshold (\(ms(pause)) ms); that comparison alone does not establish why the final label is not pause."
             } else {
-                why += " It is below the manual pause threshold (\(ms(pause)) ms), so it is not a pause."
+                why += " It is below the configured manual pause threshold (\(ms(pause)) ms); that comparison alone does not establish that it is not a pause."
             }
         }
 
@@ -113,7 +133,7 @@ public enum PerISIDiagnosticBuilder {
             candidateLabel: nil,
             seedLowerSec: lower,
             seedUpperSec: upper,
-            bridgeUpperSec: bridgeUpperSec,
+            bridgeUpperSec: bridge,
             bandRelationTag: tag,
             explanation: why
         )
@@ -121,10 +141,16 @@ public enum PerISIDiagnosticBuilder {
 
     /// Readable seed-band text (`lower–upper ms`), or `nil` when no band is available.
     public static func seedBandText(lowerSec: Double?, upperSec: Double?) -> String? {
-        guard let lower = lowerSec, let upper = upperSec, lower.isFinite, upper.isFinite, upper > 0 else {
+        guard let (lower, upper) = validBand(lowerSec: lowerSec, upperSec: upperSec) else { return nil }
+        return "\(ms(lower))–\(ms(upper)) ms"
+    }
+
+    private static func validBand(lowerSec: Double?, upperSec: Double?) -> (lower: Double, upper: Double)? {
+        guard let lower = lowerSec, let upper = upperSec,
+              lower.isFinite, upper.isFinite, lower >= 0, upper > 0, lower <= upper else {
             return nil
         }
-        return "\(ms(lower))–\(ms(upper)) ms"
+        return (lower, upper)
     }
 
     private static func ms(_ seconds: Double) -> String {

@@ -243,8 +243,10 @@ public enum LearnedManualThresholdApplier {
 public extension LearnedThresholdContribution {
     /// Auditable provenance for a learned threshold, suitable for later inclusion in a candidate's
     /// decisionPath / the CSV `resolved_thresholds` column. `label` is the calibration source label
-    /// (e.g. `burst_family`, `tonic`, `pause`), `n` the labelled-event count, `trains` the contributing
-    /// train count, `stat` the percentile used, and `confidence` = n/(n+6).
+    /// (e.g. `burst_family`, `tonic`, `pause`), `n` the resolved evidence-run count, `trains` the
+    /// contributing-train count, and `stat` the percentile used. The legacy `confidence` key carries the
+    /// train-clustered support score `min(n, trains) / (min(n, trains) + 6)`; it is not a frequentist
+    /// confidence level or a claim of independent biological replication.
     var provenanceNote: String {
         String(
             format: "learned_from_manual_annotations(label=%@,n=%d,trains=%d,stat=%@,confidence=%.2f)",
@@ -253,8 +255,9 @@ public extension LearnedThresholdContribution {
     }
 
     /// Phase 1F: compact, explicitly-labelled evidence summary for the preview UI, e.g.
-    /// `n=8 · trains=3 · confidence=0.57`. The `n=/trains=/confidence=` keys are technical tokens (like the
-    /// provenance note), not localized.
+    /// `n=8 · trains=3 · confidence=0.33`. The `confidence` spelling is retained for output compatibility,
+    /// but its value is the train-clustered support score described above. These keys are technical tokens
+    /// (like the provenance note), not localized.
     var evidenceSummary: String {
         String(format: "n=%d · trains=%d · confidence=%.2f", annotationCount, trainCount, confidence)
     }

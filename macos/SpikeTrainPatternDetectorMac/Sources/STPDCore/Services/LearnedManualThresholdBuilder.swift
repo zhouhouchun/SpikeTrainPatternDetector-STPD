@@ -24,8 +24,11 @@ import Foundation
 //   - not_burst / negative-veto labels: never learned (they remain run-time vetoes only).
 //
 // All learned values are `softAnchor` by default: expand-only (widen a band / lower a floor), never force a
-// candidate. A row only contributes when it is positive AND `isUsableForCalibration` (the existing per-label
-// minimum-count gate); unusable labels produce no threshold.
+// candidate. A row only contributes when it is positive AND `isUsableForCalibration` (the per-label ISI-count
+// gate); unusable labels produce no threshold. Cross-train evidence is retained as audit metadata. The
+// proposal's support score is train-clustered: multiple resolved runs on one train can improve the quantile
+// estimate but cannot increase this score beyond one observational train unit. It is not a claim of
+// independent neurons, sessions, or biological replication because those identifiers are not yet modeled.
 
 /// One learned threshold field, with the calibration evidence and statistic it came from.
 public struct LearnedThresholdContribution: Hashable, Sendable {
@@ -35,11 +38,18 @@ public struct LearnedThresholdContribution: Hashable, Sendable {
     public let statistic: String     // "q90" | "q95" | "q10"
     public let valueSec: Double
     public let mode: ThresholdMode
-    public let annotationCount: Int
+    public let evidenceRunCount: Int
+    /// Compatibility spelling. This is a resolved evidence-run count, not a serialized-mark count.
+    public var annotationCount: Int { evidenceRunCount }
     public let trainCount: Int
     public let coveredISICount: Int
-    /// Confidence in `[0,1)` from the labelled-event count: `n / (n + 6)` (mirrors R's `anchor_confidence`).
-    public let confidence: Double
+    /// Train-clustered support score in `[0,1)`: `n / (n + 6)`, where
+    /// `n = min(evidenceRunCount, trainCount)`. Multiple runs from one train therefore cannot inflate the
+    /// score. This is observational coverage, not independent biological replication.
+    public let supportScore: Double
+    /// Compatibility spelling for existing callers. This is the train-clustered `supportScore`, not a
+    /// frequentist confidence level and not evidence of independent neurons or sessions.
+    public var confidence: Double { supportScore }
 
     public init(
         family: String, field: String, sourceLabel: String, statistic: String, valueSec: Double,
@@ -51,10 +61,10 @@ public struct LearnedThresholdContribution: Hashable, Sendable {
         self.statistic = statistic
         self.valueSec = valueSec
         self.mode = mode
-        self.annotationCount = annotationCount
+        self.evidenceRunCount = annotationCount
         self.trainCount = trainCount
         self.coveredISICount = coveredISICount
-        self.confidence = confidence
+        self.supportScore = confidence
     }
 }
 
@@ -117,7 +127,10 @@ public enum LearnedManualThresholdBuilder {
         var skipped: [LearnedThresholdSkip] = []
 
         func isi(_ value: Double) -> ManualISIThreshold { ManualISIThreshold(mode: learnMode, valueSec: value) }
-        func confidence(_ n: Int) -> Double { n <= 0 ? 0 : Double(n) / Double(n + 6) }
+        func trainClusteredSupportScore(evidenceRunCount: Int, trainCount: Int) -> Double {
+            let n = min(max(0, evidenceRunCount), max(0, trainCount))
+            return n == 0 ? 0 : Double(n) / Double(n + 6)
+        }
         func record(
             family: String, field: String, statistic: String, value: Double,
             _ row: ManualAnnotationCalibrationLabelSummary
@@ -125,8 +138,12 @@ public enum LearnedManualThresholdBuilder {
             contributions.append(
                 LearnedThresholdContribution(
                     family: family, field: field, sourceLabel: row.label, statistic: statistic, valueSec: value,
-                    mode: learnMode, annotationCount: row.annotationCount, trainCount: row.trainCount,
-                    coveredISICount: row.coveredISICount, confidence: confidence(row.annotationCount)
+                    mode: learnMode, annotationCount: row.evidenceRunCount, trainCount: row.trainCount,
+                    coveredISICount: row.coveredISICount,
+                    confidence: trainClusteredSupportScore(
+                        evidenceRunCount: row.evidenceRunCount,
+                        trainCount: row.trainCount
+                    )
                 )
             )
         }
@@ -137,7 +154,10 @@ public enum LearnedManualThresholdBuilder {
                 skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .negativeVetoLabel))
                 continue
             }
-            // Respect the existing per-label minimum-evidence (usability) gate.
+            // Respect the per-label preview evidence-count gate. Cross-train evidence is reported on the
+            // row, but is not a hard gate because a dataset may contain only one train with this physiological
+            // pattern. The support score below is capped by train-level observational coverage; biological
+            // independence remains unknown until neuron/session identifiers are modeled.
             guard row.isUsableForCalibration else {
                 skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .notUsableMinCount))
                 continue
