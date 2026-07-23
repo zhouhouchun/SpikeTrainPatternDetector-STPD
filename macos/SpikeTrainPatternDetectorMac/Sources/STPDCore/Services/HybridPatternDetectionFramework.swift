@@ -180,7 +180,8 @@ public enum HybridPatternDetectionFramework {
         detectorParameters: PatternDetectionParameterSettings = .defaults,
         manualThresholdProfile: ManualThresholdProfile = .automatic,
         useAdaptiveV2Canonicalization: Bool = false,
-        manualThresholdScope: ManualThresholdScope = .allTrains
+        manualThresholdScope: ManualThresholdScope = .allTrains,
+        buildCommit: String = DetectionRunIdentity.unavailable
     ) -> ClassicAnchorDetectionRun {
         let run = ClassicAnchorDetectionPipeline.run(
             dataset: dataset,
@@ -192,7 +193,8 @@ public enum HybridPatternDetectionFramework {
             manualThresholdProfile: manualThresholdProfile,
             frameworkPolicy: plan.policy,
             useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
-            manualThresholdScope: manualThresholdScope
+            manualThresholdScope: manualThresholdScope,
+            buildCommit: buildCommit
         )
         return tagRun(run, plan: plan)
     }
@@ -218,7 +220,8 @@ public enum HybridPatternDetectionFramework {
             datasetStructuralSeedSummary: run.datasetStructuralSeedSummary,
             datasetRerunProvenance: run.datasetRerunProvenance,
             performanceReport: run.performanceReport,
-            datasetISIDistribution: run.datasetISIDistribution
+            datasetISIDistribution: run.datasetISIDistribution,
+            runIdentity: run.runIdentity
         )
     }
 

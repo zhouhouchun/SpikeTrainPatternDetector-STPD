@@ -117,6 +117,7 @@ public struct TonicSubtypeCounts: Hashable, Sendable {
 }
 
 public struct ClassicAnchorDetectionRun: Sendable {
+    public let runIdentity: DetectionRunIdentity
     public let bandSettings: TrainAdaptiveBandSettings
     public let qualitySettings: SpikeQualitySettings
     public let resolutions: [TrainAdaptiveBandResolution]
@@ -138,8 +139,10 @@ public struct ClassicAnchorDetectionRun: Sendable {
         datasetStructuralSeedSummary: StructuralDatasetSeedSummary = .empty,
         datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance = .empty,
         performanceReport: ClassicAnchorDetectionPerformanceReport? = nil,
-        datasetISIDistribution: DatasetISIDistribution? = nil
+        datasetISIDistribution: DatasetISIDistribution? = nil,
+        runIdentity: DetectionRunIdentity = .legacyUnidentified
     ) {
+        self.runIdentity = runIdentity
         self.bandSettings = bandSettings
         self.qualitySettings = qualitySettings
         self.resolutions = resolutions
@@ -422,8 +425,29 @@ public enum ClassicAnchorDetectionPipeline {
         // / `.selectedTrains`, hard gates apply only to in-scope trains; out-of-scope trains see their hard gates demoted
         // to automatic. Soft anchors and automatic mode stay global. If the scope resolves to no train, hard gates affect
         // no train (never a silent fallback to all).
-        manualThresholdScope: ManualThresholdScope = .allTrains
+        manualThresholdScope: ManualThresholdScope = .allTrains,
+        // Build systems may inject a commit or release identifier. This identifier alone is not a
+        // reproducibility guarantee; the default is explicit rather than guessed from mutable state.
+        buildCommit: String = DetectionRunIdentity.unavailable
     ) -> ClassicAnchorDetectionRun {
+        let settingsSnapshot = DetectionRunSettingsSnapshot.make(
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            refractoryAction: refractoryAction,
+            stateTuning: stateTuning,
+            detectorParameters: detectorParameters,
+            manualThresholdProfile: manualThresholdProfile,
+            frameworkPolicy: frameworkPolicy,
+            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+            manualThresholdScope: manualThresholdScope
+        )
+        let runIdentity = DetectionRunIdentity.make(
+            dataset: dataset,
+            settings: settingsSnapshot,
+            buildCommit: buildCommit
+        )
+        // Identity hashing is invocation bookkeeping, not detector runtime. Start performance
+        // accounting only after the immutable run identity has been captured.
         let performanceRecorder = PerformanceRecorder(dataset: dataset)
         // Phase D2-wire: compute the dataset ISI distribution once, before per-train band resolution,
         // at the detector/band floor so it aligns with the valid-ISI set the resolver uses. Diagnostic
@@ -969,7 +993,8 @@ public enum ClassicAnchorDetectionPipeline {
             datasetStructuralSeedSummary: finalDatasetStructuralSeedSummary,
             datasetRerunProvenance: datasetRerunProvenance,
             performanceReport: performanceRecorder.makeReport(results: results),
-            datasetISIDistribution: datasetISIDistribution
+            datasetISIDistribution: datasetISIDistribution,
+            runIdentity: runIdentity
         )
     }
 
