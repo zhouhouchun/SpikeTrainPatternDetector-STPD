@@ -116,8 +116,144 @@ public struct TonicSubtypeCounts: Hashable, Sendable {
     }
 }
 
+/// The final, post-clamp threshold state used for one train's authoritative detector rerun.
+///
+/// Requested settings and resolver provenance alone are insufficient because detector settings can
+/// apply additional safety clamps. Capturing the effective profile at the point of use lets result
+/// exporters report what the detector actually consumed without reconstructing mutable logic.
+public struct ClassicAnchorResolvedThresholdEvidence: Hashable, Sendable {
+    public let trainID: String
+    public let trainName: String
+    public let stagePath: String
+    public let effectiveProfile: ResolvedThresholdProfile
+    public let resolutionProvenance: [ResolvedThreshold]
+    public let learnedProvenanceByKey: [String: String]
+
+    public init(
+        trainID: String,
+        trainName: String,
+        stagePath: String,
+        effectiveProfile: ResolvedThresholdProfile,
+        resolutionProvenance: [ResolvedThreshold],
+        learnedProvenanceByKey: [String: String]
+    ) {
+        self.trainID = trainID
+        self.trainName = trainName
+        self.stagePath = stagePath
+        self.effectiveProfile = effectiveProfile
+        self.resolutionProvenance = resolutionProvenance
+        self.learnedProvenanceByKey = learnedProvenanceByKey
+    }
+}
+
 public struct ClassicAnchorDetectionRun: Sendable {
+    private struct AuthorityBandSnapshot: Equatable, Sendable {
+        let pattern: String
+        let seedLowerSec: Double
+        let seedUpperSec: Double
+        let bridgeUpperSec: Double
+        let contrastS: Double?
+        let primarySource: String
+
+        init(_ band: AdaptiveBand) {
+            self.pattern = band.pattern.rawValue
+            self.seedLowerSec = band.seedLowerSec
+            self.seedUpperSec = band.seedUpperSec
+            self.bridgeUpperSec = band.bridgeUpperSec
+            self.contrastS = band.contrastS
+            self.primarySource = band.primarySource.rawValue
+        }
+    }
+
+    private struct AuthorityThresholdRowSnapshot: Equatable, Sendable {
+        let id: String
+        let pattern: String
+        let field: String
+        let histogramSec: Double?
+        let defaultSec: Double?
+        let effectiveSec: Double?
+        let source: String
+
+        init(_ row: AdaptiveBandThresholdRow) {
+            self.id = row.id
+            self.pattern = row.pattern.rawValue
+            self.field = row.field.rawValue
+            self.histogramSec = row.histogramSec
+            self.defaultSec = row.defaultSec
+            self.effectiveSec = row.effectiveSec
+            self.source = row.source.rawValue
+        }
+    }
+
+    private struct AuthorityResolutionSnapshot: Equatable, Sendable {
+        let trainID: String
+        let trainName: String
+        let minValidISISec: Double
+        let histogramBinWidthSec: Double
+        let validISICount: Int
+        let bands: [AuthorityBandSnapshot]
+        let thresholdRows: [AuthorityThresholdRowSnapshot]
+        let seedBandProfile: TrainSeedBandProfile
+        let structuralSeedSummary: StructuralSeedBandSummary
+
+        init(_ resolution: TrainAdaptiveBandResolution) {
+            self.trainID = resolution.trainID
+            self.trainName = resolution.trainName
+            self.minValidISISec = resolution.minValidISISec
+            self.histogramBinWidthSec = resolution.histogramBinWidthSec
+            self.validISICount = resolution.validISICount
+            self.bands = resolution.bands.values
+                .map(AuthorityBandSnapshot.init)
+                .sorted { $0.pattern < $1.pattern }
+            self.thresholdRows = resolution.thresholdRows
+                .map(AuthorityThresholdRowSnapshot.init)
+                .sorted {
+                    if $0.pattern != $1.pattern {
+                        return $0.pattern < $1.pattern
+                    }
+                    if $0.field != $1.field {
+                        return $0.field < $1.field
+                    }
+                    return $0.id < $1.id
+                }
+            self.seedBandProfile = resolution.seedBandProfile
+            self.structuralSeedSummary = resolution.structuralSeedSummary
+        }
+    }
+
+    /// Module-private structural seal for detector-produced runs.
+    ///
+    /// Public callers may still construct a run for UI/tests, but only the detector pipeline (or a
+    /// trusted in-module transformation of an already sealed run) can create this snapshot. The
+    /// result-package exporter recomputes it from the immutable public fields before export, so a
+    /// coordinated public rewrap of results, settings, or threshold evidence cannot masquerade as
+    /// the authoritative detector output.
+    private struct ResultPackageAuthoritySnapshot: Equatable, Sendable {
+        let runIdentity: DetectionRunIdentity
+        let invocationSettingsSnapshot: DetectionRunSettingsSnapshot?
+        let datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot?
+        let resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence]
+        let bandSettings: TrainAdaptiveBandSettings
+        let qualitySettings: SpikeQualitySettings
+        let resolutions: [AuthorityResolutionSnapshot]
+        let results: [ClassicAnchorDetectionResult]
+        let datasetStructuralSeedSummary: StructuralDatasetSeedSummary
+        let datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance
+        let datasetISIDistribution: DatasetISIDistribution?
+    }
+
     public let runIdentity: DetectionRunIdentity
+    /// The complete immutable invocation snapshot captured by the detector entry point.
+    ///
+    /// `runIdentity.settingsSnapshot` is useful for portable identity, but callers can construct a
+    /// `ClassicAnchorDetectionRun` manually. Keeping the independently threaded entry-point
+    /// snapshot lets scientific exporters prove that a run was produced from the settings it
+    /// claims, rather than merely rewrapped with a matching identity.
+    public let invocationSettingsSnapshot: DetectionRunSettingsSnapshot?
+    /// Dataset display/source metadata frozen at the same detector entry point as the input digest.
+    public let datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot?
+    /// One final effective threshold snapshot per train, captured at the authoritative rerun seam.
+    public let resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence]
     public let bandSettings: TrainAdaptiveBandSettings
     public let qualitySettings: SpikeQualitySettings
     public let resolutions: [TrainAdaptiveBandResolution]
@@ -130,6 +266,7 @@ public struct ClassicAnchorDetectionRun: Sendable {
     /// reads it yet. D3 will derive burst/tonic/pause `ModeISIInterval`s from it. Optional (nil for
     /// callers that construct a run without the pipeline), mirroring `performanceReport`.
     public let datasetISIDistribution: DatasetISIDistribution?
+    private let resultPackageAuthority: ResultPackageAuthoritySnapshot?
 
     public init(
         bandSettings: TrainAdaptiveBandSettings,
@@ -140,9 +277,62 @@ public struct ClassicAnchorDetectionRun: Sendable {
         datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance = .empty,
         performanceReport: ClassicAnchorDetectionPerformanceReport? = nil,
         datasetISIDistribution: DatasetISIDistribution? = nil,
+        invocationSettingsSnapshot: DetectionRunSettingsSnapshot? = nil,
+        datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot? = nil,
+        resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence] = [],
         runIdentity: DetectionRunIdentity = .legacyUnidentified
     ) {
+        self.init(
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            resolutions: resolutions,
+            results: results,
+            datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+            datasetRerunProvenance: datasetRerunProvenance,
+            performanceReport: performanceReport,
+            datasetISIDistribution: datasetISIDistribution,
+            invocationSettingsSnapshot: invocationSettingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
+            runIdentity: runIdentity,
+            sealResultPackageAuthority: false
+        )
+    }
+
+    private init(
+        bandSettings: TrainAdaptiveBandSettings,
+        qualitySettings: SpikeQualitySettings,
+        resolutions: [TrainAdaptiveBandResolution],
+        results: [ClassicAnchorDetectionResult],
+        datasetStructuralSeedSummary: StructuralDatasetSeedSummary,
+        datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance,
+        performanceReport: ClassicAnchorDetectionPerformanceReport?,
+        datasetISIDistribution: DatasetISIDistribution?,
+        invocationSettingsSnapshot: DetectionRunSettingsSnapshot?,
+        datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot?,
+        resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence],
+        runIdentity: DetectionRunIdentity,
+        sealResultPackageAuthority: Bool
+    ) {
+        let authority = sealResultPackageAuthority
+            ? Self.makeResultPackageAuthoritySnapshot(
+                bandSettings: bandSettings,
+                qualitySettings: qualitySettings,
+                resolutions: resolutions,
+                results: results,
+                datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+                datasetRerunProvenance: datasetRerunProvenance,
+                datasetISIDistribution: datasetISIDistribution,
+                invocationSettingsSnapshot: invocationSettingsSnapshot,
+                datasetMetadataSnapshot: datasetMetadataSnapshot,
+                resolvedThresholdEvidence: resolvedThresholdEvidence,
+                runIdentity: runIdentity
+            )
+            : nil
         self.runIdentity = runIdentity
+        self.invocationSettingsSnapshot = invocationSettingsSnapshot
+        self.datasetMetadataSnapshot = datasetMetadataSnapshot
+        self.resolvedThresholdEvidence = resolvedThresholdEvidence
         self.bandSettings = bandSettings
         self.qualitySettings = qualitySettings
         self.resolutions = resolutions
@@ -151,6 +341,112 @@ public struct ClassicAnchorDetectionRun: Sendable {
         self.datasetRerunProvenance = datasetRerunProvenance
         self.performanceReport = performanceReport
         self.datasetISIDistribution = datasetISIDistribution
+        self.resultPackageAuthority = authority
+    }
+
+    static func authoritativeDetectorRun(
+        bandSettings: TrainAdaptiveBandSettings,
+        qualitySettings: SpikeQualitySettings,
+        resolutions: [TrainAdaptiveBandResolution],
+        results: [ClassicAnchorDetectionResult],
+        datasetStructuralSeedSummary: StructuralDatasetSeedSummary = .empty,
+        datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance = .empty,
+        performanceReport: ClassicAnchorDetectionPerformanceReport? = nil,
+        datasetISIDistribution: DatasetISIDistribution? = nil,
+        invocationSettingsSnapshot: DetectionRunSettingsSnapshot?,
+        datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot?,
+        resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence],
+        runIdentity: DetectionRunIdentity
+    ) -> ClassicAnchorDetectionRun {
+        ClassicAnchorDetectionRun(
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            resolutions: resolutions,
+            results: results,
+            datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+            datasetRerunProvenance: datasetRerunProvenance,
+            performanceReport: performanceReport,
+            datasetISIDistribution: datasetISIDistribution,
+            invocationSettingsSnapshot: invocationSettingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
+            runIdentity: runIdentity,
+            sealResultPackageAuthority: true
+        )
+    }
+
+    /// Re-seals a sanctioned in-module transformation of an authoritative detector run.
+    ///
+    /// This is intentionally internal. It exists for framework tagging and focused test
+    /// projections that alter only result records after the detector has produced a sealed run.
+    func replacingResultsFromTrustedModuleTransform(
+        _ results: [ClassicAnchorDetectionResult]
+    ) -> ClassicAnchorDetectionRun {
+        precondition(
+            hasValidResultPackageAuthority,
+            "trusted result replacement requires an authoritative detector-produced run"
+        )
+        return Self.authoritativeDetectorRun(
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            resolutions: resolutions,
+            results: results,
+            datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+            datasetRerunProvenance: datasetRerunProvenance,
+            performanceReport: performanceReport,
+            datasetISIDistribution: datasetISIDistribution,
+            invocationSettingsSnapshot: invocationSettingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
+            runIdentity: runIdentity
+        )
+    }
+
+    var hasValidResultPackageAuthority: Bool {
+        guard let resultPackageAuthority else {
+            return false
+        }
+        return resultPackageAuthority == Self.makeResultPackageAuthoritySnapshot(
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            resolutions: resolutions,
+            results: results,
+            datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+            datasetRerunProvenance: datasetRerunProvenance,
+            datasetISIDistribution: datasetISIDistribution,
+            invocationSettingsSnapshot: invocationSettingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
+            runIdentity: runIdentity
+        )
+    }
+
+    private static func makeResultPackageAuthoritySnapshot(
+        bandSettings: TrainAdaptiveBandSettings,
+        qualitySettings: SpikeQualitySettings,
+        resolutions: [TrainAdaptiveBandResolution],
+        results: [ClassicAnchorDetectionResult],
+        datasetStructuralSeedSummary: StructuralDatasetSeedSummary,
+        datasetRerunProvenance: ClassicAnchorDatasetRerunProvenance,
+        datasetISIDistribution: DatasetISIDistribution?,
+        invocationSettingsSnapshot: DetectionRunSettingsSnapshot?,
+        datasetMetadataSnapshot: DetectionDatasetMetadataSnapshot?,
+        resolvedThresholdEvidence: [ClassicAnchorResolvedThresholdEvidence],
+        runIdentity: DetectionRunIdentity
+    ) -> ResultPackageAuthoritySnapshot {
+        ResultPackageAuthoritySnapshot(
+            runIdentity: runIdentity,
+            invocationSettingsSnapshot: invocationSettingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            resolutions: resolutions.map(AuthorityResolutionSnapshot.init),
+            results: results,
+            datasetStructuralSeedSummary: datasetStructuralSeedSummary,
+            datasetRerunProvenance: datasetRerunProvenance,
+            datasetISIDistribution: datasetISIDistribution
+        )
     }
 
     public var candidates: [ClassicAnchorCandidate] {
@@ -267,6 +563,11 @@ public struct ClassicAnchorDetectionRun: Sendable {
 }
 
 public enum ClassicAnchorDetectionPipeline {
+    private struct FinalRerunOutput: Sendable {
+        let result: ClassicAnchorDetectionResult
+        let thresholdEvidence: ClassicAnchorResolvedThresholdEvidence?
+    }
+
     private final class PerformanceRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private let runStartNanos = DispatchTime.now().uptimeNanoseconds
@@ -441,6 +742,7 @@ public enum ClassicAnchorDetectionPipeline {
             useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
             manualThresholdScope: manualThresholdScope
         )
+        let datasetMetadataSnapshot = DetectionDatasetMetadataSnapshot.make(dataset: dataset)
         let runIdentity = DetectionRunIdentity.make(
             dataset: dataset,
             settings: settingsSnapshot,
@@ -788,12 +1090,12 @@ public enum ClassicAnchorDetectionPipeline {
         let datasetSummaryAppliedToAnyResolution = leaveOneOutApplications.contains { $0.applied }
         let finalResolutionsByID = Dictionary(uniqueKeysWithValues: resolutions.map { ($0.trainID, $0) })
         let finalInputResults = results
-        results = performanceRecorder.measureWallStage("dataset_seed_aware_rerun_parallel") {
+        let finalRerunOutputs = performanceRecorder.measureWallStage("dataset_seed_aware_rerun_parallel") {
             parallelMap(count: finalInputResults.count) { index in
                 let result = finalInputResults[index]
                 guard let train = trainsByID[result.trainID],
                       let resolution = finalResolutionsByID[result.trainID] else {
-                    return result
+                    return FinalRerunOutput(result: result, thresholdEvidence: nil)
                 }
                 return performanceRecorder.measureTrainStage("dataset_seed_aware_rerun", train: train) {
                     let existingEventCandidates = result.candidates.filter { candidate in
@@ -937,10 +1239,28 @@ public enum ClassicAnchorDetectionPipeline {
                         hfsBurstArbitrationAuditRows: finalPhase1BResolution.hfsBurstArbitrationAuditRows
                     )
                     performanceRecorder.recordTrainResult(finalResult)
-                    return finalResult
+                    let thresholdEvidence = ClassicAnchorResolvedThresholdEvidence(
+                        trainID: train.id,
+                        trainName: train.name,
+                        stagePath: "dataset_seed_aware_rerun",
+                        effectiveProfile: effectiveResolvedProfile(
+                            classic: finalDetectorSettings,
+                            state: finalStateSettings,
+                            pause: finalPauseSettings
+                        ),
+                        resolutionProvenance: resolvedFinalSettings.resolved?.provenance ?? [],
+                        learnedProvenanceByKey:
+                            resolvedFinalSettings.resolved?.learnedProvenanceByKey ?? [:]
+                    )
+                    return FinalRerunOutput(
+                        result: finalResult,
+                        thresholdEvidence: thresholdEvidence
+                    )
                 }
             }
         }
+        results = finalRerunOutputs.map(\.result)
+        let resolvedThresholdEvidence = finalRerunOutputs.compactMap(\.thresholdEvidence)
         if let datasetProfileCandidate = ClassicAnchorProfileAuditor.datasetStructuralSeedProfileCandidate(
             dataset: dataset,
             summary: finalDatasetStructuralSeedSummary
@@ -985,7 +1305,7 @@ public enum ClassicAnchorDetectionPipeline {
             bridgeExpansionSummaryIncludedTargetTrain: bridgeExpansionSummaryIncludedTargetTrain
         )
 
-        return ClassicAnchorDetectionRun(
+        return ClassicAnchorDetectionRun.authoritativeDetectorRun(
             bandSettings: bandSettings,
             qualitySettings: qualitySettings,
             resolutions: resolutions,
@@ -994,6 +1314,9 @@ public enum ClassicAnchorDetectionPipeline {
             datasetRerunProvenance: datasetRerunProvenance,
             performanceReport: performanceRecorder.makeReport(results: results),
             datasetISIDistribution: datasetISIDistribution,
+            invocationSettingsSnapshot: settingsSnapshot,
+            datasetMetadataSnapshot: datasetMetadataSnapshot,
+            resolvedThresholdEvidence: resolvedThresholdEvidence,
             runIdentity: runIdentity
         )
     }

@@ -212,17 +212,7 @@ public enum HybridPatternDetectionFramework {
             )
         }
 
-        return ClassicAnchorDetectionRun(
-            bandSettings: run.bandSettings,
-            qualitySettings: run.qualitySettings,
-            resolutions: run.resolutions,
-            results: taggedResults,
-            datasetStructuralSeedSummary: run.datasetStructuralSeedSummary,
-            datasetRerunProvenance: run.datasetRerunProvenance,
-            performanceReport: run.performanceReport,
-            datasetISIDistribution: run.datasetISIDistribution,
-            runIdentity: run.runIdentity
-        )
+        return run.replacingResultsFromTrustedModuleTransform(taggedResults)
     }
 
     private static func tagCandidate(

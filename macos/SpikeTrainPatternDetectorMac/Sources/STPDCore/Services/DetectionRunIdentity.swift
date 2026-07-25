@@ -327,6 +327,28 @@ public struct DetectionDatasetSnapshot: Hashable, Sendable {
     }
 }
 
+/// Human-readable dataset metadata captured at detector invocation time.
+///
+/// The scientific-input digest intentionally remains independent of display/source strings. This
+/// separate snapshot binds those strings to the run so an exporter cannot silently relabel an
+/// otherwise identical spike matrix after detection.
+public struct DetectionDatasetMetadataSnapshot: Hashable, Sendable {
+    public let name: String
+    public let sourceDescription: String
+
+    public init(name: String, sourceDescription: String) {
+        self.name = name
+        self.sourceDescription = sourceDescription
+    }
+
+    public static func make(dataset: SpikeDataset) -> DetectionDatasetMetadataSnapshot {
+        DetectionDatasetMetadataSnapshot(
+            name: dataset.name,
+            sourceDescription: dataset.sourceDescription
+        )
+    }
+}
+
 /// Identity and reproducibility metadata captured at detector invocation time.
 ///
 /// `runID` distinguishes executions; `datasetDigest` and `settingsDigest` determine whether two
