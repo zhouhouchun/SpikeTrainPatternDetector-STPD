@@ -23,6 +23,7 @@ public enum STPDResultTable: String, CaseIterable, Hashable, Sendable {
     case reviewStatus = "Review_status.csv"
     case hfsBurstArbitrationAudit = "HFS_burst_arbitration_audit.csv"
     case taskEvents = "Task_events.csv"
+    case dataQualityQC = "Data_quality_QC.csv"
 }
 
 public struct STPDResultTableContract: Hashable, Sendable {
@@ -45,9 +46,30 @@ public struct STPDResultTableContract: Hashable, Sendable {
 }
 
 public enum STPDResultSchema {
-    public static let version = "stpd_result_package_v2"
+    public static let version = "stpd_result_package_v3"
+    /// The immediately-preceding schema version. Retained so the schema layer can express backward
+    /// compatibility (a v3-aware validator accepts a valid v2 package, which lacks `Data_quality_QC.csv`).
+    public static let previousVersion = "stpd_result_package_v2"
     public static let detectorVersion = "stpd_mac_structure_first_v1"
     public static let manifestFileName = "manifest.json"
+
+    /// The exact set of table file names required for a given result-package schema version.
+    ///
+    /// v2 requires the original 17 tables; v3 additionally requires `Data_quality_QC.csv`. An unknown
+    /// version returns `nil` so callers fail closed. This is the narrow schema-layer primitive that
+    /// expresses reader/validator compatibility without a broad package-reader subsystem.
+    public static func requiredTableFileNames(forSchemaVersion version: String) -> Set<String>? {
+        switch version {
+        case previousVersion:
+            return Set(STPDResultTable.allCases
+                .filter { $0 != .dataQualityQC }
+                .map(\.rawValue))
+        case Self.version:
+            return Set(STPDResultTable.allCases.map(\.rawValue))
+        default:
+            return nil
+        }
+    }
 
     /// Name, grain, and key contracts for the normalized result package. Before a writer is added,
     /// the materialization phase must also define deterministic UID derivation, foreign-key targets,
@@ -137,6 +159,11 @@ public enum STPDResultSchema {
             table: .taskEvents,
             grain: "one row per normalized task or stimulus event",
             primaryKey: ["run_id", "task_event_uid"]
+        ),
+        .init(
+            table: .dataQualityQC,
+            grain: "one row per dataset train",
+            primaryKey: ["run_id", "train_id"]
         ),
     ]
 }

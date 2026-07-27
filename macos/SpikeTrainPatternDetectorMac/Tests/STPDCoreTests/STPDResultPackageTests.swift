@@ -863,7 +863,7 @@ func resultPackageBuildsAllSeventeenNormalizedTables() throws {
         .automatic(dataset: fixture.dataset, run: fixture.run)
     )
 
-    #expect(STPDResultSchema.version == "stpd_result_package_v2")
+    #expect(STPDResultSchema.version == "stpd_result_package_v3")
     #expect(Set(package.tables.keys) == Set(STPDResultTable.allCases))
     #expect(package.manifest.tables.count == STPDResultTable.allCases.count)
     #expect(package.manifest.tables.map(\.fileName) == STPDResultTable.allCases.map(\.rawValue))
@@ -5326,6 +5326,8 @@ func resultPackageSchemaIsCompleteTypedAndStable() throws {
         .hfsBurstArbitrationAudit:
             "2c42cd159f246affaf7d5e61132959a1c1102f7992c5fbbddd07d624f6dc0c6c",
         .taskEvents: "076b9aec172472b9a0a393d1c89567e48f0a4f83b0a96c95af6738cd9826f8ac",
+        .dataQualityQC:
+            "28696b84418f950933457ec9bc48e98fe9532eca708d25fac8aaf989dc40af86",
     ]
 
     #expect(Set(expectedSchemaDigests.keys) == Set(STPDResultTable.allCases))
@@ -8053,4 +8055,422 @@ func resultPackageValidatorRejectsEventDetectorProvenanceRewrites()
             )
         }
     }
+}
+
+// MARK: - Phase 2.2B — Data_quality_QC (schema v3) permanent contract tests
+
+private let dataQualityQCExpectedHeaders = [
+    "run_id", "settings_digest", "dataset_digest", "train_id", "train_name",
+    "spike_count", "raw_isi_count", "valid_isi_count", "artifact_isi_count", "artifact_fraction",
+    "refractory_suspect_isi_count", "refractory_suspect_fraction", "zero_or_negative_isi_count",
+    "duplicate_timestamp_count", "dropped_duplicate_timestamp_count", "input_was_unsorted",
+    "input_nonmonotonic_step_count", "duplicate_timestamp_policy", "artifact_threshold_sec",
+    "refractory_suspect_threshold_sec", "firing_rate_hz", "duration_sec", "raw_min_isi_sec",
+    "min_valid_isi_sec", "artifact_min_isi_sec", "median_isi_sec", "max_isi_sec",
+    "warning_level", "warning_message", "percentile_status",
+]
+
+private func dataQualityQCTimestamps(_ isis: [Double]) -> [Double] {
+    isis.reduce(into: [0.0]) { values, isi in values.append((values.last ?? 0) + isi) }
+}
+
+private func dataQualityQCSettingsSnapshot() -> DetectionRunSettingsSnapshot {
+    DetectionRunSettingsSnapshot.make(
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005),
+        qualitySettings: SpikeQualitySettings(),
+        refractoryAction: .warnOnly,
+        stateTuning: StatePatternDetectorTuning(),
+        detectorParameters: .defaults,
+        manualThresholdProfile: .automatic,
+        frameworkPolicy: .legacyCompatible,
+        useAdaptiveV2Canonicalization: false,
+        manualThresholdScope: .allTrains
+    )
+}
+
+private func dataQualityQCColumn(_ table: STPDResultTableData, _ name: String, row: Int) throws -> String {
+    let index = try #require(table.headers.firstIndex(of: name))
+    try #require(table.rows.indices.contains(row))
+    return table.rows[row][index]
+}
+
+private func dataQualityQCRowByTrain(_ table: STPDResultTableData) throws -> [String: [String]] {
+    let trainIndex = try #require(table.headers.firstIndex(of: "train_id"))
+    var map: [String: [String]] = [:]
+    for row in table.rows { map[row[trainIndex]] = row }
+    return map
+}
+
+@Test func dataQualityQCHeaderIsExactlyThirtyOrderedColumns() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let table = try #require(package.tables[.dataQualityQC])
+    #expect(table.headers == dataQualityQCExpectedHeaders)
+    #expect(table.headers.count == 30)
+    #expect(table.columnDefinitions.map(\.name) == dataQualityQCExpectedHeaders)
+}
+
+@Test func dataQualityQCHasExactlyOneRowPerTrainInAscendingTrainIDOrder() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let table = try #require(package.tables[.dataQualityQC])
+    #expect(table.rows.count == fixture.dataset.trains.count)
+    let trainIDs = try (0 ..< table.rows.count).map { try dataQualityQCColumn(table, "train_id", row: $0) }
+    #expect(Set(trainIDs) == Set(fixture.dataset.trains.map(\.id)))
+    #expect(trainIDs == trainIDs.sorted())
+}
+
+@Test func dataQualityQCProjectsEveryFieldFromAuthoritativeQC() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let table = try #require(package.tables[.dataQualityQC])
+    let rowsByTrain = try dataQualityQCRowByTrain(table)
+    let headerIndex = Dictionary(uniqueKeysWithValues: table.headers.enumerated().map { (offset, name) in (name, offset) })
+    for train in fixture.dataset.trains {
+        let quality = SpikeQualityAnalyzer.quality(for: train, settings: fixture.run.qualitySettings)
+        let row = try #require(rowsByTrain[train.id])
+        func cell(_ name: String) throws -> String { row[try #require(headerIndex[name])] }
+        #expect(try cell("train_name") == quality.trainName)
+        #expect(try cell("spike_count") == String(quality.spikeCount))
+        #expect(try cell("raw_isi_count") == String(max(quality.spikeCount - 1, 0)))
+        #expect(try cell("valid_isi_count") == String(quality.validISICount))
+        #expect(try cell("artifact_isi_count") == String(quality.artifactISICount))
+        #expect(try cell("artifact_fraction") == STPDCanonicalValue.double(quality.artifactFraction))
+        #expect(try cell("refractory_suspect_isi_count") == String(quality.refractorySuspectISICount))
+        #expect(try cell("refractory_suspect_fraction") == STPDCanonicalValue.double(quality.refractorySuspectFraction))
+        #expect(try cell("firing_rate_hz") == STPDCanonicalValue.double(quality.firingRateHz))
+        #expect(try cell("duration_sec") == STPDCanonicalValue.double(quality.durationSec))
+        #expect(try cell("median_isi_sec") == STPDCanonicalValue.double(quality.medianISISec))
+        #expect(try cell("min_valid_isi_sec") == STPDCanonicalValue.double(quality.minValidISISec))
+        #expect(try cell("max_isi_sec") == STPDCanonicalValue.double(quality.maxISISec))
+        #expect(try cell("input_was_unsorted") == STPDCanonicalValue.bool(quality.inputWasUnsorted))
+        #expect(try cell("duplicate_timestamp_policy") == quality.duplicateTimestampPolicy.rawValue)
+        #expect(try cell("warning_level") == quality.warningLevel.rawValue)
+        #expect(try cell("warning_message") == quality.warningMessage)
+        #expect(try cell("percentile_status") == quality.percentileStatus)
+    }
+}
+
+@Test func dataQualityQCThresholdsComeFromRunSettings() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let table = try #require(package.tables[.dataQualityQC])
+    for row in 0 ..< table.rows.count {
+        #expect(try dataQualityQCColumn(table, "artifact_threshold_sec", row: row)
+            == STPDCanonicalValue.double(fixture.run.qualitySettings.artifactThresholdSec))
+        #expect(try dataQualityQCColumn(table, "refractory_suspect_threshold_sec", row: row)
+            == STPDCanonicalValue.double(fixture.run.qualitySettings.refractorySuspectThresholdSec))
+    }
+}
+
+@Test func dataQualityQCHandlesZeroSpikeAndOneSpikeTrains() throws {
+    // Built at table level: the full pipeline is not required to accept degenerate/empty datasets.
+    let dataset = SpikeDataset(
+        name: "degenerate",
+        sourceDescription: "degenerate",
+        trains: [
+            SpikeTrain(name: "zero_spike", timestampsSec: []),
+            SpikeTrain(name: "one_spike", timestampsSec: [0.5]),
+            SpikeTrain(name: "normal", timestampsSec: dataQualityQCTimestamps([0.3, 0.31, 0.29, 0.30])),
+        ]
+    )
+    let identity = DetectionRunIdentity.make(dataset: dataset, settings: dataQualityQCSettingsSnapshot())
+    let table = try STPDResultPackageBuilder.dataQualityQCTable(
+        identity: identity, dataset: dataset, qualitySettings: SpikeQualitySettings()
+    )
+    #expect(table.rows.count == 3)
+    let rowsByTrain = try dataQualityQCRowByTrain(table)
+    let headerIndex = Dictionary(uniqueKeysWithValues: table.headers.enumerated().map { (offset, name) in (name, offset) })
+    for name in ["zero_spike", "one_spike"] {
+        let row = try #require(rowsByTrain[name])
+        func cell(_ column: String) throws -> String { row[try #require(headerIndex[column])] }
+        #expect(try cell("raw_isi_count") == "0")
+        #expect(try cell("valid_isi_count") == "0")
+        #expect(try cell("artifact_isi_count") == "0")
+        // Undefined statistics serialize as the canonical empty field.
+        #expect(try cell("median_isi_sec").isEmpty)
+        #expect(try cell("max_isi_sec").isEmpty)
+    }
+    #expect(try #require(rowsByTrain["zero_spike"])[try #require(headerIndex["spike_count"])] == "0")
+    #expect(try #require(rowsByTrain["one_spike"])[try #require(headerIndex["spike_count"])] == "1")
+}
+
+@Test func dataQualityQCEmptyDatasetProducesHeaderOnlyTable() throws {
+    let dataset = SpikeDataset(name: "empty", sourceDescription: "empty", trains: [])
+    let identity = DetectionRunIdentity.make(dataset: dataset, settings: dataQualityQCSettingsSnapshot())
+    let table = try STPDResultPackageBuilder.dataQualityQCTable(
+        identity: identity, dataset: dataset, qualitySettings: SpikeQualitySettings()
+    )
+    #expect(table.rows.isEmpty)
+    #expect(table.headers == dataQualityQCExpectedHeaders)
+}
+
+@Test func dataQualityQCKeysByStableTrainIDNotDisplayName() throws {
+    // Two trains share the SAME display name; SpikeDataset disambiguates their stable IDs.
+    let dataset = SpikeDataset(
+        name: "dup-name",
+        sourceDescription: "dup",
+        trains: [
+            SpikeTrain(name: "shared", timestampsSec: dataQualityQCTimestamps([0.30, 0.31, 0.29, 0.30])),
+            SpikeTrain(name: "shared", timestampsSec: dataQualityQCTimestamps([0.20, 0.21, 0.19, 0.20])),
+        ]
+    )
+    let ids = dataset.trains.map(\.id)
+    #expect(Set(ids).count == 2)            // distinct stable IDs
+    #expect(dataset.trains.allSatisfy { $0.name == "shared" })  // identical display names
+    let identity = DetectionRunIdentity.make(dataset: dataset, settings: dataQualityQCSettingsSnapshot())
+    let table = try STPDResultPackageBuilder.dataQualityQCTable(
+        identity: identity, dataset: dataset, qualitySettings: SpikeQualitySettings()
+    )
+    let rowsByTrain = try dataQualityQCRowByTrain(table)
+    #expect(Set(rowsByTrain.keys) == Set(ids))
+    let nameIndex = try #require(table.headers.firstIndex(of: "train_name"))
+    #expect(table.rows.allSatisfy { $0[nameIndex] == "shared" })
+}
+
+@Test func dataQualityQCMatchesISILabelsTrainQCForTrainsWithISIRows() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let qc = try #require(package.tables[.dataQualityQC])
+    let isi = try #require(package.tables[.isiLabelsFinal])
+    let qcByTrain = try dataQualityQCRowByTrain(qc)
+    let isiTrainIndex = try #require(isi.headers.firstIndex(of: "train_id"))
+    let shared = [
+        "warning_level", "warning_message", "duration_sec", "firing_rate_hz", "median_isi_sec",
+        "artifact_isi_count", "artifact_fraction", "valid_isi_count", "input_was_unsorted",
+        "percentile_status",
+    ]
+    for isiRow in isi.rows {
+        let trainID = isiRow[isiTrainIndex]
+        let qcRow = try #require(qcByTrain[trainID])
+        for field in shared {
+            let qcIndex = try #require(qc.headers.firstIndex(of: field))
+            let isiIndex = try #require(isi.headers.firstIndex(of: "train_qc_\(field)"))
+            #expect(qcRow[qcIndex] == isiRow[isiIndex])
+        }
+    }
+}
+
+@Test func dataQualityQCIgnoresSelectedTrainScope() throws {
+    // The detector runs over the full dataset; manualThresholdScope only affects manual hard gates,
+    // never which trains appear in QC. Both scopes must yield one QC row per dataset train.
+    let dataset = resultPackageFixture().dataset
+    func run(scope: ManualThresholdScope) -> ClassicAnchorDetectionRun {
+        ClassicAnchorDetectionPipeline.run(
+            dataset: dataset,
+            bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005),
+            manualThresholdScope: scope,
+            buildCommit: "phase2_2b_scope"
+        )
+    }
+    let all = try STPDResultPackageBuilder.build(.automatic(dataset: dataset, run: run(scope: .allTrains)))
+    let currentScope = ManualThresholdScope(kind: .currentTrain, trainIDs: [dataset.trains[0].id])
+    let scoped = try STPDResultPackageBuilder.build(.automatic(dataset: dataset, run: run(scope: currentScope)))
+    let allTrains = try dataQualityQCRowByTrain(try #require(all.tables[.dataQualityQC])).keys
+    let scopedTrains = try dataQualityQCRowByTrain(try #require(scoped.tables[.dataQualityQC])).keys
+    #expect(Set(allTrains) == Set(dataset.trains.map(\.id)))
+    #expect(Set(scopedTrains) == Set(dataset.trains.map(\.id)))
+}
+
+/// Rebuilds a Data_quality_QC table from a real package with one cell overwritten in row 0.
+private func dataQualityQCTampered(
+    _ package: STPDResultPackage, column: String, value: String, appendDuplicateRow0: Bool = false
+) throws -> STPDResultTableData {
+    let table = try #require(package.tables[.dataQualityQC])
+    var rows = table.rows
+    if appendDuplicateRow0 {
+        rows.append(rows[0])
+    } else {
+        let index = try #require(table.headers.firstIndex(of: column))
+        rows[0][index] = value
+    }
+    return try STPDResultTableData(
+        contract: table.contract, headers: table.headers,
+        columnDefinitions: table.columnDefinitions, rows: rows
+    )
+}
+
+@Test func dataQualityQCValidatorRejectsDuplicatePrimaryKey() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let isi = try #require(package.tables[.isiLabelsFinal])
+    let duplicated = try dataQualityQCTampered(package, column: "", value: "", appendDuplicateRow0: true)
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: duplicated, isiTable: isi,
+            expectedTrainIDs: nil, expectedDataset: nil, expectedRun: nil
+        )
+    }
+}
+
+@Test func dataQualityQCAuthorityReDerivationRejectsTamperedCellWithSealedInputs() throws {
+    // Tamper a column that passes the structural per-row checks and is NOT one of the ISI-shared
+    // fields (so the cross-table check does not fire): the authoritative byte re-derivation, which
+    // only runs when the sealed dataset+run are supplied, must reject it.
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let isi = try #require(package.tables[.isiLabelsFinal])
+    let tampered = try dataQualityQCTampered(package, column: "spike_count", value: "999")
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: tampered, isiTable: isi,
+            expectedTrainIDs: Set(fixture.dataset.trains.map(\.id)),
+            expectedDataset: fixture.dataset, expectedRun: fixture.run
+        )
+    }
+}
+
+@Test func dataQualityQCValidatorRejectsUnknownTrain() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let isi = try #require(package.tables[.isiLabelsFinal])
+    let table = try #require(package.tables[.dataQualityQC])
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: table, isiTable: isi,
+            expectedTrainIDs: ["a-train-that-is-not-in-the-dataset"],
+            expectedDataset: nil, expectedRun: nil
+        )
+    }
+}
+
+@Test func dataQualityQCValidatorRejectsNegativeCountsAndOutOfRangeFractions() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let isi = try #require(package.tables[.isiLabelsFinal])
+    let ids = Set(fixture.dataset.trains.map(\.id))
+    // Negative count.
+    let negative = try dataQualityQCTampered(package, column: "valid_isi_count", value: "-1")
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: negative, isiTable: isi,
+            expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
+        )
+    }
+    // Fraction above 1.
+    let badFraction = try dataQualityQCTampered(package, column: "artifact_fraction", value: "2.0")
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: badFraction, isiTable: isi,
+            expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
+        )
+    }
+    // valid + artifact exceeding raw.
+    let tooMany = try dataQualityQCTampered(package, column: "artifact_isi_count", value: "9999")
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity, table: tooMany, isiTable: isi,
+            expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
+        )
+    }
+}
+
+@Test func schemaTableSetGateAcceptsV2WithoutQCAndRequiresQCForV3() throws {
+    let v3All = Set(STPDResultTable.allCases.map(\.rawValue))
+    let v2Original = Set(STPDResultTable.allCases.filter { $0 != .dataQualityQC }.map(\.rawValue))
+
+    // (15) a v3-aware validator accepts a valid v2 package lacking Data_quality_QC.
+    #expect(throws: Never.self) {
+        try STPDResultPackageValidator.validateSchemaTableSet(
+            schemaVersion: "stpd_result_package_v2", presentFileNames: v2Original)
+    }
+    // (16) a v3 package must include Data_quality_QC.
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateSchemaTableSet(
+            schemaVersion: "stpd_result_package_v3", presentFileNames: v2Original)
+    }
+    // v3 with the full set is accepted; v2 with exactly 17 is accepted.
+    #expect(throws: Never.self) {
+        try STPDResultPackageValidator.validateSchemaTableSet(
+            schemaVersion: "stpd_result_package_v3", presentFileNames: v3All)
+    }
+    // (17) empirical v2-reader-on-v3: a v2-declared package containing the v3 QC table is rejected
+    // (fail-closed on the unexpected table). Recorded behavior, not assumed.
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateSchemaTableSet(
+            schemaVersion: "stpd_result_package_v2", presentFileNames: v3All)
+    }
+    // unknown/malformed versions fail closed.
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageValidator.validateSchemaTableSet(
+            schemaVersion: "stpd_result_package_v99", presentFileNames: v3All)
+    }
+}
+
+@Test func existingSeventeenTablesRemainByteStableExceptRunMetadataVersionCell() throws {
+    // 16 tables byte-identical to the v2 baseline (run_id normalized); Detector_run_metadata differs
+    // ONLY in result_schema_version (v3->v2 substitution reproduces the exact v2 bytes).
+    let v2Hashes: [STPDResultTable: String] = [
+        .parametersReport: "1fdef9b34fdfde5ca551aedb9a6216b94a76b3ff9e5a4202a59675d195cfa53e",
+        .resolvedParameters: "99f3aca8e4033cb23c57826866298d76a8b36109cd43d1634d4c2039322d172b",
+        .candidateLedger: "ca00c3e28e95b24112aae86fe1528fcfbb77cfe987f1842a9fcecf8266de2449",
+        .candidateFeatures: "880f0f3cbc604b769ba6423a4a0213cba060154c302139465bd55446c17ac40a",
+        .finalDecisions: "c35d4deb093ccd1e2551b3bf21c976c25545a35651967258a6162e73c03aca45",
+        .candidateLedgerDiagnostic: "f7591ab716cffa35651aa9d14e5079e459597cbc49109f024af451176f5de6f9",
+        .candidateFeaturesDiagnostic: "bb6b5ac1ac23bf2a08177f0cefe147101917cd79adb494b218df0dec83679565",
+        .finalDecisionsDiagnostic: "521034082ab4b42944d7f52ab8a10e81f70f29619ccc677d7bb2d20f49ab8013",
+        .eventsFinal: "26f82209b6c40a7777662571ac2a1f250ba981a318156df1ee01c8008608b4be",
+        .isiLabelsFinal: "f642731f8722bcd97fccccd72fee8c26dc1d34a2be1ae0712adce43537727384",
+        .candidateDiagnosticAudit: "647f4ce8f00ff2da27c8b054b639c8fabbf0808b1bc6de2b108119ddce1a78d0",
+        .resultConsistencyCheck: "5c483861be3b6cd7833df12720466ff9cfeacc41d44e7d5b5e6692242f95c3df",
+        .manualAnnotations: "345b1b637c4d2b9c9c47d326b72ff5e12442e618b59f8c66dca1adf3a8368b1c",
+        .reviewStatus: "c2b068df2ad0734f1363868ba3c74450f97cd491069d2eb291b05cb0353f37fa",
+        .hfsBurstArbitrationAudit: "a3dbbf392b3b40e04f5fcb029716a49ec17d9eab05da2fcecf60e44d22775953",
+        .taskEvents: "c33a69617a3ec5bd1442b43f43c43de1d477386576a6a15d0823cfbc8bf3dbf1",
+    ]
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let rid = package.identity.runID
+    func normalizedHash(_ table: STPDResultTableData) -> String {
+        let text = String(decoding: table.csvData, as: UTF8.self).replacingOccurrences(of: rid, with: "RID")
+        return STPDStableIdentifier.digest(Data(text.utf8))
+    }
+    // The 16 non-metadata tables are byte-identical to the frozen v2 baseline (buildCommit-independent).
+    for (table, expected) in v2Hashes {
+        let data = try #require(package.tables[table])
+        #expect(normalizedHash(data) == expected, "table \(table.rawValue) is no longer byte-stable")
+    }
+    // Detector_run_metadata carries result_schema_version. Prove the v2->v3 bump touches exactly that
+    // one cell: it holds "stpd_result_package_v3" and no other cell carries a schema-version token.
+    let runMetadata = try #require(package.tables[.runMetadata])
+    #expect(runMetadata.rows.count == 1)
+    let versionIndex = try #require(runMetadata.headers.firstIndex(of: "result_schema_version"))
+    #expect(runMetadata.rows[0][versionIndex] == "stpd_result_package_v3")
+    for (index, cell) in runMetadata.rows[0].enumerated() where index != versionIndex {
+        #expect(!cell.contains("stpd_result_package_v"),
+                "column \(runMetadata.headers[index]) unexpectedly carries a schema-version token")
+    }
+    #expect(package.identity.resultSchemaVersion == "stpd_result_package_v3")
+}
+
+@Test func dataQualityQCContainsNoTimestampUUIDOrUnstableContent() throws {
+    let fixture = resultPackageFixture()
+    let first = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let second = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+    let firstTable = try #require(first.tables[.dataQualityQC])
+    let secondTable = try #require(second.tables[.dataQualityQC])
+    func normalized(_ t: STPDResultTableData, _ rid: String) -> String {
+        String(decoding: t.csvData, as: UTF8.self).replacingOccurrences(of: rid, with: "RID")
+    }
+    // Byte-identical (run_id normalized) => no wall-clock, no random UUID, no unordered-set output.
+    #expect(normalized(firstTable, first.identity.runID) == normalized(secondTable, second.identity.runID))
+    // No column carries an ISO timestamp type.
+    #expect(firstTable.columnDefinitions.allSatisfy { $0.type != .timestamp })
+}
+
+@Test func dataQualityQCIsDeterministicAcrossSeparatelyConstructedDatasets() throws {
+    // Two SEPARATE constructions -> different random SpikeDataset.id, identical QC bytes (run_id norm).
+    func build() throws -> (STPDResultPackage, String) {
+        let fixture = resultPackageFixture()
+        let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
+        return (package, package.identity.runID)
+    }
+    let (a, ridA) = try build()
+    let (b, ridB) = try build()
+    #expect(a.identity.datasetDigest == b.identity.datasetDigest)
+    let qcA = String(decoding: try #require(a.tables[.dataQualityQC]).csvData, as: UTF8.self)
+        .replacingOccurrences(of: ridA, with: "RID")
+    let qcB = String(decoding: try #require(b.tables[.dataQualityQC]).csvData, as: UTF8.self)
+        .replacingOccurrences(of: ridB, with: "RID")
+    #expect(qcA == qcB)
 }

@@ -133,7 +133,8 @@ private func snapshotDigest(_ rows: [String]) -> String {
 
 @Test
 func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
-    #expect(STPDResultSchema.version == "stpd_result_package_v2")
+    #expect(STPDResultSchema.version == "stpd_result_package_v3")
+    #expect(STPDResultSchema.previousVersion == "stpd_result_package_v2")
     #expect(STPDResultSchema.manifestFileName == "manifest.json")
     #expect(STPDResultSchema.tables.map(\.table) == [
         .runMetadata,
@@ -153,6 +154,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         .reviewStatus,
         .hfsBurstArbitrationAudit,
         .taskEvents,
+        .dataQualityQC,
     ])
     #expect(STPDResultSchema.tables.map(\.grain) == [
         "one row per detector run",
@@ -172,6 +174,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         "one row per reviewed candidate",
         "one row per HFS/burst arbitration decision",
         "one row per normalized task or stimulus event",
+        "one row per dataset train",
     ])
     #expect(STPDResultSchema.tables.map(\.primaryKey) == [
         ["run_id"],
@@ -191,6 +194,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         ["run_id", "candidate_uid"],
         ["run_id", "audit_row_id"],
         ["run_id", "task_event_uid"],
+        ["run_id", "train_id"],
     ])
     #expect(STPDResultTable.candidateFeatures.rawValue == "Candidate_features_audit.csv")
     #expect(STPDResultTable.parametersReport.rawValue == "Parameters_report.csv")
