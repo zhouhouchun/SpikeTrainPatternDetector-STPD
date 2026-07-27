@@ -315,7 +315,13 @@ public enum ClassicAnchorProfileAuditor {
         }
 
         return ClassicAnchorCandidate(
-            id: "\(dataset.id.uuidString)-structural-dataset-seed-profile",
+            // Dataset-scope singleton semantic ID. Exactly one dataset structural-seed-profile candidate
+            // exists per detection run (single call site), so a stable constant is unique and cannot
+            // collide with any train-scoped candidate ID. Using the reconstruction-random
+            // `dataset.id.uuidString` here made this diagnostic-only transport ID differ across otherwise
+            // identical result-package runs; the constant keeps it reproducible. This is transport/audit
+            // identity only — `candidate_uid` is content-addressed and excludes `ClassicAnchorCandidate.id`.
+            id: "__dataset__-structural-dataset-seed-profile",
             trainID: "__dataset__",
             trainName: "Dataset structural seed profile",
             candidateLayer: "structural_dataset_seed_profile",
