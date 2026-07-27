@@ -5,8 +5,14 @@ import Foundation
 public struct ManualAnnotationProjection: Hashable, Sendable {
     /// Positive manual label (canonical pattern string) per covered ISI.
     public let manualPositiveLabelByISI: [Int: String]
+    /// UUID of the positive annotation that owns each effective manual label after canonical
+    /// last-edit-wins resolution and structural validation.
+    public let manualPositiveOwnerByISI: [Int: UUID]
     /// ISIs under an active `notBurst` veto.
     public let manualNegativeVetoByISI: Set<Int>
+    /// UUID of the active negative annotation that owns each vetoed ISI after canonical
+    /// last-edit-wins resolution.
+    public let manualNegativeVetoOwnerByISI: [Int: UUID]
     /// Manual-first final label per ISI: positive manual wins; otherwise the auto label that survived
     /// lock/veto suppression and final burst-family structural validation. Negative/veto labels never
     /// appear here. With no effective manual action, this remains an exact copy of the auto input.
@@ -39,10 +45,14 @@ public struct ManualAnnotationProjection: Hashable, Sendable {
         positiveCoverageISICount: Int,
         negativeCoverageISICount: Int,
         skippedAnnotationCount: Int,
-        finalBurstISIsRemovedByStructuralMinimum: Set<Int> = []
+        finalBurstISIsRemovedByStructuralMinimum: Set<Int> = [],
+        manualPositiveOwnerByISI: [Int: UUID] = [:],
+        manualNegativeVetoOwnerByISI: [Int: UUID] = [:]
     ) {
         self.manualPositiveLabelByISI = manualPositiveLabelByISI
+        self.manualPositiveOwnerByISI = manualPositiveOwnerByISI
         self.manualNegativeVetoByISI = manualNegativeVetoByISI
+        self.manualNegativeVetoOwnerByISI = manualNegativeVetoOwnerByISI
         self.finalLabelByISI = finalLabelByISI
         self.effectiveAutoLabelByISI = effectiveAutoLabelByISI
         self.autoBlockedByManualLockISIs = autoBlockedByManualLockISIs
@@ -108,6 +118,7 @@ public enum ManualAnnotationProjector {
         var positiveByISI: [Int: String] = [:]
         var positiveOwnerByISI: [Int: UUID] = [:]
         var vetoISIs: Set<Int> = []
+        var negativeOwnerByISI: [Int: UUID] = [:]
         let orderedAnnotations = canonicalizedAnnotations(annotations)
         let minimumValid = minValidISISeconds.isFinite ? max(0, minValidISISeconds) : 0
         var skipped = annotations.count - orderedAnnotations.count
@@ -152,6 +163,7 @@ public enum ManualAnnotationProjector {
                 if manualNegativeLabelsEnabled, ManualAnnotationLabel.consumedVetoLabels.contains(annotation.label) {
                     for isi in coveredIndices {
                         vetoISIs.insert(isi)
+                        negativeOwnerByISI[isi] = annotation.id
                     }
                 }
             }
@@ -272,7 +284,9 @@ public enum ManualAnnotationProjector {
             positiveCoverageISICount: positiveByISI.count,
             negativeCoverageISICount: vetoISIs.count,
             skippedAnnotationCount: skipped,
-            finalBurstISIsRemovedByStructuralMinimum: structurallyRemovedBurstISIs
+            finalBurstISIsRemovedByStructuralMinimum: structurallyRemovedBurstISIs,
+            manualPositiveOwnerByISI: positiveOwnerByISI,
+            manualNegativeVetoOwnerByISI: negativeOwnerByISI
         )
     }
 
@@ -686,13 +700,83 @@ public enum ManualAnnotationProjector {
     }
 
     private static func annotationIsOrderedBefore(_ lhs: ManualAnnotation, _ rhs: ManualAnnotation) -> Bool {
-        if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt < rhs.updatedAt }
-        if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+        let updatedOrder = timestampOrder(lhs.updatedAt, rhs.updatedAt)
+        if updatedOrder != 0 { return updatedOrder < 0 }
+        let createdOrder = timestampOrder(lhs.createdAt, rhs.createdAt)
+        if createdOrder != 0 { return createdOrder < 0 }
         if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
         if lhs.trainID != rhs.trainID { return lhs.trainID < rhs.trainID }
         if lhs.label.rawValue != rhs.label.rawValue { return lhs.label.rawValue < rhs.label.rawValue }
         if lhs.startSec.bitPattern != rhs.startSec.bitPattern { return lhs.startSec.bitPattern < rhs.startSec.bitPattern }
         if lhs.endSec.bitPattern != rhs.endSec.bitPattern { return lhs.endSec.bitPattern < rhs.endSec.bitPattern }
-        return (lhs.note ?? "") < (rhs.note ?? "")
+        let startISIOrder = optionalIntOrder(lhs.startISIIndex, rhs.startISIIndex)
+        if startISIOrder != 0 { return startISIOrder < 0 }
+        let endISIOrder = optionalIntOrder(lhs.endISIIndex, rhs.endISIIndex)
+        if endISIOrder != 0 { return endISIOrder < 0 }
+        let startSpikeOrder = optionalIntOrder(
+            lhs.startSpikeIndex,
+            rhs.startSpikeIndex
+        )
+        if startSpikeOrder != 0 { return startSpikeOrder < 0 }
+        let endSpikeOrder = optionalIntOrder(
+            lhs.endSpikeIndex,
+            rhs.endSpikeIndex
+        )
+        if endSpikeOrder != 0 { return endSpikeOrder < 0 }
+        let noteOrder = optionalStringOrder(lhs.note, rhs.note)
+        if noteOrder != 0 { return noteOrder < 0 }
+        let annotatorOrder = optionalStringOrder(lhs.annotator, rhs.annotator)
+        if annotatorOrder != 0 { return annotatorOrder < 0 }
+        return optionalStringOrder(
+            lhs.annotatorIdentitySource?.rawValue,
+            rhs.annotatorIdentitySource?.rawValue
+        ) < 0
+    }
+
+    private static func optionalIntOrder(_ lhs: Int?, _ rhs: Int?) -> Int {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return 0
+        case (.none, .some):
+            return -1
+        case (.some, .none):
+            return 1
+        case let (.some(left), .some(right)):
+            if left == right { return 0 }
+            return left < right ? -1 : 1
+        }
+    }
+
+    private static func optionalStringOrder(
+        _ lhs: String?,
+        _ rhs: String?
+    ) -> Int {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return 0
+        case (.none, .some):
+            return -1
+        case (.some, .none):
+            return 1
+        case let (.some(left), .some(right)):
+            if left == right { return 0 }
+            return left < right ? -1 : 1
+        }
+    }
+
+    /// Total ordering for serialized dates, including malformed non-finite values.
+    ///
+    /// Result-package construction rejects non-finite annotation timestamps before projection,
+    /// but the projector is also a public utility. Keeping its ordering total and deterministic
+    /// prevents a malformed `Date` from making `sorted(by:)` order-dependent.
+    private static func timestampOrder(_ lhs: Date, _ rhs: Date) -> Int {
+        let left = lhs.timeIntervalSince1970
+        let right = rhs.timeIntervalSince1970
+        if left.bitPattern == right.bitPattern { return 0 }
+        if left.isFinite != right.isFinite { return left.isFinite ? -1 : 1 }
+        if left.isFinite {
+            return left < right ? -1 : 1
+        }
+        return left.bitPattern < right.bitPattern ? -1 : 1
     }
 }

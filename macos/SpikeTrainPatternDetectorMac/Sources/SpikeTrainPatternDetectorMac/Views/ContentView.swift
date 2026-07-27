@@ -66,6 +66,10 @@ struct ContentView: View {
                 .labelStyle(.iconOnly)
                 .liquidGlassToolbarButtonStyle()
 
+                ResultPackageExportButton(document: document)
+                    .labelStyle(.iconOnly)
+                    .liquidGlassToolbarButtonStyle()
+
                 Button {
                     document.exportClassicAnchorEventsCSVWithPanel()
                 } label: {

@@ -93,11 +93,22 @@ final class RasterDocument {
     var isiStateSpaceBreakLongISI = true
     var isiStateSpaceBreakThresholdMs = 150.0
     var classicAnchorDetectionRun: ClassicAnchorDetectionRun?
+    var isResultPackageExporting = false
     var focusedClassicAnchorCandidateID: String?
     var classicAnchorFocusRequestID = 0
     var classicAnchorReviewStatuses: [String: ClassicAnchorReviewStatus] = [:]
+    /// Provenance captured when this app instance authors a candidate review.
+    /// Imported or legacy status-only rows have no entry and cannot silently
+    /// inherit the identity of the person who later exports them.
+    var classicAnchorReviewInputs: [String: STPDCandidateReviewInput] = [:]
+    /// User-authored annotations are independent of candidate review statuses.
+    /// Empty by default, so they have no effect until the reviewer authors one.
+    var manualAnnotationsByTrain: [String: [ManualAnnotation]] = [:]
     var detectorStatusMessage = "Detector has not run."
     var detectorLastRunDate: Date?
+    /// Part of detector authority and result-package provenance. The default
+    /// matches `HybridPatternDetectionFramework.run` and preserves the clean app path.
+    var useAdaptiveV2Canonicalization = false
     var detectorHistogramBinWidthMs = 5.0
     var detectorClassicBurstContrastMin = 3.0
     var detectorClassicBurstFlankPauseContrastMin = 5.0
@@ -118,6 +129,26 @@ final class RasterDocument {
     var detectorHighFrequencySpikingShortFractionMin = 0.70
     var detectorHighFrequencySpikingAllowedLargeFraction = 0.25
     var detectorHighFrequencySpikingMaxConsecutiveLargeISI = 3
+    // Requested manual thresholds. Zero values are unset; automatic modes are
+    // behavior-neutral. The result package records both request and effect.
+    var manualBurstMode: ThresholdMode = .automatic
+    var manualBurstSeedMaxISIMs = 0.0
+    var manualBurstBridgeMaxISIMs = 0.0
+    var manualBurstMinSpikes = 0
+    var manualHFSMode: ThresholdMode = .automatic
+    var manualHFSMinSpikes = 0
+    var manualHFSMinDurationMs = 0.0
+    var manualHFTonicMode: ThresholdMode = .automatic
+    var manualHFTonicMinISIMs = 0.0
+    var manualHFTonicMaxISIMs = 0.0
+    var manualHFTonicMinSpikes = 0
+    var manualTonicMode: ThresholdMode = .automatic
+    var manualTonicMinISIMs = 0.0
+    var manualTonicMaxISIMs = 0.0
+    var manualTonicMinSpikes = 0
+    var manualPauseMode: ThresholdMode = .automatic
+    var manualPauseMinISIMs = 0.0
+    var manualThresholdScopeKind: ManualThresholdScopeKind = .allTrains
     var isDetectorRunning = false
     private var detectorRunGeneration = 0
     private var classicAnchorAnnotationCache = ClassicAnchorAnnotationCache.empty
@@ -348,7 +379,8 @@ final class RasterDocument {
                 qualitySettings: qualitySettings,
                 refractoryAction: .warnOnly,
                 stateTuning: stateTuning,
-                detectorParameters: detectorParameters
+                detectorParameters: detectorParameters,
+                buildCommit: ResultPackageAppBuildIdentity.current
             )
             let annotationCache = ClassicAnchorAnnotationCache(dataset: datasetSnapshot, run: run)
 
@@ -388,6 +420,16 @@ final class RasterDocument {
         isDetectorRunning = false
     }
 
+    /// Invalidates any detached detector task before the dataset identity changes.
+    ///
+    /// A stale task may still finish its CPU work, but its generation can no longer
+    /// publish into this document. Resetting the running flag here also prevents a
+    /// discarded completion from leaving the detector UI permanently disabled.
+    private func invalidateDetectorRunForDatasetMutation() {
+        detectorRunGeneration &+= 1
+        isDetectorRunning = false
+    }
+
     private func formatDetectorRuntime(_ milliseconds: Double) -> String {
         guard milliseconds.isFinite, milliseconds >= 0 else {
             return "NA"
@@ -418,8 +460,35 @@ final class RasterDocument {
     func setReviewStatus(_ status: ClassicAnchorReviewStatus, for candidateID: String) {
         if status == .unreviewed {
             classicAnchorReviewStatuses.removeValue(forKey: candidateID)
+            classicAnchorReviewInputs.removeValue(forKey: candidateID)
         } else {
+            guard let run = classicAnchorDetectionRun,
+                  run.candidates.contains(where: { $0.id == candidateID }) else {
+                statusMessage = "Candidate review was not saved."
+                lastErrorMessage =
+                    "Run detection again and select a candidate from the current run."
+                return
+            }
             classicAnchorReviewStatuses[candidateID] = status
+            let packageStatus: STPDCandidateReviewStatus
+            switch status {
+            case .unreviewed:
+                return
+            case .accepted:
+                packageStatus = .accepted
+            case .rejected:
+                packageStatus = .rejected
+            case .needsReview:
+                packageStatus = .needsReview
+            }
+            classicAnchorReviewInputs[candidateID] = STPDCandidateReviewInput(
+                sourceCandidateID: candidateID,
+                status: packageStatus,
+                reviewer: ResultPackageAppReviewerIdentity.current,
+                note: "reviewer_identity=local_macos_account;source=app_candidate_review",
+                reviewedAt: Date(),
+                reviewedRunID: run.runIdentity.runID
+            )
         }
         let candidateSummary = classicAnchorDetectionRun?.candidates.first { $0.id == candidateID }.map {
             "\($0.finalLabel.rawValue) · \($0.trainName) · ISI \($0.startISIIndex)-\($0.endISIIndex)"
@@ -671,6 +740,9 @@ final class RasterDocument {
                 } else {
                     classicAnchorReviewStatuses[candidateID] = status
                 }
+                // Imported CSV carries status only, not trustworthy actor/time
+                // provenance. It must never be attributed to the importer.
+                classicAnchorReviewInputs.removeValue(forKey: candidateID)
                 applied += 1
             }
 
@@ -786,12 +858,15 @@ final class RasterDocument {
                 preserveSelection: false
             )
         } catch {
+            invalidateDetectorRunForDatasetMutation()
             dataset = nil
             classicAnchorDetectionRun = nil
             classicAnchorAnnotationCache = .empty
             focusedClassicAnchorCandidateID = nil
             classicAnchorFocusRequestID &+= 1
             classicAnchorReviewStatuses = [:]
+            classicAnchorReviewInputs = [:]
+            manualAnnotationsByTrain = [:]
             detectorLastRunDate = nil
             detectorStatusMessage = "Detector has not run."
             selectedTrainIDs = []
@@ -836,6 +911,7 @@ final class RasterDocument {
         let retainedISISelection = previousISISelection.intersection(allTrainIDs)
         let retainedISIStateSpaceSelection = previousISIStateSpaceSelection.intersection(allTrainIDs)
 
+        invalidateDetectorRunForDatasetMutation()
         dataset = parsed
         // Default standard visible window = 1/5 of the longest spike-train duration,
         // and keep it stable across reviews (Center re-centres at this window instead
@@ -848,6 +924,8 @@ final class RasterDocument {
         focusedClassicAnchorCandidateID = nil
         classicAnchorFocusRequestID &+= 1
         classicAnchorReviewStatuses = [:]
+        classicAnchorReviewInputs = [:]
+        manualAnnotationsByTrain = [:]
         detectorLastRunDate = nil
         detectorStatusMessage = "Detector has not run."
         selectedTrainIDs = preserveSelection && !retainedSelection.isEmpty ? retainedSelection : defaultVisibleTrainIDs(for: parsed)
@@ -901,6 +979,10 @@ final class RasterDocument {
     private func retainReviewStatuses(for run: ClassicAnchorDetectionRun) {
         let activeIDs = Set(run.candidates.map(\.id))
         classicAnchorReviewStatuses = classicAnchorReviewStatuses.filter { activeIDs.contains($0.key) }
+        classicAnchorReviewInputs = classicAnchorReviewInputs.filter {
+            activeIDs.contains($0.key)
+                && $0.value.reviewedRunID == run.runIdentity.runID
+        }
     }
 
     private func restorePersistedReviewStatuses(for run: ClassicAnchorDetectionRun) {

@@ -12,6 +12,9 @@ public enum STPDResultTable: String, CaseIterable, Hashable, Sendable {
     case candidateLedger = "Candidate_ledger.csv"
     case candidateFeatures = "Candidate_features_audit.csv"
     case finalDecisions = "Final_decisions.csv"
+    case candidateLedgerDiagnostic = "Candidate_ledger_diagnostic.csv"
+    case candidateFeaturesDiagnostic = "Candidate_features_diagnostic_audit.csv"
+    case finalDecisionsDiagnostic = "Final_decisions_diagnostic.csv"
     case eventsFinal = "Events_final.csv"
     case isiLabelsFinal = "ISI_labels_final.csv"
     case candidateDiagnosticAudit = "Candidate_diagnostic_audit.csv"
@@ -19,6 +22,7 @@ public enum STPDResultTable: String, CaseIterable, Hashable, Sendable {
     case manualAnnotations = "Manual_annotations.csv"
     case reviewStatus = "Review_status.csv"
     case hfsBurstArbitrationAudit = "HFS_burst_arbitration_audit.csv"
+    case taskEvents = "Task_events.csv"
 }
 
 public struct STPDResultTableContract: Hashable, Sendable {
@@ -41,7 +45,7 @@ public struct STPDResultTableContract: Hashable, Sendable {
 }
 
 public enum STPDResultSchema {
-    public static let version = "stpd_result_package_v1"
+    public static let version = "stpd_result_package_v2"
     public static let detectorVersion = "stpd_mac_structure_first_v1"
     public static let manifestFileName = "manifest.json"
 
@@ -66,17 +70,32 @@ public enum STPDResultSchema {
         ),
         .init(
             table: .candidateLedger,
-            grain: "one row per detector candidate",
+            grain: "one row per public authority-bearing detector candidate",
             primaryKey: ["run_id", "candidate_uid"]
         ),
         .init(
             table: .candidateFeatures,
-            grain: "one row per detector candidate",
+            grain: "one row per public authority-bearing detector candidate",
             primaryKey: ["run_id", "candidate_uid"]
         ),
         .init(
             table: .finalDecisions,
-            grain: "one row per candidate decision",
+            grain: "one row per public authority-bearing candidate decision",
+            primaryKey: ["run_id", "candidate_uid"]
+        ),
+        .init(
+            table: .candidateLedgerDiagnostic,
+            grain: "one row per detector candidate, including non-public diagnostic candidates",
+            primaryKey: ["run_id", "candidate_uid"]
+        ),
+        .init(
+            table: .candidateFeaturesDiagnostic,
+            grain: "one row per detector candidate, including non-public diagnostic candidates",
+            primaryKey: ["run_id", "candidate_uid"]
+        ),
+        .init(
+            table: .finalDecisionsDiagnostic,
+            grain: "one row per candidate decision, including non-public diagnostic candidates",
             primaryKey: ["run_id", "candidate_uid"]
         ),
         .init(
@@ -113,6 +132,11 @@ public enum STPDResultSchema {
             table: .hfsBurstArbitrationAudit,
             grain: "one row per HFS/burst arbitration decision",
             primaryKey: ["run_id", "audit_row_id"]
+        ),
+        .init(
+            table: .taskEvents,
+            grain: "one row per normalized task or stimulus event",
+            primaryKey: ["run_id", "task_event_uid"]
         ),
     ]
 }
@@ -274,17 +298,17 @@ public struct DetectionRunSettingsSnapshot: Hashable, Sendable {
 }
 
 public struct DetectionDatasetSnapshot: Hashable, Sendable {
-    public static let digestContractVersion = "dataset_digest_v1"
+    public static let digestContractVersion = "dataset_digest_v2"
 
     public let digest: String
     public let trainCount: Int
     public let spikeCount: Int
     public let taskEventCount: Int
 
-    /// Produces an ordered parsed-input fingerprint. Train order, stable train identifiers, spike
-    /// timestamps, duplicate-handling metadata, and task-event order are intentionally significant.
-    /// This is a detector-input identity, not a claim that two biologically equivalent recordings
-    /// must share a digest.
+    /// Produces a parsed-input fingerprint. Train order, stable train identifiers, spike timestamps,
+    /// and duplicate-handling metadata are intentionally significant. Task events are canonicalized
+    /// by their scientific fields: display/source metadata and input-array order are not scientific
+    /// identity, while the source event index remains part of the event itself.
     public static func make(dataset: SpikeDataset) -> DetectionDatasetSnapshot {
         var encoder = StableDigestEncoder(domain: digestContractVersion)
         encoder.append(dataset.trains.count)
@@ -308,8 +332,13 @@ public struct DetectionDatasetSnapshot: Hashable, Sendable {
             }
         }
 
-        encoder.append(dataset.taskEvents.count)
-        for event in dataset.taskEvents {
+        let orderedTaskEvents = dataset.taskEvents.sorted {
+            let lhs = taskEventDigestComponents($0)
+            let rhs = taskEventDigestComponents($1)
+            return lhs.lexicographicallyPrecedes(rhs)
+        }
+        encoder.append(orderedTaskEvents.count)
+        for event in orderedTaskEvents {
             encoder.append(event.id)
             encoder.append(event.name)
             encoder.append(event.timeSec)
@@ -325,6 +354,17 @@ public struct DetectionDatasetSnapshot: Hashable, Sendable {
             taskEventCount: dataset.taskEvents.count
         )
     }
+
+    private static func taskEventDigestComponents(_ event: TaskEvent) -> [String] {
+        [
+            event.id,
+            event.name,
+            STPDCanonicalValue.double(event.timeSec),
+            event.column,
+            String(event.eventIndex),
+            event.trialID,
+        ]
+    }
 }
 
 /// Human-readable dataset metadata captured at detector invocation time.
@@ -333,19 +373,71 @@ public struct DetectionDatasetSnapshot: Hashable, Sendable {
 /// separate snapshot binds those strings to the run so an exporter cannot silently relabel an
 /// otherwise identical spike matrix after detection.
 public struct DetectionDatasetMetadataSnapshot: Hashable, Sendable {
+    public static let taskEventSourceDigestContractVersion =
+        "task_event_source_digest_v1"
+
     public let name: String
     public let sourceDescription: String
+    /// Separately seals task-event provenance without making file/source strings part of the
+    /// scientific dataset identity. This prevents an exporter from rewriting event provenance
+    /// after detection while preserving relocation-stable scientific run identity.
+    public let taskEventSourceDigest: String
 
-    public init(name: String, sourceDescription: String) {
+    public init(
+        name: String,
+        sourceDescription: String,
+        taskEventSourceDigest: String
+    ) {
         self.name = name
         self.sourceDescription = sourceDescription
+        self.taskEventSourceDigest = taskEventSourceDigest
     }
 
     public static func make(dataset: SpikeDataset) -> DetectionDatasetMetadataSnapshot {
         DetectionDatasetMetadataSnapshot(
             name: dataset.name,
-            sourceDescription: dataset.sourceDescription
+            sourceDescription: dataset.sourceDescription,
+            taskEventSourceDigest: makeTaskEventSourceDigest(
+                dataset.taskEvents
+            )
         )
+    }
+
+    private static func makeTaskEventSourceDigest(
+        _ events: [TaskEvent]
+    ) -> String {
+        let ordered = events.sorted {
+            taskEventSourceComponents($0)
+                .lexicographicallyPrecedes(taskEventSourceComponents($1))
+        }
+        var encoder = StableDigestEncoder(
+            domain: taskEventSourceDigestContractVersion
+        )
+        encoder.append(ordered.count)
+        for event in ordered {
+            encoder.append(event.id)
+            encoder.append(event.name)
+            encoder.append(event.timeSec)
+            encoder.append(event.column)
+            encoder.append(event.eventIndex)
+            encoder.append(event.trialID)
+            encoder.append(event.source)
+        }
+        return encoder.finalize()
+    }
+
+    private static func taskEventSourceComponents(
+        _ event: TaskEvent
+    ) -> [String] {
+        [
+            event.id,
+            event.name,
+            STPDCanonicalValue.double(event.timeSec),
+            event.column,
+            String(event.eventIndex),
+            event.trialID,
+            event.source,
+        ]
     }
 }
 

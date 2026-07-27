@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 enum STPDStableIdentifier {
@@ -30,6 +31,134 @@ enum STPDStableIdentifier {
     }
 }
 
+struct STPDParsedTimestamp: Sendable {
+    let seconds: Double
+    let precisionTolerance: Double
+    let hasFractionalSeconds: Bool
+}
+
+/// One canonical timestamp codec shared by CSV import and result-package validation.
+///
+/// Fractional instants before 1970 must be reconstructed as one signed decimal value. Adding a
+/// positive fractional `Double` to a negative whole second loses a bit for values such as `-0.1`.
+enum STPDCanonicalTimestamp {
+    private static let posixLocale = Locale(identifier: "en_US_POSIX")
+
+    static func string(_ value: Date?) -> String {
+        guard let value, value.timeIntervalSince1970.isFinite else {
+            return ""
+        }
+        let exactSeconds = value.timeIntervalSince1970
+        let wholeSeconds = floor(exactSeconds)
+        guard wholeSeconds >= Double(Int64.min),
+              wholeSeconds < Double(Int64.max) else {
+            return ""
+        }
+        let wholeInteger = Int64(wholeSeconds)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        let base = formatter.string(
+            from: Date(timeIntervalSince1970: Double(wholeInteger))
+        )
+        guard base.hasSuffix("Z"),
+              let total = Decimal(
+                string: canonicalDouble(exactSeconds),
+                locale: posixLocale
+              ) else {
+            return ""
+        }
+        let fraction = total - Decimal(wholeInteger)
+        guard fraction >= 0, fraction < 1 else {
+            return ""
+        }
+        let encoded: String
+        if fraction == 0 {
+            encoded = base
+        } else {
+            let fractionText = NSDecimalNumber(decimal: fraction)
+                .description(withLocale: posixLocale)
+            guard fractionText.hasPrefix("0.") else {
+                return ""
+            }
+            encoded =
+                String(base.dropLast()) +
+                String(fractionText.dropFirst()) +
+                "Z"
+        }
+        guard let parsed = parse(encoded),
+              parsed.seconds.bitPattern == exactSeconds.bitPattern else {
+            return ""
+        }
+        return encoded
+    }
+
+    static func parse(_ value: String) -> STPDParsedTimestamp? {
+        let wholeFormatter = ISO8601DateFormatter()
+        wholeFormatter.formatOptions = [.withInternetDateTime]
+        guard let timeSeparator = value.firstIndex(of: "T"),
+              let decimalPoint = value[timeSeparator...].firstIndex(of: ".") else {
+            guard let date = wholeFormatter.date(from: value) else {
+                return nil
+            }
+            return STPDParsedTimestamp(
+                seconds: date.timeIntervalSince1970,
+                precisionTolerance: 0.500_001,
+                hasFractionalSeconds: false
+            )
+        }
+
+        let suffix = value[value.index(after: decimalPoint)...]
+        guard let zoneStart = suffix.firstIndex(where: {
+            $0 == "Z" || $0 == "+" || $0 == "-"
+        }) else {
+            return nil
+        }
+        let digits = suffix[..<zoneStart]
+        guard !digits.isEmpty,
+              digits.allSatisfy(\.isNumber),
+              let fraction = Decimal(
+                string: "0.\(digits)",
+                locale: posixLocale
+              ) else {
+            return nil
+        }
+        let wholeValue =
+            String(value[..<decimalPoint]) + String(suffix[zoneStart...])
+        guard let wholeDate = wholeFormatter.date(from: wholeValue) else {
+            return nil
+        }
+        let wholeSeconds = wholeDate.timeIntervalSince1970
+        guard wholeSeconds.isFinite,
+              wholeSeconds.rounded(.towardZero) == wholeSeconds,
+              wholeSeconds >= Double(Int64.min),
+              wholeSeconds < Double(Int64.max) else {
+            return nil
+        }
+        let total = Decimal(Int64(wholeSeconds)) + fraction
+        let totalText = NSDecimalNumber(decimal: total)
+            .description(withLocale: posixLocale)
+        guard let seconds = Double(totalText), seconds.isFinite else {
+            return nil
+        }
+        return STPDParsedTimestamp(
+            seconds: seconds,
+            precisionTolerance: 0.5 * pow(10, -Double(digits.count)),
+            hasFractionalSeconds: true
+        )
+    }
+
+    private static func canonicalDouble(_ value: Double) -> String {
+        if value == 0 {
+            return "0"
+        }
+        return String(
+            format: "%.17g",
+            locale: posixLocale,
+            value
+        )
+    }
+}
+
 enum STPDCanonicalValue {
     static func double(_ value: Double?) -> String {
         guard let value, value.isFinite else {
@@ -58,12 +187,7 @@ enum STPDCanonicalValue {
     }
 
     static func date(_ value: Date?) -> String {
-        guard let value else {
-            return ""
-        }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: value)
+        STPDCanonicalTimestamp.string(value)
     }
 
     static func stringList(_ values: [String]) -> String {
@@ -157,6 +281,14 @@ public struct STPDResultManifest: Codable, Hashable, Sendable {
 }
 
 public enum STPDResultPackageWriter {
+    enum Checkpoint: Hashable, Sendable {
+        case stagedContentsDurable
+        case stagingEntryDurable
+        case willPublish
+        case published
+        case publicationDurable
+    }
+
     /// Publishes a complete result directory with a same-volume directory rename.
     ///
     /// The destination must not already exist. This prevents a partial or ambiguous overwrite from
@@ -166,19 +298,45 @@ public enum STPDResultPackageWriter {
         to destinationURL: URL,
         fileManager: FileManager = .default
     ) throws {
+        try write(
+            package,
+            to: destinationURL,
+            fileManager: fileManager,
+            checkpoint: { _ in }
+        )
+    }
+
+    static func writeForTesting(
+        _ package: STPDResultPackage,
+        to destinationURL: URL,
+        fileManager: FileManager = .default,
+        checkpoint: (Checkpoint) throws -> Void
+    ) throws {
+        try write(
+            package,
+            to: destinationURL,
+            fileManager: fileManager,
+            checkpoint: checkpoint
+        )
+    }
+
+    private static func write(
+        _ package: STPDResultPackage,
+        to destinationURL: URL,
+        fileManager: FileManager,
+        checkpoint: (Checkpoint) throws -> Void
+    ) throws {
         if fileManager.fileExists(atPath: destinationURL.path) {
             throw STPDResultPackageError.destinationAlreadyExists(destinationURL.path)
         }
 
         let parent = destinationURL.deletingLastPathComponent()
-        try fileManager.createDirectory(
-            at: parent,
-            withIntermediateDirectories: true
-        )
+        try requireExistingDirectory(parent)
         let temporaryURL = parent.appendingPathComponent(
             ".\(destinationURL.lastPathComponent).tmp.\(UUID().uuidString.lowercased())",
             isDirectory: true
         )
+        var published = false
 
         do {
             try fileManager.createDirectory(at: temporaryURL, withIntermediateDirectories: false)
@@ -186,19 +344,112 @@ public enum STPDResultPackageWriter {
                 guard let data = package.tables[table] else {
                     throw STPDResultPackageError.missingTable(table.rawValue)
                 }
+                let tableURL = temporaryURL.appendingPathComponent(table.rawValue)
                 try data.csvData.write(
-                    to: temporaryURL.appendingPathComponent(table.rawValue),
+                    to: tableURL,
                     options: .atomic
                 )
+                try syncRegularFile(tableURL)
             }
+            let manifestURL = temporaryURL.appendingPathComponent(
+                STPDResultSchema.manifestFileName
+            )
             try package.manifest.encodedData().write(
-                to: temporaryURL.appendingPathComponent(STPDResultSchema.manifestFileName),
+                to: manifestURL,
                 options: .atomic
             )
-            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+            try syncRegularFile(manifestURL)
+            try syncDirectory(temporaryURL)
+            try checkpoint(.stagedContentsDurable)
+            try syncDirectory(parent)
+            try checkpoint(.stagingEntryDurable)
+            try checkpoint(.willPublish)
+            try renameWithoutReplacing(temporaryURL, to: destinationURL)
+            published = true
+            try checkpoint(.published)
+            try syncDirectory(parent)
+            try checkpoint(.publicationDurable)
         } catch {
-            try? fileManager.removeItem(at: temporaryURL)
+            if !published, fileManager.fileExists(atPath: temporaryURL.path) {
+                try? fileManager.removeItem(at: temporaryURL)
+                try? syncDirectory(parent)
+            }
             throw error
         }
+    }
+
+    private static func syncRegularFile(_ url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw posixError(path: url.path)
+        }
+        defer { close(descriptor) }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else {
+            throw posixError(path: url.path)
+        }
+        guard metadata.st_mode & S_IFMT == S_IFREG else {
+            throw STPDResultPackageError.invalidInput(
+                "staged result-package entry is not a regular file: \(url.path)"
+            )
+        }
+        guard fsync(descriptor) == 0 else {
+            throw posixError(path: url.path)
+        }
+    }
+
+    private static func syncDirectory(_ url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw posixError(path: url.path)
+        }
+        defer { close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw posixError(path: url.path)
+        }
+    }
+
+    private static func requireExistingDirectory(_ url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            let code = errno
+            throw STPDResultPackageError.invalidInput(
+                "result-package parent must already exist as a real directory: "
+                    + "\(url.path) (\(String(cString: strerror(code))))"
+            )
+        }
+        close(descriptor)
+    }
+
+    private static func renameWithoutReplacing(_ source: URL, to destination: URL) throws {
+        let result = source.path.withCString { sourcePath in
+            destination.path.withCString { destinationPath in
+                renameatx_np(
+                    AT_FDCWD,
+                    sourcePath,
+                    AT_FDCWD,
+                    destinationPath,
+                    UInt32(RENAME_EXCL)
+                )
+            }
+        }
+        guard result == 0 else {
+            if errno == EEXIST {
+                throw STPDResultPackageError.destinationAlreadyExists(destination.path)
+            }
+            throw posixError(path: "\(source.path) -> \(destination.path)")
+        }
+    }
+
+    private static func posixError(path: String) -> NSError {
+        let code = errno
+        return NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(code),
+            userInfo: [
+                NSFilePathErrorKey: path,
+                NSLocalizedDescriptionKey: String(cString: strerror(code)),
+            ]
+        )
     }
 }

@@ -8,6 +8,17 @@ public enum ManualAnnotationPolarity: String, Codable, Hashable, Sendable {
     case negative
 }
 
+/// Provenance for the human identity attached to a manual scientific decision.
+///
+/// `unknown` is retained for backward-compatible decoding/import, but result-package export rejects
+/// it whenever the annotation has authority over a public ISI or a valid spike-only mark.
+public enum ManualAnnotationIdentitySource: String, Codable, Hashable, Sendable {
+    case userProvided = "user_provided"
+    case localAccount = "local_account"
+    case imported
+    case unknown
+}
+
 /// The manual annotation vocabulary the reviewer can author. The positive labels mirror the R/Shiny
 /// `pattern_manual` set exactly; the single negative label mirrors R's `pattern_manual_negative`
 /// product value `not_burst`.
@@ -91,6 +102,8 @@ public struct ManualAnnotation: Identifiable, Codable, Hashable, Sendable {
     public var startSpikeIndex: Int?
     public var endSpikeIndex: Int?
     public var note: String?
+    public var annotator: String?
+    public var annotatorIdentitySource: ManualAnnotationIdentitySource?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -105,6 +118,8 @@ public struct ManualAnnotation: Identifiable, Codable, Hashable, Sendable {
         startSpikeIndex: Int? = nil,
         endSpikeIndex: Int? = nil,
         note: String? = nil,
+        annotator: String? = nil,
+        annotatorIdentitySource: ManualAnnotationIdentitySource? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -118,6 +133,8 @@ public struct ManualAnnotation: Identifiable, Codable, Hashable, Sendable {
         self.startSpikeIndex = startSpikeIndex
         self.endSpikeIndex = endSpikeIndex
         self.note = note
+        self.annotator = annotator
+        self.annotatorIdentitySource = annotatorIdentitySource
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

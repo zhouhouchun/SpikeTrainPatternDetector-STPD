@@ -8,7 +8,9 @@ public enum STPDResultPackageOwnership {
 public enum STPDResultPackageSourceMode: String, Hashable, Sendable {
     /// Final events and ISI labels were derived from the automatic detector projection only.
     case automatic
-    /// The caller supplied the reviewed/manual projection that is authoritative for public output.
+    /// Manual annotations changed the public projection, without a formal candidate-review action.
+    case manual
+    /// At least one formal candidate-review action is authoritative for the public projection.
     case reviewed
 }
 
@@ -28,25 +30,56 @@ public enum STPDCandidateReviewStatus: String, Hashable, Sendable, CaseIterable 
     }
 }
 
+enum STPDCandidateReviewIdentity {
+    static func make(
+        candidateUID: String,
+        status: STPDCandidateReviewStatus,
+        reviewer: String,
+        note: String,
+        reviewedAtUnixSec: String,
+        reviewedRunID: String
+    ) -> String {
+        STPDStableIdentifier.make(
+            prefix: "review",
+            domain: "stpd_candidate_review_uid_v3",
+            components: [
+                candidateUID,
+                status.rawValue,
+                reviewer,
+                note,
+                reviewedAtUnixSec,
+                reviewedRunID,
+            ]
+        )
+    }
+}
+
 public struct STPDCandidateReviewInput: Hashable, Sendable {
     public let sourceCandidateID: String
     public let status: STPDCandidateReviewStatus
     public let reviewer: String
     public let note: String
     public let reviewedAt: Date?
+    /// Detector execution whose candidate geometry and decision were reviewed.
+    ///
+    /// Candidate IDs can be stable across reruns, so the candidate ID alone is not sufficient
+    /// authority. An authority-bearing review is valid only for this exact detector run.
+    public let reviewedRunID: String
 
     public init(
         sourceCandidateID: String,
         status: STPDCandidateReviewStatus,
         reviewer: String = "",
         note: String = "",
-        reviewedAt: Date? = nil
+        reviewedAt: Date? = nil,
+        reviewedRunID: String = ""
     ) {
         self.sourceCandidateID = sourceCandidateID
         self.status = status
         self.reviewer = reviewer
         self.note = note
         self.reviewedAt = reviewedAt
+        self.reviewedRunID = reviewedRunID
     }
 }
 
@@ -137,7 +170,8 @@ public struct STPDResultPackageInput: Sendable {
 
     public static func automatic(
         dataset: SpikeDataset,
-        run: ClassicAnchorDetectionRun
+        run: ClassicAnchorDetectionRun,
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
     ) -> STPDResultPackageInput {
         let events = run.eventAnnotations(
             in: dataset,
@@ -153,8 +187,903 @@ public struct STPDResultPackageInput: Sendable {
             run: run,
             sourceMode: .automatic,
             finalEvents: events,
-            finalISILabelRows: isiRows
+            finalISILabelRows: isiRows,
+            candidateDiagnostics: canonicalDiagnostics(candidateDiagnostics)
         )
+    }
+
+    /// Builds the current public result snapshot from automatic output plus optional review state.
+    ///
+    /// Only authority-bearing reviews with automatic public ISI coverage enter the reviewed
+    /// projection. `needs_review` and reviews of audit-only/non-public candidates remain explicit
+    /// diagnostics; they never gain authority merely because they were present in UI state.
+    public static func snapshot(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation] = [],
+        candidateReviews: [STPDCandidateReviewInput] = [],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        let orderedReviews = canonicalReviews(candidateReviews)
+        try validateUniqueCandidateReviews(
+            orderedReviews,
+            expectedRunID: run.runIdentity.runID
+        )
+        guard !manualAnnotations.isEmpty || !orderedReviews.isEmpty else {
+            return automatic(
+                dataset: dataset,
+                run: run,
+                candidateDiagnostics: candidateDiagnostics
+            )
+        }
+        return try reviewed(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: manualAnnotations,
+            candidateReviews: orderedReviews,
+            candidateDiagnostics: candidateDiagnostics
+        )
+    }
+
+    /// Constructs the causal reviewed projection used by the package validator.
+    ///
+    /// This is the sole production assembly path for manual/reviewed output. The builder recomputes
+    /// the same projection and rejects missing, extra, or non-causal review links.
+    public static func reviewed(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation] = [],
+        candidateReviews: [STPDCandidateReviewInput] = [],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        let automaticInput = automatic(dataset: dataset, run: run)
+        let orderedReviews = canonicalReviews(candidateReviews)
+        try validateUniqueCandidateReviews(
+            orderedReviews,
+            expectedRunID: run.runIdentity.runID
+        )
+        try validateFiniteManualAnnotationTimestamps(manualAnnotations)
+        try validateNoConflictingLatestManualRevisions(manualAnnotations)
+        let canonicalAnnotations =
+            ManualAnnotationProjector.canonicalizedAnnotations(manualAnnotations)
+        let resolvedAnnotations = try canonicalAnnotations.map { annotation in
+            guard let resolved = ManualAnnotationGeometryResolver
+                .resolvingIndicesIfCompatible(annotation, in: dataset.trains) else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual annotation \(annotation.id.uuidString) is incompatible with the dataset"
+                )
+            }
+            return resolved
+        }
+        try validateNoAmbiguousManualEditTies(resolvedAnnotations)
+        let annotationsByTrain = Dictionary(
+            grouping: resolvedAnnotations,
+            by: \.trainID
+        )
+        let automaticIntervalRows = automaticInput.finalISILabelRows.filter {
+            $0.isiIndex > 0
+        }
+        let automaticRowsByTrain = Dictionary(
+            grouping: automaticIntervalRows,
+            by: \.trainID
+        )
+        var projectionsByTrain: [String: ManualAnnotationProjection] = [:]
+
+        for train in dataset.trains {
+            let autoLabels = Dictionary(
+                uniqueKeysWithValues: (automaticRowsByTrain[train.id] ?? [])
+                    .filter { !$0.autoPattern.isEmpty }
+                    .map { ($0.isiIndex, $0.autoPattern) }
+            )
+            projectionsByTrain[train.id] = ManualAnnotationProjector.project(
+                train: train,
+                autoLabelsByISI: autoLabels,
+                annotations: annotationsByTrain[train.id] ?? [],
+                honorManualLock: true,
+                manualNegativeLabelsEnabled: true,
+                minValidISISeconds: run.qualitySettings.artifactThresholdSec
+            )
+        }
+
+        let manualOnlyRows = ReviewedISIExportBuilder.build(
+            dataset: dataset,
+            autoAnnotations: automaticInput.finalEvents,
+            projectionsByTrain: projectionsByTrain
+        )
+        let allRejectedCandidateIDs = Set(orderedReviews.compactMap {
+            $0.status == .rejected ? $0.sourceCandidateID : nil
+        })
+        let rowsWithAllRejections = ReviewedISIExportBuilder.build(
+            dataset: dataset,
+            autoAnnotations: automaticInput.finalEvents,
+            projectionsByTrain: projectionsByTrain,
+            reviewRejectedCandidateIDs: allRejectedCandidateIDs
+        )
+        let manualOnlyByKey = Dictionary(
+            uniqueKeysWithValues: manualOnlyRows
+                .filter { $0.isiIndex > 0 }
+                .map { (isiKey(trainID: $0.trainID, isiIndex: $0.isiIndex), $0) }
+        )
+        let manualEvidenceOwnersByKey = manualEvidenceOwnerMap(
+            dataset: dataset,
+            run: run,
+            automaticEvents: automaticInput.finalEvents,
+            automaticRows: automaticInput.finalISILabelRows,
+            resolvedAnnotations: resolvedAnnotations,
+            projectionsByTrain: projectionsByTrain,
+            finalRows: manualOnlyRows,
+            reviewRejectedCandidateIDs: []
+        )
+
+        var effectiveReviews: [STPDCandidateReviewInput] = []
+        var nonCausalReviews: [(STPDCandidateReviewInput, String)] = []
+        for review in orderedReviews {
+            guard review.status.grantsReviewAuthority else {
+                nonCausalReviews.append((review, "non_authoritative_review_status"))
+                continue
+            }
+            let candidateRows = automaticIntervalRows.filter {
+                $0.autoCandidateID == review.sourceCandidateID
+            }
+            let hasCausalCoverage: Bool
+            switch review.status {
+            case .accepted:
+                hasCausalCoverage = !candidateRows.isEmpty
+                    && candidateRows.allSatisfy { automaticRow in
+                        let key = isiKey(
+                            trainID: automaticRow.trainID,
+                            isiIndex: automaticRow.isiIndex
+                        )
+                        guard let reviewedRow = manualOnlyByKey[key] else {
+                            return false
+                        }
+                        return reviewedRow.finalSource
+                                == ReviewedISIExportBuilder.sourceAutoProjected
+                            && STPDResultPackageBuilder
+                                .isiProjectionComponents(reviewedRow)
+                                == STPDResultPackageBuilder
+                                .isiProjectionComponents(automaticRow)
+                    }
+            case .rejected:
+                let publicCandidateRows = candidateRows.filter {
+                    $0.finalSource == ReviewedISIExportBuilder.sourceAutoProjected
+                }
+                let rowsWithoutThisRejection = ReviewedISIExportBuilder.build(
+                    dataset: dataset,
+                    autoAnnotations: automaticInput.finalEvents,
+                    projectionsByTrain: projectionsByTrain,
+                    reviewRejectedCandidateIDs:
+                        allRejectedCandidateIDs.subtracting([review.sourceCandidateID])
+                )
+                hasCausalCoverage = !publicCandidateRows.isEmpty
+                    && !causalChangedISIKeys(
+                        actualRows: rowsWithAllRejections,
+                        counterfactualRows: rowsWithoutThisRejection
+                    ).isEmpty
+            case .modified:
+                let changedKeys = candidateRows.compactMap { automaticRow -> String? in
+                    let key = isiKey(
+                        trainID: automaticRow.trainID,
+                        isiIndex: automaticRow.isiIndex
+                    )
+                    guard let reviewedRow = manualOnlyByKey[key],
+                          STPDResultPackageBuilder
+                            .isiProjectionComponents(reviewedRow)
+                            != STPDResultPackageBuilder
+                            .isiProjectionComponents(automaticRow) else {
+                        return nil
+                    }
+                    return key
+                }
+                hasCausalCoverage = !changedKeys.isEmpty
+                    && changedKeys.allSatisfy {
+                        !(manualEvidenceOwnersByKey[$0] ?? []).isEmpty
+                    }
+            case .needsReview:
+                hasCausalCoverage = false
+            }
+            if hasCausalCoverage {
+                try validateAuthorityBearingCandidateReview(
+                    review,
+                    expectedRunID: run.runIdentity.runID
+                )
+                effectiveReviews.append(review)
+            } else {
+                nonCausalReviews.append((review, "no_causal_public_projection"))
+            }
+        }
+
+        let effectiveRejectedCandidateIDs = Set(effectiveReviews.compactMap {
+            $0.status == .rejected ? $0.sourceCandidateID : nil
+        })
+        let finalRows = ReviewedISIExportBuilder.build(
+            dataset: dataset,
+            autoAnnotations: automaticInput.finalEvents,
+            projectionsByTrain: projectionsByTrain,
+            reviewRejectedCandidateIDs: effectiveRejectedCandidateIDs
+        )
+        let finalRowsByKey = Dictionary(
+            uniqueKeysWithValues: finalRows
+                .filter { $0.isiIndex > 0 }
+                .map { (isiKey(trainID: $0.trainID, isiIndex: $0.isiIndex), $0) }
+        )
+        let finalManualEvidenceOwnersByKey = manualEvidenceOwnerMap(
+            dataset: dataset,
+            run: run,
+            automaticEvents: automaticInput.finalEvents,
+            automaticRows: automaticInput.finalISILabelRows,
+            resolvedAnnotations: resolvedAnnotations,
+            projectionsByTrain: projectionsByTrain,
+            finalRows: finalRows,
+            reviewRejectedCandidateIDs: effectiveRejectedCandidateIDs
+        )
+        let rejectedISIsByTrain = Dictionary(
+            grouping: automaticIntervalRows.filter {
+                effectiveRejectedCandidateIDs.contains($0.autoCandidateID)
+            },
+            by: \.trainID
+        )
+        .mapValues { Set($0.map(\.isiIndex)) }
+        var lockSuppressedByTrain: [String: Set<Int>] = [:]
+        var vetoedBurstISIsByTrain: [String: Set<Int>] = [:]
+        var manualBurstISIsByTrain: [String: Set<Int>] = [:]
+        for train in dataset.trains {
+            let projection = projectionsByTrain[train.id]
+            lockSuppressedByTrain[train.id] =
+                eventProjectionLockSuppressedISIs(
+                    projection: projection,
+                    automaticRows: automaticRowsByTrain[train.id] ?? [],
+                    rejectedISIs: rejectedISIsByTrain[train.id] ?? []
+                )
+            vetoedBurstISIsByTrain[train.id] =
+                projection?.autoBurstBlockedByVetoISIs ?? []
+            manualBurstISIsByTrain[train.id] = Set(
+                (projection?.manualPositiveLabelByISI ?? [:]).compactMap {
+                    ManualAnnotationProjector.burstFamilyLabels.contains($0.value)
+                        ? $0.key
+                        : nil
+                }
+            )
+        }
+        let finalEvents = ManualAnnotationProjector.projectPublicEventAnnotations(
+            automaticInput.finalEvents,
+            vetoedBurstISIsByTrain: vetoedBurstISIsByTrain,
+            lockSuppressedISIsByTrain: lockSuppressedByTrain,
+            validatedManualBurstSupportISIsByTrain: manualBurstISIsByTrain,
+            trainsByID: Dictionary(
+                uniqueKeysWithValues: dataset.trains.map { ($0.id, $0) }
+            )
+        ).annotations
+
+        var reviewLinks: [STPDResultReviewLink] = []
+        reviewLinks.append(contentsOf: finalManualEvidenceOwnersByKey
+            .sorted { $0.key < $1.key }
+            .flatMap { key, annotationIDs -> [STPDResultReviewLink] in
+                guard let row = finalRowsByKey[key] else { return [] }
+                return annotationIDs.sorted { $0.uuidString < $1.uuidString }.map {
+                    STPDResultReviewLink(
+                        trainID: row.trainID,
+                        isiIndex: row.isiIndex,
+                        evidence: .manualAnnotation($0)
+                    )
+                }
+            })
+        for review in effectiveReviews {
+            if review.status == .rejected {
+                let rowsWithoutThisRejection = ReviewedISIExportBuilder.build(
+                    dataset: dataset,
+                    autoAnnotations: automaticInput.finalEvents,
+                    projectionsByTrain: projectionsByTrain,
+                    reviewRejectedCandidateIDs:
+                        effectiveRejectedCandidateIDs.subtracting([
+                            review.sourceCandidateID
+                        ])
+                )
+                let causalKeys = causalChangedISIKeys(
+                    actualRows: finalRows,
+                    counterfactualRows: rowsWithoutThisRejection
+                )
+                reviewLinks.append(contentsOf: finalRows
+                    .filter {
+                        $0.isiIndex > 0
+                            && causalKeys.contains(isiKey(
+                                trainID: $0.trainID,
+                                isiIndex: $0.isiIndex
+                            ))
+                    }
+                    .map { row in
+                        STPDResultReviewLink(
+                            trainID: row.trainID,
+                            isiIndex: row.isiIndex,
+                            evidence: .candidateReview(
+                                sourceCandidateID: review.sourceCandidateID
+                            )
+                        )
+                    })
+                continue
+            }
+            reviewLinks.append(contentsOf: automaticIntervalRows
+                .filter { automaticRow in
+                    guard automaticRow.autoCandidateID == review.sourceCandidateID else {
+                        return false
+                    }
+                    let key = isiKey(
+                        trainID: automaticRow.trainID,
+                        isiIndex: automaticRow.isiIndex
+                    )
+                    guard let reviewedRow = finalRowsByKey[key] else { return false }
+                    switch review.status {
+                    case .accepted:
+                        return reviewedRow.finalSource
+                                == ReviewedISIExportBuilder.sourceAutoProjected
+                            && STPDResultPackageBuilder
+                                .isiProjectionComponents(reviewedRow)
+                                == STPDResultPackageBuilder
+                                .isiProjectionComponents(automaticRow)
+                    case .rejected:
+                        return reviewedRow.finalSource
+                            == ReviewedISIExportBuilder.sourceManualReviewRejected
+                    case .modified:
+                        return !(finalManualEvidenceOwnersByKey[key] ?? []).isEmpty
+                            && STPDResultPackageBuilder
+                                .isiProjectionComponents(reviewedRow)
+                                != STPDResultPackageBuilder
+                                .isiProjectionComponents(automaticRow)
+                    case .needsReview:
+                        return false
+                    }
+                }
+                .map { row in
+                    STPDResultReviewLink(
+                        trainID: row.trainID,
+                        isiIndex: row.isiIndex,
+                        evidence: .candidateReview(
+                            sourceCandidateID: review.sourceCandidateID
+                        )
+                    )
+                })
+        }
+        let diagnostics = try appendingReviewDiagnostics(
+            candidateDiagnostics,
+            reviewsAndReasons: nonCausalReviews
+        )
+        guard !reviewLinks.isEmpty else {
+            let containsActiveSpikeOnlyAnnotation = resolvedAnnotations.contains {
+                $0.startISIIndex == nil &&
+                    $0.endISIIndex == nil &&
+                    $0.startSpikeIndex != nil &&
+                    $0.startSpikeIndex == $0.endSpikeIndex
+            }
+            return STPDResultPackageInput(
+                dataset: dataset,
+                run: run,
+                sourceMode: containsActiveSpikeOnlyAnnotation ? .manual : .automatic,
+                finalEvents: automaticInput.finalEvents,
+                finalISILabelRows: automaticInput.finalISILabelRows,
+                manualAnnotations: resolvedAnnotations,
+                candidateReviews: orderedReviews,
+                reviewLinks: [],
+                candidateDiagnostics: diagnostics
+            )
+        }
+
+        let canonicalLinks = canonicalReviewLinks(reviewLinks)
+        let sourceMode: STPDResultPackageSourceMode = canonicalLinks.contains {
+            if case .candidateReview = $0.evidence { return true }
+            return false
+        } ? .reviewed : .manual
+        return STPDResultPackageInput(
+            dataset: dataset,
+            run: run,
+            sourceMode: sourceMode,
+            finalEvents: finalEvents,
+            finalISILabelRows: finalRows,
+            manualAnnotations: resolvedAnnotations,
+            candidateReviews: orderedReviews,
+            reviewLinks: canonicalLinks,
+            candidateDiagnostics: diagnostics
+        )
+    }
+
+    private static func causalChangedISIKeys(
+        actualRows: [ReviewedISIExportRow],
+        counterfactualRows: [ReviewedISIExportRow]
+    ) -> Set<String> {
+        let counterfactualByKey = Dictionary(
+            uniqueKeysWithValues: counterfactualRows
+                .filter { $0.isiIndex > 0 }
+                .map { (isiKey(trainID: $0.trainID, isiIndex: $0.isiIndex), $0) }
+        )
+        return Set(actualRows.compactMap { actual -> String? in
+            guard actual.isiIndex > 0 else { return nil }
+            let key = isiKey(trainID: actual.trainID, isiIndex: actual.isiIndex)
+            guard let counterfactual = counterfactualByKey[key],
+                  STPDResultPackageBuilder.isiProjectionComponents(actual)
+                    != STPDResultPackageBuilder
+                        .isiProjectionComponents(counterfactual) else {
+                return nil
+            }
+            return key
+        })
+    }
+
+    fileprivate static func manualEvidenceOwnerMap(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        automaticEvents: [ClassicAnchorEventAnnotation],
+        automaticRows: [ReviewedISIExportRow],
+        resolvedAnnotations: [ManualAnnotation],
+        projectionsByTrain: [String: ManualAnnotationProjection],
+        finalRows: [ReviewedISIExportRow],
+        reviewRejectedCandidateIDs: Set<String>
+    ) -> [String: Set<UUID>] {
+        let finalByKey = Dictionary(
+            uniqueKeysWithValues: finalRows
+                .filter { $0.isiIndex > 0 }
+                .map { (isiKey(trainID: $0.trainID, isiIndex: $0.isiIndex), $0) }
+        )
+        let automaticByKey = Dictionary(
+            uniqueKeysWithValues: automaticRows
+                .filter { $0.isiIndex > 0 }
+                .map { (isiKey(trainID: $0.trainID, isiIndex: $0.isiIndex), $0) }
+        )
+        let annotationsByTrain = Dictionary(
+            grouping: resolvedAnnotations,
+            by: \.trainID
+        )
+        var owners: [String: Set<UUID>] = [:]
+        for train in dataset.trains {
+            let trainAnnotations = annotationsByTrain[train.id] ?? []
+            guard !trainAnnotations.isEmpty else { continue }
+            let autoLabelsByISI = Dictionary(
+                uniqueKeysWithValues: automaticRows
+                    .filter {
+                        $0.trainID == train.id
+                            && $0.isiIndex > 0
+                            && !$0.autoPattern.isEmpty
+                    }
+                    .map { ($0.isiIndex, $0.autoPattern) }
+            )
+
+            func projection(removing annotationIDs: Set<UUID>)
+                -> ManualAnnotationProjection {
+                ManualAnnotationProjector.project(
+                    train: train,
+                    autoLabelsByISI: autoLabelsByISI,
+                    annotations: trainAnnotations.filter {
+                        !annotationIDs.contains($0.id)
+                    },
+                    honorManualLock: true,
+                    manualNegativeLabelsEnabled: true,
+                    minValidISISeconds: run.qualitySettings.artifactThresholdSec
+                )
+            }
+
+            func recordChanges(
+                from alternateProjection: ManualAnnotationProjection,
+                ownerID: UUID
+            ) {
+                var alternateProjections = projectionsByTrain
+                alternateProjections[train.id] = alternateProjection
+                let alternateRows = ReviewedISIExportBuilder.build(
+                    dataset: dataset,
+                    autoAnnotations: automaticEvents,
+                    projectionsByTrain: alternateProjections,
+                    reviewRejectedCandidateIDs: reviewRejectedCandidateIDs
+                )
+                for alternate in alternateRows
+                where alternate.trainID == train.id && alternate.isiIndex > 0 {
+                    let key = isiKey(
+                        trainID: alternate.trainID,
+                        isiIndex: alternate.isiIndex
+                    )
+                    guard let final = finalByKey[key],
+                          STPDResultPackageBuilder.isiProjectionComponents(final)
+                            != STPDResultPackageBuilder
+                                .isiProjectionComponents(alternate) else {
+                        continue
+                    }
+                    owners[key, default: []].insert(ownerID)
+                }
+            }
+
+            // Primary causal attribution: remove one annotation and retain every directly or
+            // structurally changed ISI. This captures neighboring burst-minimum effects.
+            for annotation in trainAnnotations {
+                recordChanges(
+                    from: projection(removing: [annotation.id]),
+                    ownerID: annotation.id
+                )
+            }
+
+            guard let finalProjection = projectionsByTrain[train.id] else {
+                continue
+            }
+
+            // Removing only the newest of two equivalent edits reveals the older substitute and
+            // produces no delta. For each currently active owner, remove the complete equivalence
+            // class (same label and effective QC-valid ISI geometry), then assign the resulting
+            // direct and structural changes to that deterministic last-edit-wins owner.
+            func effectiveIndices(_ annotation: ManualAnnotation) -> Set<Int> {
+                guard let covered = ManualAnnotationGeometryResolver
+                    .resolve(annotation: annotation, in: train)
+                    .coveredISIIndices else {
+                    return []
+                }
+                return Set(covered.filter { index in
+                    guard train.isiSec.indices.contains(index),
+                          let value = train.isiSec[index] else {
+                        return false
+                    }
+                    return value.isFinite
+                        && value >= run.qualitySettings.artifactThresholdSec
+                })
+            }
+            let annotationsByID = Dictionary(
+                uniqueKeysWithValues: trainAnnotations.map { ($0.id, $0) }
+            )
+            let activeOwnerIDs = Set(
+                finalProjection.manualPositiveOwnerByISI.values
+            )
+            .union(finalProjection.manualNegativeVetoOwnerByISI.values)
+            for ownerID in activeOwnerIDs.sorted(by: {
+                $0.uuidString < $1.uuidString
+            }) {
+                guard let owner = annotationsByID[ownerID] else { continue }
+                let ownerIndices = effectiveIndices(owner)
+                let equivalentIDs = Set(trainAnnotations.compactMap {
+                    annotation -> UUID? in
+                    annotation.label == owner.label
+                        && effectiveIndices(annotation) == ownerIndices
+                        ? annotation.id
+                        : nil
+                })
+                guard equivalentIDs.count > 1 else { continue }
+                recordChanges(
+                    from: projection(removing: equivalentIDs),
+                    ownerID: ownerID
+                )
+            }
+
+            // A narrow direct fallback handles partially overlapping superseded edits without
+            // claiming unrelated structural rows. Final-source precedence is authoritative:
+            // positive manual output wins over a co-located veto, so the veto cannot co-own it.
+            for final in finalRows
+            where final.trainID == train.id && final.isiIndex > 0 {
+                let key = isiKey(
+                    trainID: final.trainID,
+                    isiIndex: final.isiIndex
+                )
+                guard let automatic = automaticByKey[key],
+                      STPDResultPackageBuilder.isiProjectionComponents(final)
+                        != STPDResultPackageBuilder
+                            .isiProjectionComponents(automatic) else {
+                    continue
+                }
+                let ownerID: UUID?
+                switch final.finalSource {
+                case ReviewedISIExportBuilder.sourceManualPositive:
+                    ownerID =
+                        finalProjection.manualPositiveOwnerByISI[final.isiIndex]
+                case ReviewedISIExportBuilder.sourceManualVetoRemoved:
+                    ownerID =
+                        finalProjection.manualNegativeVetoOwnerByISI[final.isiIndex]
+                default:
+                    ownerID = nil
+                }
+                if let ownerID {
+                    owners[key, default: []].insert(ownerID)
+                }
+            }
+        }
+        return owners
+    }
+
+    private static func validateUniqueCandidateReviews(
+        _ reviews: [STPDCandidateReviewInput],
+        expectedRunID: String
+    ) throws {
+        let sourceIDs = reviews.map(\.sourceCandidateID)
+        guard Set(sourceIDs).count == sourceIDs.count else {
+            throw STPDResultPackageError.invalidInput(
+                "candidate review source IDs are not unique"
+            )
+        }
+        for review in reviews {
+            try validateFiniteCandidateReviewTimestamp(review)
+            if review.status.grantsReviewAuthority {
+                try validateAuthorityBearingCandidateReview(
+                    review,
+                    expectedRunID: expectedRunID
+                )
+            }
+        }
+    }
+
+    fileprivate static func validateFiniteCandidateReviewTimestamp(
+        _ review: STPDCandidateReviewInput
+    ) throws {
+        guard let reviewedAt = review.reviewedAt else { return }
+        guard reviewedAt.timeIntervalSince1970.isFinite else {
+            throw STPDResultPackageError.invalidInput(
+                "candidate review time must be finite"
+            )
+        }
+    }
+
+    fileprivate static func validateFiniteManualAnnotationTimestamps(
+        _ annotations: [ManualAnnotation]
+    ) throws {
+        for annotation in annotations {
+            guard annotation.createdAt.timeIntervalSince1970.isFinite,
+                  annotation.updatedAt.timeIntervalSince1970.isFinite else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual annotation \(annotation.id.uuidString) has a non-finite edit timestamp"
+                )
+            }
+        }
+    }
+
+    fileprivate static func validateAuthorityBearingCandidateReview(
+        _ review: STPDCandidateReviewInput,
+        expectedRunID: String
+    ) throws {
+        try validateFiniteCandidateReviewTimestamp(review)
+        guard review.reviewedRunID == expectedRunID else {
+            throw STPDResultPackageError.invalidInput(
+                "authority-bearing candidate review belongs to a different detector run"
+            )
+        }
+        guard !review.reviewer
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              review.reviewedAt != nil else {
+            throw STPDResultPackageError.invalidInput(
+                "authority-bearing candidate review requires reviewer and review time"
+            )
+        }
+    }
+
+    fileprivate static func validateNoAmbiguousManualEditTies(
+        _ annotations: [ManualAnnotation]
+    ) throws {
+        guard annotations.count > 1 else { return }
+        let ordered = annotations.sorted {
+            if $0.trainID != $1.trainID { return $0.trainID < $1.trainID }
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt < $1.updatedAt }
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        for leftIndex in ordered.indices {
+            let left = ordered[leftIndex]
+            for right in ordered[ordered.index(after: leftIndex)...] {
+                guard left.trainID == right.trainID,
+                      left.updatedAt == right.updatedAt,
+                      left.createdAt == right.createdAt,
+                      manualAnnotationRangesOverlap(left, right) else {
+                    continue
+                }
+                throw STPDResultPackageError.invalidInput(
+                    "manual annotations \(left.id.uuidString) and " +
+                        "\(right.id.uuidString) have an unresolved equal-timestamp overlap"
+                )
+            }
+        }
+    }
+
+    /// Reject two different records that both claim to be the latest revision of one logical
+    /// annotation. Choosing one by sort order would silently assign scientific authority to an
+    /// arbitrary actor or geometry, so package construction fails closed before canonicalization.
+    fileprivate static func validateNoConflictingLatestManualRevisions(
+        _ annotations: [ManualAnnotation]
+    ) throws {
+        for (id, revisions) in Dictionary(grouping: annotations, by: \.id)
+            where revisions.count > 1 {
+            guard let latest = revisions.max(by: manualRevisionIsOlder) else {
+                continue
+            }
+            let tiedLatest = revisions.filter {
+                $0.updatedAt.timeIntervalSince1970
+                    == latest.updatedAt.timeIntervalSince1970
+                    && $0.createdAt.timeIntervalSince1970
+                    == latest.createdAt.timeIntervalSince1970
+            }
+            guard Set(tiedLatest).count <= 1 else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual annotation \(id.uuidString) has conflicting equal-latest revisions"
+                )
+            }
+        }
+    }
+
+    private static func manualRevisionIsOlder(
+        _ lhs: ManualAnnotation,
+        _ rhs: ManualAnnotation
+    ) -> Bool {
+        let leftUpdated = lhs.updatedAt.timeIntervalSince1970
+        let rightUpdated = rhs.updatedAt.timeIntervalSince1970
+        if leftUpdated != rightUpdated {
+            return leftUpdated < rightUpdated
+        }
+        let leftCreated = lhs.createdAt.timeIntervalSince1970
+        let rightCreated = rhs.createdAt.timeIntervalSince1970
+        return leftCreated != rightCreated && leftCreated < rightCreated
+    }
+
+    private static func manualAnnotationRangesOverlap(
+        _ lhs: ManualAnnotation,
+        _ rhs: ManualAnnotation
+    ) -> Bool {
+        if let lhsStart = lhs.startISIIndex,
+           let lhsEnd = lhs.endISIIndex,
+           let rhsStart = rhs.startISIIndex,
+           let rhsEnd = rhs.endISIIndex {
+            let leftLower = min(lhsStart, lhsEnd)
+            let leftUpper = max(lhsStart, lhsEnd)
+            let rightLower = min(rhsStart, rhsEnd)
+            let rightUpper = max(rhsStart, rhsEnd)
+            return max(leftLower, rightLower) <= min(leftUpper, rightUpper)
+        }
+        return max(lhs.normalizedStartSec, rhs.normalizedStartSec)
+            <= min(lhs.normalizedEndSec, rhs.normalizedEndSec)
+    }
+
+    private static func isiKey(trainID: String, isiIndex: Int) -> String {
+        "\(trainID)\u{1}\(isiIndex)"
+    }
+
+    /// Manual-positive authority changes row provenance, but an exact same-label edit does not
+    /// create a scientific event boundary. Different-label edits and rejected candidates still
+    /// suppress the automatic event projection at their governed ISIs.
+    fileprivate static func eventProjectionLockSuppressedISIs(
+        projection: ManualAnnotationProjection?,
+        automaticRows: [ReviewedISIExportRow],
+        rejectedISIs: Set<Int>
+    ) -> Set<Int> {
+        let automaticPatternByISI = Dictionary(
+            uniqueKeysWithValues: automaticRows
+                .filter { $0.isiIndex > 0 && !$0.autoPattern.isEmpty }
+                .map { ($0.isiIndex, $0.autoPattern) }
+        )
+        let sameLabelManualPositiveISIs = Set(
+            (projection?.manualPositiveLabelByISI ?? [:]).compactMap {
+                automaticPatternByISI[$0.key] == $0.value ? $0.key : nil
+            }
+        )
+        return (projection?.autoBlockedByManualLockISIs ?? [])
+            .subtracting(sameLabelManualPositiveISIs)
+            .union(rejectedISIs)
+    }
+
+    private static func canonicalReviews(
+        _ reviews: [STPDCandidateReviewInput]
+    ) -> [STPDCandidateReviewInput] {
+        reviews.sorted { lhs, rhs in
+            let left = [
+                lhs.sourceCandidateID,
+                lhs.status.rawValue,
+                lhs.reviewer,
+                canonicalReviewTimestamp(lhs.reviewedAt),
+                lhs.reviewedRunID,
+                lhs.note,
+            ]
+            let right = [
+                rhs.sourceCandidateID,
+                rhs.status.rawValue,
+                rhs.reviewer,
+                canonicalReviewTimestamp(rhs.reviewedAt),
+                rhs.reviewedRunID,
+                rhs.note,
+            ]
+            return left.lexicographicallyPrecedes(right)
+        }
+    }
+
+    private static func canonicalReviewTimestamp(_ value: Date?) -> String {
+        STPDCanonicalValue.double(value?.timeIntervalSince1970)
+    }
+
+    private static func canonicalDiagnostics(
+        _ diagnostics: [STPDCandidateDiagnosticInput]
+    ) -> [STPDCandidateDiagnosticInput] {
+        diagnostics.sorted { lhs, rhs in
+            if lhs.stageOrdinal != rhs.stageOrdinal {
+                return lhs.stageOrdinal < rhs.stageOrdinal
+            }
+            let left = [
+                lhs.sourceCandidateID,
+                lhs.stageName,
+                lhs.status,
+                lhs.details,
+            ]
+            let right = [
+                rhs.sourceCandidateID,
+                rhs.stageName,
+                rhs.status,
+                rhs.details,
+            ]
+            return left.lexicographicallyPrecedes(right)
+        }
+    }
+
+    private static func appendingReviewDiagnostics(
+        _ supplied: [STPDCandidateDiagnosticInput],
+        reviewsAndReasons: [(STPDCandidateReviewInput, String)]
+    ) throws -> [STPDCandidateDiagnosticInput] {
+        let orderedSupplied = canonicalDiagnostics(supplied)
+        guard !reviewsAndReasons.isEmpty else {
+            return orderedSupplied
+        }
+        let ordered = reviewsAndReasons.sorted { lhs, rhs in
+            let left = canonicalReviews([lhs.0]).first!
+            let right = canonicalReviews([rhs.0]).first!
+            let leftKey = [
+                left.sourceCandidateID,
+                left.status.rawValue,
+                left.reviewer,
+                canonicalReviewTimestamp(left.reviewedAt),
+                left.reviewedRunID,
+                left.note,
+                lhs.1,
+            ]
+            let rightKey = [
+                right.sourceCandidateID,
+                right.status.rawValue,
+                right.reviewer,
+                canonicalReviewTimestamp(right.reviewedAt),
+                right.reviewedRunID,
+                right.note,
+                rhs.1,
+            ]
+            return leftKey.lexicographicallyPrecedes(rightKey)
+        }
+        let maximumOrdinal = orderedSupplied.map(\.stageOrdinal).max() ?? -1
+        let (firstOrdinal, firstOverflow) =
+            maximumOrdinal.addingReportingOverflow(1)
+        let lastOffset = ordered.indices.last ?? 0
+        let (_, lastOverflow) = firstOrdinal.addingReportingOverflow(lastOffset)
+        guard !firstOverflow, ordered.isEmpty || !lastOverflow else {
+            throw STPDResultPackageError.invalidInput(
+                "candidate diagnostic stage ordinals cannot be extended safely"
+            )
+        }
+        let generated = ordered.enumerated().map { offset, item in
+            let review = item.0
+            return STPDCandidateDiagnosticInput(
+                sourceCandidateID: review.sourceCandidateID,
+                stageName: "result_package_review_snapshot",
+                stageOrdinal: firstOrdinal + offset,
+                status: review.status.rawValue,
+                details: [
+                    "reason=\(item.1)",
+                    "reviewer=\(review.reviewer)",
+                    "reviewed_at_unix_sec=\(canonicalReviewTimestamp(review.reviewedAt))",
+                    "reviewed_run_id=\(review.reviewedRunID)",
+                    "note=\(review.note)",
+                ].joined(separator: ";")
+            )
+        }
+        return canonicalDiagnostics(orderedSupplied + generated)
+    }
+
+    private static func canonicalReviewLinks(
+        _ links: [STPDResultReviewLink]
+    ) -> [STPDResultReviewLink] {
+        Array(Set(links)).sorted { lhs, rhs in
+            if lhs.trainID != rhs.trainID { return lhs.trainID < rhs.trainID }
+            if lhs.isiIndex != rhs.isiIndex { return lhs.isiIndex < rhs.isiIndex }
+            return reviewEvidenceKey(lhs.evidence) < reviewEvidenceKey(rhs.evidence)
+        }
+    }
+
+    private static func reviewEvidenceKey(
+        _ evidence: STPDResultReviewEvidence
+    ) -> String {
+        switch evidence {
+        case .manualAnnotation(let id):
+            return "manual:\(id.uuidString.lowercased())"
+        case .candidateReview(let sourceCandidateID):
+            return "review:\(sourceCandidateID)"
+        }
     }
 }
 
@@ -181,15 +1110,14 @@ public struct STPDResultColumnDefinition: Codable, Hashable, Sendable {
 
 private enum STPDResultTimestamp {
     static func parse(_ value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: value) {
-            return date
+        STPDCanonicalTimestamp.parse(value).map {
+            Date(timeIntervalSince1970: $0.seconds)
         }
+    }
 
-        let wholeSeconds = ISO8601DateFormatter()
-        wholeSeconds.formatOptions = [.withInternetDateTime]
-        return wholeSeconds.date(from: value)
+    /// Parses the complete signed decimal instant without a negative-epoch cancellation step.
+    static func exactSeconds(_ value: String) -> Double? {
+        STPDCanonicalTimestamp.parse(value)?.seconds
     }
 }
 
@@ -294,6 +1222,24 @@ public struct STPDResultTableData: Sendable {
         return rows[row][index]
     }
 
+    private static let lexicallyOrderedStringListColumns: Set<String> = [
+        "audit_final_selected_event_subtypes",
+        "event_source_candidate_uids",
+        "linked_isi_uids",
+        "package_final_event_subtypes",
+        "review_evidence_uids",
+        "source_event_ids",
+        "source_candidate_uids",
+        "state_high_frequency_subtypes",
+        "unresolved_candidate_ids",
+        "unresolved_source_candidate_ids",
+    ]
+
+    private static let numericallyOrderedStringListColumns: Set<String> = [
+        "automatic_support_isi_indices",
+        "source_support_isi_indices",
+    ]
+
     private static func validateCell(
         _ value: String,
         definition: STPDResultColumnDefinition,
@@ -315,7 +1261,26 @@ public struct STPDResultTableData: Sendable {
         case .string:
             isValid = true
         case .stringList:
-            isValid = STPDCanonicalValue.parseStringList(value) != nil
+            if let values = STPDCanonicalValue.parseStringList(value) {
+                let structurallyValid =
+                    values.allSatisfy { !$0.isEmpty } &&
+                    Set(values).count == values.count &&
+                    STPDCanonicalValue.stringList(values) == value
+                let orderValid: Bool
+                if lexicallyOrderedStringListColumns.contains(definition.name) {
+                    orderValid = values == values.sorted()
+                } else if numericallyOrderedStringListColumns.contains(definition.name) {
+                    let parsed = values.compactMap(Int.init)
+                    orderValid =
+                        parsed.count == values.count &&
+                        parsed == parsed.sorted()
+                } else {
+                    orderValid = true
+                }
+                isValid = structurallyValid && orderValid
+            } else {
+                isValid = false
+            }
         case .integer:
             isValid = Int(value) != nil
         case .real:
@@ -456,6 +1421,7 @@ private enum STPDResultColumnCatalog {
         "spike_index",
         "spike_array_index",
         "spike_ordinal",
+        "source_event_index",
         "left_spike_array_index",
         "left_spike_ordinal",
         "right_spike_array_index",
@@ -548,14 +1514,17 @@ private enum STPDResultColumnCatalog {
         switch table {
         case .runMetadata:
             return ["dataset_source"]
-        case .parametersReport, .candidateLedger, .resultConsistencyCheck:
+        case .parametersReport,
+             .candidateLedger,
+             .candidateLedgerDiagnostic,
+             .resultConsistencyCheck:
             return []
         case .resolvedParameters:
             return [
                 "requested_value", "adaptive_value", "effective_value",
                 "resolution_note", "histogram_value", "default_value",
             ]
-        case .candidateFeatures:
+        case .candidateFeatures, .candidateFeaturesDiagnostic:
             let mandatory: Set<String> = [
                 "run_id", "settings_digest", "candidate_uid", "source_candidate_id",
                 "score",
@@ -566,7 +1535,7 @@ private enum STPDResultColumnCatalog {
                 "state_continuity_authority_frozen", "state_continuity_merge_terminal",
             ]
             return Set(headers).subtracting(mandatory)
-        case .finalDecisions:
+        case .finalDecisions, .finalDecisionsDiagnostic:
             return [
                 "audit_uncertainty_reason", "failure_reason",
                 "audit_long_burst_definition_status",
@@ -574,6 +1543,7 @@ private enum STPDResultColumnCatalog {
             ]
         case .eventsFinal:
             return [
+                "final_subtype",
                 "state_tonic_subtype",
                 "score", "priority",
             ]
@@ -599,9 +1569,15 @@ private enum STPDResultColumnCatalog {
                 "source_decision_path",
             ]
         case .manualAnnotations:
-            return ["note"]
+            return [
+                "start_isi_index", "end_isi_index", "note", "annotator",
+                "annotator_identity_source",
+            ]
         case .reviewStatus:
-            return ["reviewer", "note", "reviewed_at"]
+            return [
+                "reviewer", "reviewed_run_id", "note",
+                "reviewed_at", "reviewed_at_unix_sec",
+            ]
         case .hfsBurstArbitrationAudit:
             return [
                 "strongest_burst_candidate_uid", "strongest_long_burst_candidate_uid",
@@ -617,6 +1593,8 @@ private enum STPDResultColumnCatalog {
                 "audit_hfs_bridge_fraction", "audit_hfs_large_fraction",
                 "audit_hfs_cv", "audit_hfs_lv",
             ]
+        case .taskEvents:
+            return ["source"]
         }
     }
 
@@ -705,6 +1683,45 @@ public enum STPDResultPackageError: Error, LocalizedError, Sendable {
 }
 
 public enum STPDResultPackageBuilder {
+    /// Verifies that an app export still represents the sealed detector invocation.
+    ///
+    /// The run identity check binds the export to the exact parsed dataset and detector-produced
+    /// evidence. The second check compares the current detection-affecting settings with the
+    /// invocation snapshot. Display formatting and learned-provenance descriptions are excluded
+    /// because they do not alter detector output.
+    public static func validateExportPreflight(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        currentSettingsSnapshot: DetectionRunSettingsSnapshot
+    ) throws {
+        try validateDeclaredIdentity(
+            run.runIdentity,
+            dataset: dataset,
+            run: run
+        )
+        guard let invocationSnapshot = run.invocationSettingsSnapshot else {
+            throw STPDResultPackageError.invalidRunIdentity(
+                "detector entry-point settings evidence is unavailable"
+            )
+        }
+
+        let invocation = exportSemanticSettings(invocationSnapshot)
+        let current = exportSemanticSettings(currentSettingsSnapshot)
+        let keys = Set(invocation.keys).union(current.keys).sorted()
+        let mismatches = keys.compactMap { key -> String? in
+            guard invocation[key] != current[key] else {
+                return nil
+            }
+            return "\(key):invocation=\(invocation[key] ?? "missing"),current=\(current[key] ?? "missing")"
+        }
+        guard mismatches.isEmpty else {
+            throw STPDResultPackageError.invalidInput(
+                "current detector inputs differ from the sealed run: " +
+                    mismatches.joined(separator: "|")
+            )
+        }
+    }
+
     public static func build(_ input: STPDResultPackageInput) throws -> STPDResultPackage {
         let identity = input.run.runIdentity
         try validateDeclaredIdentity(
@@ -726,6 +1743,9 @@ public enum STPDResultPackageBuilder {
             datasetDigest: identity.datasetDigest,
             dataset: input.dataset
         )
+        let publicCandidates = candidates.filter {
+            isPublicCandidate($0.candidate)
+        }
         let candidateUIDBySourceID = Dictionary(
             uniqueKeysWithValues: candidates.map { ($0.candidate.id, $0.uid) }
         )
@@ -794,7 +1814,8 @@ public enum STPDResultPackageBuilder {
         var tables: [STPDResultTable: STPDResultTableData] = [:]
         tables[.runMetadata] = try runMetadataTable(
             input: input,
-            candidateCount: candidates.count,
+            candidateCount: publicCandidates.count,
+            diagnosticCandidateCount: candidates.count,
             finalEventCount: events.count,
             finalISICount: isiRows.count
         )
@@ -806,16 +1827,32 @@ public enum STPDResultPackageBuilder {
         )
         tables[.candidateLedger] = try candidateLedgerTable(
             identity: identity,
-            records: candidates
+            records: publicCandidates
         )
         tables[.candidateFeatures] = try candidateFeaturesTable(
             identity: identity,
-            records: candidates,
+            records: publicCandidates,
             candidateUIDBySourceID: candidateUIDBySourceID
         )
         tables[.finalDecisions] = try finalDecisionsTable(
             identity: identity,
-            records: candidates
+            records: publicCandidates
+        )
+        tables[.candidateLedgerDiagnostic] = try candidateLedgerTable(
+            identity: identity,
+            records: candidates,
+            tableKind: .candidateLedgerDiagnostic
+        )
+        tables[.candidateFeaturesDiagnostic] = try candidateFeaturesTable(
+            identity: identity,
+            records: candidates,
+            candidateUIDBySourceID: candidateUIDBySourceID,
+            tableKind: .candidateFeaturesDiagnostic
+        )
+        tables[.finalDecisionsDiagnostic] = try finalDecisionsTable(
+            identity: identity,
+            records: candidates,
+            tableKind: .finalDecisionsDiagnostic
         )
         tables[.eventsFinal] = try eventsTable(
             identity: identity,
@@ -863,12 +1900,25 @@ public enum STPDResultPackageBuilder {
             finalEvents: events,
             sourceMode: input.sourceMode
         )
+        tables[.taskEvents] = try taskEventsTable(
+            identity: identity,
+            events: input.dataset.taskEvents
+        )
 
         let checks = try STPDResultPackageValidator.validate(
             identity: identity,
             sourceMode: input.sourceMode,
             tables: tables,
-            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) }
+            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) },
+            expectedTaskEvents: input.dataset.taskEvents,
+            expectedDatasetMetadata: input.run.datasetMetadataSnapshot,
+            expectedTrainIDs: Set(input.dataset.trains.map(\.id)),
+            expectedDataset: input.dataset,
+            expectedQualitySettings: input.run.qualitySettings,
+            expectedRun: input.run,
+            expectedCandidateReviews: input.candidateReviews,
+            expectedManualAnnotations: input.manualAnnotations,
+            expectedCandidateDiagnostics: input.candidateDiagnostics
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
             identity: identity,
@@ -879,7 +1929,16 @@ public enum STPDResultPackageBuilder {
             identity: identity,
             sourceMode: input.sourceMode,
             tables: tables,
-            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) }
+            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) },
+            expectedTaskEvents: input.dataset.taskEvents,
+            expectedDatasetMetadata: input.run.datasetMetadataSnapshot,
+            expectedTrainIDs: Set(input.dataset.trains.map(\.id)),
+            expectedDataset: input.dataset,
+            expectedQualitySettings: input.run.qualitySettings,
+            expectedRun: input.run,
+            expectedCandidateReviews: input.candidateReviews,
+            expectedManualAnnotations: input.manualAnnotations,
+            expectedCandidateDiagnostics: input.candidateDiagnostics
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
             identity: identity,
@@ -889,7 +1948,16 @@ public enum STPDResultPackageBuilder {
             identity: identity,
             sourceMode: input.sourceMode,
             tables: tables,
-            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) }
+            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) },
+            expectedTaskEvents: input.dataset.taskEvents,
+            expectedDatasetMetadata: input.run.datasetMetadataSnapshot,
+            expectedTrainIDs: Set(input.dataset.trains.map(\.id)),
+            expectedDataset: input.dataset,
+            expectedQualitySettings: input.run.qualitySettings,
+            expectedRun: input.run,
+            expectedCandidateReviews: input.candidateReviews,
+            expectedManualAnnotations: input.manualAnnotations,
+            expectedCandidateDiagnostics: input.candidateDiagnostics
         )
 
         let manifestTables = try STPDResultTable.allCases.map { table in
@@ -934,11 +2002,16 @@ private struct STPDCandidateRecord {
     let uid: String
 }
 
-private struct STPDNormalizedEvent {
+/// Module-internal normalized event contract.
+///
+/// Kept internal so tests can exercise the same authority-partitioning path used by package
+/// materialization without constructing a causally invalid `STPDResultPackageInput`.
+struct STPDNormalizedEvent {
     let sourceEventIDs: [String]
     let trainID: String
     let trainName: String
     let finalLabel: String
+    let finalSubtype: String
     let stateTonicSubtype: String
     let stateHighFrequencySubtypes: [String]
     let semanticTrack: String
@@ -963,7 +2036,7 @@ private struct STPDNormalizedEvent {
     let automaticEventSources: [ClassicAnchorAutomaticEventSource]
 }
 
-private struct STPDEventRecord {
+struct STPDEventRecord {
     let event: STPDNormalizedEvent
     let uid: String
     let sourceCandidateUIDs: [String]
@@ -981,7 +2054,7 @@ private struct STPDFinalEventSegment {
     let rows: [ReviewedISIExportRow]
 }
 
-private struct STPDConsistencyCheck {
+struct STPDConsistencyCheck {
     let id: String
     let status: String
     let severity: String
@@ -1000,21 +2073,35 @@ private struct STPDResolvedReviewAuthority {
 }
 
 private extension STPDResultPackageBuilder {
+    static func exportSemanticSettings(
+        _ snapshot: DetectionRunSettingsSnapshot
+    ) -> [String: String] {
+        Dictionary(
+            uniqueKeysWithValues: snapshot.entries.compactMap { entry in
+                guard entry.key != "quality.display_unit",
+                      !entry.key.hasPrefix("manual.learned_provenance.") else {
+                    return nil
+                }
+                return (entry.key, entry.value)
+            }
+        )
+    }
+
     static func eventProjectionMatches(
         row: ReviewedISIExportRow,
         finalLabel: String,
-        auditRecommendedSubtype: String,
+        finalSubtype: String,
         allowsManualPositive: Bool
     ) -> Bool {
         guard row.finalPattern == finalLabel else {
             return false
         }
-        // Manual-positive rows have no detector subtype. They form their own manual-authority
-        // segment and must never inherit an automatic event's detector-only subtype/audit fields.
+        // A same-label manual-positive ISI may remain inside its automatic source event.
+        // Its row-level provenance stays manual and never fabricates a detector subtype.
         if row.finalSource == ReviewedISIExportBuilder.sourceManualPositive {
             return allowsManualPositive && row.finalSubtype.isEmpty
         }
-        return row.finalSubtype == auditRecommendedSubtype
+        return row.finalSubtype == finalSubtype
     }
 
     static func validateDeclaredIdentity(
@@ -1406,6 +2493,35 @@ private extension STPDResultPackageBuilder {
         }
     }
 
+    static func isPublicCandidate(_ candidate: ClassicAnchorCandidate) -> Bool {
+        guard candidate.selectedForAuto,
+              candidate.isEligibleForAutoSelection,
+              candidate.finalLabel != .reject,
+              candidate.finalLabel != .profile else {
+            return false
+        }
+
+        let authorityFields = [
+            candidate.action,
+            candidate.gateStatus,
+            candidate.selectionStatus,
+        ].map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        let denialTerms = [
+            "blocked",
+            "unwritten",
+            "not_selected",
+            "not selected",
+            "suppressed",
+            "rejected",
+            "audit_only",
+        ]
+        return !authorityFields.contains { field in
+            denialTerms.contains { field.contains($0) }
+        }
+    }
+
     static func candidateRecords(
         candidates: [ClassicAnchorCandidate],
         datasetDigest: String,
@@ -1533,6 +2649,7 @@ private extension STPDResultPackageBuilder {
             return [
                 event.trainID,
                 event.finalLabel,
+                event.finalSubtype,
                 event.stateTonicSubtype,
                 STPDCanonicalValue.stringList(event.stateHighFrequencySubtypes),
                 String(event.startISIIndex),
@@ -1595,26 +2712,68 @@ private extension STPDResultPackageBuilder {
                 return $0.annotationID < $1.annotationID
             }
 
-            var matchingSegments: [[ReviewedISIExportRow]] = []
+            // The public event geometry may contain more than one authoritative final family.
+            // For example, a manually bridged burst can join automatic `burst` and
+            // `possible_burst` support in one projected annotation. The final ISI table remains
+            // authoritative, so partition the source event by its row-level final label/subtype
+            // rather than discarding rows that do not match the aggregate event label.
+            var authoritativeSegments: [(
+                rows: [ReviewedISIExportRow],
+                finalLabel: String,
+                finalSubtype: String
+            )] = []
             var currentSegment: [ReviewedISIExportRow] = []
-            for row in sourceRows {
-                if eventProjectionMatches(
-                    row: row,
-                    finalLabel: sourceEvent.label.rawValue,
-                    auditRecommendedSubtype: sourceEvent.auditRecommendedSubtype,
-                    allowsManualPositive: false
-                ) {
-                    currentSegment.append(row)
-                } else if !currentSegment.isEmpty {
-                    matchingSegments.append(currentSegment)
-                    currentSegment = []
-                }
-            }
-            if !currentSegment.isEmpty {
-                matchingSegments.append(currentSegment)
+
+            var currentLabel = ""
+            var currentSubtype = ""
+
+            func appendCurrentSegment() {
+                guard !currentSegment.isEmpty else { return }
+                authoritativeSegments.append((
+                    rows: currentSegment,
+                    finalLabel: currentLabel,
+                    finalSubtype: currentSubtype
+                ))
+                currentSegment = []
+                currentLabel = ""
+                currentSubtype = ""
             }
 
-            for eventRows in matchingSegments {
+            for row in sourceRows {
+                guard !row.finalPattern.isEmpty else {
+                    appendCurrentSegment()
+                    continue
+                }
+                let effectiveSubtype: String
+                if row.finalSource == ReviewedISIExportBuilder.sourceManualPositive,
+                   row.finalPattern == sourceEvent.label.rawValue,
+                   row.finalSubtype.isEmpty {
+                    // A same-family manual bridge inherits the automatic subtype only for
+                    // event continuity. Row-level manual provenance and the empty row subtype
+                    // remain unchanged in isi_labels_final.csv.
+                    effectiveSubtype = sourceEvent.auditRecommendedSubtype
+                } else {
+                    effectiveSubtype = row.finalSubtype
+                }
+                if currentSegment.isEmpty {
+                    currentLabel = row.finalPattern
+                    currentSubtype = effectiveSubtype
+                    currentSegment.append(row)
+                } else if row.finalPattern == currentLabel,
+                          effectiveSubtype == currentSubtype,
+                          row.isiIndex == currentSegment.last!.isiIndex + 1 {
+                    currentSegment.append(row)
+                } else {
+                    appendCurrentSegment()
+                    currentLabel = row.finalPattern
+                    currentSubtype = effectiveSubtype
+                    currentSegment.append(row)
+                }
+            }
+            appendCurrentSegment()
+
+            for segment in authoritativeSegments {
+                let eventRows = segment.rows
                 guard let firstRow = eventRows.first, let lastRow = eventRows.last else {
                     continue
                 }
@@ -1661,6 +2820,14 @@ private extension STPDResultPackageBuilder {
                 let sourceUIDs = sourceIDs.compactMap {
                     candidateUIDBySourceID[$0]
                 }.sorted()
+                let representativeSource = automaticSources.first {
+                    $0.label.rawValue == segment.finalLabel
+                        && (
+                            segment.finalSubtype.isEmpty
+                                || $0.auditRecommendedSubtype == segment.finalSubtype
+                        )
+                }
+                let usesAggregateSource = segment.finalLabel == sourceEvent.label.rawValue
                 let changed = eventRows.contains {
                     changedISIKeys.contains(isiRowKey($0))
                 }
@@ -1685,12 +2852,26 @@ private extension STPDResultPackageBuilder {
                     sourceEventIDs: [sourceEvent.id],
                     trainID: sourceEvent.trainID,
                     trainName: sourceEvent.trainName,
-                    finalLabel: sourceEvent.label.rawValue,
-                    stateTonicSubtype: sourceEvent.stateTonicSubtype ?? "",
+                    finalLabel: segment.finalLabel,
+                    finalSubtype: segment.finalSubtype,
+                    stateTonicSubtype:
+                        representativeSource?.stateTonicSubtype
+                        ?? (usesAggregateSource ? sourceEvent.stateTonicSubtype : nil)
+                        ?? "",
                     stateHighFrequencySubtypes: hfsSubtypes,
-                    semanticTrack: sourceEvent.semanticTrack.rawValue,
-                    eventTrackClass: sourceEvent.eventTrackClass,
-                    lockLevel: sourceEvent.lockLevel.rawValue,
+                    semanticTrack:
+                        representativeSource?.semanticTrack.rawValue
+                        ?? (usesAggregateSource
+                            ? sourceEvent.semanticTrack.rawValue
+                            : manualSemanticTrack(for: segment.finalLabel)),
+                    eventTrackClass:
+                        representativeSource?.eventTrackClass
+                        ?? (usesAggregateSource
+                            ? sourceEvent.eventTrackClass
+                            : segment.finalLabel),
+                    lockLevel:
+                        representativeSource?.lockLevel.rawValue
+                        ?? sourceEvent.lockLevel.rawValue,
                     startISIIndex: segmentLower,
                     endISIIndex: segmentUpper,
                     startSpikeOrdinal: segmentLower,
@@ -1699,21 +2880,29 @@ private extension STPDResultPackageBuilder {
                     rawEndSec: train.timestampsSec[upperTimestampIndex],
                     alignedStartSec: aligned[lowerTimestampIndex],
                     alignedEndSec: aligned[upperTimestampIndex],
-                    score: sourceEvent.score,
-                    priority: sourceEvent.priority,
+                    score: representativeSource?.score ?? sourceEvent.score,
+                    priority: representativeSource?.priority ?? sourceEvent.priority,
                     automaticSupportISIIndices:
-                        sourceEvent.automaticSupportISIIndices
-                        .filter(segmentISIs.contains)
-                        .sorted(),
-                    auditRecommendedSubtype: sourceEvent.auditRecommendedSubtype,
-                    auditReviewStatus: sourceEvent.auditReviewStatus,
-                    decisionPath: sourceEvent.decisionPath,
+                        Array(Set(automaticSources.flatMap(\.supportISIIndices))).sorted(),
+                    auditRecommendedSubtype:
+                        representativeSource?.auditRecommendedSubtype
+                        ?? (usesAggregateSource
+                            ? sourceEvent.auditRecommendedSubtype
+                            : (segment.finalSubtype.isEmpty
+                                ? segment.finalLabel
+                                : segment.finalSubtype)),
+                    auditReviewStatus:
+                        representativeSource?.auditReviewStatus
+                        ?? sourceEvent.auditReviewStatus,
+                    decisionPath:
+                        representativeSource?.decisionPath
+                        ?? sourceEvent.decisionPath,
                     authorityOrigin: authorityOrigin,
                     automaticEventSources: automaticSources
                 )
                 let uid = STPDStableIdentifier.make(
                     prefix: "event",
-                    domain: "stpd_normalized_public_event_uid_v4",
+                    domain: "stpd_normalized_public_event_uid_v5",
                     components: [datasetDigest] + scientificIdentity(event: normalized)
                 )
                 records.append(
@@ -1731,6 +2920,18 @@ private extension STPDResultPackageBuilder {
             $0.isiIndex > 0
                 && !$0.finalPattern.isEmpty
                 && !occupiedISIKeys.contains(isiRowKey($0))
+        }
+        let uncoveredAutomaticRows = uncoveredRows.filter {
+            $0.finalSource != ReviewedISIExportBuilder.sourceManualPositive
+        }
+        guard uncoveredAutomaticRows.isEmpty else {
+            let summary = uncoveredAutomaticRows
+                .prefix(8)
+                .map { "\($0.trainID):\($0.isiIndex):\($0.finalSource)" }
+                .joined(separator: "|")
+            throw STPDResultPackageError.invalidInput(
+                "authoritative automatic final ISIs lack automatic event provenance: \(summary)"
+            )
         }
         for segment in finalEventSegments(
             uncoveredRows,
@@ -1751,6 +2952,7 @@ private extension STPDResultPackageBuilder {
                 trainID: segment.trainID,
                 trainName: segment.trainName,
                 finalLabel: segment.finalPattern,
+                finalSubtype: segment.finalSubtype,
                 stateTonicSubtype: segment.finalSubtype,
                 stateHighFrequencySubtypes: [],
                 semanticTrack: manualSemanticTrack(for: segment.finalPattern),
@@ -1775,7 +2977,7 @@ private extension STPDResultPackageBuilder {
             )
             let uid = STPDStableIdentifier.make(
                 prefix: "event",
-                domain: "stpd_normalized_public_event_uid_v4",
+                domain: "stpd_normalized_public_event_uid_v5",
                 components: [datasetDigest] + scientificIdentity(event: normalized)
             )
             records.append(
@@ -1828,6 +3030,9 @@ private extension STPDResultPackageBuilder {
 
         func appendCurrent() {
             guard let first = current.first, let last = current.last else { return }
+            let segmentEvidenceUIDs = Array(
+                Set(current.flatMap { evidenceUIDs(for: $0) })
+            ).sorted()
             segments.append(
                 STPDFinalEventSegment(
                     trainID: first.trainID,
@@ -1836,7 +3041,7 @@ private extension STPDResultPackageBuilder {
                     finalSubtype: first.finalSubtype,
                     startISIIndex: first.isiIndex,
                     endISIIndex: last.isiIndex,
-                    evidenceUIDs: evidenceUIDs(for: first),
+                    evidenceUIDs: segmentEvidenceUIDs,
                     rows: current
                 )
             )
@@ -1847,7 +3052,6 @@ private extension STPDResultPackageBuilder {
                previous.trainID == row.trainID,
                previous.finalPattern == row.finalPattern,
                previous.finalSubtype == row.finalSubtype,
-               evidenceUIDs(for: previous) == evidenceUIDs(for: row),
                row.isiIndex == previous.isiIndex + 1 {
                 current.append(row)
             } else {
@@ -1996,19 +3200,51 @@ private extension STPDResultPackageBuilder {
     ) throws {
         switch input.sourceMode {
         case .automatic:
-            guard input.manualAnnotations.isEmpty,
-                  input.candidateReviews.isEmpty,
-                  input.reviewLinks.isEmpty,
-                  reviewAuthority.evidenceUIDsByISIKey.isEmpty else {
+            guard input.reviewLinks.isEmpty,
+                  reviewAuthority.evidenceUIDsByISIKey.isEmpty,
+                  reviewAuthority.changedISIKeys.isEmpty else {
                 throw STPDResultPackageError.invalidInput(
-                    "automatic source mode cannot contain manual or review authority"
+                    "automatic source mode cannot contain effective manual or review authority"
+                )
+            }
+        case .manual:
+            let hasManualAuthority = input.reviewLinks.contains {
+                if case .manualAnnotation = $0.evidence { return true }
+                return false
+            }
+            var hasActiveSpikeOnlyAuthority = false
+            for annotation in input.manualAnnotations {
+                let hasNoISIInterval =
+                    annotation.startISIIndex == nil && annotation.endISIIndex == nil
+                let spikeArrayIndex = annotation.startSpikeIndex
+                let isSingletonSpike =
+                    spikeArrayIndex != nil && spikeArrayIndex == annotation.endSpikeIndex
+                if hasNoISIInterval && isSingletonSpike {
+                    hasActiveSpikeOnlyAuthority = true
+                    break
+                }
+            }
+            let hasCandidateReviewAuthority = input.reviewLinks.contains {
+                if case .candidateReview = $0.evidence { return true }
+                return false
+            }
+            let hasLinkedManualAuthority =
+                hasManualAuthority && !reviewAuthority.evidenceUIDsByISIKey.isEmpty
+            guard (hasLinkedManualAuthority || hasActiveSpikeOnlyAuthority),
+                  !hasCandidateReviewAuthority else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual source mode requires manual-only causal authority"
                 )
             }
         case .reviewed:
-            guard !input.reviewLinks.isEmpty,
+            let hasCandidateReviewAuthority = input.reviewLinks.contains {
+                if case .candidateReview = $0.evidence { return true }
+                return false
+            }
+            guard hasCandidateReviewAuthority,
                   !reviewAuthority.evidenceUIDsByISIKey.isEmpty else {
                 throw STPDResultPackageError.invalidInput(
-                    "reviewed source mode requires causal review links to public ISI results"
+                    "reviewed source mode requires formal candidate-review authority"
                 )
             }
         }
@@ -2028,19 +3264,6 @@ private extension STPDResultPackageBuilder {
                 "candidate diagnostic references unknown candidate \(diagnostic.sourceCandidateID)"
             )
         }
-        if input.sourceMode == .automatic {
-            return STPDResolvedReviewAuthority(
-                projectedEvents: automaticEvents,
-                authoritativeRows: automaticRows.filter { $0.isiIndex > 0 },
-                manualUIDByUUID: [:],
-                reviewUIDBySourceCandidateID: [:],
-                evidenceUIDsByISIKey: [:],
-                linkedISIKeysByEvidenceUID: [:],
-                changedISIKeys: [],
-                manualPositiveISIKeys: []
-            )
-        }
-
         let annotationByID = Dictionary(
             uniqueKeysWithValues: resolvedManualAnnotations.map { ($0.id, $0) }
         )
@@ -2056,15 +3279,17 @@ private extension STPDResultPackageBuilder {
             }
         )
         for review in input.candidateReviews {
-            guard candidateUIDBySourceID[review.sourceCandidateID] != nil else {
+            try STPDResultPackageInput.validateFiniteCandidateReviewTimestamp(review)
+            guard candidateUIDBySourceID[review.sourceCandidateID] != nil,
+                  candidateBySourceID[review.sourceCandidateID] != nil else {
                 throw STPDResultPackageError.invalidInput(
                     "candidate review references unknown candidate \(review.sourceCandidateID)"
                 )
             }
-            if review.status.grantsReviewAuthority,
-               review.reviewer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                throw STPDResultPackageError.invalidInput(
-                    "authority-bearing candidate review requires a reviewer"
+            if review.status.grantsReviewAuthority {
+                try STPDResultPackageInput.validateAuthorityBearingCandidateReview(
+                    review,
+                    expectedRunID: input.run.runIdentity.runID
                 )
             }
         }
@@ -2093,16 +3318,15 @@ private extension STPDResultPackageBuilder {
                 }
                 return (
                     review.sourceCandidateID,
-                    STPDStableIdentifier.make(
-                        prefix: "review",
-                        domain: "stpd_candidate_review_uid_v1",
-                        components: [
-                            candidateUID,
-                            review.status.rawValue,
-                            review.reviewer,
-                            review.note,
-                            STPDCanonicalValue.date(review.reviewedAt),
-                        ]
+                    STPDCandidateReviewIdentity.make(
+                        candidateUID: candidateUID,
+                        status: review.status,
+                        reviewer: review.reviewer,
+                        note: review.note,
+                        reviewedAtUnixSec: STPDCanonicalValue.double(
+                            review.reviewedAt?.timeIntervalSince1970
+                        ),
+                        reviewedRunID: review.reviewedRunID
                     )
                 )
             }
@@ -2140,11 +3364,66 @@ private extension STPDResultPackageBuilder {
             )
         }
 
-        let rejectedCandidateIDs = Set(
-            input.candidateReviews.compactMap {
-                $0.status == .rejected ? $0.sourceCandidateID : nil
+        var seenLinks = Set<STPDResultReviewLink>()
+        for link in input.reviewLinks {
+            guard seenLinks.insert(link).inserted else {
+                throw STPDResultPackageError.invalidInput(
+                    "duplicate review link \(link.trainID):\(link.isiIndex)"
+                )
             }
-        )
+            let key = "\(link.trainID)\u{1}\(link.isiIndex)"
+            guard let automaticRow = automaticByKey[key] else {
+                throw STPDResultPackageError.invalidInput(
+                    "review link targets an unknown dataset ISI \(link.trainID):\(link.isiIndex)"
+                )
+            }
+            switch link.evidence {
+            case .manualAnnotation(let annotationID):
+                guard annotationByID[annotationID]?.trainID == link.trainID else {
+                    throw STPDResultPackageError.invalidInput(
+                        "manual review link references an unknown annotation or train"
+                    )
+                }
+            case .candidateReview(let sourceCandidateID):
+                guard let review = reviewBySourceID[sourceCandidateID],
+                      review.status.grantsReviewAuthority,
+                      let candidate = candidateBySourceID[sourceCandidateID],
+                      isPublicCandidate(candidate),
+                      candidate.trainID == link.trainID else {
+                    throw STPDResultPackageError.invalidInput(
+                        "candidate review link does not match automatic candidate coverage"
+                    )
+                }
+                if review.status != .rejected {
+                    guard min(candidate.startISIIndex, candidate.endISIIndex)
+                            ... max(candidate.startISIIndex, candidate.endISIIndex)
+                            ~= link.isiIndex,
+                          automaticRow.autoCandidateID == sourceCandidateID else {
+                        throw STPDResultPackageError.invalidInput(
+                            "candidate review link does not match automatic candidate coverage"
+                        )
+                    }
+                }
+                try STPDResultPackageInput.validateAuthorityBearingCandidateReview(
+                    review,
+                    expectedRunID: input.run.runIdentity.runID
+                )
+            }
+        }
+        let rejectedCandidateIDs = Set(input.candidateReviews.compactMap {
+            review -> String? in
+            guard review.status == .rejected,
+                  let candidate = candidateBySourceID[review.sourceCandidateID],
+                  isPublicCandidate(candidate),
+                  automaticIntervalRows.contains(where: {
+                      $0.autoCandidateID == review.sourceCandidateID
+                          && $0.finalSource
+                              == ReviewedISIExportBuilder.sourceAutoProjected
+                  }) else {
+                return nil
+            }
+            return review.sourceCandidateID
+        })
         let authoritativeRows = ReviewedISIExportBuilder.build(
             dataset: input.dataset,
             autoAnnotations: automaticEvents,
@@ -2155,6 +3434,53 @@ private extension STPDResultPackageBuilder {
         let authoritativeByKey = Dictionary(
             uniqueKeysWithValues: authoritativeRows.map { (isiRowKey($0), $0) }
         )
+        var rejectionCausalKeysBySourceID: [String: Set<String>] = [:]
+        for sourceCandidateID in rejectedCandidateIDs {
+            let hasPublicBaseline = automaticIntervalRows.contains {
+                $0.autoCandidateID == sourceCandidateID
+                    && $0.finalSource
+                        == ReviewedISIExportBuilder.sourceAutoProjected
+            }
+            guard hasPublicBaseline else {
+                rejectionCausalKeysBySourceID[sourceCandidateID] = []
+                continue
+            }
+            let counterfactualRows = ReviewedISIExportBuilder.build(
+                dataset: input.dataset,
+                autoAnnotations: automaticEvents,
+                projectionsByTrain: projectionsByTrain,
+                reviewRejectedCandidateIDs:
+                    rejectedCandidateIDs.subtracting([sourceCandidateID])
+            )
+            .filter { $0.isiIndex > 0 }
+            let counterfactualByKey = Dictionary(
+                uniqueKeysWithValues: counterfactualRows.map {
+                    (isiRowKey($0), $0)
+                }
+            )
+            rejectionCausalKeysBySourceID[sourceCandidateID] = Set(
+                authoritativeRows.compactMap { actual -> String? in
+                    let key = isiRowKey(actual)
+                    guard let counterfactual = counterfactualByKey[key],
+                          isiProjectionComponents(actual)
+                            != isiProjectionComponents(counterfactual) else {
+                        return nil
+                    }
+                    return key
+                }
+            )
+        }
+        let manualEvidenceOwnersByISIKey =
+            STPDResultPackageInput.manualEvidenceOwnerMap(
+                dataset: input.dataset,
+                run: input.run,
+                automaticEvents: automaticEvents,
+                automaticRows: automaticRows,
+                resolvedAnnotations: resolvedManualAnnotations,
+                projectionsByTrain: projectionsByTrain,
+                finalRows: authoritativeRows,
+                reviewRejectedCandidateIDs: rejectedCandidateIDs
+            )
 
         let rejectedISIsByTrain = Dictionary(
             grouping: automaticIntervalRows.filter {
@@ -2169,8 +3495,11 @@ private extension STPDResultPackageBuilder {
         for train in input.dataset.trains {
             let projection = projectionsByTrain[train.id]
             lockSuppressedByTrain[train.id] =
-                (projection?.autoBlockedByManualLockISIs ?? [])
-                .union(rejectedISIsByTrain[train.id] ?? [])
+                STPDResultPackageInput.eventProjectionLockSuppressedISIs(
+                    projection: projection,
+                    automaticRows: automaticRowsByTrain[train.id] ?? [],
+                    rejectedISIs: rejectedISIsByTrain[train.id] ?? []
+                )
             vetoedBurstISIsByTrain[train.id] =
                 projection?.autoBurstBlockedByVetoISIs ?? []
             validatedManualBurstISIsByTrain[train.id] = Set(
@@ -2191,13 +3520,7 @@ private extension STPDResultPackageBuilder {
 
         var evidenceUIDsByISIKey: [String: Set<String>] = [:]
         var linkedISIKeysByEvidenceUID: [String: Set<String>] = [:]
-        var seenLinks = Set<STPDResultReviewLink>()
         for link in input.reviewLinks {
-            guard seenLinks.insert(link).inserted else {
-                throw STPDResultPackageError.invalidInput(
-                    "duplicate review link \(link.trainID):\(link.isiIndex)"
-                )
-            }
             let key = "\(link.trainID)\u{1}\(link.isiIndex)"
             guard let automaticRow = automaticByKey[key],
                   authoritativeByKey[key] != nil else {
@@ -2210,12 +3533,10 @@ private extension STPDResultPackageBuilder {
             case .manualAnnotation(let annotationID):
                 guard let annotation = annotationByID[annotationID],
                       annotation.trainID == link.trainID,
-                      let lower = annotation.startISIIndex,
-                      let upper = annotation.endISIIndex,
-                      min(lower, upper) ... max(lower, upper) ~= link.isiIndex,
+                      manualEvidenceOwnersByISIKey[key]?.contains(annotationID) == true,
                       let uid = manualUIDByUUID[annotationID] else {
                     throw STPDResultPackageError.invalidInput(
-                        "manual review link does not match annotation geometry"
+                        "manual review link does not match a causal annotation owner"
                     )
                 }
                 evidenceUID = uid
@@ -2223,15 +3544,29 @@ private extension STPDResultPackageBuilder {
                 guard let review = reviewBySourceID[sourceCandidateID],
                       review.status.grantsReviewAuthority,
                       let candidate = candidateBySourceID[sourceCandidateID],
+                      isPublicCandidate(candidate),
                       candidate.trainID == link.trainID,
-                      min(candidate.startISIIndex, candidate.endISIIndex)
-                        ... max(candidate.startISIIndex, candidate.endISIIndex)
-                        ~= link.isiIndex,
-                      automaticRow.autoCandidateID == sourceCandidateID,
                       let uid = reviewUIDBySourceCandidateID[sourceCandidateID] else {
                     throw STPDResultPackageError.invalidInput(
                         "candidate review link does not match projected candidate coverage"
                     )
+                }
+                if review.status == .rejected {
+                    guard rejectionCausalKeysBySourceID[sourceCandidateID]?
+                            .contains(key) == true else {
+                        throw STPDResultPackageError.invalidInput(
+                            "candidate rejection link is not causally attributable"
+                        )
+                    }
+                } else {
+                    guard min(candidate.startISIIndex, candidate.endISIIndex)
+                            ... max(candidate.startISIIndex, candidate.endISIIndex)
+                            ~= link.isiIndex,
+                          automaticRow.autoCandidateID == sourceCandidateID else {
+                        throw STPDResultPackageError.invalidInput(
+                            "candidate review link does not match projected candidate coverage"
+                        )
+                    }
                 }
                 evidenceUID = uid
             }
@@ -2247,26 +3582,11 @@ private extension STPDResultPackageBuilder {
         for annotation in resolvedManualAnnotations {
             guard let uid = manualUIDByUUID[annotation.id] else { continue }
             let linked = linkedISIKeysByEvidenceUID[uid] ?? []
-            let expected = Set(authoritativeRows.compactMap { row -> String? in
-                guard row.trainID == annotation.trainID,
-                      let lower = annotation.startISIIndex,
-                      let upper = annotation.endISIIndex,
-                      min(lower, upper) ... max(lower, upper) ~= row.isiIndex else {
-                    return nil
-                }
-                switch annotation.polarity {
-                case .positive:
-                    return row.finalSource == ReviewedISIExportBuilder.sourceManualPositive
-                        && row.finalPattern == annotation.label.finalPatternString
-                        ? isiRowKey(row)
-                        : nil
-                case .negative:
-                    return row.finalSource == ReviewedISIExportBuilder.sourceManualVetoRemoved
-                        ? isiRowKey(row)
-                        : nil
-                }
+            let expected = Set(manualEvidenceOwnersByISIKey.compactMap {
+                key, owners -> String? in
+                owners.contains(annotation.id) ? key : nil
             })
-            guard !expected.isEmpty, linked == expected else {
+            guard linked == expected else {
                 throw STPDResultPackageError.invalidInput(
                     "manual annotation \(annotation.id.uuidString) must link exactly to the ISIs it changes"
                 )
@@ -2278,56 +3598,57 @@ private extension STPDResultPackageBuilder {
                 continue
             }
             let linked = linkedISIKeysByEvidenceUID[uid] ?? []
-            if review.status == .needsReview {
-                guard linked.isEmpty else {
-                    throw STPDResultPackageError.invalidInput(
-                        "needs_review cannot authorize a public result"
-                    )
-                }
-                continue
+            let publicCandidate = candidateBySourceID[review.sourceCandidateID]
+                .map(isPublicCandidate) ?? false
+            let candidateRows = automaticIntervalRows.filter {
+                $0.autoCandidateID == review.sourceCandidateID
             }
-            let expected = Set(automaticIntervalRows.compactMap {
-                $0.autoCandidateID == review.sourceCandidateID ? isiRowKey($0) : nil
+            let candidateKeys = Set(candidateRows.map(isiRowKey))
+            let changedKeys = Set(candidateRows.compactMap { automatic -> String? in
+                let key = isiRowKey(automatic)
+                guard let reviewed = authoritativeByKey[key],
+                      isiProjectionComponents(automatic)
+                        != isiProjectionComponents(reviewed) else {
+                    return nil
+                }
+                return key
             })
-            guard !expected.isEmpty, linked == expected else {
-                throw STPDResultPackageError.invalidInput(
-                    "candidate review \(review.sourceCandidateID) must link exactly to its public ISI coverage"
-                )
-            }
-            let changed = expected.contains { key in
-                guard let automatic = automaticByKey[key],
-                      let reviewed = authoritativeByKey[key] else {
-                    return false
-                }
-                return isiProjectionComponents(automatic)
-                    != isiProjectionComponents(reviewed)
-            }
+            let expected: Set<String>
             switch review.status {
             case .accepted:
-                guard !changed else {
-                    throw STPDResultPackageError.invalidInput(
-                        "accepted review cannot change the public projection"
-                    )
-                }
-            case .rejected:
-                guard changed else {
-                    throw STPDResultPackageError.invalidInput(
-                        "rejected review must remove or replace projected candidate coverage"
-                    )
-                }
-            case .modified:
-                let hasLinkedManualEvidence = expected.contains { key in
-                    (evidenceUIDsByISIKey[key] ?? []).contains {
-                        $0.hasPrefix("manual_")
+                let candidateIsWhollyUnchanged = publicCandidate
+                    && !candidateRows.isEmpty
+                    && candidateRows.allSatisfy { automatic in
+                        let key = isiRowKey(automatic)
+                        guard let reviewed = authoritativeByKey[key] else {
+                            return false
+                        }
+                        return reviewed.finalSource
+                                == ReviewedISIExportBuilder.sourceAutoProjected
+                            && isiProjectionComponents(automatic)
+                                == isiProjectionComponents(reviewed)
                     }
-                }
-                guard changed, hasLinkedManualEvidence else {
-                    throw STPDResultPackageError.invalidInput(
-                        "modified review requires a linked manual replacement that changes output"
-                    )
-                }
+                expected = candidateIsWhollyUnchanged ? candidateKeys : []
+            case .rejected:
+                expected = publicCandidate
+                    ? rejectionCausalKeysBySourceID[
+                        review.sourceCandidateID
+                    ] ?? []
+                    : []
+            case .modified:
+                let allChangesHaveManualEvidence = publicCandidate
+                    && !changedKeys.isEmpty
+                    && changedKeys.allSatisfy {
+                        !(manualEvidenceOwnersByISIKey[$0] ?? []).isEmpty
+                    }
+                expected = allChangesHaveManualEvidence ? changedKeys : []
             case .needsReview:
-                break
+                expected = []
+            }
+            guard linked == expected else {
+                throw STPDResultPackageError.invalidInput(
+                    "candidate review \(review.sourceCandidateID) must link exactly to its causal public ISI coverage"
+                )
             }
         }
 
@@ -2358,11 +3679,14 @@ private extension STPDResultPackageBuilder {
         _ annotations: [ManualAnnotation],
         dataset: SpikeDataset
     ) throws -> [ManualAnnotation] {
+        try STPDResultPackageInput.validateFiniteManualAnnotationTimestamps(
+            annotations
+        )
         let ids = annotations.map(\.id)
         guard Set(ids).count == ids.count else {
             throw STPDResultPackageError.invalidInput("manual annotation UUIDs are not unique")
         }
-        return try annotations.map { annotation in
+        let resolved = try annotations.map { annotation in
             guard annotation.startSec.isFinite, annotation.endSec.isFinite else {
                 throw STPDResultPackageError.invalidInput(
                     "manual annotation \(annotation.id.uuidString) has non-finite time geometry"
@@ -2376,6 +3700,8 @@ private extension STPDResultPackageBuilder {
             }
             return resolved
         }
+        try STPDResultPackageInput.validateNoAmbiguousManualEditTies(resolved)
+        return resolved
     }
 
     static func validateFinalProjection(
@@ -2409,8 +3735,7 @@ private extension STPDResultPackageBuilder {
                   eventProjectionMatches(
                       row: row,
                       finalLabel: covering[0].event.finalLabel,
-                      auditRecommendedSubtype:
-                          covering[0].event.auditRecommendedSubtype,
+                      finalSubtype: covering[0].event.finalSubtype,
                       allowsManualPositive: true
                   ) else {
                 throw STPDResultPackageError.invalidInput(
@@ -3143,26 +4468,6 @@ private extension STPDResultPackageBuilder {
         events.map { compositeKey(eventProjectionComponents($0)) }.sorted()
     }
 
-    static func isiProjectionComponents(_ row: ReviewedISIExportRow) -> [String] {
-        [
-            row.trainID,
-            row.trainName,
-            String(row.spikeIndex),
-            STPDCanonicalValue.double(row.timestampSec),
-            STPDCanonicalValue.double(row.alignedTimestampSec),
-            String(row.isiIndex),
-            STPDCanonicalValue.double(row.isiSec),
-            row.autoPattern,
-            row.autoSubtype,
-            row.autoCandidateID,
-            row.finalPattern,
-            row.finalSubtype,
-            row.finalSource,
-            STPDCanonicalValue.bool(row.manualVetoSuppressed),
-            row.reviewNote,
-        ]
-    }
-
     static func isiProjectionFingerprint(_ rows: [ReviewedISIExportRow]) -> [String] {
         rows.map { compositeKey(isiProjectionComponents($0)) }.sorted()
     }
@@ -3188,6 +4493,77 @@ private extension STPDResultPackageBuilder {
                 trainID,
                 String(isiIndex),
             ]
+        )
+    }
+
+    static func qualitySnapshotValues(
+        _ quality: SpikeTrainQuality
+    ) -> [String: String] {
+        [
+            "warning_level": quality.warningLevel.rawValue,
+            "warning_message": quality.warningMessage,
+            "spike_count": String(quality.spikeCount),
+            "first_spike_sec": STPDCanonicalValue.double(quality.firstSpikeSec),
+            "last_spike_sec": STPDCanonicalValue.double(quality.lastSpikeSec),
+            "duration_sec": STPDCanonicalValue.double(quality.durationSec),
+            "firing_rate_hz": STPDCanonicalValue.double(quality.firingRateHz),
+            "raw_min_isi_sec": STPDCanonicalValue.double(quality.rawMinISISec),
+            "min_valid_isi_sec": STPDCanonicalValue.double(quality.minValidISISec),
+            "artifact_min_isi_sec":
+                STPDCanonicalValue.double(quality.artifactMinISISec),
+            "median_isi_sec": STPDCanonicalValue.double(quality.medianISISec),
+            "max_isi_sec": STPDCanonicalValue.double(quality.maxISISec),
+            "duplicate_timestamp_count": String(quality.duplicateTimestampCount),
+            "zero_or_negative_isi_count": String(quality.zeroOrNegativeISICount),
+            "zero_or_negative_timestamp_step_count":
+                String(quality.zeroOrNegativeTimestampStepCount),
+            "input_was_unsorted": STPDCanonicalValue.bool(quality.inputWasUnsorted),
+            "input_nonmonotonic_step_count":
+                String(quality.inputNonmonotonicStepCount),
+            "input_duplicate_timestamp_step_count":
+                String(quality.inputDuplicateTimestampStepCount),
+            "input_zero_or_negative_step_count":
+                String(quality.inputZeroOrNegativeStepCount),
+            "dropped_duplicate_timestamp_count":
+                String(quality.droppedDuplicateTimestampCount),
+            "duplicate_timestamp_policy": quality.duplicateTimestampPolicy.rawValue,
+            "artifact_isi_count": String(quality.artifactISICount),
+            "artifact_fraction": STPDCanonicalValue.double(quality.artifactFraction),
+            "refractory_suspect_isi_count":
+                String(quality.refractorySuspectISICount),
+            "refractory_suspect_fraction":
+                STPDCanonicalValue.double(quality.refractorySuspectFraction),
+            "valid_isi_count": String(quality.validISICount),
+            "percentile_status": quality.percentileStatus,
+        ]
+    }
+
+    static func taskEventIdentityComponents(
+        _ event: TaskEvent,
+        datasetDigest: String
+    ) -> [String] {
+        [
+            datasetDigest,
+            event.id,
+            event.name,
+            STPDCanonicalValue.double(event.timeSec),
+            event.column,
+            String(event.eventIndex),
+            event.trialID,
+        ]
+    }
+
+    static func taskEventUID(
+        _ event: TaskEvent,
+        datasetDigest: String
+    ) -> String {
+        STPDStableIdentifier.make(
+            prefix: "task",
+            domain: "stpd_task_event_uid_v2",
+            components: taskEventIdentityComponents(
+                event,
+                datasetDigest: datasetDigest
+            )
         )
     }
 
@@ -3259,21 +4635,90 @@ private extension STPDResultPackageBuilder {
     }
 }
 
+extension STPDResultPackageBuilder {
+    /// Module-internal authority-normalization entry point.
+    ///
+    /// Package materialization and focused contract tests share the same fail-closed implementation;
+    /// this does not accept or construct an `STPDResultPackageInput`, so it cannot bypass causal
+    /// review-projection validation.
+    static func normalizedEventRecords(
+        automaticEvents: [ClassicAnchorEventAnnotation],
+        finalISIRows: [ReviewedISIExportRow],
+        datasetDigest: String,
+        candidateUIDBySourceID: [String: String],
+        candidateBySourceID: [String: ClassicAnchorCandidate],
+        dataset: SpikeDataset,
+        evidenceUIDsByISIKey: [String: [String]],
+        changedISIKeys: Set<String>
+    ) throws -> [STPDEventRecord] {
+        try eventRecords(
+            automaticEvents: automaticEvents,
+            finalISIRows: finalISIRows,
+            datasetDigest: datasetDigest,
+            candidateUIDBySourceID: candidateUIDBySourceID,
+            candidateBySourceID: candidateBySourceID,
+            dataset: dataset,
+            evidenceUIDsByISIKey: evidenceUIDsByISIKey,
+            changedISIKeys: changedISIKeys
+        )
+    }
+
+    static func authoritativeISIEvidenceKey(
+        trainID: String,
+        isiIndex: Int
+    ) -> String {
+        isiEvidenceKey(trainID: trainID, isiIndex: isiIndex)
+    }
+}
+
+extension STPDResultPackageBuilder {
+    /// The exact public-projection identity used by counterfactual attribution and
+    /// package validation. Internal visibility lets regression tests pin the same
+    /// semantics without maintaining a second, test-only field list.
+    static func isiProjectionComponents(_ row: ReviewedISIExportRow) -> [String] {
+        [
+            row.trainID,
+            row.trainName,
+            String(row.spikeIndex),
+            STPDCanonicalValue.double(row.timestampSec),
+            STPDCanonicalValue.double(row.alignedTimestampSec),
+            String(row.isiIndex),
+            STPDCanonicalValue.double(row.isiSec),
+            row.autoPattern,
+            row.autoSubtype,
+            row.autoCandidateID,
+            row.finalPattern,
+            row.finalSubtype,
+            row.finalSource,
+            STPDCanonicalValue.bool(row.manualVetoSuppressed),
+            row.reviewNote,
+        ]
+    }
+}
+
 private extension STPDResultPackageBuilder {
     static func runMetadataTable(
         input: STPDResultPackageInput,
         candidateCount: Int,
+        diagnosticCandidateCount: Int,
         finalEventCount: Int,
         finalISICount: Int
     ) throws -> STPDResultTableData {
         let identity = input.run.runIdentity
+        guard let metadataSnapshot = input.run.datasetMetadataSnapshot else {
+            throw STPDResultPackageError.invalidRunIdentity(
+                "detector entry-point dataset metadata is unavailable"
+            )
+        }
         let headers = [
             "run_id", "settings_digest", "dataset_digest", "result_schema_version",
             "detector_version", "build_identifier", "build_identifier_kind",
             "build_reproducibility_attested",
             "owner_name", "owner_email", "source_mode",
-            "dataset_name", "dataset_source", "train_count", "spike_count", "task_event_count",
-            "candidate_count", "final_event_count", "final_isi_count",
+            "dataset_name", "dataset_source", "task_event_source_digest",
+            "train_count", "spike_count", "task_event_count",
+            "candidate_count", "diagnostic_candidate_count",
+            "final_event_count", "final_isi_count",
         ]
         return try table(
             .runMetadata,
@@ -3291,12 +4736,15 @@ private extension STPDResultPackageBuilder {
                     "owner_name": STPDResultPackageOwnership.ownerName,
                     "owner_email": STPDResultPackageOwnership.ownerEmail,
                     "source_mode": input.sourceMode.rawValue,
-                    "dataset_name": input.dataset.name,
-                    "dataset_source": input.dataset.sourceDescription,
+                    "dataset_name": metadataSnapshot.name,
+                    "dataset_source": metadataSnapshot.sourceDescription,
+                    "task_event_source_digest":
+                        metadataSnapshot.taskEventSourceDigest,
                     "train_count": String(identity.trainCount),
                     "spike_count": String(identity.spikeCount),
                     "task_event_count": String(identity.taskEventCount),
                     "candidate_count": String(candidateCount),
+                    "diagnostic_candidate_count": String(diagnosticCandidateCount),
                     "final_event_count": String(finalEventCount),
                     "final_isi_count": String(finalISICount),
                 ])
@@ -3663,93 +5111,10 @@ private extension STPDResultPackageBuilder {
                     "effective_value": value,
                 ]) { _, new in new }))
             }
-            appendQuality("warning_level", quality.warningLevel.rawValue)
-            appendQuality("warning_message", quality.warningMessage)
-            appendQuality("spike_count", String(quality.spikeCount))
-            appendQuality(
-                "first_spike_sec",
-                STPDCanonicalValue.double(quality.firstSpikeSec)
-            )
-            appendQuality(
-                "last_spike_sec",
-                STPDCanonicalValue.double(quality.lastSpikeSec)
-            )
-            appendQuality("duration_sec", STPDCanonicalValue.double(quality.durationSec))
-            appendQuality(
-                "firing_rate_hz",
-                STPDCanonicalValue.double(quality.firingRateHz)
-            )
-            appendQuality(
-                "raw_min_isi_sec",
-                STPDCanonicalValue.double(quality.rawMinISISec)
-            )
-            appendQuality(
-                "min_valid_isi_sec",
-                STPDCanonicalValue.double(quality.minValidISISec)
-            )
-            appendQuality(
-                "artifact_min_isi_sec",
-                STPDCanonicalValue.double(quality.artifactMinISISec)
-            )
-            appendQuality(
-                "median_isi_sec",
-                STPDCanonicalValue.double(quality.medianISISec)
-            )
-            appendQuality(
-                "max_isi_sec",
-                STPDCanonicalValue.double(quality.maxISISec)
-            )
-            appendQuality(
-                "duplicate_timestamp_count",
-                String(quality.duplicateTimestampCount)
-            )
-            appendQuality(
-                "zero_or_negative_isi_count",
-                String(quality.zeroOrNegativeISICount)
-            )
-            appendQuality(
-                "zero_or_negative_timestamp_step_count",
-                String(quality.zeroOrNegativeTimestampStepCount)
-            )
-            appendQuality(
-                "input_was_unsorted",
-                STPDCanonicalValue.bool(quality.inputWasUnsorted)
-            )
-            appendQuality(
-                "input_nonmonotonic_step_count",
-                String(quality.inputNonmonotonicStepCount)
-            )
-            appendQuality(
-                "input_duplicate_timestamp_step_count",
-                String(quality.inputDuplicateTimestampStepCount)
-            )
-            appendQuality(
-                "input_zero_or_negative_step_count",
-                String(quality.inputZeroOrNegativeStepCount)
-            )
-            appendQuality(
-                "dropped_duplicate_timestamp_count",
-                String(quality.droppedDuplicateTimestampCount)
-            )
-            appendQuality(
-                "duplicate_timestamp_policy",
-                quality.duplicateTimestampPolicy.rawValue
-            )
-            appendQuality("artifact_isi_count", String(quality.artifactISICount))
-            appendQuality(
-                "artifact_fraction",
-                STPDCanonicalValue.double(quality.artifactFraction)
-            )
-            appendQuality(
-                "refractory_suspect_isi_count",
-                String(quality.refractorySuspectISICount)
-            )
-            appendQuality(
-                "refractory_suspect_fraction",
-                STPDCanonicalValue.double(quality.refractorySuspectFraction)
-            )
-            appendQuality("valid_isi_count", String(quality.validISICount))
-            appendQuality("percentile_status", quality.percentileStatus)
+            let qualityValues = qualitySnapshotValues(quality)
+            for key in qualityValues.keys.sorted() {
+                appendQuality(key, qualityValues[key] ?? "")
+            }
         }
         return try table(.resolvedParameters, headers: headers, rows: rows)
     }
@@ -3788,11 +5153,14 @@ private extension STPDResultPackageBuilder {
 
     static func candidateLedgerTable(
         identity: DetectionRunIdentity,
-        records: [STPDCandidateRecord]
+        records: [STPDCandidateRecord],
+        tableKind: STPDResultTable = .candidateLedger
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "candidate_uid", "source_candidate_id", "train_id",
-            "train_name", "candidate_layer", "candidate_class", "start_isi_index",
+            "train_name", "candidate_layer", "candidate_class",
+            "final_label", "gate_status", "action", "selected_for_auto",
+            "selection_status", "start_isi_index",
             "end_isi_index", "start_spike_ordinal", "end_spike_ordinal", "n_isi",
             "n_valid_isi", "n_spikes", "anchor_family", "anchor_lock_level",
         ]
@@ -3807,6 +5175,12 @@ private extension STPDResultPackageBuilder {
                 "train_name": candidate.trainName,
                 "candidate_layer": candidate.candidateLayer,
                 "candidate_class": candidate.candidateClass,
+                "final_label": candidate.finalLabel.rawValue,
+                "gate_status": candidate.gateStatus,
+                "action": candidate.action,
+                "selected_for_auto":
+                    STPDCanonicalValue.bool(candidate.selectedForAuto),
+                "selection_status": candidate.selectionStatus,
                 "start_isi_index": String(candidate.startISIIndex),
                 "end_isi_index": String(candidate.endISIIndex),
                 "start_spike_ordinal": String(candidate.startSpikeIndex),
@@ -3818,13 +5192,14 @@ private extension STPDResultPackageBuilder {
                 "anchor_lock_level": candidate.anchorLockLevel.rawValue,
             ])
         }
-        return try table(.candidateLedger, headers: headers, rows: rows)
+        return try table(tableKind, headers: headers, rows: rows)
     }
 
     static func candidateFeaturesTable(
         identity: DetectionRunIdentity,
         records: [STPDCandidateRecord],
-        candidateUIDBySourceID: [String: String]
+        candidateUIDBySourceID: [String: String],
+        tableKind: STPDResultTable = .candidateFeatures
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "candidate_uid", "source_candidate_id",
@@ -4023,12 +5398,13 @@ private extension STPDResultPackageBuilder {
                 "event_local_robust_z_q10": STPDCanonicalValue.double(c.eventLocalRobustZQ10),
             ])
         }
-        return try table(.candidateFeatures, headers: headers, rows: rows)
+        return try table(tableKind, headers: headers, rows: rows)
     }
 
     static func finalDecisionsTable(
         identity: DetectionRunIdentity,
-        records: [STPDCandidateRecord]
+        records: [STPDCandidateRecord],
+        tableKind: STPDResultTable = .finalDecisions
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "candidate_uid", "source_candidate_id",
@@ -4071,7 +5447,7 @@ private extension STPDResultPackageBuilder {
                 "decision_path": candidate.decisionPath,
             ])
         }
-        return try table(.finalDecisions, headers: headers, rows: rows)
+        return try table(tableKind, headers: headers, rows: rows)
     }
 
     static func eventsTable(
@@ -4082,7 +5458,8 @@ private extension STPDResultPackageBuilder {
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "event_uid", "source_event_ids",
-            "train_id", "train_name", "final_label", "state_tonic_subtype",
+            "train_id", "train_name", "final_label", "final_subtype",
+            "state_tonic_subtype",
             "state_high_frequency_subtypes", "semantic_track", "event_track_class",
             "lock_level", "authority_origin",
             "start_isi_index", "end_isi_index", "start_spike_ordinal", "end_spike_ordinal",
@@ -4118,6 +5495,7 @@ private extension STPDResultPackageBuilder {
                 "train_id": event.trainID,
                 "train_name": event.trainName,
                 "final_label": event.finalLabel,
+                "final_subtype": event.finalSubtype,
                 "state_tonic_subtype": event.stateTonicSubtype,
                 "state_high_frequency_subtypes":
                     STPDCanonicalValue.stringList(event.stateHighFrequencySubtypes),
@@ -4454,12 +5832,16 @@ private extension STPDResultPackageBuilder {
         isiUIDByKey: [String: String]
     ) throws -> STPDResultTableData {
         let headers = [
-            "run_id", "settings_digest", "annotation_id", "source_annotation_uuid",
+            "run_id", "settings_digest", "annotation_id",
+            "annotation_semantic_digest", "source_annotation_uuid",
             "train_id", "label", "polarity", "start_sec", "end_sec",
             "start_isi_index", "end_isi_index",
             "start_spike_array_index", "end_spike_array_index",
             "start_spike_ordinal", "end_spike_ordinal",
-            "linked_isi_uids", "link_scope", "note", "created_at", "updated_at",
+            "linked_isi_uids", "link_scope", "note",
+            "annotator", "annotator_identity_source",
+            "created_at", "updated_at",
+            "created_at_unix_sec", "updated_at_unix_sec",
         ]
         let sorted = annotations.sorted {
             let lhs = manualAnnotationIdentityComponents($0)
@@ -4485,7 +5867,26 @@ private extension STPDResultPackageBuilder {
                     return uid
                 }
                 .sorted()
-            return makeRow(headers, values: [
+            let spikeOnly =
+                linkedUIDs.isEmpty &&
+                annotation.startISIIndex == nil &&
+                annotation.endISIIndex == nil &&
+                annotation.startSpikeIndex != nil &&
+                annotation.startSpikeIndex == annotation.endSpikeIndex
+            let linkScope = !linkedUIDs.isEmpty
+                ? "public_projection"
+                : (spikeOnly ? "active_spike_only" : "inactive_or_superseded")
+            let startSpikeOrdinal = try checkedManualSpikeOrdinal(
+                annotation.startSpikeIndex,
+                annotationID: annotationID,
+                field: "start_spike_array_index"
+            )
+            let endSpikeOrdinal = try checkedManualSpikeOrdinal(
+                annotation.endSpikeIndex,
+                annotationID: annotationID,
+                field: "end_spike_array_index"
+            )
+            var values = [
                 "run_id": identity.runID,
                 "settings_digest": identity.settingsDigest,
                 "annotation_id": annotationID,
@@ -4502,17 +5903,42 @@ private extension STPDResultPackageBuilder {
                 "end_spike_array_index":
                     STPDCanonicalValue.int(annotation.endSpikeIndex),
                 "start_spike_ordinal":
-                    STPDCanonicalValue.int(annotation.startSpikeIndex.map { $0 + 1 }),
+                    STPDCanonicalValue.int(startSpikeOrdinal),
                 "end_spike_ordinal":
-                    STPDCanonicalValue.int(annotation.endSpikeIndex.map { $0 + 1 }),
+                    STPDCanonicalValue.int(endSpikeOrdinal),
                 "linked_isi_uids": STPDCanonicalValue.stringList(linkedUIDs),
-                "link_scope": "public_projection",
+                "link_scope": linkScope,
                 "note": annotation.note ?? "",
+                "annotator": annotation.annotator ?? "",
+                "annotator_identity_source":
+                    annotation.annotatorIdentitySource?.rawValue ?? "",
                 "created_at": STPDCanonicalValue.date(annotation.createdAt),
                 "updated_at": STPDCanonicalValue.date(annotation.updatedAt),
-            ])
+                "created_at_unix_sec":
+                    STPDCanonicalValue.double(annotation.createdAt.timeIntervalSince1970),
+                "updated_at_unix_sec":
+                    STPDCanonicalValue.double(annotation.updatedAt.timeIntervalSince1970),
+            ]
+            values["annotation_semantic_digest"] =
+                manualAnnotationSemanticDigest(values: values)
+            return makeRow(headers, values: values)
         }
         return try table(.manualAnnotations, headers: headers, rows: rows)
+    }
+
+    private static func checkedManualSpikeOrdinal(
+        _ arrayIndex: Int?,
+        annotationID: String,
+        field: String
+    ) throws -> Int? {
+        guard let arrayIndex else { return nil }
+        let (ordinal, overflow) = arrayIndex.addingReportingOverflow(1)
+        guard !overflow else {
+            throw STPDResultPackageError.invalidInput(
+                "manual annotation \(annotationID) \(field) cannot be represented as a one-based spike ordinal"
+            )
+        }
+        return ordinal
     }
 
     static func reviewStatusTable(
@@ -4525,8 +5951,9 @@ private extension STPDResultPackageBuilder {
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "candidate_uid", "review_uid",
-            "source_candidate_id", "status", "reviewer", "linked_isi_uids",
-            "link_scope", "note", "reviewed_at",
+            "source_candidate_id", "status", "reviewer", "reviewed_run_id",
+            "linked_isi_uids", "link_scope", "note",
+            "reviewed_at", "reviewed_at_unix_sec",
         ]
         let rows = try reviews.map { review -> [String] in
             guard let candidateUID = candidateUIDBySourceID[review.sourceCandidateID] else {
@@ -4550,6 +5977,9 @@ private extension STPDResultPackageBuilder {
                     return uid
                 }
                 .sorted()
+            let reviewedAtUnixSec = review.reviewedAt.map {
+                $0.timeIntervalSince1970
+            }
             return makeRow(headers, values: [
                 "run_id": identity.runID,
                 "settings_digest": identity.settingsDigest,
@@ -4558,13 +5988,85 @@ private extension STPDResultPackageBuilder {
                 "source_candidate_id": review.sourceCandidateID,
                 "status": review.status.rawValue,
                 "reviewer": review.reviewer,
+                "reviewed_run_id": review.reviewedRunID,
                 "linked_isi_uids": STPDCanonicalValue.stringList(linkedUIDs),
-                "link_scope": "public_projection",
+                "link_scope": linkedUIDs.isEmpty
+                    ? "non_authoritative"
+                    : "public_projection",
                 "note": review.note,
                 "reviewed_at": STPDCanonicalValue.date(review.reviewedAt),
+                "reviewed_at_unix_sec":
+                    STPDCanonicalValue.double(reviewedAtUnixSec),
             ])
         }
         return try table(.reviewStatus, headers: headers, rows: rows)
+    }
+
+    static func taskEventsTable(
+        identity: DetectionRunIdentity,
+        events: [TaskEvent]
+    ) throws -> STPDResultTableData {
+        let headers = [
+            "run_id", "settings_digest", "task_event_uid", "source_event_id",
+            "event_name", "event_time_sec", "source_column", "source_event_index",
+            "trial_id", "source",
+        ]
+        var seenSourceEventIDs = Set<String>()
+        var seenTrialIDs = Set<String>()
+        let records = try events.map { event -> (event: TaskEvent, uid: String) in
+            guard !event.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !event.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  event.timeSec.isFinite,
+                  !event.column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  event.eventIndex > 0,
+                  !event.trialID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw STPDResultPackageError.invalidInput(
+                    "task event contains an invalid identity, time, source column, row index, or trial"
+                )
+            }
+            guard seenSourceEventIDs.insert(event.id).inserted,
+                  seenTrialIDs.insert(event.trialID).inserted else {
+                throw STPDResultPackageError.invalidInput(
+                    "task event source ids and trial ids must each be unique"
+                )
+            }
+            return (
+                event,
+                taskEventUID(
+                    event,
+                    datasetDigest: identity.datasetDigest
+                )
+            )
+        }.sorted {
+            let lhs = taskEventIdentityComponents(
+                $0.event,
+                datasetDigest: identity.datasetDigest
+            )
+            let rhs = taskEventIdentityComponents(
+                $1.event,
+                datasetDigest: identity.datasetDigest
+            )
+            if lhs != rhs {
+                return lhs.lexicographicallyPrecedes(rhs)
+            }
+            return $0.uid < $1.uid
+        }
+        let rows = records.map { record in
+            let event = record.event
+            return makeRow(headers, values: [
+                "run_id": identity.runID,
+                "settings_digest": identity.settingsDigest,
+                "task_event_uid": record.uid,
+                "source_event_id": event.id,
+                "event_name": event.name,
+                "event_time_sec": STPDCanonicalValue.double(event.timeSec),
+                "source_column": event.column,
+                "source_event_index": String(event.eventIndex),
+                "trial_id": event.trialID,
+                "source": event.source,
+            ])
+        }
+        return try table(.taskEvents, headers: headers, rows: rows)
     }
 
     static func hfsAuditTable(
@@ -4737,6 +6239,42 @@ private extension STPDResultPackageBuilder {
             STPDCanonicalValue.int(annotation.startSpikeIndex),
             STPDCanonicalValue.int(annotation.endSpikeIndex),
         ]
+    }
+
+    private static let manualAnnotationSemanticColumns = [
+        "source_annotation_uuid",
+        "train_id",
+        "label",
+        "polarity",
+        "start_sec",
+        "end_sec",
+        "start_isi_index",
+        "end_isi_index",
+        "start_spike_array_index",
+        "end_spike_array_index",
+        "start_spike_ordinal",
+        "end_spike_ordinal",
+        "linked_isi_uids",
+        "link_scope",
+        "note",
+        "annotator",
+        "annotator_identity_source",
+        "created_at",
+        "updated_at",
+        "created_at_unix_sec",
+        "updated_at_unix_sec",
+    ]
+
+    static func manualAnnotationSemanticDigest(
+        values: [String: String]
+    ) -> String {
+        STPDStableIdentifier.make(
+            prefix: "manual_semantics",
+            domain: "stpd_manual_annotation_semantics_v1",
+            components: manualAnnotationSemanticColumns.map {
+                values[$0] ?? ""
+            }
+        )
     }
 
     static func hfsAuditIdentityComponents(
@@ -5368,13 +6906,290 @@ private extension STPDResultPackageBuilder {
     }
 }
 
-private enum STPDResultPackageValidator {
+enum STPDResultPackageValidator {
+    private struct ValidatedCandidateRecord {
+        let uid: String
+        let sourceID: String
+        let trainID: String
+        let startISIIndex: Int
+        let endISIIndex: Int
+
+        func contains(isiIndex: Int) -> Bool {
+            min(startISIIndex, endISIIndex)
+                ... max(startISIIndex, endISIIndex) ~= isiIndex
+        }
+    }
+
+    private struct ValidatedReviewRecord {
+        let uid: String
+        let candidateUID: String
+        let sourceCandidateID: String
+        let status: STPDCandidateReviewStatus
+        let reviewer: String
+        let note: String
+        let reviewedAt: Date?
+        let reviewedRunID: String
+        let linkedISIUIDs: Set<String>
+        let linkScope: String
+
+        var input: STPDCandidateReviewInput {
+            STPDCandidateReviewInput(
+                sourceCandidateID: sourceCandidateID,
+                status: status,
+                reviewer: reviewer,
+                note: note,
+                reviewedAt: reviewedAt,
+                reviewedRunID: reviewedRunID
+            )
+        }
+    }
+
+    private struct ValidatedISIRecord {
+        let uid: String
+        let trainID: String
+        let trainName: String
+        let index: Int
+        let automaticPattern: String
+        let automaticSubtype: String
+        let automaticCandidateUID: String
+        let automaticSourceCandidateID: String
+        let finalPattern: String
+        let finalSubtype: String
+        let finalSource: String
+        let manualVetoSuppressed: Bool
+        let reviewNote: String
+    }
+
+    private struct ValidatedManualRecord {
+        let uid: String
+        let annotation: ManualAnnotation
+        let linkedISIUIDs: Set<String>
+        let linkScope: String
+    }
+
+    private struct ValidatedManualAuthority {
+        let recordsByUID: [String: ValidatedManualRecord]
+        let activeSpikeOnlyUIDs: Set<String>
+    }
+
+    private struct RecomputedISIProjection: Equatable {
+        let finalPattern: String
+        let finalSubtype: String
+        let finalSource: String
+        let manualVetoSuppressed: Bool
+        let reviewNote: String
+    }
+
+    private enum CandidateIdentityTableSource {
+        case ledger
+        case features
+        case decisions
+    }
+
+    private struct CandidateIdentityColumn {
+        let source: CandidateIdentityTableSource
+        let name: String
+
+        static func ledger(_ name: String) -> Self {
+            Self(source: .ledger, name: name)
+        }
+
+        static func features(_ name: String) -> Self {
+            Self(source: .features, name: name)
+        }
+
+        static func decisions(_ name: String) -> Self {
+            Self(source: .decisions, name: name)
+        }
+    }
+
+    /// Ordered scientific identity material mirrored from
+    /// `STPDResultPackageBuilder.candidateIntrinsicIdentityComponents`.
+    ///
+    /// The validator deliberately reads these values from all three normalized diagnostic
+    /// tables. A caller therefore cannot make a stale or coherently relabeled candidate UID
+    /// authoritative merely by rewriting foreign keys.
+    private static let candidateIntrinsicIdentityColumns: [CandidateIdentityColumn] = [
+        .ledger("train_id"),
+        .ledger("train_name"),
+        .ledger("candidate_layer"),
+        .ledger("candidate_class"),
+        .ledger("final_label"),
+        .ledger("gate_status"),
+        .ledger("action"),
+        .decisions("priority"),
+        .ledger("selected_for_auto"),
+        .ledger("selection_status"),
+        .ledger("start_isi_index"),
+        .ledger("end_isi_index"),
+        .ledger("start_spike_ordinal"),
+        .ledger("end_spike_ordinal"),
+        .ledger("n_isi"),
+        .ledger("n_valid_isi"),
+        .ledger("n_spikes"),
+        .ledger("anchor_family"),
+        .ledger("anchor_lock_level"),
+        .features("duration_sec"),
+        .features("intra_q10_sec"),
+        .features("intra_q40_sec"),
+        .features("intra_q50_sec"),
+        .features("intra_q90_sec"),
+        .features("intra_q95_sec"),
+        .features("max_intra_isi_sec"),
+        .features("mean_intra_isi_sec"),
+        .features("cv"),
+        .features("cv2"),
+        .features("lv"),
+        .features("pre_gap_sec"),
+        .features("post_gap_sec"),
+        .features("pre_ratio_q90"),
+        .features("post_ratio_q90"),
+        .features("edge_contrast_min_q90"),
+        .features("edge_contrast_geom_q90"),
+        .features("score"),
+        .features("anchor_band_lower_sec"),
+        .features("anchor_band_upper_sec"),
+        .features("anchor_band_source"),
+        .features("anchor_contrast_min_required"),
+        .features("anchor_contrast_geom_required"),
+        .features("refractory_suspect_count"),
+        .features("refractory_suspect_action"),
+        .features("profile_seed_low_percentile"),
+        .features("profile_seed_high_percentile"),
+        .features("profile_seed_band_fraction"),
+        .features("profile_seed_run_count"),
+        .features("profile_max_seed_run_length"),
+        .features("profile_median_isi_sec"),
+        .features("profile_q10_isi_sec"),
+        .features("profile_q25_isi_sec"),
+        .features("profile_q90_isi_sec"),
+        .features("profile_pause_fraction"),
+        .features("profile_phenotype_prior"),
+        .features("profile_bridge_upper_sec"),
+        .features("profile_boundary_floor_sec"),
+        .features("profile_boundary_floor_hard"),
+        .features("profile_burst_contrast_s"),
+        .features("profile_possible_contrast_s"),
+        .features("hf_q80_sec"),
+        .features("hf_q80_max_sec"),
+        .features("hf_q90_max_sec"),
+        .features("hf_short_upper_sec"),
+        .features("hf_epoch_bridge_sec"),
+        .features("hf_tolerated_gap_sec"),
+        .features("hf_pattern_max_isi_sec"),
+        .features("hf_pause_break_sec"),
+        .features("hf_short_fraction"),
+        .features("hf_q90_short_fraction"),
+        .features("hf_bridge_fraction"),
+        .features("hf_large_fraction"),
+        .features("hf_tolerated_fraction"),
+        .features("hf_max_consecutive_large_isi"),
+        .features("hf_min_spikes_required"),
+        .features("hf_acceptance_route"),
+        .features("hf_burst_dominated"),
+        .features("hf_embedded_burst_count"),
+        .features("hf_embedded_burst_group_count"),
+        .features("hf_embedded_burst_coverage"),
+        .features("hf_burst_packet_like"),
+        .features("hf_burst_packet_neighbor"),
+        .features("suppressed_by_hf_state"),
+        .features("suppressed_original_label"),
+        .features("state_regularity_score"),
+        .features("state_burst_seed_fraction"),
+        .features("state_low_tail_fraction"),
+        .features("state_local_stability_score"),
+        .features("state_core_burst_run_length"),
+        .decisions("state_tonic_subtype"),
+        .features("state_continuity_authority_frozen"),
+        .features("state_continuity_merge_terminal"),
+        .decisions("state_high_frequency_subtype"),
+        .features("state_train_percentile_median"),
+        .features("state_local_percentile_median"),
+        .features("state_local_percentile_q90"),
+        .features("state_local_robust_z_median"),
+        .features("state_local_robust_z_abs_q80"),
+        .features("state_local_robust_z_q10"),
+        .features("burst_seed_run_start_isi"),
+        .features("burst_seed_run_end_isi"),
+        .features("burst_seed_band_lower_sec"),
+        .features("burst_seed_band_upper_sec"),
+        .features("burst_bridge_band_upper_sec"),
+        .features("burst_contrast_required"),
+        .features("burst_possible_contrast_required"),
+        .features("burst_required_gap_sec"),
+        .features("burst_possible_required_gap_sec"),
+        .features("burst_boundary_floor_sec"),
+        .features("burst_boundary_floor_hard"),
+        .features("burst_strict_boundary_pass"),
+        .features("burst_possible_boundary_pass"),
+        .features("burst_bridge_count_pass"),
+        .features("burst_bridge_fraction_pass"),
+        .features("burst_q90_bridge_pass"),
+        .features("burst_size_label_before_review"),
+        .features("threshold_mode"),
+        .features("hard_threshold"),
+        .features("hard_threshold_pattern"),
+        .features("hard_burst_seed_upper_sec"),
+        .features("hard_burst_bridge_upper_sec"),
+        .features("hard_burst_core_isi_count"),
+        .features("hard_threshold_source"),
+        .features("local_background_q75_sec"),
+        .features("local_compression_q90_ratio"),
+        .features("event_local_median_sec"),
+        .features("event_local_percentile_median"),
+        .features("event_local_percentile_q90"),
+        .features("event_local_robust_z_median"),
+        .features("event_local_robust_z_abs_q80"),
+        .features("event_local_robust_z_q10"),
+        .decisions("semantic_track"),
+        .decisions("event_track_class"),
+        .decisions("audit_family"),
+        .decisions("audit_subtype"),
+        .decisions("audit_final_class"),
+        .decisions("audit_review_status"),
+        .decisions("audit_review_required"),
+        .decisions("audit_confidence_tier"),
+        .decisions("audit_uncertainty_reason"),
+        .decisions("audit_long_burst_definition_status"),
+        .decisions("failure_reason"),
+        .decisions("candidate_diagnostic_class"),
+    ]
+
     static func validate(
         identity: DetectionRunIdentity,
         sourceMode: STPDResultPackageSourceMode,
         tables: [STPDResultTable: STPDResultTableData],
-        expectedISICount: Int
+        expectedISICount: Int,
+        expectedTaskEvents: [TaskEvent] = [],
+        expectedDatasetMetadata: DetectionDatasetMetadataSnapshot? = nil,
+        expectedTrainIDs: Set<String>? = nil,
+        expectedDataset: SpikeDataset? = nil,
+        expectedQualitySettings: SpikeQualitySettings? = nil,
+        expectedRun: ClassicAnchorDetectionRun? = nil,
+        expectedCandidateReviews: [STPDCandidateReviewInput]? = nil,
+        expectedManualAnnotations: [ManualAnnotation]? = nil,
+        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]? = nil
     ) throws -> [STPDConsistencyCheck] {
+        guard (expectedDataset == nil) == (expectedQualitySettings == nil) else {
+            throw STPDResultPackageError.invalidInput(
+                "dataset-backed validation requires both the dataset and its QC settings"
+            )
+        }
+        guard expectedRun == nil || expectedDataset != nil else {
+            throw STPDResultPackageError.invalidInput(
+                "sealed-run validation requires the detector input dataset"
+            )
+        }
+        guard expectedManualAnnotations == nil || expectedDataset != nil else {
+            throw STPDResultPackageError.invalidInput(
+                "sealed manual-annotation validation requires the detector input dataset"
+            )
+        }
+        guard expectedCandidateDiagnostics == nil || expectedRun != nil else {
+            throw STPDResultPackageError.invalidInput(
+                "sealed candidate-diagnostic validation requires the detector run"
+            )
+        }
         let tableSet = Set(tables.keys)
         let completeSet = Set(STPDResultTable.allCases)
         let preConsistencySet = completeSet.subtracting([.resultConsistencyCheck])
@@ -5415,7 +7230,98 @@ private enum STPDResultPackageValidator {
         }
         checks.append(pass("source_mode", details: "metadata source mode is explicit and consistent"))
 
-        let candidateUIDs = try values(
+        if let expectedRun, let expectedDataset {
+            try STPDResultPackageBuilder.validateDeclaredIdentity(
+                identity,
+                dataset: expectedDataset,
+                run: expectedRun
+            )
+            try validateExactAuthorityTable(
+                required(.parametersReport, in: tables),
+                expected: STPDResultPackageBuilder.parametersTable(
+                    identity: identity
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.resolvedParameters, in: tables),
+                expected: STPDResultPackageBuilder.resolvedParametersTable(
+                    identity: identity,
+                    run: expectedRun,
+                    dataset: expectedDataset
+                )
+            )
+            let sealedCandidates = try STPDResultPackageBuilder
+                .candidateRecords(
+                    candidates: expectedRun.candidates,
+                    datasetDigest: identity.datasetDigest,
+                    dataset: expectedDataset
+                )
+            let sealedPublicCandidates = sealedCandidates.filter {
+                STPDResultPackageBuilder.isPublicCandidate($0.candidate)
+            }
+            let sealedCandidateUIDBySourceID = Dictionary(
+                uniqueKeysWithValues: sealedCandidates.map {
+                    ($0.candidate.id, $0.uid)
+                }
+            )
+            try validateExactAuthorityTable(
+                required(.candidateLedger, in: tables),
+                expected: try STPDResultPackageBuilder.candidateLedgerTable(
+                    identity: identity,
+                    records: sealedPublicCandidates
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.candidateFeatures, in: tables),
+                expected: try STPDResultPackageBuilder.candidateFeaturesTable(
+                    identity: identity,
+                    records: sealedPublicCandidates,
+                    candidateUIDBySourceID: sealedCandidateUIDBySourceID
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.finalDecisions, in: tables),
+                expected: try STPDResultPackageBuilder.finalDecisionsTable(
+                    identity: identity,
+                    records: sealedPublicCandidates
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.candidateLedgerDiagnostic, in: tables),
+                expected: try STPDResultPackageBuilder.candidateLedgerTable(
+                    identity: identity,
+                    records: sealedCandidates,
+                    tableKind: .candidateLedgerDiagnostic
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.candidateFeaturesDiagnostic, in: tables),
+                expected: try STPDResultPackageBuilder.candidateFeaturesTable(
+                    identity: identity,
+                    records: sealedCandidates,
+                    candidateUIDBySourceID: sealedCandidateUIDBySourceID,
+                    tableKind: .candidateFeaturesDiagnostic
+                )
+            )
+            try validateExactAuthorityTable(
+                required(.finalDecisionsDiagnostic, in: tables),
+                expected: try STPDResultPackageBuilder.finalDecisionsTable(
+                    identity: identity,
+                    records: sealedCandidates,
+                    tableKind: .finalDecisionsDiagnostic
+                )
+            )
+            checks.append(pass(
+                "parameter_authority",
+                details: "requested and resolved parameter tables exactly regenerate from the sealed invocation snapshot, run provenance, resolutions, and dataset QC"
+            ))
+            checks.append(pass(
+                "candidate_population_authority",
+                details: "public and diagnostic candidate populations and all normalized candidate semantics exactly regenerate from the sealed detector run"
+            ))
+        }
+
+        let publicCandidateUIDs = try values(
             table: required(.candidateLedger, in: tables),
             column: "candidate_uid"
         )
@@ -5427,31 +7333,109 @@ private enum STPDResultPackageValidator {
             table: required(.finalDecisions, in: tables),
             column: "candidate_uid"
         )
-        guard candidateUIDs == featureUIDs, candidateUIDs == decisionUIDs else {
+        guard publicCandidateUIDs == featureUIDs,
+              publicCandidateUIDs == decisionUIDs else {
             throw STPDResultPackageError.invalidTable(
                 table: "candidate tables",
                 reason: "candidate ledger, features, and decisions do not have one-to-one UID coverage"
             )
         }
+        try validatePublicCandidateRows(
+            ledger: required(.candidateLedger, in: tables),
+            decisions: required(.finalDecisions, in: tables)
+        )
         checks.append(pass(
             "candidate_one_to_one",
-            details: "ledger, feature, and decision candidate UID sets are identical"
+            details: "public ledger, feature, and decision candidate UID sets are identical and authority-bearing"
+        ))
+
+        let diagnosticCandidateUIDs = try values(
+            table: required(.candidateLedgerDiagnostic, in: tables),
+            column: "candidate_uid"
+        )
+        let diagnosticFeatureUIDs = try values(
+            table: required(.candidateFeaturesDiagnostic, in: tables),
+            column: "candidate_uid"
+        )
+        let diagnosticDecisionUIDs = try values(
+            table: required(.finalDecisionsDiagnostic, in: tables),
+            column: "candidate_uid"
+        )
+        guard diagnosticCandidateUIDs == diagnosticFeatureUIDs,
+              diagnosticCandidateUIDs == diagnosticDecisionUIDs else {
+            throw STPDResultPackageError.invalidTable(
+                table: "diagnostic candidate tables",
+                reason: "diagnostic ledger, features, and decisions do not have one-to-one UID coverage"
+            )
+        }
+        try validateCandidateStableUIDs(
+            identity: identity,
+            ledger: required(.candidateLedgerDiagnostic, in: tables),
+            features: required(.candidateFeaturesDiagnostic, in: tables),
+            decisions: required(.finalDecisionsDiagnostic, in: tables)
+        )
+        checks.append(pass(
+            "candidate_diagnostic_one_to_one",
+            details: "diagnostic ledger, feature, and decision candidate UID sets are identical, preserve every candidate, and deterministically rederive each scientific UID"
+        ))
+
+        let diagnosticTable = try required(.candidateDiagnosticAudit, in: tables)
+        let diagnosticRegistryUIDs = try validateDiagnosticCandidateRegistry(
+            diagnosticTable
+        )
+        guard diagnosticCandidateUIDs == diagnosticRegistryUIDs else {
+            throw STPDResultPackageError.invalidTable(
+                table: "diagnostic candidate tables",
+                reason: "normalized diagnostic candidate tables and the diagnostic audit registry do not represent the same candidate population"
+            )
+        }
+        guard publicCandidateUIDs.isSubset(of: diagnosticCandidateUIDs) else {
+            throw STPDResultPackageError.invalidTable(
+                table: "candidate tables",
+                reason: "a public candidate is absent from the all-candidate diagnostic registry"
+            )
+        }
+        try validatePublicDiagnosticCandidateProjection(
+            publicTable: required(.candidateLedger, in: tables),
+            diagnosticTable: required(.candidateLedgerDiagnostic, in: tables)
+        )
+        try validatePublicDiagnosticCandidateProjection(
+            publicTable: required(.candidateFeatures, in: tables),
+            diagnosticTable: required(.candidateFeaturesDiagnostic, in: tables)
+        )
+        try validatePublicDiagnosticCandidateProjection(
+            publicTable: required(.finalDecisions, in: tables),
+            diagnosticTable: required(.finalDecisionsDiagnostic, in: tables)
+        )
+        checks.append(pass(
+            "candidate_public_diagnostic_partition",
+            details: "public candidates are authority-bearing, form a subset of diagnostics, and are byte-identical to their diagnostic rows"
         ))
 
         try validateCandidateForeignKeys(
-            table: required(.candidateDiagnosticAudit, in: tables),
+            table: diagnosticTable,
             columns: ["candidate_uid"],
-            candidates: candidateUIDs
+            candidates: diagnosticCandidateUIDs
         )
         try validateCandidateForeignKeys(
             table: required(.reviewStatus, in: tables),
             columns: ["candidate_uid"],
-            candidates: candidateUIDs
+            candidates: diagnosticCandidateUIDs
         )
         try validateCandidateForeignKeys(
             table: required(.isiLabelsFinal, in: tables),
             columns: ["auto_candidate_uid"],
-            candidates: candidateUIDs
+            candidates: publicCandidateUIDs
+        )
+        try validateCandidateForeignKeys(
+            table: required(.candidateFeatures, in: tables),
+            columns: ["hf_suppressor_candidate_uid"],
+            candidates: diagnosticCandidateUIDs
+        )
+        try validateCandidateForeignKeys(
+            table: required(.candidateFeaturesDiagnostic, in: tables),
+            columns: ["hf_suppressor_candidate_uid"],
+            candidates: diagnosticCandidateUIDs
         )
         try validateCandidateForeignKeys(
             table: required(.hfsBurstArbitrationAudit, in: tables),
@@ -5459,16 +7443,26 @@ private enum STPDResultPackageValidator {
                 "hfs_candidate_uid",
                 "strongest_burst_candidate_uid", "strongest_long_burst_candidate_uid",
             ],
-            candidates: candidateUIDs
+            candidates: diagnosticCandidateUIDs
         )
         try validateDelimitedCandidateForeignKeys(
             table: required(.eventsFinal, in: tables),
             column: "source_candidate_uids",
-            candidates: candidateUIDs
+            candidates: publicCandidateUIDs
         )
         checks.append(pass(
             "candidate_foreign_keys",
-            details: "all normalized candidate references resolve to Candidate_ledger"
+            details: "public projections resolve to Candidate_ledger and diagnostic/audit references resolve to the all-candidate registry"
+        ))
+
+        try validateCandidateCounts(
+            metadata: metadata,
+            publicCount: publicCandidateUIDs.count,
+            diagnosticCount: diagnosticCandidateUIDs.count
+        )
+        checks.append(pass(
+            "candidate_counts",
+            details: "run metadata reports the public and diagnostic candidate populations exactly"
         ))
 
         let isiTable = try required(.isiLabelsFinal, in: tables)
@@ -5478,9 +7472,42 @@ private enum STPDResultPackageValidator {
                 reason: "expected \(expectedISICount) interval rows, got \(isiTable.rowCount)"
             )
         }
+        if let expectedDataset {
+            try validateExactISICoverage(
+                identity: identity,
+                table: isiTable,
+                dataset: expectedDataset
+            )
+        }
+        if let expectedRun, let expectedDataset {
+            try validateAutomaticProjectionAuthority(
+                identity: identity,
+                table: isiTable,
+                candidateTable: required(.candidateLedgerDiagnostic, in: tables),
+                publicCandidateUIDs: publicCandidateUIDs,
+                dataset: expectedDataset,
+                run: expectedRun
+            )
+            checks.append(pass(
+                "automatic_projection_authority",
+                details: "every automatic ISI label, subtype, source candidate, and candidate UID independently regenerates from the sealed detector run"
+            ))
+        }
         checks.append(pass(
             "isi_complete_coverage",
-            details: "exactly one row is present for each dataset ISI"
+            details: expectedDataset == nil
+                ? "the declared number of ISI rows is present"
+                : "every dataset ISI is present exactly once with sealed train, spike, time, and UID geometry"
+        ))
+
+        try validateTaskEvents(
+            identity: identity,
+            table: required(.taskEvents, in: tables),
+            expected: expectedTaskEvents
+        )
+        checks.append(pass(
+            "task_event_projection",
+            details: "Task_events exactly and deterministically represents every dataset task/stimulus event"
         ))
 
         let eventTable = try required(.eventsFinal, in: tables)
@@ -5494,22 +7521,81 @@ private enum STPDResultPackageValidator {
             details: "every event-source diagnostic resolves to a final event"
         ))
 
+        try validateFinalEventProjection(
+            identity: identity,
+            eventTable: eventTable,
+            isiTable: isiTable
+        )
+        checks.append(pass(
+            "final_event_isi_consistency",
+            details: "final events exactly partition the labeled ISIs with matching labels, geometry, subtype semantics, and review evidence"
+        ))
         try validateReviewEvidence(
+            identity: identity,
             sourceMode: sourceMode,
             manualTable: required(.manualAnnotations, in: tables),
             reviewTable: required(.reviewStatus, in: tables),
+            candidateTable: required(.candidateLedgerDiagnostic, in: tables),
             eventTable: eventTable,
-            isiTable: isiTable
+            isiTable: isiTable,
+            expectedTrainIDs: expectedTrainIDs,
+            expectedDataset: expectedDataset,
+            expectedQualitySettings: expectedQualitySettings,
+            expectedCandidateReviews: expectedCandidateReviews,
+            expectedManualAnnotations: expectedManualAnnotations,
+            publicCandidateUIDs: publicCandidateUIDs
         )
         checks.append(pass(
             "review_authority",
             details: "review evidence, ISI links, and authority flags are causally closed"
         ))
+        if let expectedRun, let expectedDataset {
+            try validateEventSourceAuthority(
+                identity: identity,
+                eventTable: eventTable,
+                diagnosticTable: diagnosticTable,
+                isiTable: isiTable,
+                manualTable: required(.manualAnnotations, in: tables),
+                reviewTable: required(.reviewStatus, in: tables),
+                candidateTable: required(
+                    .candidateLedgerDiagnostic,
+                    in: tables
+                ),
+                hfsTable: required(.hfsBurstArbitrationAudit, in: tables),
+                dataset: expectedDataset,
+                run: expectedRun,
+                sourceMode: sourceMode,
+                expectedCandidateReviews: expectedCandidateReviews,
+                expectedManualAnnotations: expectedManualAnnotations,
+                expectedCandidateDiagnostics: expectedCandidateDiagnostics
+            )
+            checks.append(pass(
+                "event_source_authority",
+                details: "event source candidates, automatic support, source annotations, diagnostics, and stage UIDs exactly regenerate from the sealed detector run plus validated manual/review authority"
+            ))
+        }
 
-        try validateQCColumns(isiTable)
+        try validateQCColumns(
+            isiTable,
+            resolvedParameters: required(.resolvedParameters, in: tables),
+            expectedDataset: expectedDataset,
+            expectedSettings: expectedQualitySettings
+        )
         checks.append(pass(
             "isi_qc_provenance",
             details: "authoritative ISI classifications, thresholds, and train QC snapshots are internally consistent"
+        ))
+
+        try validateRunMetadata(
+            identity: identity,
+            sourceMode: sourceMode,
+            metadata: metadata,
+            expectedDatasetMetadata: expectedDatasetMetadata,
+            tables: tables
+        )
+        checks.append(pass(
+            "run_metadata",
+            details: "run metadata exactly matches the sealed run identity, dataset snapshot, and materialized table populations"
         ))
 
         let sortedChecks = checks.sorted { $0.id < $1.id }
@@ -5527,6 +7613,402 @@ private enum STPDResultPackageValidator {
             throw STPDResultPackageError.missingTable(table.rawValue)
         }
         return data
+    }
+
+    private static func validateExactAuthorityTable(
+        _ actual: STPDResultTableData,
+        expected: STPDResultTableData
+    ) throws {
+        guard actual.contract == expected.contract,
+              actual.headers == expected.headers,
+              actual.columnDefinitions == expected.columnDefinitions,
+              actual.rows == expected.rows else {
+            throw STPDResultPackageError.invalidTable(
+                table: actual.contract.table.rawValue,
+                reason: "table does not exactly regenerate from sealed detector authority"
+            )
+        }
+    }
+
+    private static func validateAutomaticProjectionAuthority(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData,
+        candidateTable: STPDResultTableData,
+        publicCandidateUIDs: Set<String>,
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun
+    ) throws {
+        let candidatesByUID = try validatedCandidateRecords(candidateTable)
+        let candidateUIDBySourceID = Dictionary(
+            uniqueKeysWithValues: candidatesByUID.values.map {
+                ($0.sourceID, $0.uid)
+            }
+        )
+        let actualByUID = try validatedISIRecords(
+            identity: identity,
+            table
+        )
+        let automaticEvents = run.eventAnnotations(
+            in: dataset,
+            tracks: [.event, .gap, .state]
+        )
+        let expectedRows = ReviewedISIExportBuilder.build(
+            dataset: dataset,
+            autoAnnotations: automaticEvents,
+            projectionsByTrain: [:]
+        )
+        .filter { $0.isiIndex > 0 }
+
+        guard expectedRows.count == actualByUID.count else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "automatic ISI projection row count differs from the sealed detector run"
+            )
+        }
+
+        for expected in expectedRows {
+            let uid = STPDResultPackageBuilder.stableISIUID(
+                datasetDigest: identity.datasetDigest,
+                trainID: expected.trainID,
+                isiIndex: expected.isiIndex
+            )
+            guard let actual = actualByUID[uid] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "sealed automatic projection ISI \(uid) is missing"
+                )
+            }
+            let expectedSourceID = expected.autoCandidateID
+            let expectedCandidateUID: String
+            if expectedSourceID.isEmpty {
+                expectedCandidateUID = ""
+            } else {
+                guard let uid = candidateUIDBySourceID[expectedSourceID],
+                      publicCandidateUIDs.contains(uid) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: candidateTable.contract.table.rawValue,
+                        reason: "sealed automatic source \(expectedSourceID) is absent from public candidate authority"
+                    )
+                }
+                expectedCandidateUID = uid
+            }
+            guard actual.automaticPattern == expected.autoPattern,
+                  actual.automaticSubtype == expected.autoSubtype,
+                  actual.automaticSourceCandidateID == expectedSourceID,
+                  actual.automaticCandidateUID == expectedCandidateUID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "automatic projection for ISI \(uid) contradicts the sealed detector run"
+                )
+            }
+        }
+    }
+
+    private static func validateEventSourceAuthority(
+        identity: DetectionRunIdentity,
+        eventTable: STPDResultTableData,
+        diagnosticTable: STPDResultTableData,
+        isiTable: STPDResultTableData,
+        manualTable: STPDResultTableData,
+        reviewTable: STPDResultTableData,
+        candidateTable: STPDResultTableData,
+        hfsTable: STPDResultTableData,
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        sourceMode: STPDResultPackageSourceMode,
+        expectedCandidateReviews: [STPDCandidateReviewInput]?,
+        expectedManualAnnotations: [ManualAnnotation]?,
+        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]?
+    ) throws {
+        let candidates = try STPDResultPackageBuilder.candidateRecords(
+            candidates: run.candidates,
+            datasetDigest: identity.datasetDigest,
+            dataset: dataset
+        )
+        let candidateUIDBySourceID = Dictionary(
+            uniqueKeysWithValues: candidates.map {
+                ($0.candidate.id, $0.uid)
+            }
+        )
+        let candidateBySourceID = Dictionary(
+            uniqueKeysWithValues: candidates.map {
+                ($0.candidate.id, $0.candidate)
+            }
+        )
+        let finalRows = try reviewedISIRows(
+            identity: identity,
+            table: isiTable
+        )
+        let isiRecordsByUID = try validatedISIRecords(
+            identity: identity,
+            isiTable
+        )
+        let manualAuthority = try validateManualRows(
+            identity: identity,
+            table: manualTable,
+            isiRecordsByUID: isiRecordsByUID,
+            expectedTrainIDs: Set(dataset.trains.map(\.id)),
+            expectedDataset: dataset
+        )
+        let validatedReviews = try validateReviewRows(
+            identity: identity,
+            table: reviewTable,
+            candidateTable: candidateTable
+        )
+        let candidateReviews = expectedCandidateReviews
+            ?? validatedReviews.values
+                .sorted { $0.uid < $1.uid }
+                .map(\.input)
+        let manualAnnotations: [ManualAnnotation]
+        if let expectedManualAnnotations {
+            manualAnnotations = try STPDResultPackageBuilder
+                .resolvedManualAnnotations(
+                    expectedManualAnnotations,
+                    dataset: dataset
+                )
+        } else {
+            manualAnnotations = manualAuthority.recordsByUID.values
+                .sorted { $0.uid < $1.uid }
+                .map(\.annotation)
+        }
+        let projectedInput = try STPDResultPackageInput.snapshot(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: manualAnnotations,
+            candidateReviews: candidateReviews
+        )
+        let expectedEvents = try STPDResultPackageBuilder.eventRecords(
+            automaticEvents: projectedInput.finalEvents,
+            finalISIRows: finalRows,
+            datasetDigest: identity.datasetDigest,
+            candidateUIDBySourceID: candidateUIDBySourceID,
+            candidateBySourceID: candidateBySourceID,
+            dataset: dataset,
+            evidenceUIDsByISIKey: [:],
+            changedISIKeys: []
+        )
+        let expectedEventTable = try STPDResultPackageBuilder.eventsTable(
+            identity: identity,
+            records: expectedEvents,
+            evidenceUIDsByISIKey: [:],
+            changedISIKeys: []
+        )
+        let reviewDerivedEventColumns = Set([
+            "review_evidence_uids",
+            "review_evidence_present",
+            "review_changed_projection",
+        ])
+        try validateExactColumnProjection(
+            actual: eventTable,
+            expected: expectedEventTable,
+            columns: eventTable.headers.filter {
+                !reviewDerivedEventColumns.contains($0)
+            },
+            authorityName: "sealed final-event projection"
+        )
+
+        let expectedDiagnostics = try STPDResultPackageBuilder.diagnosticsTable(
+            identity: identity,
+            candidates: candidates,
+            events: expectedEvents,
+            supplied: expectedCandidateDiagnostics ?? [],
+            candidateUIDBySourceID: candidateUIDBySourceID
+        )
+        if expectedCandidateDiagnostics != nil {
+            try validateExactAuthorityTable(
+                diagnosticTable,
+                expected: expectedDiagnostics
+            )
+        } else {
+            try validateExactFilteredRows(
+                actual: diagnosticTable,
+                expected: expectedDiagnostics,
+                filterColumn: "evidence_kind",
+                filterValue: "candidate_terminal",
+                authorityName: "sealed candidate-terminal diagnostics"
+            )
+            try validateExactFilteredRows(
+                actual: diagnosticTable,
+                expected: expectedDiagnostics,
+                filterColumn: "evidence_kind",
+                filterValue: "event_source",
+                authorityName: "sealed event-source diagnostics"
+            )
+        }
+
+        let expectedHFS = try STPDResultPackageBuilder.hfsAuditTable(
+            identity: identity,
+            rows: run.hfsBurstArbitrationAuditRows,
+            candidateUIDBySourceID: candidateUIDBySourceID,
+            candidateBySourceID: candidateBySourceID,
+            dataset: dataset,
+            finalEvents: expectedEvents,
+            sourceMode: sourceMode
+        )
+        try validateExactAuthorityTable(
+            hfsTable,
+            expected: expectedHFS
+        )
+    }
+
+    private static func reviewedISIRows(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData
+    ) throws -> [ReviewedISIExportRow] {
+        _ = try validatedISIRecords(identity: identity, table)
+        let trainIDIndex = try columnIndex("train_id", in: table)
+        let trainNameIndex = try columnIndex("train_name", in: table)
+        let spikeIndex = try columnIndex("right_spike_array_index", in: table)
+        let timestampIndex = try columnIndex("timestamp_sec", in: table)
+        let alignedTimestampIndex = try columnIndex(
+            "aligned_timestamp_sec",
+            in: table
+        )
+        let isiIndex = try columnIndex("isi_index", in: table)
+        let isiSecIndex = try columnIndex("isi_sec", in: table)
+        let autoPatternIndex = try columnIndex("auto_pattern", in: table)
+        let autoSubtypeIndex = try columnIndex("auto_subtype", in: table)
+        let autoCandidateIndex = try columnIndex(
+            "auto_source_candidate_id",
+            in: table
+        )
+        let finalPatternIndex = try columnIndex("final_pattern", in: table)
+        let finalSubtypeIndex = try columnIndex("final_subtype", in: table)
+        let finalSourceIndex = try columnIndex("final_source", in: table)
+        let manualVetoIndex = try columnIndex(
+            "manual_veto_suppressed",
+            in: table
+        )
+        let reviewNoteIndex = try columnIndex("review_note", in: table)
+
+        return try table.rows.map { row in
+            ReviewedISIExportRow(
+                trainID: row[trainIDIndex],
+                trainName: row[trainNameIndex],
+                spikeIndex: try parseInteger(
+                    row[spikeIndex],
+                    table: table,
+                    column: "right_spike_array_index"
+                ),
+                timestampSec: try parseFiniteReal(
+                    row[timestampIndex],
+                    table: table,
+                    column: "timestamp_sec"
+                ),
+                alignedTimestampSec: try parseFiniteReal(
+                    row[alignedTimestampIndex],
+                    table: table,
+                    column: "aligned_timestamp_sec"
+                ),
+                isiIndex: try parseInteger(
+                    row[isiIndex],
+                    table: table,
+                    column: "isi_index"
+                ),
+                isiSec: try parseFiniteReal(
+                    row[isiSecIndex],
+                    table: table,
+                    column: "isi_sec"
+                ),
+                autoPattern: row[autoPatternIndex],
+                autoSubtype: row[autoSubtypeIndex],
+                autoCandidateID: row[autoCandidateIndex],
+                finalPattern: row[finalPatternIndex],
+                finalSubtype: row[finalSubtypeIndex],
+                finalSource: row[finalSourceIndex],
+                manualVetoSuppressed: try parseBoolean(
+                    row[manualVetoIndex],
+                    table: table,
+                    column: "manual_veto_suppressed"
+                ),
+                reviewNote: row[reviewNoteIndex]
+            )
+        }
+        .sorted {
+            if $0.trainID != $1.trainID {
+                return $0.trainID < $1.trainID
+            }
+            return $0.isiIndex < $1.isiIndex
+        }
+    }
+
+    private static func validateExactColumnProjection(
+        actual: STPDResultTableData,
+        expected: STPDResultTableData,
+        columns: [String],
+        authorityName: String
+    ) throws {
+        let actualIndices = try columns.map {
+            try columnIndex($0, in: actual)
+        }
+        let expectedIndices = try columns.map {
+            try columnIndex($0, in: expected)
+        }
+        let actualRows = actual.rows.map { row in
+            actualIndices.map { row[$0] }
+        }
+        .sorted(by: lexicographicallyPrecedes)
+        let expectedRows = expected.rows.map { row in
+            expectedIndices.map { row[$0] }
+        }
+        .sorted(by: lexicographicallyPrecedes)
+        guard actualRows == expectedRows else {
+            let firstDifference = zip(actualRows, expectedRows)
+                .first { $0 != $1 }
+            let actualDifference = firstDifference?.0
+                ?? (actualRows.count > expectedRows.count
+                    ? actualRows[expectedRows.count]
+                    : [])
+            let expectedDifference = firstDifference?.1
+                ?? (expectedRows.count > actualRows.count
+                    ? expectedRows[actualRows.count]
+                    : [])
+            throw STPDResultPackageError.invalidTable(
+                table: actual.contract.table.rawValue,
+                reason:
+                    "\(authorityName) does not exactly regenerate; " +
+                    "actual_count=\(actualRows.count); " +
+                    "expected_count=\(expectedRows.count); " +
+                    "first_actual=\(actualDifference); " +
+                    "first_expected=\(expectedDifference)"
+            )
+        }
+    }
+
+    private static func validateExactFilteredRows(
+        actual: STPDResultTableData,
+        expected: STPDResultTableData,
+        filterColumn: String,
+        filterValue: String,
+        authorityName: String
+    ) throws {
+        guard actual.headers == expected.headers else {
+            throw STPDResultPackageError.invalidTable(
+                table: actual.contract.table.rawValue,
+                reason: "\(authorityName) column schema differs"
+            )
+        }
+        let actualFilterIndex = try columnIndex(filterColumn, in: actual)
+        let expectedFilterIndex = try columnIndex(filterColumn, in: expected)
+        let actualRows = actual.rows
+            .filter { $0[actualFilterIndex] == filterValue }
+            .sorted(by: lexicographicallyPrecedes)
+        let expectedRows = expected.rows
+            .filter { $0[expectedFilterIndex] == filterValue }
+            .sorted(by: lexicographicallyPrecedes)
+        guard actualRows == expectedRows else {
+            throw STPDResultPackageError.invalidTable(
+                table: actual.contract.table.rawValue,
+                reason: "\(authorityName) rows do not exactly regenerate"
+            )
+        }
+    }
+
+    private static func lexicographicallyPrecedes(
+        _ lhs: [String],
+        _ rhs: [String]
+    ) -> Bool {
+        lhs.lexicographicallyPrecedes(rhs)
     }
 
     private static func validateIdentity(
@@ -5592,6 +8074,378 @@ private enum STPDResultPackageValidator {
             )
         }
         return Set(table.rows.map { $0[index] })
+    }
+
+    private static func validatePublicDiagnosticCandidateProjection(
+        publicTable: STPDResultTableData,
+        diagnosticTable: STPDResultTableData
+    ) throws {
+        guard publicTable.headers == diagnosticTable.headers else {
+            throw STPDResultPackageError.invalidTable(
+                table: publicTable.contract.table.rawValue,
+                reason: "public and diagnostic candidate schemas differ"
+            )
+        }
+        let uidIndex = try columnIndex("candidate_uid", in: publicTable)
+        let diagnosticRows = Dictionary(
+            uniqueKeysWithValues: diagnosticTable.rows.map {
+                ($0[uidIndex], $0)
+            }
+        )
+        for row in publicTable.rows {
+            let uid = row[uidIndex]
+            guard diagnosticRows[uid] == row else {
+                throw STPDResultPackageError.invalidTable(
+                    table: publicTable.contract.table.rawValue,
+                    reason: "public candidate \(uid) contradicts its diagnostic row"
+                )
+            }
+        }
+    }
+
+    private static func validatePublicCandidateRows(
+        ledger: STPDResultTableData,
+        decisions: STPDResultTableData
+    ) throws {
+        let denialTerms = [
+            "blocked",
+            "unwritten",
+            "not_selected",
+            "not selected",
+            "suppressed",
+            "rejected",
+            "audit_only",
+        ]
+
+        func validate(
+            _ table: STPDResultTableData,
+            authorityColumns: [String]
+        ) throws {
+            let uidIndex = try columnIndex("candidate_uid", in: table)
+            let labelIndex = try columnIndex("final_label", in: table)
+            let selectedIndex = try columnIndex("selected_for_auto", in: table)
+            let authorityIndices = try authorityColumns.map {
+                try columnIndex($0, in: table)
+            }
+            for row in table.rows {
+                let uid = row[uidIndex]
+                let selected = try parseBoolean(
+                    row[selectedIndex],
+                    table: table,
+                    column: "selected_for_auto"
+                )
+                let normalizedLabel = row[labelIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                let denied = authorityIndices.contains { index in
+                    let value = row[index]
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .lowercased()
+                    return denialTerms.contains { value.contains($0) }
+                }
+                guard selected,
+                      normalizedLabel != ClassicAnchorLabel.reject.rawValue,
+                      normalizedLabel != ClassicAnchorLabel.profile.rawValue,
+                      !denied else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "candidate \(uid) is diagnostic-only but appears in a public authority table"
+                    )
+                }
+            }
+        }
+
+        try validate(
+            ledger,
+            authorityColumns: ["gate_status", "action", "selection_status"]
+        )
+        try validate(
+            decisions,
+            authorityColumns: ["gate_status", "action", "selection_status"]
+        )
+    }
+
+    private static func validateCandidateStableUIDs(
+        identity: DetectionRunIdentity,
+        ledger: STPDResultTableData,
+        features: STPDResultTableData,
+        decisions: STPDResultTableData
+    ) throws {
+        func rowsByUID(
+            _ table: STPDResultTableData
+        ) throws -> [String: [String: String]] {
+            let uidIndex = try columnIndex("candidate_uid", in: table)
+            var result: [String: [String: String]] = [:]
+            for row in table.rows {
+                let uid = row[uidIndex]
+                let values = Dictionary(
+                    uniqueKeysWithValues: zip(table.headers, row)
+                )
+                guard result.updateValue(values, forKey: uid) == nil else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "candidate \(uid) occurs more than once"
+                    )
+                }
+            }
+            return result
+        }
+
+        let ledgerRows = try rowsByUID(ledger)
+        let featureRows = try rowsByUID(features)
+        let decisionRows = try rowsByUID(decisions)
+        let candidateUIDs = Set(ledgerRows.keys)
+        guard candidateUIDs == Set(featureRows.keys),
+              candidateUIDs == Set(decisionRows.keys) else {
+            throw STPDResultPackageError.invalidTable(
+                table: "diagnostic candidate tables",
+                reason: "candidate UID rederivation requires identical row populations"
+            )
+        }
+
+        func intrinsicComponents(for uid: String) throws -> [String] {
+            guard let ledgerRow = ledgerRows[uid],
+                  let featureRow = featureRows[uid],
+                  let decisionRow = decisionRows[uid] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "diagnostic candidate tables",
+                    reason: "candidate \(uid) is missing identity material"
+                )
+            }
+            return try candidateIntrinsicIdentityColumns.map { column in
+                let row: [String: String]
+                switch column.source {
+                case .ledger:
+                    row = ledgerRow
+                case .features:
+                    row = featureRow
+                case .decisions:
+                    row = decisionRow
+                }
+                guard let value = row[column.name] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: "diagnostic candidate tables",
+                        reason: "candidate identity column \(column.name) is missing"
+                    )
+                }
+                return value
+            }
+        }
+
+        var intrinsicUIDByCandidateUID: [String: String] = [:]
+        var componentsByCandidateUID: [String: [String]] = [:]
+        for uid in candidateUIDs {
+            let components = try intrinsicComponents(for: uid)
+            componentsByCandidateUID[uid] = components
+            intrinsicUIDByCandidateUID[uid] = STPDStableIdentifier.make(
+                prefix: "cand_intrinsic",
+                domain: "stpd_candidate_intrinsic_uid_v1",
+                components: [identity.datasetDigest] + components
+            )
+        }
+
+        for uid in candidateUIDs {
+            guard let components = componentsByCandidateUID[uid],
+                  let featureRow = featureRows[uid] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "diagnostic candidate tables",
+                    reason: "candidate \(uid) has incomplete identity material"
+                )
+            }
+            let suppressorUID = featureRow["hf_suppressor_candidate_uid"] ?? ""
+            let suppressorIntrinsicUID: String
+            if suppressorUID.isEmpty {
+                suppressorIntrinsicUID = ""
+            } else if let resolved = intrinsicUIDByCandidateUID[suppressorUID] {
+                suppressorIntrinsicUID = resolved
+            } else {
+                throw STPDResultPackageError.invalidTable(
+                    table: features.contract.table.rawValue,
+                    reason: "candidate \(uid) has an unresolved HF suppressor identity"
+                )
+            }
+            let expectedUID = STPDStableIdentifier.make(
+                prefix: "cand",
+                domain: "stpd_candidate_uid_v2",
+                components: [identity.datasetDigest] + components
+                    + [suppressorIntrinsicUID]
+            )
+            guard uid == expectedUID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: ledger.contract.table.rawValue,
+                    reason: "candidate \(uid) does not match its deterministic scientific identity"
+                )
+            }
+        }
+    }
+
+    private static func validateDiagnosticCandidateRegistry(
+        _ table: STPDResultTableData
+    ) throws -> Set<String> {
+        let candidateIndex = try columnIndex("candidate_uid", in: table)
+        let evidenceKindIndex = try columnIndex("evidence_kind", in: table)
+        var rowCountByCandidate: [String: Int] = [:]
+        var terminalCountByCandidate: [String: Int] = [:]
+        for row in table.rows {
+            let candidateUID = row[candidateIndex]
+            guard !candidateUID.isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "diagnostic row has an empty candidate UID"
+                )
+            }
+            rowCountByCandidate[candidateUID, default: 0] += 1
+            if row[evidenceKindIndex] == "candidate_terminal" {
+                terminalCountByCandidate[candidateUID, default: 0] += 1
+            }
+        }
+        let candidateUIDs = Set(rowCountByCandidate.keys)
+        for candidateUID in candidateUIDs {
+            guard terminalCountByCandidate[candidateUID] == 1 else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "candidate \(candidateUID) must have exactly one terminal diagnostic row"
+                )
+            }
+        }
+        return candidateUIDs
+    }
+
+    private static func validateCandidateCounts(
+        metadata: STPDResultTableData,
+        publicCount: Int,
+        diagnosticCount: Int
+    ) throws {
+        let publicIndex = try columnIndex("candidate_count", in: metadata)
+        let diagnosticIndex = try columnIndex(
+            "diagnostic_candidate_count",
+            in: metadata
+        )
+        let declaredPublic = try parseInteger(
+            metadata.rows[0][publicIndex],
+            table: metadata,
+            column: "candidate_count"
+        )
+        let declaredDiagnostic = try parseInteger(
+            metadata.rows[0][diagnosticIndex],
+            table: metadata,
+            column: "diagnostic_candidate_count"
+        )
+        guard declaredPublic == publicCount,
+              declaredDiagnostic == diagnosticCount,
+              declaredPublic <= declaredDiagnostic else {
+            throw STPDResultPackageError.invalidTable(
+                table: metadata.contract.table.rawValue,
+                reason: "candidate population counts contradict public and diagnostic tables"
+            )
+        }
+    }
+
+    private static func validateTaskEvents(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData,
+        expected: [TaskEvent]
+    ) throws {
+        guard identity.taskEventCount == expected.count,
+              table.rowCount == expected.count else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "task-event row count contradicts the detector input identity"
+            )
+        }
+        let uidIndex = try columnIndex("task_event_uid", in: table)
+        let sourceIDIndex = try columnIndex("source_event_id", in: table)
+        let nameIndex = try columnIndex("event_name", in: table)
+        let timeIndex = try columnIndex("event_time_sec", in: table)
+        let columnIndexValue = try columnIndex("source_column", in: table)
+        let eventIndexValue = try columnIndex("source_event_index", in: table)
+        let trialIndex = try columnIndex("trial_id", in: table)
+        let sourceIndex = try columnIndex("source", in: table)
+
+        var expectedByUID: [String: TaskEvent] = [:]
+        var seenSourceEventIDs = Set<String>()
+        var seenTrialIDs = Set<String>()
+        for event in expected {
+            guard !event.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !event.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  event.timeSec.isFinite,
+                  !event.column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  event.eventIndex > 0,
+                  !event.trialID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "expected task event has invalid identity or geometry"
+                )
+            }
+            guard seenSourceEventIDs.insert(event.id).inserted,
+                  seenTrialIDs.insert(event.trialID).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "expected task event source ids and trial ids must each be unique"
+                )
+            }
+            let uid = STPDResultPackageBuilder.taskEventUID(
+                event,
+                datasetDigest: identity.datasetDigest
+            )
+            guard expectedByUID.updateValue(event, forKey: uid) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task events contain a duplicate scientific identity"
+                )
+            }
+        }
+
+        var seen = Set<String>()
+        for row in table.rows {
+            let uid = row[uidIndex]
+            let parsedTime = try parseFiniteReal(
+                row[timeIndex],
+                table: table,
+                column: "event_time_sec"
+            )
+            guard let parsedEventIndex = Int(row[eventIndexValue]) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task-event row has an invalid source event index"
+                )
+            }
+            let rowEvent = TaskEvent(
+                id: row[sourceIDIndex],
+                name: row[nameIndex],
+                timeSec: parsedTime,
+                column: row[columnIndexValue],
+                eventIndex: parsedEventIndex,
+                trialID: row[trialIndex],
+                source: row[sourceIndex]
+            )
+            let rederivedUID = STPDResultPackageBuilder.taskEventUID(
+                rowEvent,
+                datasetDigest: identity.datasetDigest
+            )
+            guard let event = expectedByUID[uid],
+                  seen.insert(uid).inserted,
+                  rederivedUID == uid,
+                  row[sourceIDIndex] == event.id,
+                  row[nameIndex] == event.name,
+                  row[timeIndex] == STPDCanonicalValue.double(event.timeSec),
+                  row[columnIndexValue] == event.column,
+                  row[eventIndexValue] == String(event.eventIndex),
+                  row[trialIndex] == event.trialID,
+                  row[sourceIndex] == event.source,
+                  parsedTime.bitPattern == event.timeSec.bitPattern else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task-event row does not match its deterministic detector-input projection"
+                )
+            }
+        }
+        guard seen == Set(expectedByUID.keys) else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "task-event table does not exactly cover the detector input"
+            )
+        }
     }
 
     private static func validateCandidateForeignKeys(
@@ -5665,13 +8519,1325 @@ private enum STPDResultPackageValidator {
         }
     }
 
-    private static func validateReviewEvidence(
-        sourceMode: STPDResultPackageSourceMode,
-        manualTable: STPDResultTableData,
-        reviewTable: STPDResultTableData,
+    private struct FinalISIProjectionRow {
+        let uid: String
+        let trainID: String
+        let trainName: String
+        let index: Int
+        let timestampSec: Double
+        let alignedTimestampSec: Double
+        let isiSec: Double
+        let finalPattern: String
+        let finalSubtype: String
+        let finalSource: String
+        let evidenceUIDs: Set<String>
+        let changedProjection: Bool
+    }
+
+    private static func validateFinalEventProjection(
+        identity: DetectionRunIdentity,
         eventTable: STPDResultTableData,
         isiTable: STPDResultTableData
     ) throws {
+        let isiUIDIndex = try columnIndex("isi_uid", in: isiTable)
+        let isiTrainIndex = try columnIndex("train_id", in: isiTable)
+        let isiTrainNameIndex = try columnIndex("train_name", in: isiTable)
+        let isiIndexIndex = try columnIndex("isi_index", in: isiTable)
+        let timestampIndex = try columnIndex("timestamp_sec", in: isiTable)
+        let alignedTimestampIndex = try columnIndex(
+            "aligned_timestamp_sec",
+            in: isiTable
+        )
+        let isiSecIndex = try columnIndex("isi_sec", in: isiTable)
+        let finalPatternIndex = try columnIndex("final_pattern", in: isiTable)
+        let finalSubtypeIndex = try columnIndex("final_subtype", in: isiTable)
+        let finalSourceIndex = try columnIndex("final_source", in: isiTable)
+        let isiEvidenceIndex = try columnIndex(
+            "review_evidence_uids",
+            in: isiTable
+        )
+        let isiChangedIndex = try columnIndex(
+            "review_changed_projection",
+            in: isiTable
+        )
+
+        var isiByKey: [String: FinalISIProjectionRow] = [:]
+        for row in isiTable.rows {
+            let trainID = row[isiTrainIndex]
+            let isiIndex = try parseInteger(
+                row[isiIndexIndex],
+                table: isiTable,
+                column: "isi_index"
+            )
+            guard isiIndex > 0 else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason: "final ISI projection contains a non-positive ISI index"
+                )
+            }
+            let projection = FinalISIProjectionRow(
+                uid: row[isiUIDIndex],
+                trainID: trainID,
+                trainName: row[isiTrainNameIndex],
+                index: isiIndex,
+                timestampSec: try parseFiniteReal(
+                    row[timestampIndex],
+                    table: isiTable,
+                    column: "timestamp_sec"
+                ),
+                alignedTimestampSec: try parseFiniteReal(
+                    row[alignedTimestampIndex],
+                    table: isiTable,
+                    column: "aligned_timestamp_sec"
+                ),
+                isiSec: try parseFiniteReal(
+                    row[isiSecIndex],
+                    table: isiTable,
+                    column: "isi_sec"
+                ),
+                finalPattern: row[finalPatternIndex],
+                finalSubtype: row[finalSubtypeIndex],
+                finalSource: row[finalSourceIndex],
+                evidenceUIDs: delimitedValues(row[isiEvidenceIndex]),
+                changedProjection: try parseBoolean(
+                    row[isiChangedIndex],
+                    table: isiTable,
+                    column: "review_changed_projection"
+                )
+            )
+            let key = finalProjectionKey(trainID: trainID, isiIndex: isiIndex)
+            guard isiByKey.updateValue(projection, forKey: key) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason: "duplicate final ISI projection key \(trainID):\(isiIndex)"
+                )
+            }
+        }
+
+        let eventUIDIndex = try columnIndex("event_uid", in: eventTable)
+        let sourceEventIDsIndex = try columnIndex(
+            "source_event_ids",
+            in: eventTable
+        )
+        let eventTrainIndex = try columnIndex("train_id", in: eventTable)
+        let eventTrainNameIndex = try columnIndex("train_name", in: eventTable)
+        let eventLabelIndex = try columnIndex("final_label", in: eventTable)
+        let eventSubtypeIndex = try columnIndex("final_subtype", in: eventTable)
+        let eventTonicSubtypeIndex = try columnIndex(
+            "state_tonic_subtype",
+            in: eventTable
+        )
+        let eventHighFrequencySubtypesIndex = try columnIndex(
+            "state_high_frequency_subtypes",
+            in: eventTable
+        )
+        let authorityOriginIndex = try columnIndex(
+            "authority_origin",
+            in: eventTable
+        )
+        let startISIIndex = try columnIndex("start_isi_index", in: eventTable)
+        let endISIIndex = try columnIndex("end_isi_index", in: eventTable)
+        let startSpikeIndex = try columnIndex(
+            "start_spike_ordinal",
+            in: eventTable
+        )
+        let endSpikeIndex = try columnIndex(
+            "end_spike_ordinal",
+            in: eventTable
+        )
+        let rawStartIndex = try columnIndex("raw_start_sec", in: eventTable)
+        let rawEndIndex = try columnIndex("raw_end_sec", in: eventTable)
+        let alignedStartIndex = try columnIndex(
+            "aligned_start_sec",
+            in: eventTable
+        )
+        let alignedEndIndex = try columnIndex(
+            "aligned_end_sec",
+            in: eventTable
+        )
+        let durationIndex = try columnIndex("duration_sec", in: eventTable)
+        let eventEvidenceIndex = try columnIndex(
+            "review_evidence_uids",
+            in: eventTable
+        )
+        let eventPresentIndex = try columnIndex(
+            "review_evidence_present",
+            in: eventTable
+        )
+        let eventChangedIndex = try columnIndex(
+            "review_changed_projection",
+            in: eventTable
+        )
+        let auditSubtypeIndex = try columnIndex(
+            "audit_recommended_subtype",
+            in: eventTable
+        )
+
+        var coveredISIKeys = Set<String>()
+        for eventRow in eventTable.rows {
+            let eventUID = eventRow[eventUIDIndex]
+            let trainID = eventRow[eventTrainIndex]
+            let trainName = eventRow[eventTrainNameIndex]
+            let finalLabel = eventRow[eventLabelIndex]
+            let finalSubtype = eventRow[eventSubtypeIndex]
+            let lower = try parseInteger(
+                eventRow[startISIIndex],
+                table: eventTable,
+                column: "start_isi_index"
+            )
+            let upper = try parseInteger(
+                eventRow[endISIIndex],
+                table: eventTable,
+                column: "end_isi_index"
+            )
+            guard !finalLabel.isEmpty,
+                  finalLabel != ClassicAnchorLabel.profile.rawValue,
+                  finalLabel != ClassicAnchorLabel.reject.rawValue,
+                  lower > 0,
+                  lower <= upper else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) has invalid public label or ISI bounds"
+                )
+            }
+
+            let expectedEventUID = STPDStableIdentifier.make(
+                prefix: "event",
+                domain: "stpd_normalized_public_event_uid_v5",
+                components: [
+                    identity.datasetDigest,
+                    trainID,
+                    finalLabel,
+                    finalSubtype,
+                    eventRow[eventTonicSubtypeIndex],
+                    eventRow[eventHighFrequencySubtypesIndex],
+                    eventRow[startISIIndex],
+                    eventRow[endISIIndex],
+                    eventRow[startSpikeIndex],
+                    eventRow[endSpikeIndex],
+                    eventRow[rawStartIndex],
+                    eventRow[rawEndIndex],
+                    eventRow[alignedStartIndex],
+                    eventRow[alignedEndIndex],
+                ]
+            )
+            guard eventUID == expectedEventUID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) does not match its deterministic scientific identity"
+                )
+            }
+
+            let startSpike = try parseInteger(
+                eventRow[startSpikeIndex],
+                table: eventTable,
+                column: "start_spike_ordinal"
+            )
+            let endSpike = try parseInteger(
+                eventRow[endSpikeIndex],
+                table: eventTable,
+                column: "end_spike_ordinal"
+            )
+            let (expectedEndSpike, endSpikeOverflow) =
+                upper.addingReportingOverflow(1)
+            guard !endSpikeOverflow else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) end ISI index cannot be represented as a spike ordinal"
+                )
+            }
+            guard startSpike == lower, endSpike == expectedEndSpike else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) spike ordinals contradict its ISI bounds"
+                )
+            }
+            let (spanDelta, spanDeltaOverflow) =
+                upper.subtractingReportingOverflow(lower)
+            let (spanCount, spanCountOverflow) =
+                spanDelta.addingReportingOverflow(1)
+            guard !spanDeltaOverflow,
+                  !spanCountOverflow,
+                  spanCount <= isiByKey.count else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) ISI span exceeds the available final projection"
+                )
+            }
+
+            var coveredRows: [FinalISIProjectionRow] = []
+            for isiIndex in lower...upper {
+                let key = finalProjectionKey(
+                    trainID: trainID,
+                    isiIndex: isiIndex
+                )
+                guard let isi = isiByKey[key] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: eventTable.contract.table.rawValue,
+                        reason: "event \(eventUID) does not have contiguous ISI coverage"
+                    )
+                }
+                guard coveredISIKeys.insert(key).inserted else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: eventTable.contract.table.rawValue,
+                        reason: "final events overlap at \(trainID):\(isiIndex)"
+                    )
+                }
+                coveredRows.append(isi)
+            }
+            guard coveredRows.allSatisfy({
+                $0.trainName == trainName && $0.finalPattern == finalLabel
+            }) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) contradicts its covered ISI train or label"
+                )
+            }
+
+            let auditSubtype = eventRow[auditSubtypeIndex]
+            for isi in coveredRows {
+                if isi.finalSource == ReviewedISIExportBuilder.sourceManualPositive {
+                    guard isi.finalSubtype.isEmpty else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: eventTable.contract.table.rawValue,
+                            reason: "event \(eventUID) gives a manual-positive ISI a detector subtype"
+                        )
+                    }
+                } else if isi.finalSubtype != finalSubtype {
+                    throw STPDResultPackageError.invalidTable(
+                        table: eventTable.contract.table.rawValue,
+                        reason: "event \(eventUID) authoritative subtype does not match its automatic ISI projection"
+                    )
+                }
+            }
+
+            let sourceEventIDs = delimitedValues(eventRow[sourceEventIDsIndex])
+            let expectedAuthorityOrigin: String
+            if sourceEventIDs.isEmpty {
+                guard coveredRows.allSatisfy({
+                    $0.finalSource ==
+                        ReviewedISIExportBuilder.sourceManualPositive
+                }),
+                finalSubtype.isEmpty,
+                auditSubtype == "manual_positive" else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: eventTable.contract.table.rawValue,
+                        reason: "manual-only event \(eventUID) is not composed solely of manual-positive ISIs"
+                    )
+                }
+                expectedAuthorityOrigin = "manual_only"
+            } else {
+                expectedAuthorityOrigin = coveredRows.contains {
+                    $0.changedProjection ||
+                        $0.finalSource ==
+                            ReviewedISIExportBuilder.sourceManualPositive
+                } ? "manual_augmented" : "automatic"
+            }
+            guard eventRow[authorityOriginIndex] == expectedAuthorityOrigin else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) authority origin contradicts its ISI projection"
+                )
+            }
+
+            let first = coveredRows[0]
+            let last = coveredRows[coveredRows.count - 1]
+
+            let expectedRawStart = first.timestampSec - first.isiSec
+            let expectedRawEnd = last.timestampSec
+            let expectedAlignedStart =
+                first.alignedTimestampSec - first.isiSec
+            let expectedAlignedEnd = last.alignedTimestampSec
+            let expectedDuration = expectedRawEnd - expectedRawStart
+            let actualRawStart = try parseFiniteReal(
+                eventRow[rawStartIndex],
+                table: eventTable,
+                column: "raw_start_sec"
+            )
+            let actualRawEnd = try parseFiniteReal(
+                eventRow[rawEndIndex],
+                table: eventTable,
+                column: "raw_end_sec"
+            )
+            let actualAlignedStart = try parseFiniteReal(
+                eventRow[alignedStartIndex],
+                table: eventTable,
+                column: "aligned_start_sec"
+            )
+            let actualAlignedEnd = try parseFiniteReal(
+                eventRow[alignedEndIndex],
+                table: eventTable,
+                column: "aligned_end_sec"
+            )
+            let actualDuration = try parseFiniteReal(
+                eventRow[durationIndex],
+                table: eventTable,
+                column: "duration_sec"
+            )
+            guard nearlyEqual(actualRawStart, expectedRawStart),
+                  nearlyEqual(actualRawEnd, expectedRawEnd),
+                  nearlyEqual(actualAlignedStart, expectedAlignedStart),
+                  nearlyEqual(actualAlignedEnd, expectedAlignedEnd),
+                  nearlyEqual(actualDuration, expectedDuration) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) geometry contradicts its covered ISIs"
+                )
+            }
+
+            let expectedEvidence = coveredRows.reduce(into: Set<String>()) {
+                $0.formUnion($1.evidenceUIDs)
+            }
+            let actualEvidence = delimitedValues(
+                eventRow[eventEvidenceIndex]
+            )
+            let expectedChanged = coveredRows.contains {
+                $0.changedProjection
+            }
+            let actualPresent = try parseBoolean(
+                eventRow[eventPresentIndex],
+                table: eventTable,
+                column: "review_evidence_present"
+            )
+            let actualChanged = try parseBoolean(
+                eventRow[eventChangedIndex],
+                table: eventTable,
+                column: "review_changed_projection"
+            )
+            guard actualEvidence == expectedEvidence,
+                  actualPresent == !expectedEvidence.isEmpty,
+                  actualChanged == expectedChanged else {
+                throw STPDResultPackageError.invalidTable(
+                    table: eventTable.contract.table.rawValue,
+                    reason: "event \(eventUID) review evidence is not the exact union of its ISIs"
+                )
+            }
+        }
+
+        for isi in isiByKey.values {
+            let key = finalProjectionKey(
+                trainID: isi.trainID,
+                isiIndex: isi.index
+            )
+            guard coveredISIKeys.contains(key) == !isi.finalPattern.isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "final event/ISI projection",
+                    reason: "ISI \(isi.uid) event coverage contradicts its final label"
+                )
+            }
+        }
+    }
+
+    private static func validatedCandidateRecords(
+        _ table: STPDResultTableData
+    ) throws -> [String: ValidatedCandidateRecord] {
+        let uidIndex = try columnIndex("candidate_uid", in: table)
+        let sourceIDIndex = try columnIndex("source_candidate_id", in: table)
+        let trainIDIndex = try columnIndex("train_id", in: table)
+        let candidateClassIndex = try columnIndex("candidate_class", in: table)
+        let finalLabelIndex = try columnIndex("final_label", in: table)
+        let startIndex = try columnIndex("start_isi_index", in: table)
+        let endIndex = try columnIndex("end_isi_index", in: table)
+        var recordsByUID: [String: ValidatedCandidateRecord] = [:]
+        var seenSourceIDs = Set<String>()
+        let profileClasses = Set(["train_profile", "dataset_profile"])
+
+        for row in table.rows {
+            let uid = row[uidIndex]
+            let sourceID = row[sourceIDIndex]
+            let trainID = row[trainIDIndex]
+            let candidateClass = row[candidateClassIndex]
+            let finalLabel = row[finalLabelIndex]
+            let start = try parseInteger(
+                row[startIndex],
+                table: table,
+                column: "start_isi_index"
+            )
+            let end = try parseInteger(
+                row[endIndex],
+                table: table,
+                column: "end_isi_index"
+            )
+            let isProfile = finalLabel == ClassicAnchorLabel.profile.rawValue
+            let validProfileOwnership =
+                candidateClass == "dataset_profile"
+                    ? trainID == "__dataset__"
+                    : candidateClass == "train_profile" &&
+                        trainID != "__dataset__"
+            let validGeometry = isProfile
+                ? profileClasses.contains(candidateClass) &&
+                    validProfileOwnership &&
+                    start == 0 &&
+                    end == 0
+                : !profileClasses.contains(candidateClass) &&
+                    trainID != "__dataset__" &&
+                    start > 0 &&
+                    end >= start
+            guard !uid.isEmpty,
+                  !sourceID.isEmpty,
+                  !trainID.isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "candidate identity or train is empty"
+                )
+            }
+            guard validGeometry else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason:
+                        "candidate \(sourceID) has invalid \(trainID) geometry " +
+                        "\(start)...\(end)"
+                )
+            }
+            guard seenSourceIDs.insert(sourceID).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "candidate source ID \(sourceID) is duplicated"
+                )
+            }
+            let record = ValidatedCandidateRecord(
+                uid: uid,
+                sourceID: sourceID,
+                trainID: trainID,
+                startISIIndex: start,
+                endISIIndex: end
+            )
+            guard recordsByUID.updateValue(record, forKey: uid) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "candidate \(uid) is duplicated"
+                )
+            }
+        }
+        return recordsByUID
+    }
+
+    private static func validatedISIRecords(
+        identity: DetectionRunIdentity,
+        _ table: STPDResultTableData
+    ) throws -> [String: ValidatedISIRecord] {
+        let uidIndex = try columnIndex("isi_uid", in: table)
+        let trainIDIndex = try columnIndex("train_id", in: table)
+        let trainNameIndex = try columnIndex("train_name", in: table)
+        let isiIndex = try columnIndex("isi_index", in: table)
+        let automaticPatternIndex = try columnIndex(
+            "auto_pattern",
+            in: table
+        )
+        let automaticSubtypeIndex = try columnIndex(
+            "auto_subtype",
+            in: table
+        )
+        let candidateUIDIndex = try columnIndex(
+            "auto_candidate_uid",
+            in: table
+        )
+        let sourceCandidateIDIndex = try columnIndex(
+            "auto_source_candidate_id",
+            in: table
+        )
+        let finalPatternIndex = try columnIndex("final_pattern", in: table)
+        let finalSubtypeIndex = try columnIndex("final_subtype", in: table)
+        let finalSourceIndex = try columnIndex("final_source", in: table)
+        let manualVetoIndex = try columnIndex(
+            "manual_veto_suppressed",
+            in: table
+        )
+        let reviewNoteIndex = try columnIndex("review_note", in: table)
+        var recordsByUID: [String: ValidatedISIRecord] = [:]
+
+        for row in table.rows {
+            let uid = row[uidIndex]
+            let trainID = row[trainIDIndex]
+            let index = try parseInteger(
+                row[isiIndex],
+                table: table,
+                column: "isi_index"
+            )
+            let expectedUID = STPDResultPackageBuilder.stableISIUID(
+                datasetDigest: identity.datasetDigest,
+                trainID: trainID,
+                isiIndex: index
+            )
+            guard index > 0, uid == expectedUID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "ISI \(uid) does not match its stable train/index identity"
+                )
+            }
+            let record = ValidatedISIRecord(
+                uid: uid,
+                trainID: trainID,
+                trainName: row[trainNameIndex],
+                index: index,
+                automaticPattern: row[automaticPatternIndex],
+                automaticSubtype: row[automaticSubtypeIndex],
+                automaticCandidateUID: row[candidateUIDIndex],
+                automaticSourceCandidateID: row[sourceCandidateIDIndex],
+                finalPattern: row[finalPatternIndex],
+                finalSubtype: row[finalSubtypeIndex],
+                finalSource: row[finalSourceIndex],
+                manualVetoSuppressed: try parseBoolean(
+                    row[manualVetoIndex],
+                    table: table,
+                    column: "manual_veto_suppressed"
+                ),
+                reviewNote: row[reviewNoteIndex]
+            )
+            guard recordsByUID.updateValue(record, forKey: uid) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "ISI \(uid) is duplicated"
+                )
+            }
+        }
+        return recordsByUID
+    }
+
+    private static func validateReviewRows(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData,
+        candidateTable: STPDResultTableData
+    ) throws -> [String: ValidatedReviewRecord] {
+        let reviewUIDIndex = try columnIndex("review_uid", in: table)
+        let candidateUIDIndex = try columnIndex("candidate_uid", in: table)
+        let sourceCandidateIDIndex = try columnIndex(
+            "source_candidate_id",
+            in: table
+        )
+        let statusIndex = try columnIndex("status", in: table)
+        let reviewerIndex = try columnIndex("reviewer", in: table)
+        let noteIndex = try columnIndex("note", in: table)
+        let reviewedRunIndex = try columnIndex("reviewed_run_id", in: table)
+        let linksIndex = try columnIndex("linked_isi_uids", in: table)
+        let scopeIndex = try columnIndex("link_scope", in: table)
+        let reviewedAtIndex = try columnIndex("reviewed_at", in: table)
+        let reviewedAtExactIndex = try columnIndex(
+            "reviewed_at_unix_sec",
+            in: table
+        )
+        let candidatesByUID = try validatedCandidateRecords(candidateTable)
+        var reviewsByUID: [String: ValidatedReviewRecord] = [:]
+
+        for row in table.rows {
+            let reviewUID = row[reviewUIDIndex]
+            guard let status = STPDCandidateReviewStatus(
+                rawValue: row[statusIndex]
+            ) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "review \(reviewUID) has an unknown status"
+                )
+            }
+            let reviewedAt = row[reviewedAtIndex]
+            let reviewedAtExact = row[reviewedAtExactIndex]
+            var reviewedAtDate: Date? = nil
+            if reviewedAt.isEmpty != reviewedAtExact.isEmpty {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "review \(reviewUID) has only one of its two review-time representations"
+                )
+            }
+            if !reviewedAt.isEmpty {
+                guard STPDResultTimestamp.exactSeconds(reviewedAt) != nil else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "review \(reviewUID) has an invalid review time"
+                    )
+                }
+                let exact = try parseFiniteReal(
+                    reviewedAtExact,
+                    table: table,
+                    column: "reviewed_at_unix_sec"
+                )
+                guard canonicalTimestamp(
+                    reviewedAt,
+                    matchesExactSeconds: exact
+                ) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "review \(reviewUID) has contradictory review timestamps"
+                    )
+                }
+                reviewedAtDate = Date(timeIntervalSince1970: exact)
+            }
+            let expectedReviewUID = STPDCandidateReviewIdentity.make(
+                candidateUID: row[candidateUIDIndex],
+                status: status,
+                reviewer: row[reviewerIndex],
+                note: row[noteIndex],
+                reviewedAtUnixSec: reviewedAtExact,
+                reviewedRunID: row[reviewedRunIndex]
+            )
+            guard reviewUID == expectedReviewUID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "review \(reviewUID) does not match its semantic identity"
+                )
+            }
+            let candidateUID = row[candidateUIDIndex]
+            let sourceCandidateID = row[sourceCandidateIDIndex]
+            guard let candidate = candidatesByUID[candidateUID],
+                  candidate.sourceID == sourceCandidateID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "review \(reviewUID) candidate UID/source ID pair is inconsistent"
+                )
+            }
+
+            let linkedUIDs = try canonicalDelimitedValues(
+                row[linksIndex],
+                table: table,
+                column: "linked_isi_uids",
+                requireSorted: true
+            )
+            let reviewRecord = ValidatedReviewRecord(
+                uid: reviewUID,
+                candidateUID: candidateUID,
+                sourceCandidateID: sourceCandidateID,
+                status: status,
+                reviewer: row[reviewerIndex],
+                note: row[noteIndex],
+                reviewedAt: reviewedAtDate,
+                reviewedRunID: row[reviewedRunIndex],
+                linkedISIUIDs: linkedUIDs,
+                linkScope: row[scopeIndex]
+            )
+            guard reviewsByUID.updateValue(
+                reviewRecord,
+                forKey: reviewUID
+            ) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "review \(reviewUID) is duplicated"
+                )
+            }
+
+            if status.grantsReviewAuthority {
+                guard row[reviewedRunIndex] == identity.runID,
+                      !row[reviewerIndex]
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      !reviewedAt.isEmpty else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "authority-bearing review \(reviewUID) lacks exact run, reviewer, or time"
+                    )
+                }
+            }
+
+            if linkedUIDs.isEmpty {
+                guard row[scopeIndex] == "non_authoritative" else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "unlinked review \(reviewUID) claims public authority"
+                    )
+                }
+                continue
+            }
+
+            guard status.grantsReviewAuthority,
+                  row[scopeIndex] == "public_projection" else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "linked review \(reviewUID) lacks public status authority"
+                )
+            }
+        }
+        return reviewsByUID
+    }
+
+    private static func validateExpectedReviewSet(
+        identity: DetectionRunIdentity,
+        expected: [STPDCandidateReviewInput],
+        actual: [String: ValidatedReviewRecord],
+        candidatesByUID: [String: ValidatedCandidateRecord]
+    ) throws {
+        let candidateUIDBySourceID = Dictionary(
+            uniqueKeysWithValues: candidatesByUID.values.map {
+                ($0.sourceID, $0.uid)
+            }
+        )
+        var expectedUIDs = Set<String>()
+        for review in expected {
+            guard let candidateUID =
+                    candidateUIDBySourceID[review.sourceCandidateID] else {
+                throw STPDResultPackageError.invalidInput(
+                    "sealed review references unknown candidate " +
+                        review.sourceCandidateID
+                )
+            }
+            let uid = STPDCandidateReviewIdentity.make(
+                candidateUID: candidateUID,
+                status: review.status,
+                reviewer: review.reviewer,
+                note: review.note,
+                reviewedAtUnixSec: STPDCanonicalValue.double(
+                    review.reviewedAt?.timeIntervalSince1970
+                ),
+                reviewedRunID: review.reviewedRunID
+            )
+            guard expectedUIDs.insert(uid).inserted else {
+                throw STPDResultPackageError.invalidInput(
+                    "sealed review set contains duplicate semantic review \(uid)"
+                )
+            }
+            if review.status.grantsReviewAuthority {
+                guard review.reviewedRunID == identity.runID else {
+                    throw STPDResultPackageError.invalidInput(
+                        "sealed authority review \(uid) targets a different run"
+                    )
+                }
+            }
+        }
+        guard Set(actual.keys) == expectedUIDs else {
+            throw STPDResultPackageError.invalidTable(
+                table: STPDResultTable.reviewStatus.rawValue,
+                reason:
+                    "review rows do not exactly match the sealed review set; " +
+                    "missing=\(expectedUIDs.subtracting(actual.keys).sorted().joined(separator: "|")); " +
+                    "unexpected=\(Set(actual.keys).subtracting(expectedUIDs).sorted().joined(separator: "|"))"
+            )
+        }
+    }
+
+    private static func validateExpectedManualSet(
+        identity: DetectionRunIdentity,
+        expected: [ManualAnnotation],
+        actual: ValidatedManualAuthority,
+        dataset: SpikeDataset
+    ) throws {
+        let resolvedExpected = try STPDResultPackageBuilder
+            .resolvedManualAnnotations(expected, dataset: dataset)
+        let expectedByUID = Dictionary(
+            uniqueKeysWithValues: resolvedExpected.map { annotation in
+                let sourceUUID = annotation.id.uuidString.lowercased()
+                let uid = STPDStableIdentifier.make(
+                    prefix: "manual",
+                    domain: "stpd_manual_annotation_uid_v1",
+                    components: [identity.datasetDigest, sourceUUID]
+                )
+                return (uid, manualSnapshotComponents(annotation))
+            }
+        )
+        let actualByUID = actual.recordsByUID.mapValues {
+            manualSnapshotComponents($0.annotation)
+        }
+        guard expectedByUID == actualByUID else {
+            let expectedUIDs = Set(expectedByUID.keys)
+            let actualUIDs = Set(actualByUID.keys)
+            let changed = expectedUIDs.intersection(actualUIDs)
+                .filter { expectedByUID[$0] != actualByUID[$0] }
+                .sorted()
+            throw STPDResultPackageError.invalidTable(
+                table: STPDResultTable.manualAnnotations.rawValue,
+                reason:
+                    "manual annotation snapshot does not exactly match the " +
+                    "sealed authoring input; missing=" +
+                    expectedUIDs.subtracting(actualUIDs).sorted()
+                        .joined(separator: "|") +
+                    "; unexpected=" +
+                    actualUIDs.subtracting(expectedUIDs).sorted()
+                        .joined(separator: "|") +
+                    "; changed=" + changed.joined(separator: "|")
+            )
+        }
+    }
+
+    private static func manualSnapshotComponents(
+        _ annotation: ManualAnnotation
+    ) -> [String] {
+        [
+            annotation.id.uuidString.lowercased(),
+            annotation.trainID,
+            annotation.label.rawValue,
+            annotation.polarity.rawValue,
+            STPDCanonicalValue.double(annotation.normalizedStartSec),
+            STPDCanonicalValue.double(annotation.normalizedEndSec),
+            annotation.startISIIndex.map(String.init) ?? "",
+            annotation.endISIIndex.map(String.init) ?? "",
+            annotation.startSpikeIndex.map(String.init) ?? "",
+            annotation.endSpikeIndex.map(String.init) ?? "",
+            annotation.note ?? "",
+            annotation.annotator ?? "",
+            annotation.annotatorIdentitySource?.rawValue ?? "",
+            STPDCanonicalValue.double(
+                annotation.createdAt.timeIntervalSince1970
+            ),
+            STPDCanonicalValue.double(
+                annotation.updatedAt.timeIntervalSince1970
+            ),
+        ]
+    }
+
+    private static func validateManualRows(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData,
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        expectedTrainIDs: Set<String>?,
+        expectedDataset: SpikeDataset?
+    ) throws -> ValidatedManualAuthority {
+        let annotationIndex = try columnIndex("annotation_id", in: table)
+        let semanticDigestIndex = try columnIndex(
+            "annotation_semantic_digest",
+            in: table
+        )
+        let sourceUUIDIndex = try columnIndex(
+            "source_annotation_uuid",
+            in: table
+        )
+        let trainIDIndex = try columnIndex("train_id", in: table)
+        let labelIndex = try columnIndex("label", in: table)
+        let polarityIndex = try columnIndex("polarity", in: table)
+        let startSecIndex = try columnIndex("start_sec", in: table)
+        let endSecIndex = try columnIndex("end_sec", in: table)
+        let linksIndex = try columnIndex("linked_isi_uids", in: table)
+        let scopeIndex = try columnIndex("link_scope", in: table)
+        let noteIndex = try columnIndex("note", in: table)
+        let annotatorIndex = try columnIndex("annotator", in: table)
+        let identitySourceIndex = try columnIndex(
+            "annotator_identity_source",
+            in: table
+        )
+        let startISIIndex = try columnIndex("start_isi_index", in: table)
+        let endISIIndex = try columnIndex("end_isi_index", in: table)
+        let startSpikeArrayIndex = try columnIndex(
+            "start_spike_array_index",
+            in: table
+        )
+        let endSpikeArrayIndex = try columnIndex(
+            "end_spike_array_index",
+            in: table
+        )
+        let startSpikeOrdinalIndex = try columnIndex(
+            "start_spike_ordinal",
+            in: table
+        )
+        let endSpikeOrdinalIndex = try columnIndex(
+            "end_spike_ordinal",
+            in: table
+        )
+        let createdIndex = try columnIndex("created_at", in: table)
+        let updatedIndex = try columnIndex("updated_at", in: table)
+        let createdExactIndex = try columnIndex(
+            "created_at_unix_sec",
+            in: table
+        )
+        let updatedExactIndex = try columnIndex(
+            "updated_at_unix_sec",
+            in: table
+        )
+
+        var activeSpikeOnly = Set<String>()
+        var recordsByUID: [String: ValidatedManualRecord] = [:]
+        var annotations: [ManualAnnotation] = []
+        var seenAnnotationUUIDs = Set<UUID>()
+        for row in table.rows {
+            let annotationUID = row[annotationIndex]
+            let sourceUUID = row[sourceUUIDIndex]
+            guard let uuid = UUID(uuidString: sourceUUID),
+                  uuid.uuidString.lowercased() == sourceUUID,
+                  annotationUID == STPDStableIdentifier.make(
+                    prefix: "manual",
+                    domain: "stpd_manual_annotation_uid_v1",
+                    components: [
+                        identity.datasetDigest,
+                        sourceUUID,
+                    ]
+                  ) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) does not match its stable source identity"
+                )
+            }
+            let semanticValues = Dictionary(
+                uniqueKeysWithValues: zip(table.headers, row)
+            )
+            guard row[semanticDigestIndex] ==
+                    STPDResultPackageBuilder.manualAnnotationSemanticDigest(
+                        values: semanticValues
+                    ) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) does not match its semantic digest"
+                )
+            }
+            let trainID = row[trainIDIndex]
+            if let expectedTrainIDs, !expectedTrainIDs.contains(trainID) {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) references unknown train \(trainID)"
+                )
+            }
+            guard let label = ManualAnnotationLabel(rawValue: row[labelIndex]),
+                  row[polarityIndex] == label.polarity.rawValue else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has contradictory label polarity"
+                )
+            }
+            let startSec = try parseFiniteReal(
+                row[startSecIndex],
+                table: table,
+                column: "start_sec"
+            )
+            let endSec = try parseFiniteReal(
+                row[endSecIndex],
+                table: table,
+                column: "end_sec"
+            )
+            guard startSec <= endSec else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has reversed time geometry"
+                )
+            }
+            let startISI = try parseOptionalInteger(
+                row[startISIIndex],
+                table: table,
+                column: "start_isi_index"
+            )
+            let endISI = try parseOptionalInteger(
+                row[endISIIndex],
+                table: table,
+                column: "end_isi_index"
+            )
+            guard (startISI == nil) == (endISI == nil),
+                  (startISI.map { $0 > 0 }) ?? true,
+                  (endISI.map { $0 > 0 }) ?? true,
+                  orderedOptionalPair(startISI, endISI) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has inconsistent ISI geometry"
+                )
+            }
+            let startSpike = try parseOptionalInteger(
+                row[startSpikeArrayIndex],
+                table: table,
+                column: "start_spike_array_index"
+            )
+            let endSpike = try parseOptionalInteger(
+                row[endSpikeArrayIndex],
+                table: table,
+                column: "end_spike_array_index"
+            )
+            let startOrdinal = try parseOptionalInteger(
+                row[startSpikeOrdinalIndex],
+                table: table,
+                column: "start_spike_ordinal"
+            )
+            let endOrdinal = try parseOptionalInteger(
+                row[endSpikeOrdinalIndex],
+                table: table,
+                column: "end_spike_ordinal"
+            )
+            let expectedStartOrdinal = incrementedWithoutOverflow(startSpike)
+            let expectedEndOrdinal = incrementedWithoutOverflow(endSpike)
+            guard (startSpike == nil) == (endSpike == nil),
+                  (startSpike == nil) == (startOrdinal == nil),
+                  (endSpike == nil) == (endOrdinal == nil),
+                  (startSpike.map { $0 >= 0 }) ?? true,
+                  (endSpike.map { $0 >= 0 }) ?? true,
+                  orderedOptionalPair(startSpike, endSpike),
+                  startOrdinal == expectedStartOrdinal,
+                  endOrdinal == expectedEndOrdinal else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has inconsistent spike geometry"
+                )
+            }
+            guard STPDResultTimestamp.exactSeconds(row[createdIndex]) != nil,
+                  STPDResultTimestamp.exactSeconds(row[updatedIndex]) != nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has an invalid timestamp"
+                )
+            }
+            let createdExact = try parseFiniteReal(
+                row[createdExactIndex],
+                table: table,
+                column: "created_at_unix_sec"
+            )
+            let updatedExact = try parseFiniteReal(
+                row[updatedExactIndex],
+                table: table,
+                column: "updated_at_unix_sec"
+            )
+            guard canonicalTimestamp(
+                    row[createdIndex],
+                    matchesExactSeconds: createdExact
+                  ),
+                  canonicalTimestamp(
+                    row[updatedIndex],
+                    matchesExactSeconds: updatedExact
+                  ),
+                  updatedExact >= createdExact else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has contradictory or reversed timestamps"
+                )
+            }
+
+            let identitySource: ManualAnnotationIdentitySource?
+            if row[identitySourceIndex].isEmpty {
+                identitySource = nil
+            } else {
+                guard let parsed = ManualAnnotationIdentitySource(
+                    rawValue: row[identitySourceIndex]
+                ) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "manual annotation \(annotationUID) has an unknown annotator identity source"
+                    )
+                }
+                identitySource = parsed
+            }
+            let annotation = ManualAnnotation(
+                id: uuid,
+                trainID: trainID,
+                label: label,
+                startSec: startSec,
+                endSec: endSec,
+                startISIIndex: startISI,
+                endISIIndex: endISI,
+                startSpikeIndex: startSpike,
+                endSpikeIndex: endSpike,
+                note: row[noteIndex].isEmpty ? nil : row[noteIndex],
+                annotator: row[annotatorIndex].isEmpty
+                    ? nil
+                    : row[annotatorIndex],
+                annotatorIdentitySource: identitySource,
+                createdAt: Date(timeIntervalSince1970: createdExact),
+                updatedAt: Date(timeIntervalSince1970: updatedExact)
+            )
+            guard seenAnnotationUUIDs.insert(uuid).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation source UUID \(sourceUUID) is duplicated"
+                )
+            }
+
+            let linkedUIDs = try canonicalDelimitedValues(
+                row[linksIndex],
+                table: table,
+                column: "linked_isi_uids",
+                requireSorted: true
+            )
+            let linkedISIs = try linkedUIDs.map { linkedUID in
+                guard let isi = isiRecordsByUID[linkedUID],
+                      isi.trainID == trainID else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "manual annotation \(annotationUID) links an ISI outside its train"
+                    )
+                }
+                return isi
+            }
+            if let lower = startISI, let upper = endISI {
+                let directLinks = linkedISIs.filter {
+                    lower ... upper ~= $0.index
+                }
+                let structurallyInducedLinks = linkedISIs.filter {
+                    !(lower ... upper ~= $0.index)
+                }
+                if !structurallyInducedLinks.isEmpty {
+                    let directCandidatePairs = Set(directLinks.compactMap {
+                        isi -> String? in
+                        guard !isi.automaticCandidateUID.isEmpty,
+                              !isi.automaticSourceCandidateID.isEmpty else {
+                            return nil
+                        }
+                        return "\(isi.automaticCandidateUID)\u{1f}" +
+                            isi.automaticSourceCandidateID
+                    })
+                    guard label.polarity == .negative,
+                          !directLinks.isEmpty,
+                          directCandidatePairs.count == 1,
+                          let governingPair = directCandidatePairs.first,
+                          linkedISIs.allSatisfy({
+                              "\($0.automaticCandidateUID)\u{1f}" +
+                                $0.automaticSourceCandidateID ==
+                                governingPair
+                          }) else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: table.contract.table.rawValue,
+                            reason:
+                                "manual annotation \(annotationUID) has an " +
+                                "unbound structurally induced ISI link"
+                        )
+                    }
+                }
+            }
+            let scope = row[scopeIndex]
+            let authorityBearing =
+                scope == "public_projection" || scope == "active_spike_only"
+            if authorityBearing {
+                let annotator = row[annotatorIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !annotator.isEmpty,
+                      let source = ManualAnnotationIdentitySource(
+                        rawValue: row[identitySourceIndex]
+                      ),
+                      source != .unknown else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "authority-bearing manual annotation \(annotationUID) lacks a known annotator identity"
+                    )
+                }
+            }
+
+            switch scope {
+            case "public_projection":
+                guard !linkedUIDs.isEmpty else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "manual annotation \(annotationUID) claims public projection without an ISI link"
+                    )
+                }
+            case "active_spike_only":
+                guard linkedUIDs.isEmpty,
+                      startISI == nil,
+                      endISI == nil,
+                      let startSpike,
+                      let endSpike,
+                      startSpike == endSpike else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "active spike-only annotation \(annotationUID) has inconsistent spike geometry or an ISI link"
+                    )
+                }
+                activeSpikeOnly.insert(annotationUID)
+            case "inactive_or_superseded":
+                guard linkedUIDs.isEmpty else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "inactive manual annotation \(annotationUID) retains an ISI link"
+                    )
+                }
+            default:
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) has unknown link scope \(scope)"
+                )
+            }
+            let record = ValidatedManualRecord(
+                uid: annotationUID,
+                annotation: annotation,
+                linkedISIUIDs: linkedUIDs,
+                linkScope: scope
+            )
+            guard recordsByUID.updateValue(
+                record,
+                forKey: annotationUID
+            ) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "manual annotation \(annotationUID) is duplicated"
+                )
+            }
+            annotations.append(annotation)
+        }
+
+        if let expectedDataset {
+            let resolved = try STPDResultPackageBuilder.resolvedManualAnnotations(
+                annotations,
+                dataset: expectedDataset
+            )
+            let resolvedByID: [UUID: ManualAnnotation] = Dictionary(
+                uniqueKeysWithValues: resolved.map { ($0.id, $0) }
+            )
+            for annotation in annotations {
+                guard let expected = resolvedByID[annotation.id],
+                      annotation.startISIIndex == expected.startISIIndex,
+                      annotation.endISIIndex == expected.endISIIndex,
+                      annotation.startSpikeIndex == expected.startSpikeIndex,
+                      annotation.endSpikeIndex == expected.endSpikeIndex else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason:
+                            "manual annotation \(annotation.id.uuidString.lowercased()) " +
+                            "cached geometry does not match the dataset-resolved geometry"
+                    )
+                }
+            }
+        } else {
+            try STPDResultPackageInput.validateNoAmbiguousManualEditTies(
+                annotations
+            )
+        }
+
+        return ValidatedManualAuthority(
+            recordsByUID: recordsByUID,
+            activeSpikeOnlyUIDs: activeSpikeOnly
+        )
+    }
+
+    private static func validateReviewEvidence(
+        identity: DetectionRunIdentity,
+        sourceMode: STPDResultPackageSourceMode,
+        manualTable: STPDResultTableData,
+        reviewTable: STPDResultTableData,
+        candidateTable: STPDResultTableData,
+        eventTable: STPDResultTableData,
+        isiTable: STPDResultTableData,
+        expectedTrainIDs: Set<String>?,
+        expectedDataset: SpikeDataset?,
+        expectedQualitySettings: SpikeQualitySettings?,
+        expectedCandidateReviews: [STPDCandidateReviewInput]?,
+        expectedManualAnnotations: [ManualAnnotation]?,
+        publicCandidateUIDs: Set<String>
+    ) throws {
+        let isiRecordsByUID = try validatedISIRecords(
+            identity: identity,
+            isiTable
+        )
+        let candidatesByUID = try validatedCandidateRecords(candidateTable)
+        let manualAuthority = try validateManualRows(
+            identity: identity,
+            table: manualTable,
+            isiRecordsByUID: isiRecordsByUID,
+            expectedTrainIDs: expectedTrainIDs,
+            expectedDataset: expectedDataset
+        )
+        let reviewsByUID = try validateReviewRows(
+            identity: identity,
+            table: reviewTable,
+            candidateTable: candidateTable
+        )
+        if let expectedManualAnnotations, let expectedDataset {
+            try validateExpectedManualSet(
+                identity: identity,
+                expected: expectedManualAnnotations,
+                actual: manualAuthority,
+                dataset: expectedDataset
+            )
+        }
+        if let expectedCandidateReviews {
+            try validateExpectedReviewSet(
+                identity: identity,
+                expected: expectedCandidateReviews,
+                actual: reviewsByUID,
+                candidatesByUID: candidatesByUID
+            )
+        }
+        for isi in isiRecordsByUID.values {
+            let candidateUID = isi.automaticCandidateUID
+            let sourceCandidateID = isi.automaticSourceCandidateID
+            if candidateUID.isEmpty && sourceCandidateID.isEmpty {
+                continue
+            }
+            guard !candidateUID.isEmpty,
+                  !sourceCandidateID.isEmpty,
+                  let candidate = candidatesByUID[candidateUID],
+                  candidate.sourceID == sourceCandidateID,
+                  candidate.trainID == isi.trainID,
+                  candidate.contains(isiIndex: isi.index) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason: "ISI \(isi.uid) automatic candidate UID/source identity is inconsistent"
+                )
+            }
+        }
+
         let manualUIDs = try nonemptyValues(
             table: manualTable,
             column: "annotation_id"
@@ -5683,6 +9849,7 @@ private enum STPDResultPackageValidator {
         let evidenceUIDs = manualUIDs.union(reviewUIDs)
         let isiUIDs = try nonemptyValues(table: isiTable, column: "isi_uid")
         var evidenceByISIUID: [String: Set<String>] = [:]
+        var changedProjectionByISIUID: [String: Bool] = [:]
         var anyChangedProjection = false
 
         let isiUIDIndex = try columnIndex("isi_uid", in: isiTable)
@@ -5691,7 +9858,12 @@ private enum STPDResultPackageValidator {
         let isiChangedIndex = try columnIndex("review_changed_projection", in: isiTable)
         for row in isiTable.rows {
             let isiUID = row[isiUIDIndex]
-            let rowEvidence = delimitedValues(row[isiEvidenceIndex])
+            let rowEvidence = try canonicalDelimitedValues(
+                row[isiEvidenceIndex],
+                table: isiTable,
+                column: "review_evidence_uids",
+                requireSorted: true
+            )
             let evidencePresent = try parseBoolean(
                 row[isiPresentIndex],
                 table: isiTable,
@@ -5724,13 +9896,19 @@ private enum STPDResultPackageValidator {
             }
             anyChangedProjection = anyChangedProjection || changedProjection
             evidenceByISIUID[isiUID] = rowEvidence
+            changedProjectionByISIUID[isiUID] = changedProjection
         }
 
         let eventEvidenceIndex = try columnIndex("review_evidence_uids", in: eventTable)
         let eventPresentIndex = try columnIndex("review_evidence_present", in: eventTable)
         let eventChangedIndex = try columnIndex("review_changed_projection", in: eventTable)
         for row in eventTable.rows {
-            let rowEvidence = delimitedValues(row[eventEvidenceIndex])
+            let rowEvidence = try canonicalDelimitedValues(
+                row[eventEvidenceIndex],
+                table: eventTable,
+                column: "review_evidence_uids",
+                requireSorted: true
+            )
             let evidencePresent = try parseBoolean(
                 row[eventPresentIndex],
                 table: eventTable,
@@ -5764,28 +9942,709 @@ private enum STPDResultPackageValidator {
             isiUIDs: isiUIDs,
             evidenceByISIUID: evidenceByISIUID
         )
+        if let expectedDataset, let expectedQualitySettings {
+            try validateDatasetBackedReviewCausality(
+                identity: identity,
+                dataset: expectedDataset,
+                qualitySettings: expectedQualitySettings,
+                manualAuthority: manualAuthority,
+                reviewsByUID: reviewsByUID,
+                candidatesByUID: candidatesByUID,
+                publicCandidateUIDs: publicCandidateUIDs,
+                isiRecordsByUID: isiRecordsByUID,
+                evidenceByISIUID: evidenceByISIUID,
+                changedProjectionByISIUID: changedProjectionByISIUID
+            )
+        } else {
+            try validateReviewCausality(
+                reviewsByUID: reviewsByUID,
+                candidatesByUID: candidatesByUID,
+                isiRecordsByUID: isiRecordsByUID,
+                manualUIDs: manualUIDs,
+                evidenceByISIUID: evidenceByISIUID,
+                changedProjectionByISIUID: changedProjectionByISIUID
+            )
+        }
+
+        let linkedEvidenceUIDs = evidenceByISIUID.values.reduce(into: Set<String>()) {
+            $0.formUnion($1)
+        }
+        let linkedManualUIDs = linkedEvidenceUIDs.intersection(manualUIDs)
+        let linkedReviewUIDs = linkedEvidenceUIDs.intersection(reviewUIDs)
 
         switch sourceMode {
         case .automatic:
-            guard manualTable.rows.isEmpty,
-                  reviewTable.rows.isEmpty,
-                  evidenceUIDs.isEmpty,
-                  evidenceByISIUID.values.allSatisfy(\.isEmpty),
-                  !anyChangedProjection else {
+            guard evidenceByISIUID.values.allSatisfy(\.isEmpty),
+                  !anyChangedProjection,
+                  manualAuthority.activeSpikeOnlyUIDs.isEmpty else {
                 throw STPDResultPackageError.invalidTable(
                     table: "review authority",
-                    reason: "automatic mode contains review evidence"
+                    reason: "automatic mode contains effective review authority"
+                )
+            }
+        case .manual:
+            guard !linkedManualUIDs.isEmpty
+                    || !manualAuthority.activeSpikeOnlyUIDs.isEmpty,
+                  linkedReviewUIDs.isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "review authority",
+                    reason: "manual mode requires manual ISI authority or an active spike-only mark"
                 )
             }
         case .reviewed:
-            guard !evidenceUIDs.isEmpty,
-                  evidenceByISIUID.values.contains(where: { !$0.isEmpty }) else {
+            guard !linkedReviewUIDs.isEmpty else {
                 throw STPDResultPackageError.invalidTable(
                     table: "review authority",
-                    reason: "reviewed mode has no evidence-bearing ISI"
+                    reason: "reviewed mode has no candidate-review evidence-bearing ISI"
                 )
             }
         }
+    }
+
+    private static func validateReviewCausality(
+        reviewsByUID: [String: ValidatedReviewRecord],
+        candidatesByUID: [String: ValidatedCandidateRecord],
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        manualUIDs: Set<String>,
+        evidenceByISIUID: [String: Set<String>],
+        changedProjectionByISIUID: [String: Bool]
+    ) throws {
+        for (reviewUID, review) in reviewsByUID {
+            let reverseLinkedISIUIDs = Set(evidenceByISIUID.compactMap {
+                isiUID, evidenceUIDs -> String? in
+                evidenceUIDs.contains(reviewUID) ? isiUID : nil
+            })
+            guard reverseLinkedISIUIDs == review.linkedISIUIDs else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "review authority",
+                    reason: "review \(reviewUID) does not exactly match its declared ISI links"
+                )
+            }
+            let linkedISIUIDs = reverseLinkedISIUIDs.sorted()
+            guard !linkedISIUIDs.isEmpty else {
+                continue
+            }
+            guard let candidate = candidatesByUID[review.candidateUID],
+                  candidate.sourceID == review.sourceCandidateID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: "review authority",
+                    reason: "review \(reviewUID) references an unresolved candidate identity"
+                )
+            }
+
+            for isiUID in linkedISIUIDs {
+                guard let changedProjection =
+                        changedProjectionByISIUID[isiUID],
+                      let evidenceUIDs = evidenceByISIUID[isiUID],
+                      let isi = isiRecordsByUID[isiUID] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: "review authority",
+                        reason: "review \(reviewUID) links to an unresolved ISI"
+                    )
+                }
+                guard isi.trainID == candidate.trainID,
+                      candidate.contains(isiIndex: isi.index),
+                      isi.automaticCandidateUID == review.candidateUID,
+                      isi.automaticSourceCandidateID ==
+                        review.sourceCandidateID else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: "review authority",
+                        reason: "review \(reviewUID) links an ISI outside its reviewed candidate"
+                    )
+                }
+
+                switch review.status {
+                case .accepted:
+                    guard !changedProjection else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: "review authority",
+                            reason: "accepted review \(reviewUID) changes ISI \(isiUID)"
+                        )
+                    }
+                case .rejected:
+                    guard changedProjection else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: "review authority",
+                            reason: "rejected review \(reviewUID) does not causally change ISI \(isiUID)"
+                        )
+                    }
+                case .modified:
+                    guard changedProjection,
+                          !evidenceUIDs.intersection(manualUIDs).isEmpty else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: "review authority",
+                            reason: "modified review \(reviewUID) lacks changed manual replacement evidence for ISI \(isiUID)"
+                        )
+                    }
+                case .needsReview:
+                    throw STPDResultPackageError.invalidTable(
+                        table: "review authority",
+                        reason: "needs-review record \(reviewUID) cannot govern an ISI"
+                    )
+                }
+            }
+        }
+    }
+
+    private static func validateDatasetBackedReviewCausality(
+        identity: DetectionRunIdentity,
+        dataset: SpikeDataset,
+        qualitySettings: SpikeQualitySettings,
+        manualAuthority: ValidatedManualAuthority,
+        reviewsByUID: [String: ValidatedReviewRecord],
+        candidatesByUID: [String: ValidatedCandidateRecord],
+        publicCandidateUIDs: Set<String>,
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        evidenceByISIUID: [String: Set<String>],
+        changedProjectionByISIUID: [String: Bool]
+    ) throws {
+        let annotations = manualAuthority.recordsByUID.values
+            .map(\.annotation)
+        let annotationsByTrain = Dictionary(
+            grouping: annotations,
+            by: \.trainID
+        )
+        let projectionsByTrain = manualProjections(
+            dataset: dataset,
+            qualitySettings: qualitySettings,
+            annotationsByTrain: annotationsByTrain,
+            isiRecordsByUID: isiRecordsByUID
+        )
+        let authoritativeRejectedSourceIDs = Set(
+            reviewsByUID.values.compactMap { review -> String? in
+                review.status == .rejected
+                    && publicCandidateUIDs.contains(review.candidateUID)
+                    ? review.sourceCandidateID
+                    : nil
+            }
+        )
+        let fullProjection = recomputedISIProjection(
+            isiRecordsByUID: isiRecordsByUID,
+            projectionsByTrain: projectionsByTrain,
+            rejectedSourceCandidateIDs: authoritativeRejectedSourceIDs
+        )
+        let baselineProjection = recomputedISIProjection(
+            isiRecordsByUID: isiRecordsByUID,
+            projectionsByTrain: manualProjections(
+                dataset: dataset,
+                qualitySettings: qualitySettings,
+                annotationsByTrain: [:],
+                isiRecordsByUID: isiRecordsByUID
+            ),
+            rejectedSourceCandidateIDs: []
+        )
+
+        for (isiUID, record) in isiRecordsByUID {
+            guard let recomputed = fullProjection[isiUID],
+                  let baseline = baselineProjection[isiUID] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.isiLabelsFinal.rawValue,
+                    reason: "ISI \(isiUID) is absent from a recomputed public projection"
+                )
+            }
+            let exported = RecomputedISIProjection(
+                finalPattern: record.finalPattern,
+                finalSubtype: record.finalSubtype,
+                finalSource: record.finalSource,
+                manualVetoSuppressed: record.manualVetoSuppressed,
+                reviewNote: record.reviewNote
+            )
+            guard exported == recomputed else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.isiLabelsFinal.rawValue,
+                    reason:
+                        "ISI \(isiUID) final label/source tuple does not match " +
+                        "the dataset-recomputed manual/review projection"
+                )
+            }
+            guard changedProjectionByISIUID[isiUID]
+                    == (recomputed != baseline) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.isiLabelsFinal.rawValue,
+                    reason:
+                        "ISI \(isiUID) review_changed_projection does not " +
+                        "match the recomputed automatic baseline delta"
+                )
+            }
+        }
+
+        let manualOwnerUIDsByISI = recomputedManualEvidenceOwners(
+            identity: identity,
+            dataset: dataset,
+            qualitySettings: qualitySettings,
+            manualAuthority: manualAuthority,
+            annotationsByTrain: annotationsByTrain,
+            projectionsByTrain: projectionsByTrain,
+            isiRecordsByUID: isiRecordsByUID,
+            fullProjection: fullProjection,
+            baselineProjection: baselineProjection,
+            rejectedSourceCandidateIDs: authoritativeRejectedSourceIDs
+        )
+        let reviewOwnerUIDsByISI = try recomputedReviewEvidenceOwners(
+            reviewsByUID: reviewsByUID,
+            candidatesByUID: candidatesByUID,
+            publicCandidateUIDs: publicCandidateUIDs,
+            isiRecordsByUID: isiRecordsByUID,
+            projectionsByTrain: projectionsByTrain,
+            fullProjection: fullProjection,
+            baselineProjection: baselineProjection,
+            manualOwnerUIDsByISI: manualOwnerUIDsByISI,
+            rejectedSourceCandidateIDs: authoritativeRejectedSourceIDs
+        )
+
+        for (manualUID, record) in manualAuthority.recordsByUID {
+            let expected = Set(manualOwnerUIDsByISI.compactMap {
+                isiUID, ownerUIDs -> String? in
+                ownerUIDs.contains(manualUID) ? isiUID : nil
+            })
+            guard record.linkedISIUIDs == expected else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.manualAnnotations.rawValue,
+                    reason:
+                        "manual annotation \(manualUID) does not link exactly " +
+                        "to its complete recomputed causal ISI set"
+                )
+            }
+            let expectedScope: String
+            if !expected.isEmpty {
+                expectedScope = "public_projection"
+            } else if manualAuthority.activeSpikeOnlyUIDs.contains(manualUID) {
+                expectedScope = "active_spike_only"
+            } else {
+                expectedScope = "inactive_or_superseded"
+            }
+            guard record.linkScope == expectedScope else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.manualAnnotations.rawValue,
+                    reason:
+                        "manual annotation \(manualUID) scope does not match " +
+                        "its recomputed public authority"
+                )
+            }
+        }
+
+        let expectedEvidenceByISI = isiRecordsByUID.keys.reduce(
+            into: [String: Set<String>]()
+        ) { result, isiUID in
+            result[isiUID] =
+                (manualOwnerUIDsByISI[isiUID] ?? [])
+                .union(reviewOwnerUIDsByISI[isiUID] ?? [])
+        }
+        for isiUID in isiRecordsByUID.keys {
+            guard evidenceByISIUID[isiUID] == expectedEvidenceByISI[isiUID] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.isiLabelsFinal.rawValue,
+                    reason:
+                        "ISI \(isiUID) review evidence is not the complete " +
+                        "recomputed causal owner set"
+                )
+            }
+        }
+    }
+
+    private static func manualProjections(
+        dataset: SpikeDataset,
+        qualitySettings: SpikeQualitySettings,
+        annotationsByTrain: [String: [ManualAnnotation]],
+        isiRecordsByUID: [String: ValidatedISIRecord]
+    ) -> [String: ManualAnnotationProjection] {
+        let recordsByTrain = Dictionary(
+            grouping: isiRecordsByUID.values,
+            by: \.trainID
+        )
+        return Dictionary(
+            uniqueKeysWithValues: dataset.trains.map { train in
+                let autoLabels = Dictionary(
+                    uniqueKeysWithValues: (recordsByTrain[train.id] ?? [])
+                        .filter { !$0.automaticPattern.isEmpty }
+                        .map { ($0.index, $0.automaticPattern) }
+                )
+                return (
+                    train.id,
+                    ManualAnnotationProjector.project(
+                        train: train,
+                        autoLabelsByISI: autoLabels,
+                        annotations: annotationsByTrain[train.id] ?? [],
+                        honorManualLock: true,
+                        manualNegativeLabelsEnabled: true,
+                        minValidISISeconds:
+                            qualitySettings.artifactThresholdSec
+                    )
+                )
+            }
+        )
+    }
+
+    private static func recomputedISIProjection(
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        projectionsByTrain: [String: ManualAnnotationProjection],
+        rejectedSourceCandidateIDs: Set<String>
+    ) -> [String: RecomputedISIProjection] {
+        var result: [String: RecomputedISIProjection] = [:]
+        for (isiUID, record) in isiRecordsByUID {
+            let projection = projectionsByTrain[record.trainID]
+            let positive = projection?
+                .manualPositiveLabelByISI[record.index]
+            let vetoed = projection?
+                .autoBurstBlockedByVetoISIs.contains(record.index) == true
+            let projected: RecomputedISIProjection
+            if let positive {
+                projected = RecomputedISIProjection(
+                    finalPattern: positive,
+                    finalSubtype: "",
+                    finalSource:
+                        ReviewedISIExportBuilder.sourceManualPositive,
+                    manualVetoSuppressed: false,
+                    reviewNote: ""
+                )
+            } else if !record.automaticSourceCandidateID.isEmpty,
+                      rejectedSourceCandidateIDs.contains(
+                        record.automaticSourceCandidateID
+                      ) {
+                projected = RecomputedISIProjection(
+                    finalPattern: "",
+                    finalSubtype: "",
+                    finalSource:
+                        ReviewedISIExportBuilder.sourceManualReviewRejected,
+                    manualVetoSuppressed: false,
+                    reviewNote: ""
+                )
+            } else if ManualAnnotationProjector.burstFamilyLabels.contains(
+                        record.automaticPattern
+                      ),
+                      vetoed {
+                projected = RecomputedISIProjection(
+                    finalPattern: "",
+                    finalSubtype: "",
+                    finalSource:
+                        ReviewedISIExportBuilder.sourceManualVetoRemoved,
+                    manualVetoSuppressed: true,
+                    reviewNote: ""
+                )
+            } else if !record.automaticPattern.isEmpty {
+                projected = RecomputedISIProjection(
+                    finalPattern: record.automaticPattern,
+                    finalSubtype: record.automaticSubtype,
+                    finalSource:
+                        ReviewedISIExportBuilder.sourceAutoProjected,
+                    manualVetoSuppressed: false,
+                    reviewNote: ""
+                )
+            } else {
+                projected = RecomputedISIProjection(
+                    finalPattern: "",
+                    finalSubtype: "",
+                    finalSource: ReviewedISIExportBuilder.sourceNone,
+                    manualVetoSuppressed: false,
+                    reviewNote: ""
+                )
+            }
+            result[isiUID] = projected
+        }
+
+        let recordsByTrain = Dictionary(
+            grouping: isiRecordsByUID.values,
+            by: \.trainID
+        )
+        for records in recordsByTrain.values {
+            let uidByIndex = Dictionary(
+                uniqueKeysWithValues: records.map { ($0.index, $0.uid) }
+            )
+            let finalLabels = Dictionary(
+                uniqueKeysWithValues: records.compactMap { record
+                    -> (Int, String)? in
+                    guard let label = result[record.uid]?.finalPattern,
+                          !label.isEmpty else {
+                        return nil
+                    }
+                    return (record.index, label)
+                }
+            )
+            let invalid = ManualAnnotationProjector
+                .invalidBurstFragmentISIs(
+                    in: finalLabels,
+                    minimumRunLength:
+                        ReviewedISIExportBuilder.burstMinimumISIRunLength,
+                    burstLabels:
+                        ManualAnnotationProjector.burstFamilyLabels
+                )
+            for index in invalid {
+                guard let uid = uidByIndex[index] else { continue }
+                result[uid] = RecomputedISIProjection(
+                    finalPattern: "",
+                    finalSubtype: "",
+                    finalSource:
+                        ReviewedISIExportBuilder.sourceInvalidBurstFragment,
+                    manualVetoSuppressed: false,
+                    reviewNote: "burst_run_below_min_isi"
+                )
+            }
+        }
+        return result
+    }
+
+    private static func recomputedManualEvidenceOwners(
+        identity: DetectionRunIdentity,
+        dataset: SpikeDataset,
+        qualitySettings: SpikeQualitySettings,
+        manualAuthority: ValidatedManualAuthority,
+        annotationsByTrain: [String: [ManualAnnotation]],
+        projectionsByTrain: [String: ManualAnnotationProjection],
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        fullProjection: [String: RecomputedISIProjection],
+        baselineProjection: [String: RecomputedISIProjection],
+        rejectedSourceCandidateIDs: Set<String>
+    ) -> [String: Set<String>] {
+        let recordsByTrain = Dictionary(
+            grouping: isiRecordsByUID.values,
+            by: \.trainID
+        )
+        let manualUIDByUUID = Dictionary(
+            uniqueKeysWithValues: manualAuthority.recordsByUID.values.map {
+                ($0.annotation.id, $0.uid)
+            }
+        )
+        var ownersByISIUID: [String: Set<String>] = [:]
+
+        for train in dataset.trains {
+            let trainAnnotations = annotationsByTrain[train.id] ?? []
+            guard !trainAnnotations.isEmpty,
+                  let fullTrainProjection = projectionsByTrain[train.id] else {
+                continue
+            }
+
+            func projection(removing annotationIDs: Set<UUID>)
+                -> ManualAnnotationProjection {
+                let autoLabels = Dictionary(
+                    uniqueKeysWithValues: (recordsByTrain[train.id] ?? [])
+                        .filter { !$0.automaticPattern.isEmpty }
+                        .map { ($0.index, $0.automaticPattern) }
+                )
+                return ManualAnnotationProjector.project(
+                    train: train,
+                    autoLabelsByISI: autoLabels,
+                    annotations: trainAnnotations.filter {
+                        !annotationIDs.contains($0.id)
+                    },
+                    honorManualLock: true,
+                    manualNegativeLabelsEnabled: true,
+                    minValidISISeconds:
+                        qualitySettings.artifactThresholdSec
+                )
+            }
+
+            func recordChanges(
+                alternateTrainProjection: ManualAnnotationProjection,
+                ownerID: UUID
+            ) {
+                guard let ownerUID = manualUIDByUUID[ownerID] else { return }
+                var alternateProjections = projectionsByTrain
+                alternateProjections[train.id] =
+                    alternateTrainProjection
+                let alternate = recomputedISIProjection(
+                    isiRecordsByUID: isiRecordsByUID,
+                    projectionsByTrain: alternateProjections,
+                    rejectedSourceCandidateIDs:
+                        rejectedSourceCandidateIDs
+                )
+                for record in recordsByTrain[train.id] ?? []
+                where fullProjection[record.uid] != alternate[record.uid] {
+                    ownersByISIUID[record.uid, default: []].insert(
+                        ownerUID
+                    )
+                }
+            }
+
+            for annotation in trainAnnotations {
+                recordChanges(
+                    alternateTrainProjection: projection(
+                        removing: [annotation.id]
+                    ),
+                    ownerID: annotation.id
+                )
+            }
+
+            func effectiveIndices(
+                _ annotation: ManualAnnotation
+            ) -> Set<Int> {
+                guard let covered = ManualAnnotationGeometryResolver
+                    .resolve(annotation: annotation, in: train)
+                    .coveredISIIndices else {
+                    return []
+                }
+                return Set(covered.filter { index in
+                    guard train.isiSec.indices.contains(index),
+                          let value = train.isiSec[index] else {
+                        return false
+                    }
+                    return value.isFinite
+                        && value >= qualitySettings.artifactThresholdSec
+                })
+            }
+            let annotationsByID = Dictionary(
+                uniqueKeysWithValues: trainAnnotations.map { ($0.id, $0) }
+            )
+            let activeOwnerIDs = Set(
+                fullTrainProjection.manualPositiveOwnerByISI.values
+            )
+            .union(fullTrainProjection.manualNegativeVetoOwnerByISI.values)
+            for ownerID in activeOwnerIDs.sorted(by: {
+                $0.uuidString < $1.uuidString
+            }) {
+                guard let owner = annotationsByID[ownerID] else { continue }
+                let ownerIndices = effectiveIndices(owner)
+                let equivalentIDs = Set(trainAnnotations.compactMap {
+                    annotation -> UUID? in
+                    annotation.label == owner.label
+                        && effectiveIndices(annotation) == ownerIndices
+                        ? annotation.id
+                        : nil
+                })
+                guard equivalentIDs.count > 1 else { continue }
+                recordChanges(
+                    alternateTrainProjection: projection(
+                        removing: equivalentIDs
+                    ),
+                    ownerID: ownerID
+                )
+            }
+
+            for record in recordsByTrain[train.id] ?? []
+            where fullProjection[record.uid]
+                    != baselineProjection[record.uid] {
+                let ownerID: UUID?
+                switch fullProjection[record.uid]?.finalSource {
+                case ReviewedISIExportBuilder.sourceManualPositive:
+                    ownerID = fullTrainProjection
+                        .manualPositiveOwnerByISI[record.index]
+                case ReviewedISIExportBuilder.sourceManualVetoRemoved:
+                    ownerID = fullTrainProjection
+                        .manualNegativeVetoOwnerByISI[record.index]
+                default:
+                    ownerID = nil
+                }
+                if let ownerID, let ownerUID = manualUIDByUUID[ownerID] {
+                    ownersByISIUID[record.uid, default: []].insert(
+                        ownerUID
+                    )
+                }
+            }
+        }
+        _ = identity
+        return ownersByISIUID
+    }
+
+    private static func recomputedReviewEvidenceOwners(
+        reviewsByUID: [String: ValidatedReviewRecord],
+        candidatesByUID: [String: ValidatedCandidateRecord],
+        publicCandidateUIDs: Set<String>,
+        isiRecordsByUID: [String: ValidatedISIRecord],
+        projectionsByTrain: [String: ManualAnnotationProjection],
+        fullProjection: [String: RecomputedISIProjection],
+        baselineProjection: [String: RecomputedISIProjection],
+        manualOwnerUIDsByISI: [String: Set<String>],
+        rejectedSourceCandidateIDs: Set<String>
+    ) throws -> [String: Set<String>] {
+        var ownersByISIUID: [String: Set<String>] = [:]
+        for review in reviewsByUID.values {
+            guard let candidate = candidatesByUID[review.candidateUID],
+                  candidate.sourceID == review.sourceCandidateID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.reviewStatus.rawValue,
+                    reason: "review \(review.uid) has no resolvable candidate"
+                )
+            }
+            let isPublicCandidate = publicCandidateUIDs.contains(
+                review.candidateUID
+            )
+            let candidateRecords = isiRecordsByUID.values.filter {
+                $0.automaticSourceCandidateID
+                    == review.sourceCandidateID
+            }
+            let expected: Set<String>
+            if !isPublicCandidate {
+                expected = []
+            } else {
+                switch review.status {
+                case .accepted:
+                    let whollyUnchanged = !candidateRecords.isEmpty
+                        && candidateRecords.allSatisfy { record in
+                            fullProjection[record.uid]?.finalSource
+                                    == ReviewedISIExportBuilder
+                                        .sourceAutoProjected
+                                && fullProjection[record.uid]
+                                    == baselineProjection[record.uid]
+                        }
+                    expected = whollyUnchanged
+                        ? Set(candidateRecords.map(\.uid))
+                        : []
+                case .rejected:
+                    let hasPublicBaseline = candidateRecords.contains {
+                        baselineProjection[$0.uid]?.finalSource
+                            == ReviewedISIExportBuilder.sourceAutoProjected
+                    }
+                    if hasPublicBaseline {
+                        let counterfactual = recomputedISIProjection(
+                            isiRecordsByUID: isiRecordsByUID,
+                            projectionsByTrain: projectionsByTrain,
+                            rejectedSourceCandidateIDs:
+                                rejectedSourceCandidateIDs.subtracting([
+                                    review.sourceCandidateID,
+                                ])
+                        )
+                        expected = Set(isiRecordsByUID.values.compactMap {
+                            record -> String? in
+                            fullProjection[record.uid]
+                                != counterfactual[record.uid]
+                                ? record.uid
+                                : nil
+                        })
+                    } else {
+                        expected = []
+                    }
+                case .modified:
+                    let changed = Set(candidateRecords.compactMap {
+                        record -> String? in
+                        fullProjection[record.uid]
+                            != baselineProjection[record.uid]
+                            ? record.uid
+                            : nil
+                    })
+                    expected = !changed.isEmpty
+                        && changed.allSatisfy {
+                            !(manualOwnerUIDsByISI[$0] ?? []).isEmpty
+                        }
+                        ? changed
+                        : []
+                case .needsReview:
+                    expected = []
+                }
+            }
+
+            guard review.linkedISIUIDs == expected else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.reviewStatus.rawValue,
+                    reason:
+                        "candidate review \(review.uid) does not link exactly " +
+                        "to its complete recomputed causal public ISI set"
+                )
+            }
+            let expectedScope = expected.isEmpty
+                ? "non_authoritative"
+                : "public_projection"
+            guard review.linkScope == expectedScope else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.reviewStatus.rawValue,
+                    reason:
+                        "candidate review \(review.uid) scope does not match " +
+                        "its recomputed public authority"
+                )
+            }
+            for isiUID in expected {
+                ownersByISIUID[isiUID, default: []].insert(review.uid)
+            }
+        }
+        return ownersByISIUID
     }
 
     private static func validateEvidenceLinks(
@@ -5797,9 +10656,42 @@ private enum STPDResultPackageValidator {
         let evidenceIndex = try columnIndex(evidenceUIDColumn, in: table)
         let linksIndex = try columnIndex("linked_isi_uids", in: table)
         let scopeIndex = try columnIndex("link_scope", in: table)
+        let unlinkedScope: String
+        switch table.contract.table {
+        case .manualAnnotations:
+            unlinkedScope = ""
+        case .reviewStatus:
+            unlinkedScope = "non_authoritative"
+        default:
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "evidence-link validation does not support this table"
+            )
+        }
         for row in table.rows {
             let evidenceUID = row[evidenceIndex]
             let linkedUIDs = delimitedValues(row[linksIndex])
+            if linkedUIDs.isEmpty {
+                let allowedUnlinkedScopes: Set<String>
+                if table.contract.table == .manualAnnotations {
+                    allowedUnlinkedScopes = [
+                        "inactive_or_superseded",
+                        "active_spike_only",
+                    ]
+                } else {
+                    allowedUnlinkedScopes = [unlinkedScope]
+                }
+                guard allowedUnlinkedScopes.contains(row[scopeIndex]),
+                      evidenceByISIUID.values.allSatisfy({
+                          !$0.contains(evidenceUID)
+                      }) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "\(evidenceUIDColumn) \(evidenceUID) has inconsistent inactive authority"
+                    )
+                }
+                continue
+            }
             guard row[scopeIndex] == "public_projection",
                   linkedUIDs.isSubset(of: isiUIDs) else {
                 throw STPDResultPackageError.invalidTable(
@@ -5807,17 +10699,248 @@ private enum STPDResultPackageValidator {
                     reason: "\(evidenceUIDColumn) \(evidenceUID) links to an unknown ISI"
                 )
             }
-            for isiUID in linkedUIDs
-            where evidenceByISIUID[isiUID]?.contains(evidenceUID) != true {
+            let reverseLinkedUIDs = Set(evidenceByISIUID.compactMap {
+                isiUID, evidenceUIDs -> String? in
+                evidenceUIDs.contains(evidenceUID) ? isiUID : nil
+            })
+            guard linkedUIDs == reverseLinkedUIDs else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
-                    reason: "\(evidenceUIDColumn) \(evidenceUID) is not attached to linked ISI \(isiUID)"
+                    reason: "\(evidenceUIDColumn) \(evidenceUID) must match its ISI links exactly"
                 )
             }
         }
     }
 
-    private static func validateQCColumns(_ table: STPDResultTableData) throws {
+    private static func canonicalTimestamp(
+        _ encodedTimestamp: String,
+        matchesExactSeconds exact: Double
+    ) -> Bool {
+        guard exact.isFinite,
+              encodedTimestamp == STPDCanonicalValue.date(
+                Date(timeIntervalSince1970: exact)
+              ),
+              let parsedSeconds =
+                STPDResultTimestamp.exactSeconds(encodedTimestamp) else {
+            return false
+        }
+        return parsedSeconds.bitPattern == exact.bitPattern
+    }
+
+    private static func validateRunMetadata(
+        identity: DetectionRunIdentity,
+        sourceMode: STPDResultPackageSourceMode,
+        metadata: STPDResultTableData,
+        expectedDatasetMetadata: DetectionDatasetMetadataSnapshot?,
+        tables: [STPDResultTable: STPDResultTableData]
+    ) throws {
+        guard metadata.rowCount == 1 else {
+            throw STPDResultPackageError.invalidTable(
+                table: metadata.contract.table.rawValue,
+                reason: "run metadata must contain exactly one row"
+            )
+        }
+        let row = metadata.rows[0]
+        func value(_ column: String) throws -> String {
+            row[try columnIndex(column, in: metadata)]
+        }
+        func requireEqual(
+            _ column: String,
+            _ expected: String
+        ) throws {
+            let actual = try value(column)
+            guard actual == expected else {
+                throw STPDResultPackageError.invalidTable(
+                    table: metadata.contract.table.rawValue,
+                    reason: "run metadata \(column) does not match the sealed run"
+                )
+            }
+        }
+        func requireCount(
+            _ column: String,
+            _ expected: Int
+        ) throws {
+            let actual = try parseInteger(
+                value(column),
+                table: metadata,
+                column: column
+            )
+            guard actual == expected else {
+                throw STPDResultPackageError.invalidTable(
+                    table: metadata.contract.table.rawValue,
+                    reason: "run metadata \(column) contradicts its materialized population"
+                )
+            }
+        }
+
+        try requireEqual("run_id", identity.runID)
+        try requireEqual("settings_digest", identity.settingsDigest)
+        try requireEqual("dataset_digest", identity.datasetDigest)
+        try requireEqual(
+            "result_schema_version",
+            identity.resultSchemaVersion
+        )
+        try requireEqual("detector_version", identity.detectorVersion)
+        try requireEqual("build_identifier", identity.buildCommit)
+        try requireEqual(
+            "build_identifier_kind",
+            "caller_supplied_unattested"
+        )
+        guard try !parseBoolean(
+            value("build_reproducibility_attested"),
+            table: metadata,
+            column: "build_reproducibility_attested"
+        ) else {
+            throw STPDResultPackageError.invalidTable(
+                table: metadata.contract.table.rawValue,
+                reason: "caller-supplied build identifier cannot claim reproducibility attestation"
+            )
+        }
+        try requireEqual(
+            "owner_name",
+            STPDResultPackageOwnership.ownerName
+        )
+        try requireEqual(
+            "owner_email",
+            STPDResultPackageOwnership.ownerEmail
+        )
+        try requireEqual("source_mode", sourceMode.rawValue)
+
+        if let expectedDatasetMetadata {
+            try requireEqual("dataset_name", expectedDatasetMetadata.name)
+            try requireEqual(
+                "dataset_source",
+                expectedDatasetMetadata.sourceDescription
+            )
+            try requireEqual(
+                "task_event_source_digest",
+                expectedDatasetMetadata.taskEventSourceDigest
+            )
+        }
+
+        try requireCount("train_count", identity.trainCount)
+        try requireCount("spike_count", identity.spikeCount)
+        try requireCount("task_event_count", identity.taskEventCount)
+        try requireCount(
+            "candidate_count",
+            try required(.candidateLedger, in: tables).rowCount
+        )
+        try requireCount(
+            "diagnostic_candidate_count",
+            try required(.candidateLedgerDiagnostic, in: tables).rowCount
+        )
+        try requireCount(
+            "final_event_count",
+            try required(.eventsFinal, in: tables).rowCount
+        )
+        try requireCount(
+            "final_isi_count",
+            try required(.isiLabelsFinal, in: tables).rowCount
+        )
+    }
+
+    private static func validateExactISICoverage(
+        identity: DetectionRunIdentity,
+        table: STPDResultTableData,
+        dataset: SpikeDataset
+    ) throws {
+        let uidIndex = try columnIndex("isi_uid", in: table)
+        let trainIndex = try columnIndex("train_id", in: table)
+        let trainNameIndex = try columnIndex("train_name", in: table)
+        let isiIndex = try columnIndex("isi_index", in: table)
+        let leftArrayIndex = try columnIndex("left_spike_array_index", in: table)
+        let rightArrayIndex = try columnIndex("right_spike_array_index", in: table)
+        let leftOrdinalIndex = try columnIndex("left_spike_ordinal", in: table)
+        let rightOrdinalIndex = try columnIndex("right_spike_ordinal", in: table)
+        let timestampIndex = try columnIndex("timestamp_sec", in: table)
+        let alignedTimestampIndex = try columnIndex(
+            "aligned_timestamp_sec",
+            in: table
+        )
+        let isiSecIndex = try columnIndex("isi_sec", in: table)
+
+        var actualRowsByKey: [String: [String]] = [:]
+        for row in table.rows {
+            let index = try parseInteger(
+                row[isiIndex],
+                table: table,
+                column: "isi_index"
+            )
+            let key = finalProjectionKey(
+                trainID: row[trainIndex],
+                isiIndex: index
+            )
+            guard actualRowsByKey.updateValue(row, forKey: key) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "duplicate dataset ISI key \(row[trainIndex]):\(index)"
+                )
+            }
+        }
+
+        var expectedKeys = Set<String>()
+        for train in dataset.trains {
+            let aligned = train.alignedTimestampsSec.count == train.spikeCount
+                ? train.alignedTimestampsSec
+                : train.timestampsSec
+            guard aligned.count == train.spikeCount else {
+                throw STPDResultPackageError.invalidInput(
+                    "train \(train.id) cannot provide authoritative aligned timestamps"
+                )
+            }
+            guard train.spikeCount >= 2 else {
+                continue
+            }
+            for index in 1..<train.spikeCount {
+                let key = finalProjectionKey(trainID: train.id, isiIndex: index)
+                expectedKeys.insert(key)
+                guard let row = actualRowsByKey[key] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "missing dataset ISI \(train.id):\(index)"
+                    )
+                }
+                let expectedUID = STPDResultPackageBuilder.stableISIUID(
+                    datasetDigest: identity.datasetDigest,
+                    trainID: train.id,
+                    isiIndex: index
+                )
+                let expectedISI =
+                    train.timestampsSec[index] - train.timestampsSec[index - 1]
+                guard row[uidIndex] == expectedUID,
+                      row[trainNameIndex] == train.name,
+                      row[leftArrayIndex] == String(index - 1),
+                      row[rightArrayIndex] == String(index),
+                      row[leftOrdinalIndex] == String(index),
+                      row[rightOrdinalIndex] == String(index + 1),
+                      row[timestampIndex] ==
+                        STPDCanonicalValue.double(train.timestampsSec[index]),
+                      row[alignedTimestampIndex] ==
+                        STPDCanonicalValue.double(aligned[index]),
+                      row[isiSecIndex] == STPDCanonicalValue.double(expectedISI)
+                else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "dataset ISI \(train.id):\(index) has forged UID, train name, spike geometry, timestamp, or duration"
+                    )
+                }
+            }
+        }
+        guard Set(actualRowsByKey.keys) == expectedKeys else {
+            let unexpected = Set(actualRowsByKey.keys).subtracting(expectedKeys)
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "ISI projection contains \(unexpected.count) row(s) outside the sealed dataset population"
+            )
+        }
+    }
+
+    private static func validateQCColumns(
+        _ table: STPDResultTableData,
+        resolvedParameters: STPDResultTableData,
+        expectedDataset: SpikeDataset?,
+        expectedSettings: SpikeQualitySettings?
+    ) throws {
         let classIndex = try columnIndex("isi_qc_class", in: table)
         let floorStatusIndex = try columnIndex("artifact_floor_status", in: table)
         let suspectIndex = try columnIndex("qc_refractory_suspect", in: table)
@@ -5932,9 +11055,11 @@ private enum STPDResultPackageValidator {
                 }
             }
             for column in fractionColumns {
-                guard let value = values[column] else { continue }
-                if value.isEmpty {
-                    continue
+                guard let value = values[column], !value.isEmpty else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "train \(trainID) is missing QC fraction \(column)"
+                    )
                 }
                 guard let fraction = Double(value),
                       fraction.isFinite,
@@ -5945,17 +11070,150 @@ private enum STPDResultPackageValidator {
                     )
                 }
             }
+            let rowCount = rowCountByTrain[trainID] ?? 0
+            let artifactCount = artifactCountByTrain[trainID] ?? 0
+            let refractoryCount = refractoryCountByTrain[trainID] ?? 0
+            let validCount = rowCount - artifactCount
+            let expectedArtifactFraction =
+                Double(artifactCount) / Double(rowCount)
+            let expectedRefractoryFraction =
+                Double(refractoryCount) / Double(rowCount)
             guard Int(values["train_qc_artifact_isi_count"] ?? "") ==
-                    artifactCountByTrain[trainID],
+                    artifactCount,
                   Int(values["train_qc_refractory_suspect_isi_count"] ?? "") ==
-                    refractoryCountByTrain[trainID],
-                  (Int(values["train_qc_valid_isi_count"] ?? "") ?? -1) <=
-                    (rowCountByTrain[trainID] ?? 0) else {
+                    refractoryCount,
+                  Int(values["train_qc_valid_isi_count"] ?? "") ==
+                    validCount,
+                  let artifactFraction = Double(
+                      values["train_qc_artifact_fraction"] ?? ""
+                  ),
+                  let refractoryFraction = Double(
+                      values["train_qc_refractory_suspect_fraction"] ?? ""
+                  ),
+                  nearlyEqual(
+                      artifactFraction,
+                      expectedArtifactFraction
+                  ),
+                  nearlyEqual(
+                      refractoryFraction,
+                      expectedRefractoryFraction
+                  ) else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
-                    reason: "train \(trainID) QC counts contradict its exported ISI rows"
+                    reason: "train \(trainID) QC counts or fractions contradict its exported ISI rows"
                 )
             }
+        }
+
+        guard let expectedDataset, let expectedSettings else {
+            return
+        }
+        let expectedQualities = Dictionary(
+            uniqueKeysWithValues: expectedDataset.trains.map { train in
+                (
+                    train.id,
+                    STPDResultPackageBuilder.qualitySnapshotValues(
+                        SpikeQualityAnalyzer.quality(
+                            for: train,
+                            settings: expectedSettings
+                        )
+                    )
+                )
+            }
+        )
+        let expectedTrainNames = Dictionary(
+            uniqueKeysWithValues: expectedDataset.trains.map { ($0.id, $0.name) }
+        )
+        let artifactThreshold = STPDCanonicalValue.double(
+            expectedSettings.artifactThresholdSec
+        )
+        let refractoryThreshold = STPDCanonicalValue.double(
+            expectedSettings.refractorySuspectThresholdSec
+        )
+        for row in table.rows {
+            let trainID = row[trainIndex]
+            guard let expected = expectedQualities[trainID] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "ISI QC row references train \(trainID) outside the sealed dataset"
+                )
+            }
+            guard row[artifactThresholdIndex] == artifactThreshold,
+                  row[refractoryThresholdIndex] == refractoryThreshold else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "train \(trainID) exports QC thresholds that differ from the sealed settings"
+                )
+            }
+            for column in snapshotColumns {
+                let qualityKey = String(column.dropFirst("train_qc_".count))
+                guard let expectedValue = expected[qualityKey],
+                      row[try columnIndex(column, in: table)] == expectedValue else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason: "train \(trainID) QC field \(column) differs from a fresh analyzer result"
+                    )
+                }
+            }
+        }
+
+        let scopeTypeIndex = try columnIndex(
+            "scope_type",
+            in: resolvedParameters
+        )
+        let scopeIDIndex = try columnIndex("scope_id", in: resolvedParameters)
+        let scopeNameIndex = try columnIndex(
+            "scope_name",
+            in: resolvedParameters
+        )
+        let keyIndex = try columnIndex(
+            "parameter_key",
+            in: resolvedParameters
+        )
+        let effectiveIndex = try columnIndex(
+            "effective_value",
+            in: resolvedParameters
+        )
+        let sourceIndex = try columnIndex("source", in: resolvedParameters)
+        var actualQualityRows: [String: [String]] = [:]
+        for row in resolvedParameters.rows
+        where row[scopeTypeIndex] == "train"
+            && row[keyIndex].hasPrefix("quality.") {
+            let trainID = row[scopeIDIndex]
+            let qualityKey = String(row[keyIndex].dropFirst("quality.".count))
+            let compoundKey = "\(trainID)\u{1}\(qualityKey)"
+            guard actualQualityRows.updateValue(row, forKey: compoundKey) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "duplicate resolved QC field \(trainID):\(qualityKey)"
+                )
+            }
+        }
+        var expectedResolvedKeys = Set<String>()
+        for train in expectedDataset.trains {
+            guard let values = expectedQualities[train.id] else {
+                continue
+            }
+            for key in values.keys {
+                let compoundKey = "\(train.id)\u{1}\(key)"
+                expectedResolvedKeys.insert(compoundKey)
+                guard let row = actualQualityRows[compoundKey],
+                      row[scopeTypeIndex] == "train",
+                      row[scopeNameIndex] == (expectedTrainNames[train.id] ?? ""),
+                      row[sourceIndex] == "quality_analyzer",
+                      row[effectiveIndex] == values[key] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: resolvedParameters.contract.table.rawValue,
+                        reason: "resolved QC field \(train.id):\(key) is missing or differs from a fresh analyzer result"
+                    )
+                }
+            }
+        }
+        guard Set(actualQualityRows.keys) == expectedResolvedKeys else {
+            throw STPDResultPackageError.invalidTable(
+                table: resolvedParameters.contract.table.rawValue,
+                reason: "resolved QC rows do not exactly cover every sealed dataset train and analyzer field"
+            )
         }
     }
 
@@ -5988,6 +11246,98 @@ private enum STPDResultPackageValidator {
 
     private static func delimitedValues(_ value: String) -> Set<String> {
         Set(STPDCanonicalValue.parseStringList(value) ?? [])
+    }
+
+    private static func canonicalDelimitedValues(
+        _ value: String,
+        table: STPDResultTableData,
+        column: String,
+        requireSorted: Bool
+    ) throws -> Set<String> {
+        guard let values = STPDCanonicalValue.parseStringList(value),
+              values.allSatisfy({ !$0.isEmpty }),
+              Set(values).count == values.count,
+              STPDCanonicalValue.stringList(values) == value,
+              !requireSorted || values == values.sorted() else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "column \(column) contains a noncanonical list"
+            )
+        }
+        return Set(values)
+    }
+
+    private static func finalProjectionKey(
+        trainID: String,
+        isiIndex: Int
+    ) -> String {
+        "\(trainID)\u{1}\(isiIndex)"
+    }
+
+    private static func parseInteger(
+        _ value: String,
+        table: STPDResultTableData,
+        column: String
+    ) throws -> Int {
+        guard let parsed = Int(value) else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "column \(column) contains non-integer value \(value)"
+            )
+        }
+        return parsed
+    }
+
+    private static func parseOptionalInteger(
+        _ value: String,
+        table: STPDResultTableData,
+        column: String
+    ) throws -> Int? {
+        guard !value.isEmpty else { return nil }
+        return try parseInteger(value, table: table, column: column)
+    }
+
+    private static func orderedOptionalPair(
+        _ start: Int?,
+        _ end: Int?
+    ) -> Bool {
+        switch (start, end) {
+        case (nil, nil):
+            return true
+        case let (.some(start), .some(end)):
+            return start <= end
+        default:
+            return false
+        }
+    }
+
+    private static func incrementedWithoutOverflow(_ value: Int?) -> Int? {
+        guard let value else { return nil }
+        let (incremented, overflow) = value.addingReportingOverflow(1)
+        return overflow ? nil : incremented
+    }
+
+    private static func parseFiniteReal(
+        _ value: String,
+        table: STPDResultTableData,
+        column: String
+    ) throws -> Double {
+        guard let parsed = Double(value), parsed.isFinite else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "column \(column) contains non-finite real value \(value)"
+            )
+        }
+        return parsed
+    }
+
+    private static func nearlyEqual(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Bool {
+        guard lhs.isFinite, rhs.isFinite else { return false }
+        let ulpTolerance = max(lhs.ulp, rhs.ulp) * 8
+        return abs(lhs - rhs) <= max(1e-12, ulpTolerance)
     }
 
     private static func parseBoolean(

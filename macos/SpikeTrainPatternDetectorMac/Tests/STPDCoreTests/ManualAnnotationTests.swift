@@ -284,6 +284,7 @@ func csvExportImportRoundTripsAndIsSeparateFromAutoEventCSV() throws {
             trainID: "g", label: .tonic, startSec: 0.1, endSec: 0.3,
             startISIIndex: 2, endISIIndex: 3, startSpikeIndex: 1, endSpikeIndex: 3,
             note: "needs, \"review\"",
+            annotatorIdentitySource: .unknown,
             createdAt: Date(timeIntervalSince1970: 100), updatedAt: Date(timeIntervalSince1970: 200)
         )
     ]
@@ -296,6 +297,396 @@ func csvExportImportRoundTripsAndIsSeparateFromAutoEventCSV() throws {
     let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
     #expect(result.unsupportedLabels.isEmpty)
     #expect(result.annotations == original)
+}
+
+@Test
+func manualAnnotationCSVRoundTripsSubsecondTimestampsExactly() throws {
+    let createdAt = Date(timeIntervalSince1970: 100.123_456_789)
+    let updatedAt = Date(timeIntervalSince1970: 200.987_654_321)
+    let original = [
+        annotation(
+            label: .tonic,
+            start: 0.1,
+            end: 0.3,
+            id: UUID(uuidString: "12345678-1234-1234-1234-123456789012")!,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        ),
+    ]
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: original)
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let restored = try #require(result.annotations.first)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(restored.createdAt.timeIntervalSince1970
+        == createdAt.timeIntervalSince1970)
+    #expect(restored.updatedAt.timeIntervalSince1970
+        == updatedAt.timeIntervalSince1970)
+}
+
+@Test
+func manualAnnotationCSVRoundTripsNegativeSubsecondTimestampsExactly() throws {
+    let createdAt = Date(timeIntervalSince1970: -123.987_654_321)
+    let updatedAt = Date(timeIntervalSince1970: -0.1)
+    let original = [
+        annotation(
+            label: .tonic,
+            start: 0.1,
+            end: 0.3,
+            id: UUID(uuidString: "13345678-1234-1234-1234-123456789012")!,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        ),
+    ]
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: original)
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let restored = try #require(result.annotations.first)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(restored.createdAt.timeIntervalSince1970.bitPattern
+        == createdAt.timeIntervalSince1970.bitPattern)
+    #expect(restored.updatedAt.timeIntervalSince1970.bitPattern
+        == updatedAt.timeIntervalSince1970.bitPattern)
+}
+
+@Test
+func manualAnnotationCSVRoundTripsEpochScaleGeometryExactlyAndUsesCRLF() throws {
+    let original = [
+        annotation(
+            label: .tonic,
+            start: 1_800_000_000.123_456,
+            end: 1_800_000_001.987_654,
+            id: UUID(uuidString: "22345678-1234-1234-1234-123456789012")!
+        ),
+    ]
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: original)
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let restored = try #require(result.annotations.first)
+
+    #expect(csv.contains("\r\n"))
+    #expect(!csv.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
+    #expect(restored.startSec == original[0].startSec)
+    #expect(restored.endSec == original[0].endSec)
+}
+
+@Test
+func manualAnnotationCSVPreservesQuotedEmbeddedCarriageReturn() throws {
+    var original = annotation(
+        label: .tonic,
+        start: 0.1,
+        end: 0.3,
+        id: UUID(uuidString: "32345678-1234-1234-1234-123456789012")!
+    )
+    original.note = "first line\rsecond line"
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: [original])
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(result.annotations.first?.note == original.note)
+}
+
+@Test
+func manualAnnotationCSVRoundTripsWhitespaceAndMultilineAuthorshipExactly()
+    throws {
+    var original = annotation(
+        label: .tonic,
+        start: 0.1,
+        end: 0.3,
+        id: UUID(uuidString: "42345678-1234-1234-1234-123456789012")!
+    )
+    original.note = "  first line\nsecond line  "
+    original.annotator = "  Dr. Exact Name  "
+    original.annotatorIdentitySource = .userProvided
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: [original])
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+    let restored = try #require(result.annotations.first)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(restored.note == original.note)
+    #expect(restored.annotator == original.annotator)
+    #expect(
+        restored.annotatorIdentitySource ==
+            original.annotatorIdentitySource
+    )
+}
+
+@Test
+func manualAnnotationCSVRejectsUpdatedBeforeCreated() throws {
+    let reversed = annotation(
+        label: .tonic,
+        start: 0.1,
+        end: 0.3,
+        id: UUID(uuidString: "42345678-1234-1234-1234-123456789012")!,
+        createdAt: Date(timeIntervalSince1970: 200),
+        updatedAt: Date(timeIntervalSince1970: 100)
+    )
+
+    let csv = ManualAnnotationCSVExporter.csv(annotations: [reversed])
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 1)
+}
+
+@Test
+func manualAnnotationCSVRejectsMalformedOrContradictoryTimestampEvidence() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,created_at,updated_at,created_at_unix_sec,updated_at_unix_sec
+    10000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,1970-01-01T00:01:40Z,1970-01-01T00:01:40Z,not-a-number,100
+    10000000-0000-0000-0000-000000000002,g,positive,tonic,0.1,0.3,not-a-timestamp,1970-01-01T00:01:40Z,,100
+    10000000-0000-0000-0000-000000000003,g,positive,tonic,0.1,0.3,1970-01-01T00:01:40.000000000Z,1970-01-01T00:01:40Z,101,100
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 3)
+}
+
+@Test
+func manualAnnotationCSVRejectsExactTimestampOutsideCanonicalRange() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,created_at_unix_sec,updated_at_unix_sec
+    11000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,9.223372036854776e18,9.223372036854776e18
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 1)
+}
+
+@Test
+func manualAnnotationCSVRejectsExactTimestampWithNonRoundTrippableISO()
+    throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,created_at_unix_sec,updated_at_unix_sec
+    12000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,-1000000000000,-1000000000000
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 1)
+}
+
+@Test
+func manualAnnotationCSVExactOnlyTimestampsRequireExactDateRoundTrip()
+    throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,created_at_unix_sec,updated_at_unix_sec
+    13000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,0.1,0.1
+    13000000-0000-0000-0000-000000000002,g,positive,tonic,0.1,0.3,-0.1,-0.1
+    13000000-0000-0000-0000-000000000003,g,positive,tonic,0.1,0.3,0.125,0.125
+    13000000-0000-0000-0000-000000000004,g,positive,tonic,0.1,0.3,-0.125,-0.125
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+
+    #expect(result.skippedRowCount == 2)
+    #expect(result.annotations.map(\.id.uuidString) == [
+        "13000000-0000-0000-0000-000000000003",
+        "13000000-0000-0000-0000-000000000004"
+    ])
+    #expect(
+        result.annotations.map(\.createdAt.timeIntervalSince1970.bitPattern)
+            == [(0.125).bitPattern, (-0.125).bitPattern]
+    )
+}
+
+@Test
+func manualAnnotationCSVRejectsBlankOrTruncatedDeclaredTimestampEvidence()
+    throws {
+    let cases = [
+        (
+            "train_id,label,start_sec,end_sec,created_at",
+            "g,tonic,0.1,0.3,"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at",
+            "g,tonic,0.1,0.3"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at_unix_sec",
+            "g,tonic,0.1,0.3,"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at_unix_sec",
+            "g,tonic,0.1,0.3"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at,updated_at",
+            "g,tonic,0.1,0.3,1970-01-01T00:01:40Z,"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at,updated_at",
+            "g,tonic,0.1,0.3,1970-01-01T00:01:40Z"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at_unix_sec,updated_at_unix_sec",
+            "g,tonic,0.1,0.3,100,"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at_unix_sec,updated_at_unix_sec",
+            "g,tonic,0.1,0.3,100"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at,created_at_unix_sec",
+            "g,tonic,0.1,0.3,1970-01-01T00:01:40Z,"
+        ),
+        (
+            "train_id,label,start_sec,end_sec,created_at_unix_sec,updated_at,updated_at_unix_sec",
+            "g,tonic,0.1,0.3,100,1970-01-01T00:03:20Z,"
+        )
+    ]
+
+    for (header, row) in cases {
+        let result = try ManualAnnotationCSVImporter.importAnnotations(
+            contents: "\(header)\n\(row)\n"
+        )
+
+        #expect(result.annotations.isEmpty)
+        #expect(result.skippedRowCount == 1)
+    }
+}
+
+@Test
+func legacyCSVWithoutTimestampColumnsUsesDocumentedFallbackChronology() throws {
+    let csv = """
+    train_id,label,start_sec,end_sec
+    g,tonic,0.1,0.3
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+    let restored = try #require(result.annotations.first)
+    let fallback = Date(timeIntervalSince1970: 0)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(restored.createdAt == fallback)
+    #expect(restored.updatedAt == fallback)
+}
+
+@Test
+func manualAnnotationCSVRejectsFractionalTimestampULPContradictions() throws {
+    let seconds = 100.125
+    let iso = "1970-01-01T00:01:40.125Z"
+
+    for contradictorySeconds in [seconds.nextDown, seconds.nextUp] {
+        let contradictoryExact = String(
+            format: "%.17g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            contradictorySeconds
+        )
+        let csv = """
+        annotation_id,train_id,polarity,label,start_sec,end_sec,created_at,updated_at,created_at_unix_sec,updated_at_unix_sec
+        18000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,\(iso),\(iso),\(contradictoryExact),\(contradictoryExact)
+        """
+
+        let result = try ManualAnnotationCSVImporter.importAnnotations(
+            contents: csv
+        )
+        #expect(result.annotations.isEmpty)
+        #expect(result.skippedRowCount == 1)
+    }
+}
+
+@Test
+func manualAnnotationCSVRejectsNegativeFractionalTimestampULPContradictions()
+    throws {
+    let seconds = -123.987_654_321
+    let iso = "1969-12-31T23:57:56.012345679Z"
+
+    for contradictorySeconds in [seconds.nextDown, seconds.nextUp] {
+        let contradictoryExact = String(
+            format: "%.17g",
+            locale: Locale(identifier: "en_US_POSIX"),
+            contradictorySeconds
+        )
+        let csv = """
+        annotation_id,train_id,polarity,label,start_sec,end_sec,created_at,updated_at,created_at_unix_sec,updated_at_unix_sec
+        19000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,\(iso),\(iso),\(contradictoryExact),\(contradictoryExact)
+        """
+
+        let result = try ManualAnnotationCSVImporter.importAnnotations(
+            contents: csv
+        )
+        #expect(result.annotations.isEmpty)
+        #expect(result.skippedRowCount == 1)
+    }
+}
+
+@Test
+func manualAnnotationCSVAcceptsLegacyWholeSecondISOWithinDeclaredPrecision() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,created_at,updated_at,created_at_unix_sec,updated_at_unix_sec
+    20000000-0000-0000-0000-000000000001,g,positive,tonic,0.1,0.3,1970-01-01T00:01:40Z,1970-01-01T00:03:20Z,100.4,200.4
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let restored = try #require(result.annotations.first)
+
+    #expect(result.skippedRowCount == 0)
+    #expect(restored.createdAt == Date(timeIntervalSince1970: 100.4))
+    #expect(restored.updatedAt == Date(timeIntervalSince1970: 200.4))
+}
+
+@Test
+func manualAnnotationCSVRejectsMalformedBlankAndTruncatedExplicitIDs() throws {
+    let csv = """
+    train_id,label,start_sec,end_sec,annotation_id
+    g,tonic,0.1,0.3,not-a-uuid
+    g,tonic,0.4,0.6,
+    g,tonic,0.7,0.9
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 3)
+}
+
+@Test
+func manualAnnotationCSVRejectsMalformedQuotedExplicitIDs() throws {
+    let csv = """
+    train_id,label,start_sec,end_sec,annotation_id
+    g,tonic,0.1,0.3,10000000-0000"-"0000-0000-000000000001
+    g,tonic,0.4,0.6,"10000000-0000-0000-0000-000000000002
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.skippedRowCount == 2)
+}
+
+@Test
+func legacyCSVWithoutAnnotationIDDerivesStableDistinctMigrationIDs() throws {
+    let csv = """
+    train_id,label,start_sec,end_sec,annotator,annotator_identity_source,created_at_unix_sec,updated_at_unix_sec
+    g,tonic,0.1,0.3,Legacy Reviewer,user_provided,100,200
+    g,tonic,0.1,0.3,Legacy Reviewer,user_provided,100,200
+    """
+
+    let first = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let second = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+
+    #expect(first.skippedRowCount == 0)
+    #expect(first.annotations.count == 2)
+    #expect(first.annotations.map(\.id) == second.annotations.map(\.id))
+    #expect(Set(first.annotations.map(\.id)).count == 2)
 }
 
 // MARK: - 9. Unknown/unsupported negative labels never behave as active vetoes.
@@ -318,6 +709,109 @@ func unknownNegativeLabelsAreNotImportedAsActiveVetoes() throws {
 }
 
 @Test
+func explicitPolarityMustMatchTheLabelAuthority() throws {
+    let csv = """
+    annotation_id,train_id,label,start_sec,end_sec,polarity
+    61000000-0000-0000-0000-000000000001,g,tonic,0.1,0.3,negative
+    61000000-0000-0000-0000-000000000002,g,not_burst,0.4,0.6,positive
+    61000000-0000-0000-0000-000000000003,g,burst,0.7,0.9,sideways
+    61000000-0000-0000-0000-000000000004,g,tonic,1.0,1.2,
+    61000000-0000-0000-0000-000000000005,g,tonic,1.3,1.5
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+
+    #expect(result.annotations.isEmpty)
+    #expect(result.unsupportedLabels.isEmpty)
+    #expect(result.skippedRowCount == 5)
+}
+
+@Test
+func legacyCSVWithoutPolarityStillDerivesPolarityFromLabel() throws {
+    let csv = """
+    annotation_id,train_id,label,start_sec,end_sec
+    62000000-0000-0000-0000-000000000001,g,tonic,0.1,0.3
+    62000000-0000-0000-0000-000000000002,g,not_burst,0.4,0.6
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(
+        contents: csv
+    )
+
+    #expect(result.skippedRowCount == 0)
+    #expect(result.annotations.map(\.polarity) == [.positive, .negative])
+}
+
+@Test
+func manualAnnotationCSVRejectsDuplicateHeadersBeforeResolvingAuthority() {
+    let cases: [(column: String, csv: String)] = [
+        (
+            "label",
+            """
+            annotation_id,train_id,label,label,start_sec,end_sec
+            63000000-0000-0000-0000-000000000001,g,tonic,not_burst,0.1,0.3
+            """
+        ),
+        (
+            "annotation_id",
+            """
+            annotation_id,annotation_id,train_id,label,start_sec,end_sec
+            63000000-0000-0000-0000-000000000002,63000000-0000-0000-0000-000000000003,g,tonic,0.1,0.3
+            """
+        ),
+        (
+            "polarity",
+            """
+            annotation_id,train_id,label,start_sec,end_sec,polarity,polarity
+            63000000-0000-0000-0000-000000000004,g,tonic,0.1,0.3,positive,negative
+            """
+        ),
+        (
+            "annotator_identity_source",
+            """
+            annotation_id,train_id,label,start_sec,end_sec,annotator,annotator_identity_source,annotator_identity_source
+            63000000-0000-0000-0000-000000000005,g,tonic,0.1,0.3,Reviewer,user_provided,imported
+            """
+        ),
+        (
+            "created_at",
+            """
+            annotation_id,train_id,label,start_sec,end_sec,created_at,created_at
+            63000000-0000-0000-0000-000000000006,g,tonic,0.1,0.3,1970-01-01T00:01:40Z,1970-01-01T00:03:20Z
+            """
+        ),
+        (
+            "note",
+            """
+            annotation_id,train_id,label,start_sec,end_sec,note,note
+            63000000-0000-0000-0000-000000000007,g,tonic,0.1,0.3,first,second
+            """
+        ),
+    ]
+
+    for testCase in cases {
+        do {
+            _ = try ManualAnnotationCSVImporter.importAnnotations(
+                contents: testCase.csv
+            )
+            Issue.record(
+                "Expected duplicate header \(testCase.column) to fail closed."
+            )
+        } catch ManualAnnotationCSVImporter.ImportError.duplicateColumn(
+            let column
+        ) {
+            #expect(column == testCase.column)
+        } catch {
+            Issue.record(
+                "Expected duplicateColumn(\(testCase.column)), got \(error)."
+            )
+        }
+    }
+}
+
+@Test
 func importToleratesMissingOptionalIndexColumns() throws {
     let csv = """
     annotation_id,train_id,polarity,label,start_sec,end_sec,note
@@ -329,6 +823,47 @@ func importToleratesMissingOptionalIndexColumns() throws {
     #expect(imported.startISIIndex == nil)   // recomputed later when a dataset is available
     #expect(imported.startSec == 0.2)
     #expect(imported.endSec == 0.4)
+}
+
+@Test
+func legacyCSVWithAnnotatorDefaultsIdentitySourceToImported() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,annotator
+    77777777-7777-7777-7777-777777777777,g,positive,tonic,0.2,0.4,Legacy Reviewer
+    """
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let imported = try #require(result.annotations.first)
+
+    #expect(imported.annotator == "Legacy Reviewer")
+    #expect(imported.annotatorIdentitySource == .imported)
+}
+
+@Test
+func explicitUnrecognizedAnnotatorIdentitySourceRemainsUnknown() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,annotator,annotator_identity_source
+    99999999-9999-9999-9999-999999999999,g,positive,tonic,0.1,0.3,Named Reviewer,unrecognized_source
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let imported = try #require(result.annotations.first)
+
+    #expect(imported.annotator == "Named Reviewer")
+    #expect(imported.annotatorIdentitySource == .unknown)
+}
+
+@Test
+func explicitBlankAnnotatorIdentitySourceRemainsUnknown() throws {
+    let csv = """
+    annotation_id,train_id,polarity,label,start_sec,end_sec,annotator,annotator_identity_source
+    aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,g,positive,tonic,0.1,0.3,Named Reviewer,
+    """
+
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    let imported = try #require(result.annotations.first)
+
+    #expect(imported.annotator == "Named Reviewer")
+    #expect(imported.annotatorIdentitySource == .unknown)
 }
 
 // MARK: - Label-aware geometry: fast-pattern labels require full ISI containment

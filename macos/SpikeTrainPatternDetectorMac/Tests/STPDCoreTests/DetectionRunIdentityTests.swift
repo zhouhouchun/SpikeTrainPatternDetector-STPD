@@ -133,7 +133,7 @@ private func snapshotDigest(_ rows: [String]) -> String {
 
 @Test
 func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
-    #expect(STPDResultSchema.version == "stpd_result_package_v1")
+    #expect(STPDResultSchema.version == "stpd_result_package_v2")
     #expect(STPDResultSchema.manifestFileName == "manifest.json")
     #expect(STPDResultSchema.tables.map(\.table) == [
         .runMetadata,
@@ -142,6 +142,9 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         .candidateLedger,
         .candidateFeatures,
         .finalDecisions,
+        .candidateLedgerDiagnostic,
+        .candidateFeaturesDiagnostic,
+        .finalDecisionsDiagnostic,
         .eventsFinal,
         .isiLabelsFinal,
         .candidateDiagnosticAudit,
@@ -149,14 +152,18 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         .manualAnnotations,
         .reviewStatus,
         .hfsBurstArbitrationAudit,
+        .taskEvents,
     ])
     #expect(STPDResultSchema.tables.map(\.grain) == [
         "one row per detector run",
         "one row per requested run-level detector parameter",
         "one row per effective detector parameter per resolution scope",
-        "one row per detector candidate",
-        "one row per detector candidate",
-        "one row per candidate decision",
+        "one row per public authority-bearing detector candidate",
+        "one row per public authority-bearing detector candidate",
+        "one row per public authority-bearing candidate decision",
+        "one row per detector candidate, including non-public diagnostic candidates",
+        "one row per detector candidate, including non-public diagnostic candidates",
+        "one row per candidate decision, including non-public diagnostic candidates",
         "one row per final public event",
         "one row per train ISI",
         "one row per candidate diagnostic stage",
@@ -164,11 +171,15 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         "one row per manual annotation",
         "one row per reviewed candidate",
         "one row per HFS/burst arbitration decision",
+        "one row per normalized task or stimulus event",
     ])
     #expect(STPDResultSchema.tables.map(\.primaryKey) == [
         ["run_id"],
         ["run_id", "parameter_key"],
         ["run_id", "scope_type", "scope_id", "parameter_key"],
+        ["run_id", "candidate_uid"],
+        ["run_id", "candidate_uid"],
+        ["run_id", "candidate_uid"],
         ["run_id", "candidate_uid"],
         ["run_id", "candidate_uid"],
         ["run_id", "candidate_uid"],
@@ -179,6 +190,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         ["run_id", "annotation_id"],
         ["run_id", "candidate_uid"],
         ["run_id", "audit_row_id"],
+        ["run_id", "task_event_uid"],
     ])
     #expect(STPDResultTable.candidateFeatures.rawValue == "Candidate_features_audit.csv")
     #expect(STPDResultTable.parametersReport.rawValue == "Parameters_report.csv")
@@ -226,7 +238,96 @@ func datasetDigestIsStableAcrossReloadMetadataAndSensitiveToScientificInput() {
     #expect(originalSnapshot.digest.count == 64)
     #expect(originalSnapshot.trainCount == 2)
     #expect(originalSnapshot.spikeCount == 11)
-    #expect(originalSnapshot.digest == "cf00605bfdba000ccd4f426220bc92addb089c5766a341e49ad0736dc0e8fd9c")
+    #expect(originalSnapshot.digest == "5b2bfbb2c8eebde2f884b1cbc70e3005c45e44c1ae550b7e07e856bacccb4a7b")
+}
+
+@Test
+func datasetDigestCanonicalizesTaskEventOrderAndExcludesSourceProvenance() {
+    let first = TaskEvent(
+        id: "stimulus:1",
+        name: "Stimulus",
+        timeSec: 0.75,
+        column: "event_stimulus",
+        eventIndex: 1,
+        trialID: "trial:1",
+        source: "first-location.csv"
+    )
+    let second = TaskEvent(
+        id: "stimulus:2",
+        name: "Stimulus",
+        timeSec: 1.25,
+        column: "event_stimulus",
+        eventIndex: 2,
+        trialID: "trial:2",
+        source: "first-location.csv"
+    )
+    let relocatedFirst = TaskEvent(
+        id: first.id,
+        name: first.name,
+        timeSec: first.timeSec,
+        column: first.column,
+        eventIndex: first.eventIndex,
+        trialID: first.trialID,
+        source: "relocated/source.csv"
+    )
+
+    let ordered = DetectionDatasetSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [first, second])
+    )
+    let reversed = DetectionDatasetSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [second, first])
+    )
+    let relocated = DetectionDatasetSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [relocatedFirst, second])
+    )
+
+    #expect(ordered.digest == reversed.digest)
+    #expect(ordered.digest == relocated.digest)
+
+    let orderedMetadata = DetectionDatasetMetadataSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [first, second])
+    )
+    let reversedMetadata = DetectionDatasetMetadataSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [second, first])
+    )
+    let relocatedMetadata = DetectionDatasetMetadataSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [relocatedFirst, second])
+    )
+    #expect(orderedMetadata.taskEventSourceDigest
+        == reversedMetadata.taskEventSourceDigest)
+    #expect(orderedMetadata.taskEventSourceDigest
+        != relocatedMetadata.taskEventSourceDigest)
+}
+
+@Test
+func datasetDigestChangesWhenTaskEventScientificIdentityChanges() {
+    let event = TaskEvent(
+        id: "stimulus:1",
+        name: "Stimulus",
+        timeSec: 0.75,
+        column: "event_stimulus",
+        eventIndex: 1,
+        trialID: "trial:1",
+        source: "fixture.csv"
+    )
+    let changedTime = TaskEvent(
+        id: event.id,
+        name: event.name,
+        timeSec: 0.751,
+        column: event.column,
+        eventIndex: event.eventIndex,
+        trialID: event.trialID,
+        source: event.source
+    )
+
+    let original = DetectionDatasetSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [event])
+    )
+    let changed = DetectionDatasetSnapshot.make(
+        dataset: identityFixtureDataset(taskEvents: [changedTime])
+    )
+
+    #expect(original.digest != changed.digest)
 }
 
 @Test
