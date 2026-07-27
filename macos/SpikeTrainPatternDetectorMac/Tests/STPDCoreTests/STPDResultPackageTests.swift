@@ -8369,7 +8369,9 @@ private func dataQualityQCTampered(
     let v3All = Set(STPDResultTable.allCases.map(\.rawValue))
     let v2Original = Set(STPDResultTable.allCases.filter { $0 != .dataQualityQC }.map(\.rawValue))
 
-    // (15) a v3-aware validator accepts a valid v2 package lacking Data_quality_QC.
+    // (15) v2 layout recognition: the schema table-set gate's expected filename-set validation accepts
+    // the v2 17-table layout (no Data_quality_QC). This is table-set recognition only, not an on-disk
+    // v2 package read or end-to-end backward-compatible validation.
     #expect(throws: Never.self) {
         try STPDResultPackageValidator.validateSchemaTableSet(
             schemaVersion: "stpd_result_package_v2", presentFileNames: v2Original)
@@ -8384,8 +8386,9 @@ private func dataQualityQCTampered(
         try STPDResultPackageValidator.validateSchemaTableSet(
             schemaVersion: "stpd_result_package_v3", presentFileNames: v3All)
     }
-    // (17) empirical v2-reader-on-v3: a v2-declared package containing the v3 QC table is rejected
-    // (fail-closed on the unexpected table). Recorded behavior, not assumed.
+    // (17) empirical: expected filename-set validation of the v2 layout rejects a set that contains the
+    // v3 Data_quality_QC table (fail-closed on the unexpected table). This is table-set recognition, not
+    // an on-disk v2 package read. Recorded behavior, not assumed.
     #expect(throws: STPDResultPackageError.self) {
         try STPDResultPackageValidator.validateSchemaTableSet(
             schemaVersion: "stpd_result_package_v2", presentFileNames: v3All)

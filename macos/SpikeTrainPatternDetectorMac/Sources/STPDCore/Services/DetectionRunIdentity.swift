@@ -47,17 +47,22 @@ public struct STPDResultTableContract: Hashable, Sendable {
 
 public enum STPDResultSchema {
     public static let version = "stpd_result_package_v3"
-    /// The immediately-preceding schema version. Retained so the schema layer can express backward
-    /// compatibility (a v3-aware validator accepts a valid v2 package, which lacks `Data_quality_QC.csv`).
+    /// The immediately-preceding schema version. Retained so the schema layer can express the v2 table
+    /// layout for schema-version-aware expected-table-set validation (v2 = 17 tables, without
+    /// `Data_quality_QC.csv`). This is table-set recognition only, not an on-disk v2 package reader.
     public static let previousVersion = "stpd_result_package_v2"
     public static let detectorVersion = "stpd_mac_structure_first_v1"
     public static let manifestFileName = "manifest.json"
 
-    /// The exact set of table file names required for a given result-package schema version.
+    /// The exact set of table file names expected for a given result-package schema version.
     ///
-    /// v2 requires the original 17 tables; v3 additionally requires `Data_quality_QC.csv`. An unknown
-    /// version returns `nil` so callers fail closed. This is the narrow schema-layer primitive that
-    /// expresses reader/validator compatibility without a broad package-reader subsystem.
+    /// v2 expects the original 17 tables (no `Data_quality_QC.csv`); v3 expects 18 tables including
+    /// `Data_quality_QC.csv`. An unknown version returns `nil` so callers fail closed.
+    ///
+    /// Schema-version-aware expected-table-set validation recognizes the v2 17-table layout and the v3
+    /// 18-table layout. This helper does not implement an on-disk package reader or end-to-end
+    /// backward-compatible package validation. The current full v3 build/validation path unconditionally
+    /// requires `Data_quality_QC.csv`.
     public static func requiredTableFileNames(forSchemaVersion version: String) -> Set<String>? {
         switch version {
         case previousVersion:
