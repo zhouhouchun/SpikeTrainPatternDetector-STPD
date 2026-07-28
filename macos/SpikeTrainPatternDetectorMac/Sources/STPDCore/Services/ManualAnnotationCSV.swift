@@ -152,6 +152,10 @@ public enum ManualAnnotationCSVImporter {
         /// columns present). Callers must route identity-bound files through `importIdentityBound(_:)`
         /// so the identity envelope and authority gating are never silently ignored.
         case identityColumnsPresent
+        /// Raw-byte ingestion (`importIdentityBound(data:)`) was handed bytes that are not valid UTF-8.
+        /// Decoding fails closed — no lossy replacement, no import object is produced — so a corrupted or
+        /// wrongly-encoded file can never be silently reinterpreted.
+        case invalidUTF8
 
         public var errorDescription: String? {
             switch self {
@@ -164,6 +168,8 @@ public enum ManualAnnotationCSVImporter {
             case .identityColumnsPresent:
                 return "This CSV carries manual-annotation identity columns; use "
                     + "importIdentityBound(contents:) instead of the legacy importAnnotations(contents:)."
+            case .invalidUTF8:
+                return "Manual annotation CSV bytes are not valid UTF-8; the file cannot be decoded."
             }
         }
     }
@@ -739,10 +745,12 @@ public struct ManualAnnotationCSVImport: Hashable, Sendable {
     public let skippedRowCount: Int
     public let fileIdentity: ManualAnnotationCSVFileIdentity
     public let envelope: ManualAnnotationCSVIdentityEnvelope
-    /// SHA-256 (hex) of the UTF-8 encoding of the exact `String` supplied to the importer
-    /// (`Data(contents.utf8)`), not of the original on-disk file bytes. Carried through gating so a typed
-    /// approval can verify it is approving the same parsed source string that was gated. Raw-byte
-    /// ingestion (if the App later hashes file `Data` directly) is a Phase 2.2C-B integration concern.
+    /// The approval-bound source-file digest (lowercase SHA-256 hex). Its byte basis depends on the entry
+    /// point: via `importIdentityBound(data:)` it binds the EXACT supplied file bytes (raw-byte digest);
+    /// via `importIdentityBound(contents:)` it is the SHA-256 of `Data(contents.utf8)` (the re-encoding of
+    /// the already-decoded `String`, which need not equal the on-disk bytes). Either way it is carried
+    /// through gating unchanged so a typed approval verifies it is approving the same source that was
+    /// gated. Prefer the `data:` entry point when the raw file bytes are available.
     public let sourceFileDigest: String
 }
 
@@ -852,19 +860,52 @@ public struct ManualAnnotationCSVGatedImport: Hashable, Sendable {
 }
 
 public extension ManualAnnotationCSVImporter {
-    /// SHA-256 (hex) of the UTF-8 encoding of the exact `String` supplied to the importer
-    /// (`Data(contents.utf8)`) — NOT of the original on-disk file bytes. It is the approval-bound
-    /// source-file digest: the same `String` passed here and to `importIdentityBound` yields the same
-    /// digest, so an approval built from it matches the gated import. Hashing raw file `Data` directly is
-    /// deferred to Phase 2.2C-B integration.
-    static func sourceFileDigest(_ contents: String) -> String {
-        SHA256.hash(data: Data(contents.utf8)).map { String(format: "%02x", $0) }.joined()
+    /// Lowercase SHA-256 (hex) over the EXACT supplied bytes. This is the raw-byte, approval-bound
+    /// source-file digest: it binds the precise bytes of the file the user selected (BOM included; a
+    /// LF file and its CRLF twin hash differently). The bytes are never normalized before hashing.
+    static func sourceFileDigest(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Parses a standalone CSV and classifies its file-level identity envelope. Uses the shared PRIVATE
-    /// parser (never the legacy public `importAnnotations`, which fails closed on identity columns), then
-    /// validates the four identity columns as a repeated file-level envelope. This is not authority.
+    /// SHA-256 (hex) of the UTF-8 encoding of the exact `String` supplied to the importer
+    /// (`Data(contents.utf8)`) — NOT of the original on-disk file bytes. Behavior is unchanged from
+    /// earlier phases; it delegates to the raw-byte overload so the two share one hash implementation.
+    /// When the App has the original file bytes it should prefer `importIdentityBound(data:)`, whose
+    /// digest binds those exact bytes rather than the re-encoding of an already-decoded String.
+    static func sourceFileDigest(_ contents: String) -> String {
+        sourceFileDigest(Data(contents.utf8))
+    }
+
+    /// Parses a standalone CSV (decoded `String`) and classifies its file-level identity envelope. Its
+    /// approval-bound digest is the SHA-256 of `Data(contents.utf8)` (see `sourceFileDigest(_:String)`),
+    /// which does NOT necessarily equal the original file's on-disk bytes. Observable behavior is
+    /// unchanged from earlier phases. Prefer `importIdentityBound(data:)` when the raw bytes are available.
     static func importIdentityBound(contents: String) throws -> ManualAnnotationCSVImport {
+        try makeIdentityBoundImport(contents: contents, sourceFileDigest: sourceFileDigest(contents))
+    }
+
+    /// Raw-byte identity-bound import. The approval-bound source digest binds the EXACT supplied bytes:
+    /// it is computed BEFORE decoding and carried unchanged through import → gate → approval matching.
+    /// Bytes are decoded with STRICT UTF-8 (`String(data:encoding:)`), which fails closed on invalid
+    /// UTF-8 (throwing `ImportError.invalidUTF8`) — never lossy replacement. Parsing of the decoded
+    /// contents (leading-BOM stripping, LF/CRLF/lone-CR handling) is identical to the String path and
+    /// does not affect the raw digest.
+    static func importIdentityBound(data: Data) throws -> ManualAnnotationCSVImport {
+        let digest = sourceFileDigest(data)
+        guard let contents = String(data: data, encoding: .utf8) else {
+            throw ImportError.invalidUTF8
+        }
+        return try makeIdentityBoundImport(contents: contents, sourceFileDigest: digest)
+    }
+
+    /// Shared identity-bound import: parses the decoded `contents` and classifies its identity envelope,
+    /// carrying the ALREADY-COMPUTED `sourceFileDigest` through unchanged. Both the String and raw-byte
+    /// entry points delegate here, so parsing and identity-envelope logic exist in exactly one place; the
+    /// only difference between the two entry points is which bytes the digest binds.
+    private static func makeIdentityBoundImport(
+        contents: String,
+        sourceFileDigest digest: String
+    ) throws -> ManualAnnotationCSVImport {
         let base = try parseAnnotationsCore(contents: contents)
         let (fileIdentity, envelope) = try classifyIdentityEnvelope(contents: contents)
         return ManualAnnotationCSVImport(
@@ -873,7 +914,7 @@ public extension ManualAnnotationCSVImporter {
             skippedRowCount: base.skippedRowCount,
             fileIdentity: fileIdentity,
             envelope: envelope,
-            sourceFileDigest: sourceFileDigest(contents)
+            sourceFileDigest: digest
         )
     }
 

@@ -1917,3 +1917,146 @@ private func dqcSecondRow(digest: String, run: String = "", review: String = "pe
     let finite = try #require(approval(Date(timeIntervalSince1970: 1_000)))   // finite still accepted
     #expect(try gated.authoritativeAnnotations(approval: finite).count == 1)
 }
+
+// MARK: - Phase 2.2C-B1: raw-byte-bound manual annotation CSV ingestion
+
+// Required #1: sourceFileDigest(Data) is the lowercase SHA-256 hex over the exact supplied bytes.
+@Test func b1RawByteDigestIsLowercaseSHA256OfExactBytes() {
+    // FIPS 180-2 SHA-256 known-answer vectors (no CryptoKit dependency needed in tests).
+    #expect(ManualAnnotationCSVImporter.sourceFileDigest(Data()) ==
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    #expect(ManualAnnotationCSVImporter.sourceFileDigest(Data("abc".utf8)) ==
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    let digest = ManualAnnotationCSVImporter.sourceFileDigest(Data("abc".utf8))
+    #expect(digest == digest.lowercased() && digest.count == 64) // lowercase, fixed 64-hex width
+    // The String overload delegates to the raw-byte overload over Data(contents.utf8) (behavior unchanged).
+    #expect(ManualAnnotationCSVImporter.sourceFileDigest("abc") ==
+        ManualAnnotationCSVImporter.sourceFileDigest(Data("abc".utf8)))
+}
+
+// Required #2: a BOM and non-BOM CSV parse to equivalent annotations + identity envelope, yet their
+// raw-byte source digests differ (the BOM bytes are part of the raw digest, never normalized away).
+@Test func b1BOMAndNonBOMParseEquivalentlyButRawDigestsDiffer() throws {
+    let csv = dqcBoundExport([dqcAnnotation()], runID: "run_x")
+    let plainData = Data(csv.utf8)
+    let bomData = Data([0xEF, 0xBB, 0xBF]) + plainData
+
+    let plain = try ManualAnnotationCSVImporter.importIdentityBound(data: plainData)
+    let bom = try ManualAnnotationCSVImporter.importIdentityBound(data: bomData)
+
+    // Equivalent parsed content and identity envelope (the decoded leading BOM is stripped for parsing).
+    #expect(plain.annotations == bom.annotations)
+    #expect(plain.fileIdentity == bom.fileIdentity)
+    #expect(plain.envelope == bom.envelope)
+    #expect(plain.unsupportedLabels == bom.unsupportedLabels)
+    #expect(plain.skippedRowCount == bom.skippedRowCount)
+    // But the raw-byte digests differ, and each binds its own exact bytes.
+    #expect(plain.sourceFileDigest != bom.sourceFileDigest)
+    #expect(plain.sourceFileDigest == ManualAnnotationCSVImporter.sourceFileDigest(plainData))
+    #expect(bom.sourceFileDigest == ManualAnnotationCSVImporter.sourceFileDigest(bomData))
+}
+
+// Required #3: LF and CRLF versions parse equivalently but have different raw-byte digests.
+@Test func b1LFAndCRLFParseEquivalentlyButRawDigestsDiffer() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let row = dqcRow(digest: digest, run: "run_x", review: "pending_confirmation")
+    let lf = dqcMinimalCSV([row], separator: "\n")
+    let crlf = dqcMinimalCSV([row], separator: "\r\n")
+    #expect(lf != crlf) // genuinely byte-different sources
+
+    let lfImport = try ManualAnnotationCSVImporter.importIdentityBound(data: Data(lf.utf8))
+    let crlfImport = try ManualAnnotationCSVImporter.importIdentityBound(data: Data(crlf.utf8))
+
+    #expect(lfImport.annotations == crlfImport.annotations)
+    #expect(lfImport.fileIdentity == crlfImport.fileIdentity)
+    #expect(lfImport.envelope == crlfImport.envelope)
+    #expect(lfImport.sourceFileDigest != crlfImport.sourceFileDigest)
+    #expect(lfImport.sourceFileDigest == ManualAnnotationCSVImporter.sourceFileDigest(Data(lf.utf8)))
+    #expect(crlfImport.sourceFileDigest == ManualAnnotationCSVImporter.sourceFileDigest(Data(crlf.utf8)))
+}
+
+// Required #4: invalid UTF-8 fails closed with the typed error and produces NO import object (no lossy
+// replacement decoding).
+@Test func b1InvalidUTF8FailsClosedWithTypedError() {
+    let invalid = Data([0x74, 0x72, 0x61, 0x69, 0x6E, 0xFF, 0xFE]) // 0xFF/0xFE are never valid UTF-8
+    do {
+        _ = try ManualAnnotationCSVImporter.importIdentityBound(data: invalid)
+        Issue.record("invalid UTF-8 must fail closed, not produce an import object")
+    } catch ManualAnnotationCSVImporter.ImportError.invalidUTF8 {
+        // expected: strict decode failed closed
+    } catch {
+        Issue.record("expected ImportError.invalidUTF8, got \(error)")
+    }
+}
+
+// Required #5: the exact raw-byte digest survives import and gate unchanged.
+@Test func b1RawByteDigestSurvivesImportAndGate() throws {
+    let data = Data(dqcBoundExport([dqcAnnotation()]).utf8)
+    let expected = ManualAnnotationCSVImporter.sourceFileDigest(data)
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(data: data)
+    #expect(imported.sourceFileDigest == expected)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.sourceFileDigest == expected)
+}
+
+// Required #6: an approval carrying the exact raw-byte digest promotes an otherwise-eligible import.
+@Test func b1ApprovalWithExactRawDigestPromotesEligibleImport() throws {
+    let data = Data(dqcBoundExport([dqcAnnotation()]).utf8)
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(data: data)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    let approval = ManualAnnotationCSVApproval(
+        sourceFileDigest: ManualAnnotationCSVImporter.sourceFileDigest(data),
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    )!
+    let authoritative = try gated.authoritativeAnnotations(approval: approval)
+    #expect(authoritative.count == 1)
+}
+
+// Required #7: an approval using the String-derived digest for a byte-different (BOM) file is rejected
+// with sourceFileDigestMismatch — the raw-bytes-bound import cannot be promoted by a decoded-string digest.
+@Test func b1StringDerivedDigestForByteDifferentFileIsRejected() throws {
+    let csv = dqcBoundExport([dqcAnnotation()])
+    let bomData = Data([0xEF, 0xBB, 0xBF]) + Data(csv.utf8)
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(data: bomData)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    // The String-derived digest of the BOM-less content does NOT bind the raw (BOM-including) bytes.
+    let stringDerived = ManualAnnotationCSVImporter.sourceFileDigest(csv)
+    #expect(stringDerived != gated.sourceFileDigest)
+    let mismatched = ManualAnnotationCSVApproval(
+        sourceFileDigest: stringDerived,
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    )!
+    do {
+        _ = try gated.authoritativeAnnotations(approval: mismatched)
+        Issue.record("a String-derived digest for a byte-different file must not promote a raw-bytes-bound import")
+    } catch ManualAnnotationCSVAuthorityError.sourceFileDigestMismatch {
+        // expected: the approval does not bind the exact ingested bytes
+    } catch {
+        Issue.record("expected sourceFileDigestMismatch, got \(error)")
+    }
+}
+
+// Required #8: existing String-import behavior and legacy review-only behavior remain intact. For plain
+// (BOM-less) bytes the String and raw-byte entry points are identical, including the digest.
+@Test func b1StringAndRawPathsAgreeForPlainBytesAndLegacyStaysReviewOnly() throws {
+    let csv = dqcBoundExport([dqcAnnotation()], runID: "run_x")
+    let viaString = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    let viaData = try ManualAnnotationCSVImporter.importIdentityBound(data: Data(csv.utf8))
+    #expect(viaString == viaData) // identical import (annotations, identity, envelope, digest)
+    #expect(viaString.sourceFileDigest == ManualAnnotationCSVImporter.sourceFileDigest(Data(csv.utf8)))
+
+    // Legacy (17-column, no identity columns) file stays review-only through BOTH entry points.
+    let legacy = ManualAnnotationCSVExporter.csv(annotations: [dqcAnnotation()])
+    let legacyString = try ManualAnnotationCSVImporter.importIdentityBound(contents: legacy)
+    let legacyData = try ManualAnnotationCSVImporter.importIdentityBound(data: Data(legacy.utf8))
+    #expect(legacyString.fileIdentity == .legacyUnbound)
+    #expect(legacyData.fileIdentity == .legacyUnbound)
+    #expect(ManualAnnotationCSVImporter.gate(legacyString, activeDataset: dqcDatasetA).authority == .reviewOnly)
+    #expect(ManualAnnotationCSVImporter.gate(legacyData, activeDataset: dqcDatasetA).authority == .reviewOnly)
+}
