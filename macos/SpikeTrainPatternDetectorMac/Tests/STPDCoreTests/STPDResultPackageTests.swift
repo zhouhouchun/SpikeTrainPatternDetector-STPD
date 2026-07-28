@@ -8477,3 +8477,224 @@ private func dataQualityQCTampered(
         .replacingOccurrences(of: ridB, with: "RID")
     #expect(qcA == qcB)
 }
+
+// MARK: - Phase 2.2C-B0: spike-only manual authority must come from resolved geometry, not caller cache
+
+// A dataset whose second train has a SINGLE spike, plus its detection run. A window over that lone spike
+// resolves to genuine spike-only geometry (no ISI interval; a singleton spike) — the only geometry that
+// grants `.manual` spike-only source authority while owning no ISI (so it clears causal linking and
+// reaches the source-mode gate). The multi-ISI first train keeps the run/quality gates well-formed.
+private func resultPackageSingleSpikeFixture() -> (
+    dataset: SpikeDataset,
+    run: ClassicAnchorDetectionRun,
+    spikeTrain: SpikeTrain
+) {
+    let tonicISIs = [
+        0.300, 0.310, 0.295, 0.305, 0.300,
+        0.900,
+        0.305, 0.300, 0.295, 0.310, 0.300,
+    ]
+    func timestamps(_ isis: [Double]) -> [Double] {
+        isis.reduce(into: [0.0]) { values, isi in
+            values.append((values.last ?? 0) + isi)
+        }
+    }
+    let normalTrain = SpikeTrain(
+        name: "tonic_pause_train",
+        timestampsSec: timestamps(tonicISIs)
+    )
+    let singleSpikeTrain = SpikeTrain(
+        name: "single_spike_train",
+        timestampsSec: [0.5]
+    )
+    let dataset = SpikeDataset(
+        name: "b0-single-spike-fixture",
+        sourceDescription: "phase 2.2c-b0 spike-only authority fixture",
+        trains: [normalTrain, singleSpikeTrain]
+    )
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(
+            minValidISISec: 0.001,
+            histogramBinWidthSec: 0.005
+        ),
+        buildCommit: resultPackageBuildCommit
+    )
+    return (dataset, run, singleSpikeTrain)
+}
+
+private func resultPackageSpikeOnlyAnnotation(
+    trainID: String,
+    id: UUID
+) -> ManualAnnotation {
+    ManualAnnotation(
+        id: id,
+        trainID: trainID,
+        label: .tonic,
+        startSec: 0.4,
+        endSec: 0.6, // brackets the lone spike at 0.5; no ISI interval exists on a single-spike train
+        note: "spike-only manual authority fixture",
+        annotator: "Result Package Test Reviewer",
+        annotatorIdentitySource: .userProvided,
+        createdAt: Date(timeIntervalSince1970: 100),
+        updatedAt: Date(timeIntervalSince1970: 200)
+    )
+}
+
+/// Characterization (FAILS against ac09aad, PASSES after the fix): `.manual` spike-only source authority
+/// must be decided from the RESOLVED geometry, never from the caller-supplied cached indices.
+///
+/// The annotation's authoritative time resolves to genuine spike-only geometry (single-spike train), but
+/// its cached indices are FORGED to look like an ISI interval (non-spike-only). Against ac09aad the gate
+/// reads the raw forged cache, concludes "not spike-only", finds no manual authority, and wrongly REJECTS
+/// the build with the source-mode error. After the fix the gate reads the resolved spike-only geometry
+/// and correctly admits the manual authority, so that specific rejection no longer occurs.
+@Test func callerSuppliedCacheCannotOverrideResolvedSpikeOnlyManualAuthority() throws {
+    let fixture = resultPackageSingleSpikeFixture()
+    let automatic = STPDResultPackageInput.automatic(
+        dataset: fixture.dataset,
+        run: fixture.run
+    )
+    var forged = resultPackageSpikeOnlyAnnotation(
+        trainID: fixture.spikeTrain.id,
+        id: UUID(uuidString: "51500000-0000-0000-0000-000000000001")!
+    )
+    // Sanity: the authoritative time genuinely resolves to spike-only geometry (no ISI interval).
+    let resolved = try #require(
+        ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible(
+            forged, in: fixture.dataset.trains
+        )
+    )
+    #expect(resolved.startISIIndex == nil && resolved.endISIIndex == nil)
+    #expect(resolved.startSpikeIndex != nil && resolved.startSpikeIndex == resolved.endSpikeIndex)
+    // Forge the caller-supplied cache to a NON-spike-only shape (a declared ISI interval). Only the
+    // pre-fix gate, which trusts the raw cache, would treat this as "not spike-only".
+    forged.startISIIndex = 1
+    forged.endISIIndex = 1
+    forged.startSpikeIndex = nil
+    forged.endSpikeIndex = nil
+
+    let input = STPDResultPackageInput(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        sourceMode: .manual,
+        finalEvents: automatic.finalEvents,
+        finalISILabelRows: automatic.finalISILabelRows,
+        manualAnnotations: [forged],
+        candidateReviews: [],
+        reviewLinks: [],
+        candidateDiagnostics: []
+    )
+
+    // No permissive catch: `build` must succeed end-to-end and any thrown error fails the test naturally.
+    // Against ac09aad the pre-fix gate reads the forged non-spike-only cache, denies spike-only authority,
+    // and `build` throws the source-mode error -> the test FAILS. After the fix the gate reads the resolved
+    // spike-only geometry, admits authority, and `build` returns an authoritative manual package.
+    let package = try STPDResultPackageBuilder.build(input)
+    #expect(package.sourceMode == .manual)
+    #expect(package.manifest.sourceMode == STPDResultPackageSourceMode.manual.rawValue)
+}
+
+/// Positive control (PASSES before and after the fix): the SAME spike-only annotation with an HONEST
+/// cache still obtains `.manual` authority, proving the fix does not over-reject legitimate spike-only
+/// manual authority. Together with the characterization above, this shows authority tracks the resolved
+/// geometry rather than the caller cache in both directions.
+@Test func honestResolvedSpikeOnlyAnnotationRetainsManualAuthority() throws {
+    let fixture = resultPackageSingleSpikeFixture()
+    let automatic = STPDResultPackageInput.automatic(
+        dataset: fixture.dataset,
+        run: fixture.run
+    )
+    let honest = try #require(
+        ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible(
+            resultPackageSpikeOnlyAnnotation(
+                trainID: fixture.spikeTrain.id,
+                id: UUID(uuidString: "51500000-0000-0000-0000-000000000002")!
+            ),
+            in: fixture.dataset.trains
+        )
+    )
+    #expect(honest.startISIIndex == nil && honest.endISIIndex == nil)
+    #expect(honest.startSpikeIndex != nil && honest.startSpikeIndex == honest.endSpikeIndex)
+
+    let input = STPDResultPackageInput(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        sourceMode: .manual,
+        finalEvents: automatic.finalEvents,
+        finalISILabelRows: automatic.finalISILabelRows,
+        manualAnnotations: [honest],
+        candidateReviews: [],
+        reviewLinks: [],
+        candidateDiagnostics: []
+    )
+
+    // Build must succeed and yield an authoritative manual package, before and after the fix; any thrown
+    // error fails the test naturally (no unrelated error can make this positive test pass).
+    let package = try STPDResultPackageBuilder.build(input)
+    #expect(package.sourceMode == .manual)
+    #expect(package.manifest.sourceMode == STPDResultPackageSourceMode.manual.rawValue)
+}
+
+/// External-contract regression: a forged spike-only cache can NEVER grant authoritative manual
+/// provenance. The annotation's authoritative time resolves to ISI-OWNING geometry (it changes real ISI
+/// labels), but its cached indices are forged to look spike-only. With no valid causal review links the
+/// build must FAIL CLOSED. This holds identically before and after the fix: the pre-existing causal-
+/// linking gate (which runs on RESOLVED geometry, before `validateSourceMode`) rejects the unlinked
+/// ISI-owning annotation, so the forged spike-only cache never reaches — let alone passes — the source-
+/// mode gate. This test protects that contract regardless of the source-mode-gate change.
+@Test func forgedSpikeOnlyCacheCannotGrantManualAuthorityEndToEnd() throws {
+    let fixture = resultPackageFixture()
+    let automatic = STPDResultPackageInput.automatic(
+        dataset: fixture.dataset,
+        run: fixture.run
+    )
+    // Authoritative time resolves to a multi-ISI interval that overrides non-tonic auto labels — i.e. it
+    // causally OWNS those ISIs and would require exact review links to be authoritative.
+    var forged = try resultPackageMultiISITonicAnnotation(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        id: UUID(uuidString: "51500000-0000-0000-0000-000000000003")!
+    )
+    let resolved = try #require(
+        ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible(
+            forged, in: fixture.dataset.trains
+        )
+    )
+    #expect(resolved.startISIIndex != nil && resolved.endISIIndex != nil) // resolved geometry owns an ISI interval
+    // Forge the caller-supplied cache to look spike-only (no ISI interval + a singleton spike).
+    forged.startISIIndex = nil
+    forged.endISIIndex = nil
+    forged.startSpikeIndex = 0
+    forged.endSpikeIndex = 0
+
+    let input = STPDResultPackageInput(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        sourceMode: .manual,
+        finalEvents: automatic.finalEvents,
+        finalISILabelRows: automatic.finalISILabelRows,
+        manualAnnotations: [forged],
+        candidateReviews: [],
+        reviewLinks: [], // no valid causal review links
+        candidateDiagnostics: []
+    )
+
+    do {
+        _ = try STPDResultPackageBuilder.build(input)
+        Issue.record(
+            "a forged spike-only cache over ISI-owning geometry with no causal links must fail closed, not produce an authoritative manual package"
+        )
+    } catch STPDResultPackageError.invalidInput(let message) {
+        // Fail-closed at the causal-linking gate (before validateSourceMode): the resolved ISI-owning
+        // annotation must link exactly to the ISIs it changes.
+        #expect(
+            message.contains("must link exactly to the ISIs it changes"),
+            "expected the fail-closed causal-linking rejection, got: \(message)"
+        )
+    } catch {
+        Issue.record(
+            "unexpected error type (expected STPDResultPackageError.invalidInput): \(error)"
+        )
+    }
+}

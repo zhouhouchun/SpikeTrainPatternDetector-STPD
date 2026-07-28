@@ -1774,7 +1774,11 @@ public enum STPDResultPackageBuilder {
             candidateUIDBySourceID: candidateUIDBySourceID,
             candidateBySourceID: candidateBySourceID
         )
-        try validateSourceMode(input, reviewAuthority: reviewAuthority)
+        try validateSourceMode(
+            input,
+            resolvedManualAnnotations: resolvedManualAnnotations,
+            reviewAuthority: reviewAuthority
+        )
         let isiRows = try normalizedISIRows(
             input.finalISILabelRows,
             dataset: input.dataset,
@@ -3218,6 +3222,7 @@ private extension STPDResultPackageBuilder {
 
     static func validateSourceMode(
         _ input: STPDResultPackageInput,
+        resolvedManualAnnotations: [ManualAnnotation],
         reviewAuthority: STPDResolvedReviewAuthority
     ) throws {
         switch input.sourceMode {
@@ -3234,8 +3239,12 @@ private extension STPDResultPackageBuilder {
                 if case .manualAnnotation = $0.evidence { return true }
                 return false
             }
+            // Spike-only authority is decided from the RESOLVED geometry (indices recomputed against the
+            // active train from authoritative time), never from the caller-supplied cached indices on
+            // `input.manualAnnotations`. A stale or forged cache must not grant or deny spike-only
+            // authority; only the recomputed geometry governs it.
             var hasActiveSpikeOnlyAuthority = false
-            for annotation in input.manualAnnotations {
+            for annotation in resolvedManualAnnotations {
                 let hasNoISIInterval =
                     annotation.startISIIndex == nil && annotation.endISIIndex == nil
                 let spikeArrayIndex = annotation.startSpikeIndex
