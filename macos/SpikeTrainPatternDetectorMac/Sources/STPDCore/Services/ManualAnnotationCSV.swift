@@ -148,6 +148,10 @@ public enum ManualAnnotationCSVImporter {
         case missingColumn(String)
         case malformedHeader
         case duplicateColumn(String)
+        /// The legacy parse-only API was handed an identity-bound file (any of the four identity
+        /// columns present). Callers must route identity-bound files through `importIdentityBound(_:)`
+        /// so the identity envelope and authority gating are never silently ignored.
+        case identityColumnsPresent
 
         public var errorDescription: String? {
             switch self {
@@ -157,11 +161,36 @@ public enum ManualAnnotationCSVImporter {
                 return "Manual annotation CSV has a malformed quoted header."
             case .duplicateColumn(let column):
                 return "Manual annotation CSV contains the duplicate \(column) column."
+            case .identityColumnsPresent:
+                return "This CSV carries manual-annotation identity columns; use "
+                    + "importIdentityBound(contents:) instead of the legacy importAnnotations(contents:)."
             }
         }
     }
 
+    /// The four optional identity/governance columns that mark an identity-bound standalone CSV.
+    static let identityColumnNames: Set<String> = ["schema_version", "dataset_digest", "run_id", "review_state"]
+
+    static func headerHasIdentityColumns(_ header: [String]) -> Bool {
+        header.contains { identityColumnNames.contains($0) }
+    }
+
+    /// Legacy, parse-only import for the 17-column standalone CSV. It fails closed if any identity
+    /// column is present so an identity-bound file can never be read while ignoring its identity
+    /// envelope. Identity-bound files must use `importIdentityBound(contents:)`.
     public static func importAnnotations(contents: String) throws -> ImportResult {
+        let normalized = strippingLeadingBOM(contents)
+        let rows = parseCSV(normalized)
+        if let headerRow = rows.first, headerRow.isValid, headerHasIdentityColumns(headerRow.fields) {
+            throw ImportError.identityColumnsPresent
+        }
+        return try parseAnnotationsCore(contents: contents)
+    }
+
+    /// Shared private parser used by both the legacy `importAnnotations` and the identity-bound path.
+    /// It parses the annotation columns and ignores any unknown (including identity) columns; it does
+    /// not itself gate identity, so `importIdentityBound` does not depend on the public legacy bypass.
+    private static func parseAnnotationsCore(contents: String) throws -> ImportResult {
         let rows = parseCSV(strippingLeadingBOM(contents))
         guard let headerRow = rows.first else {
             return ImportResult(annotations: [], unsupportedLabels: [], skippedRowCount: 0)
@@ -609,11 +638,17 @@ public enum ManualAnnotationCSVImporter {
 
 // MARK: - Phase 2.2C-A: dataset-identity binding and fail-closed authority gating
 
-/// The governance token recorded in the standalone CSV `review_state` column. It is informational
-/// provenance only: a CSV-declared review_state can never grant authority, bypass dataset matching,
-/// bypass geometry validation, or bypass explicit confirmation.
+/// The governance token recorded in the standalone CSV `review_state` column. The token can only
+/// RESTRICT authority, never grant it. Frozen policy (see `gate`):
+/// - `pending_confirmation`: may become eligible only after every other gate passes.
+/// - `review_only`: permanently review-only for that import — approval cannot promote it.
+/// - a missing `review_state`: defaults to `review_only`.
+/// - an unknown or inconsistent `review_state`: `malformedIdentity`, review-only.
+/// (A legacy unbound file is review-only regardless.)
 public enum ManualAnnotationCSVReviewState: String, Hashable, Sendable, CaseIterable {
+    /// Awaiting explicit approval on import; may become eligible once all other gates pass.
     case pendingConfirmation = "pending_confirmation"
+    /// Permanently review-only for that import; explicit approval cannot promote it.
     case reviewOnly = "review_only"
 }
 
@@ -691,118 +726,229 @@ public enum ManualAnnotationCSVAuthority: Hashable, Sendable {
 
 /// The result of parsing a standalone CSV with its file-level identity envelope. This is not authority:
 /// it must be gated against an active dataset (`ManualAnnotationCSVImporter.gate`).
+///
+/// Every stored property is `let`: the identity, the parsed annotations, the parse-loss metadata, the
+/// governance envelope, and the source-file digest are one integrity-bound parse result, and the digest
+/// stands for exactly these parsed contents. External mutation between parsing and gating must be
+/// impossible — a caller must not be able to retarget the identity, inject/replace annotations under a
+/// stale digest, or erase parse-loss blockers before handing this value to `gate`. STPDCore constructs
+/// this value once (in `importIdentityBound`) and never mutates it, so `let` costs nothing internally.
 public struct ManualAnnotationCSVImport: Hashable, Sendable {
-    public var annotations: [ManualAnnotation]
-    public var unsupportedLabels: [String]
-    public var skippedRowCount: Int
-    public var fileIdentity: ManualAnnotationCSVFileIdentity
-    public var envelope: ManualAnnotationCSVIdentityEnvelope
+    public let annotations: [ManualAnnotation]
+    public let unsupportedLabels: [String]
+    public let skippedRowCount: Int
+    public let fileIdentity: ManualAnnotationCSVFileIdentity
+    public let envelope: ManualAnnotationCSVIdentityEnvelope
+    /// SHA-256 (hex) of the UTF-8 encoding of the exact `String` supplied to the importer
+    /// (`Data(contents.utf8)`), not of the original on-disk file bytes. Carried through gating so a typed
+    /// approval can verify it is approving the same parsed source string that was gated. Raw-byte
+    /// ingestion (if the App later hashes file `Data` directly) is a Phase 2.2C-B integration concern.
+    public let sourceFileDigest: String
+}
+
+/// A specific, typed reason authority is withheld. Recorded on every gated import so the reason is
+/// auditable rather than encoded only in a free-form string.
+public enum ManualAnnotationCSVAuthorityBlocker: Hashable, Sendable {
+    case legacyUnbound
+    case malformedIdentity
+    case unsupportedSchema
+    case datasetMismatch
+    /// `review_state` is `review_only` (or missing → defaulted to `review_only`).
+    case reviewOnlyState
+    case geometryIncompatible
+    case skippedRows(Int)
+    case unsupportedLabels([String])
+    case emptyImport
+}
+
+/// An auditable approval record required to promote an eligible import to authoritative annotations.
+/// It records approval evidence (which file, which dataset, who, when); it does not cryptographically
+/// prove a human click — the App confirmation action is a later Phase 2.2C-B concern.
+public struct ManualAnnotationCSVApproval: Hashable, Sendable {
+    public let sourceFileDigest: String
+    public let activeDatasetDigest: String
+    public let approver: String
+    public let approvedAt: Date
+
+    /// Fails to construct when the approver identity is empty/whitespace, either digest is empty, or the
+    /// approval timestamp is non-finite (NaN/±infinity) — so an approval object can never exist without a
+    /// nonempty approver, both digests, and a finite, audit-quality timestamp. The timestamp check is
+    /// audit hardening only; it does not otherwise alter authority decisions.
+    public init?(
+        sourceFileDigest: String,
+        activeDatasetDigest: String,
+        approver: String,
+        approvedAt: Date
+    ) {
+        let trimmedApprover = approver.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedApprover.isEmpty, !sourceFileDigest.isEmpty, !activeDatasetDigest.isEmpty,
+              approvedAt.timeIntervalSinceReferenceDate.isFinite else {
+            return nil
+        }
+        self.sourceFileDigest = sourceFileDigest
+        self.activeDatasetDigest = activeDatasetDigest
+        self.approver = trimmedApprover
+        self.approvedAt = approvedAt
+    }
 }
 
 public enum ManualAnnotationCSVAuthorityError: Error, LocalizedError {
-    case notEligibleForAuthority(ManualAnnotationCSVIdentity, ManualAnnotationCSVAuthority)
+    case notEligibleForAuthority(ManualAnnotationCSVIdentity, [ManualAnnotationCSVAuthorityBlocker])
+    case sourceFileDigestMismatch
+    case datasetDigestMismatch
 
     public var errorDescription: String? {
         switch self {
-        case .notEligibleForAuthority(let identity, _):
-            return "Manual annotation import is not eligible for authority (identity: \(identity)); "
-                + "it remains review-only."
+        case .notEligibleForAuthority(let identity, let blockers):
+            return "Manual annotation import is not eligible for authority (identity: \(identity); "
+                + "blockers: \(blockers)); it remains review-only."
+        case .sourceFileDigestMismatch:
+            return "Approval source-file digest does not match the gated import."
+        case .datasetDigestMismatch:
+            return "Approval dataset digest does not match the gated import's active dataset."
         }
     }
 }
 
 /// A standalone CSV import gated against an active dataset. The ONLY way to obtain authoritative
-/// annotations is `confirmAuthoritative()`, which succeeds solely when the import is
-/// `eligibleAfterExplicitConfirmation` (active-dataset digest match AND geometry compatibility). A
-/// mismatched, legacy, malformed, unsupported, or geometry-incompatible import can never be promoted,
-/// and no boolean flag can bypass this. Import never mutates detector labels or application state.
+/// annotations is `authoritativeAnnotations(approval:)` with a matching `ManualAnnotationCSVApproval`;
+/// it succeeds solely when the import is `eligibleAfterExplicitConfirmation` (active-dataset digest
+/// match AND geometry compatibility AND no parse loss AND a non-`review_only` state) and the approval's
+/// source-file and dataset digests match. There is no no-argument promotion and no boolean bypass; a
+/// mismatched, legacy, malformed, unsupported, geometry-incompatible, review-only, partially-parsed, or
+/// empty import can never be promoted. Import never mutates detector labels or application state.
 public struct ManualAnnotationCSVGatedImport: Hashable, Sendable {
     /// When `authority == .eligibleAfterExplicitConfirmation`, these are the geometry-resolved
-    /// annotations (indices filled against the active dataset). Otherwise they are the raw parsed
-    /// annotations and must be treated as review-only.
+    /// annotations (indices recomputed against the active dataset from authoritative time). Otherwise
+    /// they are the raw parsed annotations and must be treated as review-only.
     public let annotations: [ManualAnnotation]
     public let identity: ManualAnnotationCSVIdentity
     public let authority: ManualAnnotationCSVAuthority
+    /// The specific, typed reasons authority is withheld (empty iff `eligibleAfterExplicitConfirmation`).
+    public let blockers: [ManualAnnotationCSVAuthorityBlocker]
+    public let sourceFileDigest: String
+    public let activeDatasetDigest: String
     public let envelope: ManualAnnotationCSVIdentityEnvelope
     public let unsupportedLabels: [String]
     public let skippedRowCount: Int
 
-    /// Explicit-confirmation promotion. This is the separate approval step; it returns authoritative
-    /// annotations only for an already identity-matched, geometry-compatible import, and throws
-    /// otherwise. There is deliberately no `confirmedByUser: Bool` parameter that could bypass a
-    /// missing or mismatched identity.
-    public func confirmAuthoritative() throws -> [ManualAnnotation] {
+    /// Promote to authoritative annotations using an auditable approval record. Throws unless the import
+    /// is eligible AND the approval's `sourceFileDigest` and `activeDatasetDigest` match this gated
+    /// import. Returns exactly the geometry-resolved annotations. There is no no-argument promotion.
+    public func authoritativeAnnotations(
+        approval: ManualAnnotationCSVApproval
+    ) throws -> [ManualAnnotation] {
         guard authority == .eligibleAfterExplicitConfirmation else {
-            throw ManualAnnotationCSVAuthorityError.notEligibleForAuthority(identity, authority)
+            throw ManualAnnotationCSVAuthorityError.notEligibleForAuthority(identity, blockers)
+        }
+        guard approval.sourceFileDigest == sourceFileDigest else {
+            throw ManualAnnotationCSVAuthorityError.sourceFileDigestMismatch
+        }
+        guard approval.activeDatasetDigest == activeDatasetDigest else {
+            throw ManualAnnotationCSVAuthorityError.datasetDigestMismatch
         }
         return annotations
     }
 }
 
 public extension ManualAnnotationCSVImporter {
-    /// Parses a standalone CSV and classifies its file-level identity envelope. Reuses
-    /// `importAnnotations` for all annotation/label/geometry-field/skip parsing, then validates the four
-    /// identity columns as a repeated file-level envelope. This is not authority.
+    /// SHA-256 (hex) of the UTF-8 encoding of the exact `String` supplied to the importer
+    /// (`Data(contents.utf8)`) — NOT of the original on-disk file bytes. It is the approval-bound
+    /// source-file digest: the same `String` passed here and to `importIdentityBound` yields the same
+    /// digest, so an approval built from it matches the gated import. Hashing raw file `Data` directly is
+    /// deferred to Phase 2.2C-B integration.
+    static func sourceFileDigest(_ contents: String) -> String {
+        SHA256.hash(data: Data(contents.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Parses a standalone CSV and classifies its file-level identity envelope. Uses the shared PRIVATE
+    /// parser (never the legacy public `importAnnotations`, which fails closed on identity columns), then
+    /// validates the four identity columns as a repeated file-level envelope. This is not authority.
     static func importIdentityBound(contents: String) throws -> ManualAnnotationCSVImport {
-        let base = try importAnnotations(contents: contents)
+        let base = try parseAnnotationsCore(contents: contents)
         let (fileIdentity, envelope) = try classifyIdentityEnvelope(contents: contents)
         return ManualAnnotationCSVImport(
             annotations: base.annotations,
             unsupportedLabels: base.unsupportedLabels,
             skippedRowCount: base.skippedRowCount,
             fileIdentity: fileIdentity,
-            envelope: envelope
+            envelope: envelope,
+            sourceFileDigest: sourceFileDigest(contents)
         )
     }
 
-    /// Gates a parsed import against the active dataset: resolves `matching`/`mismatch` via the canonical
-    /// dataset digest, applies geometry compatibility, and assigns authority. Matching identity alone is
-    /// never sufficient — a matching import is at most `eligibleAfterExplicitConfirmation`, and a matching
-    /// but geometry-incompatible import stays `reviewOnly`.
+    /// Gates a parsed import against the active dataset. Authority is granted (as
+    /// `eligibleAfterExplicitConfirmation`) only when ALL of these independent gates pass: the file is
+    /// `bound` and its `dataset_digest` matches the canonical active-dataset digest; every annotation is
+    /// geometry-compatible (train resolvable + within-train time bounds); `review_state` is
+    /// `pending_confirmation` (missing/`review_only` blocks); no row was skipped and no label was
+    /// unsupported (no partial-parse loss); and the import is non-empty. Otherwise the import is
+    /// `reviewOnly` with typed `blockers`. Even then, promotion still requires a matching typed approval.
     static func gate(
         _ imported: ManualAnnotationCSVImport,
         activeDataset: SpikeDataset
     ) -> ManualAnnotationCSVGatedImport {
-        func result(
-            _ annotations: [ManualAnnotation],
-            _ identity: ManualAnnotationCSVIdentity,
-            _ authority: ManualAnnotationCSVAuthority
-        ) -> ManualAnnotationCSVGatedImport {
-            ManualAnnotationCSVGatedImport(
-                annotations: annotations,
-                identity: identity,
-                authority: authority,
-                envelope: imported.envelope,
-                unsupportedLabels: imported.unsupportedLabels,
-                skippedRowCount: imported.skippedRowCount
-            )
-        }
+        let activeDigest = DetectionDatasetSnapshot.make(dataset: activeDataset).digest
+        var blockers: [ManualAnnotationCSVAuthorityBlocker] = []
+        var identity: ManualAnnotationCSVIdentity
+        var resolvedAnnotations = imported.annotations
 
         switch imported.fileIdentity {
         case .legacyUnbound:
-            return result(imported.annotations, .legacyUnbound, .reviewOnly)
+            identity = .legacyUnbound
+            blockers.append(.legacyUnbound)
         case .malformedIdentity:
-            return result(imported.annotations, .malformedIdentity, .reviewOnly)
+            identity = .malformedIdentity
+            blockers.append(.malformedIdentity)
         case .unsupportedSchema:
-            return result(imported.annotations, .unsupportedSchema, .reviewOnly)
+            identity = .unsupportedSchema
+            blockers.append(.unsupportedSchema)
         case .bound(let fileDigest):
-            let activeDigest = DetectionDatasetSnapshot.make(dataset: activeDataset).digest
-            guard fileDigest == activeDigest else {
-                // A mismatched digest is never authoritative.
-                return result(imported.annotations, .datasetMismatch, .reviewOnly)
+            if fileDigest != activeDigest {
+                identity = .datasetMismatch
+                blockers.append(.datasetMismatch)
+            } else {
+                identity = .matchingDataset
+                // review_state policy: `pending_confirmation` may proceed; `review_only` (or a missing
+                // review_state, which defaults to `review_only`) is a permanent review-only blocker.
+                // The CSV token can only RESTRICT authority, never grant it.
+                let effectiveReviewState = imported.envelope.reviewState
+                    .flatMap(ManualAnnotationCSVReviewState.init(rawValue:)) ?? .reviewOnly
+                if effectiveReviewState == .reviewOnly {
+                    blockers.append(.reviewOnlyState)
+                }
+                // Geometry gate: authoritative time (startSec/endSec) resolves indices against the active
+                // dataset; a missing train or out-of-train time fails. Cached indices are recomputed, not
+                // trusted, so a stale cached index never blocks a time-compatible annotation.
+                let resolved = imported.annotations.map {
+                    ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible($0, in: activeDataset.trains)
+                }
+                if resolved.contains(where: { $0 == nil }) {
+                    blockers.append(.geometryIncompatible)
+                } else {
+                    resolvedAnnotations = resolved.compactMap { $0 }
+                }
             }
-            // Identity matches. Geometry is a SEPARATE gate: every annotation must resolve against the
-            // active dataset (train resolvable + within-train bounds) or the import stays review-only.
-            let resolved = imported.annotations.map {
-                ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible($0, in: activeDataset.trains)
-            }
-            guard resolved.allSatisfy({ $0 != nil }) else {
-                return result(imported.annotations, .matchingDataset, .reviewOnly)
-            }
-            // Matching identity + geometry-compatible => eligible, but only after explicit confirmation.
-            // The CSV `review_state` is intentionally not consulted here; it can never grant authority.
-            return result(resolved.compactMap { $0 }, .matchingDataset, .eligibleAfterExplicitConfirmation)
         }
+
+        // Partial-parse loss and empty imports can never become authoritative, regardless of identity.
+        if imported.skippedRowCount > 0 { blockers.append(.skippedRows(imported.skippedRowCount)) }
+        if !imported.unsupportedLabels.isEmpty { blockers.append(.unsupportedLabels(imported.unsupportedLabels)) }
+        if imported.annotations.isEmpty { blockers.append(.emptyImport) }
+
+        let eligible = identity == .matchingDataset && blockers.isEmpty
+        let authority: ManualAnnotationCSVAuthority = eligible ? .eligibleAfterExplicitConfirmation : .reviewOnly
+        return ManualAnnotationCSVGatedImport(
+            annotations: eligible ? resolvedAnnotations : imported.annotations,
+            identity: identity,
+            authority: authority,
+            blockers: blockers,
+            sourceFileDigest: imported.sourceFileDigest,
+            activeDatasetDigest: activeDigest,
+            envelope: imported.envelope,
+            unsupportedLabels: imported.unsupportedLabels,
+            skippedRowCount: imported.skippedRowCount
+        )
     }
 
     /// Validates the four identity columns as a repeated file-level envelope and classifies the file.
@@ -827,14 +973,25 @@ public extension ManualAnnotationCSVImporter {
             return (.legacyUnbound, empty)
         }
 
-        let dataRows = rows.dropFirst().filter(\.isValid)
+        // Correction A: in an identity-bound file EVERY physical data row participates in identity
+        // validation. Any syntactically invalid data row (e.g. one whose malformed quoting could hide a
+        // conflicting dataset_digest) fails the whole file closed — it can never be a clean bound file.
+        if rows.dropFirst().contains(where: { !$0.isValid }) {
+            return (.malformedIdentity, empty)
+        }
 
-        // For a declared column, gather the single consistent nonempty value. Any declared column that
-        // is inconsistent (>1 distinct nonempty value across data rows) is malformed. A column that is
-        // `requiredWhenDeclared` (the dataset_digest identity anchor and the schema_version format
-        // marker) is additionally malformed if any data row leaves it blank/truncated — this prevents a
-        // declared-but-empty identity from being silently downgraded to legacy. The optional governance
-        // columns (run_id, review_state) may be blank; only inconsistency makes them malformed.
+        let dataRows = rows.dropFirst()
+
+        // For a declared column, resolve the single file-level value repeated across every physical data
+        // row. The envelope must be CONSISTENT: a column is malformed if it carries more than one
+        // distinct nonempty value, OR if it is blank on some rows but nonblank on others (mixed
+        // blank/nonblank — one populated row must not silently speak for a blank row). A
+        // `requiredWhenDeclared` column (the dataset_digest identity anchor and the schema_version format
+        // marker) is additionally malformed when every row leaves it blank, preventing a declared-but-
+        // empty identity from being silently downgraded to legacy. An optional column (run_id,
+        // review_state) that is uniformly blank is a valid missing value (review_state then defaults to
+        // review_only). run_id is never itself an authority gate — this rule only enforces file-level
+        // envelope consistency.
         func column(
             _ index: Int?,
             requiredWhenDeclared: Bool
@@ -848,9 +1005,17 @@ public extension ManualAnnotationCSVImporter {
                     : ""
                 if cell.isEmpty { sawBlank = true } else { values.insert(cell) }
             }
+            // A) More than one distinct nonempty value across rows — inconsistent envelope.
             if values.count > 1 { return (true, nil, true) }
+            // B) Blank on some rows but nonblank on others — the envelope is not repeated consistently
+            // across every physical data row. Applies to required AND optional columns alike.
+            if sawBlank, !values.isEmpty { return (true, nil, true) }
+            // E) Zero physical data rows: preserve the existing fail-closed empty-file behavior (no value;
+            // a required column then fails the downstream dataset_digest binding guard).
             if dataRows.isEmpty { return (true, values.first, false) }
-            if requiredWhenDeclared, sawBlank || values.isEmpty { return (true, values.first, true) }
+            // C) All rows blank: required columns are malformed; optional columns are a valid missing value.
+            if requiredWhenDeclared, values.isEmpty { return (true, nil, true) }
+            // D) Every row carries the same nonempty value (or an optional column is uniformly blank).
             return (true, values.first, false)
         }
 

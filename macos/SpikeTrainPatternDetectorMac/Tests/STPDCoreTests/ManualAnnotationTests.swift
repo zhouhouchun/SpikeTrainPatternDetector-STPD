@@ -1262,6 +1262,37 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     ([dqcMinimalHeader] + rows).map { $0.joined(separator: ",") }.joined(separator: separator) + separator
 }
 
+// A single data row shaped to `dqcMinimalHeader` (10 columns), fully parameterized so eligibility
+// blockers can be isolated (e.g. a skipped-but-CSV-valid row, an unsupported label, a wrong train).
+private func dqcRow(
+    train: String = "g",
+    label: String = "tonic",
+    start: String = "0.1",
+    end: String = "0.3",
+    startISI: String = "2",
+    endISI: String = "3",
+    schema: String = ManualAnnotationCSVExporter.identitySchemaVersion,
+    digest: String,
+    run: String = "",
+    review: String = "pending_confirmation"
+) -> [String] {
+    [train, label, start, end, startISI, endISI, schema, digest, run, review]
+}
+
+// A valid, auditable approval whose file + dataset digests match the gated import by construction.
+private func dqcApproval(
+    _ gated: ManualAnnotationCSVGatedImport,
+    approver: String = "Dr. Reviewer",
+    at: Date = Date(timeIntervalSince1970: 1_000)
+) -> ManualAnnotationCSVApproval {
+    ManualAnnotationCSVApproval(
+        sourceFileDigest: gated.sourceFileDigest,
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: approver,
+        approvedAt: at
+    )!
+}
+
 @Test func dqcIdentityBoundRoundTrip() throws {
     let csv = dqcBoundExport([dqcAnnotation()], runID: "run_x")
     #expect(csv.contains("schema_version,dataset_digest,run_id,review_state"))
@@ -1275,7 +1306,7 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
     #expect(gated.identity == .matchingDataset)
     #expect(gated.authority == .eligibleAfterExplicitConfirmation)
-    let authoritative = try gated.confirmAuthoritative()
+    let authoritative = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
     #expect(authoritative.count == 1)
     #expect(authoritative[0].trainID == "g")
     #expect(authoritative[0].label == .tonic)
@@ -1292,7 +1323,7 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetB)
     #expect(gated.identity == .datasetMismatch)
     #expect(gated.authority == .reviewOnly)
-    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated)) }
 }
 
 @Test func dqcMatchingDigestRemainsUnappliedUntilExplicitApproval() throws {
@@ -1300,7 +1331,8 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
     #expect(gated.identity == .matchingDataset)
     #expect(gated.authority == .eligibleAfterExplicitConfirmation)   // eligible, NOT auto-applied
-    #expect(try gated.confirmAuthoritative().count == 1)             // only the explicit call promotes
+    // Only the explicit, auditable approval call promotes — there is no no-argument promotion.
+    #expect(try gated.authoritativeAnnotations(approval: dqcApproval(gated)).count == 1)
 }
 
 @Test func dqcLegacyFileWithoutIdentityColumnsIsReviewOnly() throws {
@@ -1311,7 +1343,7 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
     #expect(gated.identity == .legacyUnbound)
     #expect(gated.authority == .reviewOnly)
-    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated)) }
 }
 
 @Test func dqcDeclaredButBlankDatasetDigestIsMalformedNotLegacy() throws {
@@ -1362,7 +1394,7 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
     #expect(gated.identity == .unsupportedSchema)
     #expect(gated.authority == .reviewOnly)
-    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated)) }
 }
 
 @Test func dqcHandlesLeadingBOM() throws {
@@ -1412,7 +1444,7 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
     #expect(gated.identity == .matchingDataset)   // identity matches...
     #expect(gated.authority == .reviewOnly)       // ...but geometry gate keeps it review-only
-    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated)) }
 }
 
 @Test func dqcReviewStateCannotBypassExplicitApproval() throws {
@@ -1428,5 +1460,460 @@ private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> St
     )
     #expect(mismatched.identity == .datasetMismatch)
     #expect(mismatched.authority == .reviewOnly)
-    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try mismatched.confirmAuthoritative() }
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try mismatched.authoritativeAnnotations(approval: dqcApproval(mismatched)) }
+}
+
+// MARK: - Phase 2.2C-A.1: authority-gap corrections (A–G)
+
+// Correction A: every physical data row participates in file-level identity validation. A single
+// syntactically invalid data row (malformed quoting that could hide a conflicting dataset_digest)
+// fails the whole file closed as malformedIdentity — it can never be a clean bound file.
+@Test func dqcA_invalidDataRowPoisonsIdentityBoundFile() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let schema = ManualAnnotationCSVExporter.identitySchemaVersion
+    let header = dqcMinimalHeader.joined(separator: ",")
+    let goodRow = dqcRow(digest: digest).joined(separator: ",")
+    // The stray quote after the non-empty `g` field makes this row syntactically invalid.
+    let brokenRow = ["g\"broken", "tonic", "0.1", "0.3", "2", "3", schema, digest, "", "pending_confirmation"]
+        .joined(separator: ",")
+    let csv = ([header, goodRow, brokenRow]).joined(separator: "\r\n") + "\r\n"
+
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.fileIdentity == .malformedIdentity)   // poisoned by the invalid row
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .malformedIdentity)
+    #expect(gated.authority == .reviewOnly)
+    #expect(gated.blockers.contains(.malformedIdentity))
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    }
+}
+
+// Correction B: a matching, geometry-compatible file whose importer SKIPPED a (CSV-valid) row cannot
+// be authoritative — partial parsing may never become authoritative. The reason is a typed blocker.
+@Test func dqcB_skippedRowBlocksEligibilityWithTypedBlocker() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest),                       // one good tonic annotation (keeps import non-empty)
+        dqcRow(start: "nan", digest: digest),         // CSV-valid but non-finite bounds -> importer skips
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.skippedRowCount == 1)
+    #expect(imported.annotations.count == 1)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)        // identity + geometry are fine...
+    #expect(gated.authority == .reviewOnly)            // ...but a skipped row blocks eligibility
+    #expect(gated.blockers.contains(.skippedRows(1)))
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    }
+}
+
+// Correction B: an unsupported label row (kept out of the active set) is partial-parse loss and blocks
+// eligibility via a typed blocker, even though identity matches and the supported annotation resolves.
+@Test func dqcB_unsupportedLabelBlocksEligibilityWithTypedBlocker() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest),                        // supported tonic
+        dqcRow(label: "not_hf", digest: digest),       // unknown label -> unsupportedLabels
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.unsupportedLabels == ["not_hf"])
+    #expect(imported.annotations.count == 1)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .reviewOnly)
+    #expect(gated.blockers.contains(.unsupportedLabels(["not_hf"])))
+}
+
+// Correction C: `review_only` is PERMANENTLY review-only — a matching, geometry-compatible file with
+// review_state=review_only can never be promoted, even by an otherwise-matching explicit approval.
+@Test func dqcC_reviewOnlyStateIsPermanentlyReviewOnly() throws {
+    let csv = dqcBoundExport([dqcAnnotation()], reviewState: .reviewOnly)
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .reviewOnly)
+    #expect(gated.blockers.contains(.reviewOnlyState))
+    do {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+        Issue.record("review_only import must never be promotable")
+    } catch ManualAnnotationCSVAuthorityError.notEligibleForAuthority {
+        // expected: explicit confirmation cannot promote a review_only import
+    } catch {
+        Issue.record("expected notEligibleForAuthority, got \(error)")
+    }
+}
+
+// Correction C: a bound file that OMITS the review_state column defaults to review_only (never eligible).
+@Test func dqcC_missingReviewStateDefaultsToReviewOnly() throws {
+    let schema = ManualAnnotationCSVExporter.identitySchemaVersion
+    let digest = dqcDigest(dqcDatasetA)
+    // Identity-bound header WITHOUT a review_state column (schema_version + dataset_digest still bind it).
+    let header = ["train_id", "label", "start_sec", "end_sec", "start_isi_index", "end_isi_index",
+                  "schema_version", "dataset_digest", "run_id"]
+    let row = ["g", "tonic", "0.1", "0.3", "2", "3", schema, digest, ""]
+    let csv = ([header, row]).map { $0.joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
+
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    guard case .bound = imported.fileIdentity else { Issue.record("expected .bound"); return }
+    #expect(imported.envelope.reviewState == nil)      // column genuinely absent
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .reviewOnly)            // missing review_state == review_only
+    #expect(gated.blockers.contains(.reviewOnlyState))
+}
+
+// Correction D: a valid, auditable approval whose digests match promotes an eligible import and returns
+// exactly the geometry-resolved annotations.
+@Test func dqcD_matchingApprovalPromotesEligibleImport() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    let authoritative = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    #expect(authoritative.count == 1)
+    #expect(authoritative[0].label == .tonic)
+    #expect(authoritative[0].trainID == "g")
+}
+
+// Correction D: an approval whose source-file digest does not match the gated import throws
+// (an approval of a DIFFERENT file can never promote this one), even when everything else is eligible.
+@Test func dqcD_mismatchedSourceFileDigestThrows() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    let wrongFileApproval = ManualAnnotationCSVApproval(
+        sourceFileDigest: String(repeating: "0", count: 64),   // nonempty but wrong
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    )!
+    do {
+        _ = try gated.authoritativeAnnotations(approval: wrongFileApproval)
+        Issue.record("mismatched source-file digest must throw")
+    } catch ManualAnnotationCSVAuthorityError.sourceFileDigestMismatch {
+        // expected
+    } catch {
+        Issue.record("expected sourceFileDigestMismatch, got \(error)")
+    }
+}
+
+// Correction D: an approval whose active-dataset digest does not match the gated import throws
+// (approving against a DIFFERENT dataset can never promote), even with a matching source-file digest.
+@Test func dqcD_mismatchedDatasetDigestThrows() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    let wrongDatasetApproval = ManualAnnotationCSVApproval(
+        sourceFileDigest: gated.sourceFileDigest,
+        activeDatasetDigest: dqcDigest(dqcDatasetB),            // nonempty but a different dataset
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    )!
+    do {
+        _ = try gated.authoritativeAnnotations(approval: wrongDatasetApproval)
+        Issue.record("mismatched dataset digest must throw")
+    } catch ManualAnnotationCSVAuthorityError.datasetDigestMismatch {
+        // expected
+    } catch {
+        Issue.record("expected datasetDigestMismatch, got \(error)")
+    }
+}
+
+// Correction D: an approval cannot be constructed with an empty/whitespace approver — an approval object
+// can never exist without an approver identity.
+@Test func dqcD_approvalWithEmptyApproverCannotBeConstructed() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(ManualAnnotationCSVApproval(
+        sourceFileDigest: gated.sourceFileDigest,
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "   ",                                        // whitespace-only
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    ) == nil)
+    // And an approval also cannot exist with an empty digest.
+    #expect(ManualAnnotationCSVApproval(
+        sourceFileDigest: "",
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    ) == nil)
+}
+
+// Correction D: a non-eligible import ALWAYS throws notEligibleForAuthority, even when the approval's
+// digests are internally consistent with the gated import. Matching digests can never rescue a
+// non-eligible import (here: a dataset mismatch).
+@Test func dqcD_nonEligibleImportAlwaysThrowsEvenWithConsistentApproval() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(
+        contents: dqcBoundExport([dqcAnnotation()], dataset: dqcDatasetA)
+    )
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetB)   // mismatch
+    #expect(gated.identity == .datasetMismatch)
+    #expect(gated.authority == .reviewOnly)
+    // Build an approval whose digests match the gated import exactly — still cannot promote.
+    let consistentApproval = ManualAnnotationCSVApproval(
+        sourceFileDigest: gated.sourceFileDigest,
+        activeDatasetDigest: gated.activeDatasetDigest,
+        approver: "Dr. Reviewer",
+        approvedAt: Date(timeIntervalSince1970: 1_000)
+    )!
+    do {
+        _ = try gated.authoritativeAnnotations(approval: consistentApproval)
+        Issue.record("non-eligible import must throw regardless of approval consistency")
+    } catch ManualAnnotationCSVAuthorityError.notEligibleForAuthority(let identity, let blockers) {
+        #expect(identity == .datasetMismatch)
+        #expect(blockers.contains(.datasetMismatch))
+    } catch {
+        Issue.record("expected notEligibleForAuthority, got \(error)")
+    }
+}
+
+// Correction E: the legacy parse-only API fails closed on an identity-bound (21-column) file, so an
+// identity envelope can never be silently ignored.
+@Test func dqcE_legacyImportRejectsIdentityBoundFile() throws {
+    let csv = dqcBoundExport([dqcAnnotation()])   // 21-column identity-bound
+    do {
+        _ = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+        Issue.record("legacy importAnnotations must reject identity-bound files")
+    } catch ManualAnnotationCSVImporter.ImportError.identityColumnsPresent {
+        // expected: caller is directed to importIdentityBound
+    } catch {
+        Issue.record("expected identityColumnsPresent, got \(error)")
+    }
+}
+
+// Correction E: importIdentityBound does not depend on the public legacy bypass — the SAME identity-
+// bound file that the legacy API rejects parses cleanly through the identity-bound path.
+@Test func dqcE_identityBoundImportDoesNotDependOnLegacyBypass() throws {
+    let csv = dqcBoundExport([dqcAnnotation()])
+    #expect(throws: ManualAnnotationCSVImporter.ImportError.self) {
+        _ = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    }
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)   // must NOT throw
+    #expect(imported.annotations.count == 1)
+    guard case .bound = imported.fileIdentity else { Issue.record("expected .bound"); return }
+}
+
+// Correction E: a legacy 17-column file (no identity columns) still parses through the legacy API.
+@Test func dqcE_legacyImportStillAcceptsLegacyFile() throws {
+    let csv = ManualAnnotationCSVExporter.csv(annotations: [dqcAnnotation()])   // 17-column legacy
+    let result = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+    #expect(result.annotations.count == 1)
+    #expect(result.skippedRowCount == 0)
+}
+
+// Correction F: authoritative annotations are geometry-resolved against the ACTIVE dataset — cached
+// indices in the file are recomputed from authoritative time, not trusted. A stale cached index never
+// survives promotion.
+@Test func dqcF_authoritativeAnnotationsRecomputeCachedIndices() throws {
+    // The file carries deliberately-wrong cached ISI indices (99/99) but correct time (0.1..0.3 -> 2..3).
+    let csv = dqcBoundExport([dqcAnnotation(startISI: 99, endISI: 99, start: 0.1, end: 0.3)])
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations[0].startISIIndex == 99)   // raw parse preserves the file's cached index
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    let authoritative = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    #expect(authoritative[0].startISIIndex == 2)           // recomputed from authoritative time
+    #expect(authoritative[0].endISIIndex == 3)
+}
+
+// Correction F: a matching-identity file whose annotation belongs to a train missing from the active
+// dataset fails the geometry gate (typed blocker) and stays review-only.
+@Test func dqcF_missingTrainGeometryIsReviewOnly() throws {
+    let csv = dqcBoundExport([dqcAnnotation(train: "ghost", start: 0.1, end: 0.3)])
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)           // digest still matches the active dataset
+    #expect(gated.authority == .reviewOnly)               // ...but the train is absent
+    #expect(gated.blockers.contains(.geometryIncompatible))
+}
+
+// Correction G: an empty identity-bound file (header only, zero data rows) parses as an empty review-
+// only import — it never crashes, never becomes eligible, and is not misclassified as legacy authority.
+@Test func dqcG_emptyIdentityBoundFileIsReviewOnlyAndNeverEligible() throws {
+    let csv = dqcMinimalHeader.joined(separator: ",") + "\r\n"   // header only, no data rows
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations.isEmpty)
+    #expect(imported.fileIdentity != .legacyUnbound)      // declared identity columns are not legacy
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity != .matchingDataset)           // cannot bind without a dataset_digest value
+    #expect(gated.authority == .reviewOnly)
+    #expect(gated.blockers.contains(.emptyImport))
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    }
+}
+
+// LF (\n) record terminators bind identity just like CRLF and lone-CR.
+@Test func dqcHandlesLFRecords() throws {
+    let row = dqcMinimalRow(
+        schema: ManualAnnotationCSVExporter.identitySchemaVersion,
+        digest: dqcDigest(dqcDatasetA), run: "run_x", review: "pending_confirmation"
+    )
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV([row], separator: "\n"))
+    #expect(imported.annotations.count == 1)
+    guard case .bound = imported.fileIdentity else { Issue.record("LF broke identity"); return }
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+}
+
+// Correction E boundary: identity-column detection triggers on ANY ONE of the four identity columns,
+// not only the full four. A file carrying only `run_id` still fails the legacy API closed, and the
+// identity-bound path classifies it malformed (no dataset_digest anchor) — it can never be authoritative.
+@Test func dqcE_singleIdentityColumnStillFailsClosedBothPaths() throws {
+    let csv = """
+    train_id,label,start_sec,end_sec,run_id\r
+    g,tonic,0.1,0.3,run_x\r
+    """
+    do {
+        _ = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+        Issue.record("legacy import must reject a file carrying any identity column")
+    } catch ManualAnnotationCSVImporter.ImportError.identityColumnsPresent {
+        // expected
+    } catch {
+        Issue.record("expected identityColumnsPresent, got \(error)")
+    }
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.fileIdentity == .malformedIdentity)   // declared identity, but no dataset_digest anchor
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .reviewOnly)
+}
+
+// Correction E boundary: a QUOTED identity header cell is still an identity column after CSV unquoting,
+// so the legacy API cannot be slipped an identity-bound file by quoting the header name.
+@Test func dqcE_quotedIdentityHeaderStillRejectedByLegacyImport() throws {
+    let csv = "train_id,label,start_sec,end_sec,\"dataset_digest\"\r\ng,tonic,0.1,0.3,"
+        + dqcDigest(dqcDatasetA) + "\r\n"
+    do {
+        _ = try ManualAnnotationCSVImporter.importAnnotations(contents: csv)
+        Issue.record("legacy import must reject a quoted identity header cell")
+    } catch ManualAnnotationCSVImporter.ImportError.identityColumnsPresent {
+        // expected
+    } catch {
+        Issue.record("expected identityColumnsPresent, got \(error)")
+    }
+}
+
+// Determinism contract: the approval-bound source-file digest is a pure function of the exact bytes, and
+// the value carried through the import and the gate matches `sourceFileDigest(_:)` computed on the same
+// bytes — so an approval built from those bytes always matches the gated import.
+@Test func dqcSourceFileDigestIsDeterministicAndCarriedThroughGate() throws {
+    let csv = dqcBoundExport([dqcAnnotation()])
+    let expected = ManualAnnotationCSVImporter.sourceFileDigest(csv)
+    #expect(expected.count == 64)                                   // SHA-256 hex, never empty
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.sourceFileDigest == expected)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.sourceFileDigest == expected)
+    #expect(ManualAnnotationCSVImporter.sourceFileDigest(csv) == expected)   // pure: recompute is stable
+}
+
+// MARK: - Phase 2.2C-A.1.1: consistent identity envelope + approval-timestamp hardening
+
+// A second in-range annotation for dataset A (ISI 1..2), distinct from dqcRow's default (ISI 2..3), so a
+// multi-row identity-bound file carries two genuine annotations that both resolve.
+private func dqcSecondRow(digest: String, run: String = "", review: String = "pending_confirmation") -> [String] {
+    dqcRow(start: "0.0", end: "0.2", startISI: "1", endISI: "2", digest: digest, run: run, review: review)
+}
+
+// Correction (envelope consistency): a review_state that is pending on one physical row and blank on
+// another is an INCONSISTENT envelope — one populated row must not speak for a blank row. Fails closed.
+@Test func dqcMixedBlankAndPendingReviewStateFailsClosed() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest, review: "pending_confirmation"),
+        dqcSecondRow(digest: digest, review: ""),   // blank review_state on the second row
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.fileIdentity == .malformedIdentity)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .malformedIdentity)
+    #expect(gated.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    }
+}
+
+// Correction (envelope consistency): a uniformly-blank review_state across rows is a valid MISSING value
+// that defaults to review_only (NOT malformed) — the identity may still match, but it is never eligible.
+@Test func dqcAllBlankReviewStateDefaultsToReviewOnlyAcrossRows() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest, review: ""),
+        dqcSecondRow(digest: digest, review: ""),
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    guard case .bound = imported.fileIdentity else { Issue.record("uniformly-blank optional must stay bound"); return }
+    #expect(imported.envelope.reviewState == nil)          // uniformly blank -> missing, not malformed
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .reviewOnly)
+    #expect(gated.blockers.contains(.reviewOnlyState))     // missing review_state defaults to review_only
+}
+
+// Positive control: a review_state that is uniformly pending_confirmation across every row stays eligible.
+@Test func dqcUniformPendingReviewStateAcrossRowsRemainsEligible() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest, review: "pending_confirmation"),
+        dqcSecondRow(digest: digest, review: "pending_confirmation"),
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.annotations.count == 2)
+    guard case .bound = imported.fileIdentity else { Issue.record("expected .bound"); return }
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    #expect(try gated.authoritativeAnnotations(approval: dqcApproval(gated)).count == 2)
+}
+
+// Correction (envelope consistency): the same mixed-blank rule applies to the optional run_id column —
+// a run_id present on one row and blank on another is a malformed (inconsistent) envelope, fail-closed.
+@Test func dqcMixedBlankAndNonblankRunIDFailsClosed() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest, run: "run_x", review: "pending_confirmation"),
+        dqcSecondRow(digest: digest, run: "", review: "pending_confirmation"),   // blank run_id
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.fileIdentity == .malformedIdentity)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .malformedIdentity)
+    #expect(gated.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) {
+        _ = try gated.authoritativeAnnotations(approval: dqcApproval(gated))
+    }
+}
+
+// Correction (envelope consistency): a uniformly-blank run_id is a valid optional missing value and does
+// NOT by itself block an otherwise-eligible pending_confirmation import. run_id is not an authority gate.
+@Test func dqcAllBlankRunIDDoesNotBlockEligibility() throws {
+    let digest = dqcDigest(dqcDatasetA)
+    let rows = [
+        dqcRow(digest: digest, run: "", review: "pending_confirmation"),
+        dqcSecondRow(digest: digest, run: "", review: "pending_confirmation"),
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.envelope.runID == nil)                // uniformly-blank optional -> valid missing
+    guard case .bound = imported.fileIdentity else { Issue.record("expected .bound"); return }
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)   // run_id absence does not gate
+}
+
+// Approval hardening: a non-finite approval timestamp (NaN/±infinity) cannot construct an approval
+// record; a normal finite timestamp still constructs and promotes an eligible import.
+@Test func dqcApprovalRejectsNonFiniteTimestamp() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    func approval(_ at: Date) -> ManualAnnotationCSVApproval? {
+        ManualAnnotationCSVApproval(
+            sourceFileDigest: gated.sourceFileDigest,
+            activeDatasetDigest: gated.activeDatasetDigest,
+            approver: "Dr. Reviewer",
+            approvedAt: at
+        )
+    }
+    #expect(approval(Date(timeIntervalSinceReferenceDate: .nan)) == nil)
+    #expect(approval(Date(timeIntervalSinceReferenceDate: .infinity)) == nil)
+    #expect(approval(Date(timeIntervalSinceReferenceDate: -.infinity)) == nil)
+    let finite = try #require(approval(Date(timeIntervalSince1970: 1_000)))   // finite still accepted
+    #expect(try gated.authoritativeAnnotations(approval: finite).count == 1)
 }
