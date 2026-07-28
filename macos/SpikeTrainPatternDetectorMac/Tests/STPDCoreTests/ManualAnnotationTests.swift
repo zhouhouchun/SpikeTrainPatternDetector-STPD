@@ -1211,3 +1211,222 @@ func polarityIsDerivedFromLabel() {
     #expect(ManualAnnotationLabel.tonic.finalPatternString == "tonic")
     #expect(annotation(label: .notBurst, start: 0, end: 0.1).polarity == .negative)
 }
+
+// MARK: - Phase 2.2C-A: dataset-identity binding and fail-closed authority gating
+
+private let dqcDatasetA = SpikeDataset(
+    name: "dqc-a", sourceDescription: "",
+    trains: [SpikeTrain(name: "g", timestampsSec: [0, 0.1, 0.2, 0.3, 0.4])]
+)
+private let dqcDatasetB = SpikeDataset(
+    name: "dqc-b", sourceDescription: "",
+    trains: [SpikeTrain(name: "g", timestampsSec: [0, 0.12, 0.24, 0.36, 0.48])]
+)
+
+private func dqcDigest(_ dataset: SpikeDataset) -> String {
+    DetectionDatasetSnapshot.make(dataset: dataset).digest
+}
+
+private func dqcBoundExport(
+    _ annotations: [ManualAnnotation],
+    dataset: SpikeDataset = dqcDatasetA,
+    runID: String? = nil,
+    reviewState: ManualAnnotationCSVReviewState = .pendingConfirmation
+) -> String {
+    ManualAnnotationCSVExporter.csv(
+        annotations: annotations,
+        identity: .forDataset(dataset, runID: runID, reviewState: reviewState)
+    )
+}
+
+private func dqcAnnotation(
+    train: String = "g", startISI: Int? = 2, endISI: Int? = 3, start: Double = 0.1, end: Double = 0.3
+) -> ManualAnnotation {
+    ManualAnnotation(
+        trainID: train, label: .tonic, startSec: start, endSec: end,
+        startISIIndex: startISI, endISIIndex: endISI,
+        createdAt: Date(timeIntervalSince1970: 100), updatedAt: Date(timeIntervalSince1970: 100)
+    )
+}
+
+// Minimal identity-bound header (no optional timestamp/annotator columns) for hand-built envelope
+// edge-case CSVs; avoids the importer's declared-but-blank-timestamp skip.
+private let dqcMinimalHeader = [
+    "train_id", "label", "start_sec", "end_sec", "start_isi_index", "end_isi_index",
+    "schema_version", "dataset_digest", "run_id", "review_state",
+]
+private func dqcMinimalRow(schema: String, digest: String, run: String, review: String) -> [String] {
+    ["g", ManualAnnotationLabel.tonic.rawValue, "0.1", "0.3", "2", "3", schema, digest, run, review]
+}
+private func dqcMinimalCSV(_ rows: [[String]], separator: String = "\r\n") -> String {
+    ([dqcMinimalHeader] + rows).map { $0.joined(separator: ",") }.joined(separator: separator) + separator
+}
+
+@Test func dqcIdentityBoundRoundTrip() throws {
+    let csv = dqcBoundExport([dqcAnnotation()], runID: "run_x")
+    #expect(csv.contains("schema_version,dataset_digest,run_id,review_state"))
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations.count == 1)
+    #expect(imported.envelope.schemaVersion == ManualAnnotationCSVExporter.identitySchemaVersion)
+    #expect(imported.envelope.datasetDigest == dqcDigest(dqcDatasetA))
+    #expect(imported.envelope.runID == "run_x")
+    guard case .bound(let digest) = imported.fileIdentity else { Issue.record("expected .bound"); return }
+    #expect(digest == dqcDigest(dqcDatasetA))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)
+    let authoritative = try gated.confirmAuthoritative()
+    #expect(authoritative.count == 1)
+    #expect(authoritative[0].trainID == "g")
+    #expect(authoritative[0].label == .tonic)
+}
+
+@Test func dqcCollisionSameTrainAndISIButDifferentDatasetIsNeverAuthoritative() throws {
+    // Same train_id "g" and same ISI indices in BOTH datasets, but the digests differ.
+    #expect(dqcDigest(dqcDatasetA) != dqcDigest(dqcDatasetB))
+    let csv = dqcBoundExport([dqcAnnotation(startISI: 2, endISI: 3)], dataset: dqcDatasetA)
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations[0].trainID == "g")
+    #expect(imported.annotations[0].startISIIndex == 2)
+    // Import (author bound to A) against B: same train_id, same ISI indices, DIFFERENT dataset.
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetB)
+    #expect(gated.identity == .datasetMismatch)
+    #expect(gated.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+}
+
+@Test func dqcMatchingDigestRemainsUnappliedUntilExplicitApproval() throws {
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcBoundExport([dqcAnnotation()]))
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)
+    #expect(gated.authority == .eligibleAfterExplicitConfirmation)   // eligible, NOT auto-applied
+    #expect(try gated.confirmAuthoritative().count == 1)             // only the explicit call promotes
+}
+
+@Test func dqcLegacyFileWithoutIdentityColumnsIsReviewOnly() throws {
+    let csv = ManualAnnotationCSVExporter.csv(annotations: [dqcAnnotation()])  // legacy 17-column
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations.count == 1)          // still parses
+    #expect(imported.fileIdentity == .legacyUnbound)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .legacyUnbound)
+    #expect(gated.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+}
+
+@Test func dqcDeclaredButBlankDatasetDigestIsMalformedNotLegacy() throws {
+    let row = dqcMinimalRow(schema: ManualAnnotationCSVExporter.identitySchemaVersion, digest: "", run: "", review: "")
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV([row]))
+    #expect(imported.fileIdentity == .malformedIdentity)   // NOT .legacyUnbound
+    #expect(ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA).authority == .reviewOnly)
+}
+
+@Test func dqcInconsistentDatasetDigestAcrossRowsIsMalformed() throws {
+    let schema = ManualAnnotationCSVExporter.identitySchemaVersion
+    let rows = [
+        dqcMinimalRow(schema: schema, digest: dqcDigest(dqcDatasetA), run: "", review: ""),
+        dqcMinimalRow(schema: schema, digest: dqcDigest(dqcDatasetB), run: "", review: ""),
+    ]
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows))
+    #expect(imported.fileIdentity == .malformedIdentity)
+    #expect(ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA).authority == .reviewOnly)
+}
+
+@Test func dqcInconsistentGovernanceColumnsFailClosed() throws {
+    let schema = ManualAnnotationCSVExporter.identitySchemaVersion
+    let digest = dqcDigest(dqcDatasetA)
+    func classify(_ rows: [[String]]) throws -> ManualAnnotationCSVFileIdentity {
+        try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV(rows)).fileIdentity
+    }
+    // Inconsistent run_id.
+    #expect(try classify([
+        dqcMinimalRow(schema: schema, digest: digest, run: "run_a", review: "pending_confirmation"),
+        dqcMinimalRow(schema: schema, digest: digest, run: "run_b", review: "pending_confirmation"),
+    ]) == .malformedIdentity)
+    // Inconsistent review_state.
+    #expect(try classify([
+        dqcMinimalRow(schema: schema, digest: digest, run: "run_a", review: "pending_confirmation"),
+        dqcMinimalRow(schema: schema, digest: digest, run: "run_a", review: "review_only"),
+    ]) == .malformedIdentity)
+    // Inconsistent schema_version.
+    #expect(try classify([
+        dqcMinimalRow(schema: schema, digest: digest, run: "run_a", review: "pending_confirmation"),
+        dqcMinimalRow(schema: "manual_annotation_csv_v9", digest: digest, run: "run_a", review: "pending_confirmation"),
+    ]) == .malformedIdentity)
+}
+
+@Test func dqcUnknownSchemaVersionIsUnsupportedAndReviewOnly() throws {
+    let row = dqcMinimalRow(schema: "manual_annotation_csv_v9", digest: dqcDigest(dqcDatasetA), run: "", review: "")
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV([row]))
+    #expect(imported.fileIdentity == .unsupportedSchema)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .unsupportedSchema)
+    #expect(gated.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+}
+
+@Test func dqcHandlesLeadingBOM() throws {
+    let csv = "\u{FEFF}" + dqcBoundExport([dqcAnnotation()])
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    #expect(imported.annotations.count == 1)
+    guard case .bound = imported.fileIdentity else { Issue.record("BOM broke identity"); return }
+    #expect(imported.envelope.datasetDigest == dqcDigest(dqcDatasetA))
+}
+
+@Test func dqcHandlesCRLFRecords() throws {
+    let row = dqcMinimalRow(
+        schema: ManualAnnotationCSVExporter.identitySchemaVersion,
+        digest: dqcDigest(dqcDatasetA), run: "run_x", review: "pending_confirmation"
+    )
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV([row], separator: "\r\n"))
+    #expect(imported.annotations.count == 1)
+    guard case .bound = imported.fileIdentity else { Issue.record("CRLF broke identity"); return }
+}
+
+@Test func dqcHandlesLoneCRRecords() throws {
+    let row = dqcMinimalRow(
+        schema: ManualAnnotationCSVExporter.identitySchemaVersion,
+        digest: dqcDigest(dqcDatasetA), run: "run_x", review: "pending_confirmation"
+    )
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: dqcMinimalCSV([row], separator: "\r"))
+    #expect(imported.annotations.count == 1)
+    guard case .bound = imported.fileIdentity else { Issue.record("lone-CR broke identity"); return }
+}
+
+@Test func dqcDuplicateIdentityColumnIsRejected() throws {
+    let header = dqcMinimalHeader + ["dataset_digest"]
+    let row = dqcMinimalRow(
+        schema: ManualAnnotationCSVExporter.identitySchemaVersion,
+        digest: dqcDigest(dqcDatasetA), run: "", review: ""
+    ) + [dqcDigest(dqcDatasetA)]
+    let csv = ([header] + [row]).map { $0.joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
+    #expect(throws: ManualAnnotationCSVImporter.ImportError.self) {
+        _ = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    }
+}
+
+@Test func dqcMatchingIdentityButIncompatibleGeometryCannotBecomeEligible() throws {
+    // Matching digest, but time bounds are outside the train => geometry-incompatible.
+    let csv = dqcBoundExport([dqcAnnotation(startISI: nil, endISI: nil, start: 5.0, end: 6.0)])
+    let imported = try ManualAnnotationCSVImporter.importIdentityBound(contents: csv)
+    let gated = ManualAnnotationCSVImporter.gate(imported, activeDataset: dqcDatasetA)
+    #expect(gated.identity == .matchingDataset)   // identity matches...
+    #expect(gated.authority == .reviewOnly)       // ...but geometry gate keeps it review-only
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try gated.confirmAuthoritative() }
+}
+
+@Test func dqcReviewStateCannotBypassExplicitApproval() throws {
+    let csv = dqcBoundExport([dqcAnnotation()], reviewState: .pendingConfirmation)
+    // Matching bound file: eligible only, NOT auto-authoritative — authority needs the explicit call.
+    let matching = ManualAnnotationCSVImporter.gate(
+        try ManualAnnotationCSVImporter.importIdentityBound(contents: csv), activeDataset: dqcDatasetA
+    )
+    #expect(matching.authority == .eligibleAfterExplicitConfirmation)
+    // Same review_state against a mismatched dataset grants nothing.
+    let mismatched = ManualAnnotationCSVImporter.gate(
+        try ManualAnnotationCSVImporter.importIdentityBound(contents: csv), activeDataset: dqcDatasetB
+    )
+    #expect(mismatched.identity == .datasetMismatch)
+    #expect(mismatched.authority == .reviewOnly)
+    #expect(throws: ManualAnnotationCSVAuthorityError.self) { _ = try mismatched.confirmAuthoritative() }
+}
