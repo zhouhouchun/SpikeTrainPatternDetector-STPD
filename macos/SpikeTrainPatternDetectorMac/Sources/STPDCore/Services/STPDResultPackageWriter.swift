@@ -212,10 +212,14 @@ enum STPDRFC4180 {
     }
 
     private static func escape(_ field: String) -> String {
-        guard field.contains(",") ||
-                field.contains("\"") ||
-                field.contains("\r") ||
-                field.contains("\n") else {
+        // Detect the special characters by Unicode SCALAR, not by Character/grapheme: a "\r\n" in a cell
+        // forms a single grapheme cluster, so `String.contains("\r")` would miss it and emit the field
+        // UNQUOTED, corrupting the record structure. Scalar-level detection quotes any field containing a
+        // comma, quote, CR, or LF (including an embedded CRLF).
+        let needsQuoting = field.unicodeScalars.contains { scalar in
+            scalar == "," || scalar == "\"" || scalar == "\r" || scalar == "\n"
+        }
+        guard needsQuoting else {
             return field
         }
         return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""

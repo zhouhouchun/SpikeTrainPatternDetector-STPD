@@ -3,6 +3,11 @@ import Foundation
 public enum STPDResultPackageOwnership {
     public static let ownerName = "Zhou Houchun"
     public static let ownerEmail = "zhouhouchun@outlook.com"
+    /// Canonical v4 manifest provenance values. The writer emits exactly these and the reader binds to
+    /// them (fail-closed), so they live in one place rather than as scattered literals.
+    public static let buildIdentifierKind = "caller_supplied_unattested"
+    public static let buildReproducibilityAttested = false
+    public static let stringListEncoding = "json_array_utf8"
 }
 
 public enum STPDResultPackageSourceMode: String, Hashable, Sendable {
@@ -2263,12 +2268,12 @@ public enum STPDResultPackageBuilder {
             datasetDigest: identity.datasetDigest,
             settingsDigest: identity.settingsDigest,
             buildIdentifier: identity.buildCommit,
-            buildIdentifierKind: "caller_supplied_unattested",
-            buildReproducibilityAttested: false,
+            buildIdentifierKind: STPDResultPackageOwnership.buildIdentifierKind,
+            buildReproducibilityAttested: STPDResultPackageOwnership.buildReproducibilityAttested,
             sourceMode: input.sourceMode.rawValue,
             ownerName: STPDResultPackageOwnership.ownerName,
             ownerEmail: STPDResultPackageOwnership.ownerEmail,
-            stringListEncoding: "json_array_utf8",
+            stringListEncoding: STPDResultPackageOwnership.stringListEncoding,
             tables: manifestTables
         )
         return STPDResultPackage(
@@ -5035,8 +5040,9 @@ private extension STPDResultPackageBuilder {
                     "result_schema_version": identity.resultSchemaVersion,
                     "detector_version": identity.detectorVersion,
                     "build_identifier": identity.buildCommit,
-                    "build_identifier_kind": "caller_supplied_unattested",
-                    "build_reproducibility_attested": "false",
+                    "build_identifier_kind": STPDResultPackageOwnership.buildIdentifierKind,
+                    "build_reproducibility_attested":
+                        STPDCanonicalValue.bool(STPDResultPackageOwnership.buildReproducibilityAttested),
                     "owner_name": STPDResultPackageOwnership.ownerName,
                     "owner_email": STPDResultPackageOwnership.ownerEmail,
                     "source_mode": input.sourceMode.rawValue,
@@ -7784,7 +7790,7 @@ enum STPDResultPackageValidator {
         sourceMode: STPDResultPackageSourceMode,
         tables: [STPDResultTable: STPDResultTableData],
         expectedISICount: Int,
-        expectedTaskEvents: [TaskEvent] = [],
+        expectedTaskEvents: [TaskEvent]? = nil,
         expectedDatasetMetadata: DetectionDatasetMetadataSnapshot? = nil,
         expectedTrainIDs: Set<String>? = nil,
         expectedDataset: SpikeDataset? = nil,
@@ -8133,15 +8139,33 @@ enum STPDResultPackageValidator {
                 : "every dataset ISI is present exactly once with sealed train, spike, time, and UID geometry"
         ))
 
-        try validateTaskEvents(
-            identity: identity,
-            table: required(.taskEvents, in: tables),
-            expected: expectedTaskEvents
-        )
-        checks.append(pass(
-            "task_event_projection",
-            details: "Task_events exactly and deterministically represents every dataset task/stimulus event"
-        ))
+        if let expectedTaskEvents {
+            try validateTaskEvents(
+                identity: identity,
+                table: required(.taskEvents, in: tables),
+                expected: expectedTaskEvents
+            )
+            checks.append(pass(
+                "task_event_projection",
+                details: "Task_events exactly and deterministically represents every dataset task/stimulus event"
+            ))
+        } else {
+            // Package-only mode (no original detector inputs): the Task_events table's structure and cells
+            // are already validated; cross-check only that its row count agrees with the run identity's
+            // declared task-event count, without asserting emptiness (which would reject valid packages
+            // that legitimately contain task events).
+            let taskEventsTable = try required(.taskEvents, in: tables)
+            guard identity.taskEventCount == taskEventsTable.rowCount else {
+                throw STPDResultPackageError.invalidTable(
+                    table: STPDResultTable.taskEvents.rawValue,
+                    reason: "task-event row count contradicts the declared identity task-event count"
+                )
+            }
+            checks.append(pass(
+                "task_event_projection",
+                details: "the declared task-event count matches the Task_events table row count"
+            ))
+        }
 
         // Fail-closed QC validation. This intentionally does NOT append a row to the
         // Result_consistency_check ledger: adding a check row would change that pre-existing table's
