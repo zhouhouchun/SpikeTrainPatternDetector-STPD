@@ -135,24 +135,56 @@ public struct STPDCandidateDiagnosticInput: Hashable, Sendable {
 /// The detector run is immutable evidence. `finalEvents` and `finalISILabelRows` are explicit so a
 /// reviewed result cannot be silently reconstructed from automatic candidates and mislabeled as
 /// human-reviewed. Use `automatic(dataset:run:)` only when automatic projection is intended.
-public struct STPDResultPackageInput: Sendable {
+public struct STPDResultPackageInput: Sendable, CustomReflectable {
     public let dataset: SpikeDataset
     public let run: ClassicAnchorDetectionRun
     public let sourceMode: STPDResultPackageSourceMode
     public let finalEvents: [ClassicAnchorEventAnnotation]
     public let finalISILabelRows: [ReviewedISIExportRow]
-    public let manualAnnotations: [ManualAnnotation]
+    // Imported annotation payloads and their approval receipts remain module-internal.
+    // Public callers may construct this input only from sealed approved batches and must
+    // not be able to recover either half as detached authoritative evidence.
+    let manualAnnotations: [ManualAnnotation]
+    let manualAnnotationImportApprovals:
+        [ManualAnnotationCSVApprovalReceipt]
     public let candidateReviews: [STPDCandidateReviewInput]
     public let reviewLinks: [STPDResultReviewLink]
     public let candidateDiagnostics: [STPDCandidateDiagnosticInput]
 
-    public init(
+    /// Presents only non-authority-bearing summaries to ordinary Swift reflection.
+    ///
+    /// This prevents accidental dismantling through `Mirror`; it is an API-misuse boundary rather
+    /// than a claim of cryptographic secrecy from arbitrary same-process code.
+    public var customMirror: Mirror {
+        let children: [Mirror.Child] = [
+            ("sourceMode", sourceMode.rawValue),
+            ("finalEventCount", finalEvents.count),
+            ("finalISILabelRowCount", finalISILabelRows.count),
+            ("manualAnnotationCount", manualAnnotations.count),
+            (
+                "manualAnnotationImportApprovalCount",
+                manualAnnotationImportApprovals.count
+            ),
+            ("candidateReviewCount", candidateReviews.count),
+            ("reviewLinkCount", reviewLinks.count),
+            ("candidateDiagnosticCount", candidateDiagnostics.count),
+        ]
+        return Mirror(
+            self,
+            children: children,
+            displayStyle: .struct
+        )
+    }
+
+    init(
         dataset: SpikeDataset,
         run: ClassicAnchorDetectionRun,
         sourceMode: STPDResultPackageSourceMode,
         finalEvents: [ClassicAnchorEventAnnotation],
         finalISILabelRows: [ReviewedISIExportRow],
         manualAnnotations: [ManualAnnotation] = [],
+        manualAnnotationImportApprovals:
+            [ManualAnnotationCSVApprovalReceipt],
         candidateReviews: [STPDCandidateReviewInput] = [],
         reviewLinks: [STPDResultReviewLink] = [],
         candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
@@ -163,9 +195,39 @@ public struct STPDResultPackageInput: Sendable {
         self.finalEvents = finalEvents
         self.finalISILabelRows = finalISILabelRows
         self.manualAnnotations = manualAnnotations
+        self.manualAnnotationImportApprovals =
+            manualAnnotationImportApprovals
         self.candidateReviews = candidateReviews
         self.reviewLinks = reviewLinks
         self.candidateDiagnostics = candidateDiagnostics
+    }
+
+    /// Internal convenience for locally authored annotations and Core tests. Public callers must
+    /// state the import-approval ledger explicitly so an approved CSV batch cannot silently lose its
+    /// receipt through an empty default argument.
+    init(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        sourceMode: STPDResultPackageSourceMode,
+        finalEvents: [ClassicAnchorEventAnnotation],
+        finalISILabelRows: [ReviewedISIExportRow],
+        manualAnnotations: [ManualAnnotation] = [],
+        candidateReviews: [STPDCandidateReviewInput] = [],
+        reviewLinks: [STPDResultReviewLink] = [],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) {
+        self.init(
+            dataset: dataset,
+            run: run,
+            sourceMode: sourceMode,
+            finalEvents: finalEvents,
+            finalISILabelRows: finalISILabelRows,
+            manualAnnotations: manualAnnotations,
+            manualAnnotationImportApprovals: [],
+            candidateReviews: candidateReviews,
+            reviewLinks: reviewLinks,
+            candidateDiagnostics: candidateDiagnostics
+        )
     }
 
     public static func automatic(
@@ -188,39 +250,87 @@ public struct STPDResultPackageInput: Sendable {
             sourceMode: .automatic,
             finalEvents: events,
             finalISILabelRows: isiRows,
+            manualAnnotationImportApprovals: [],
             candidateDiagnostics: canonicalDiagnostics(candidateDiagnostics)
         )
     }
 
     /// Builds the current public result snapshot from automatic output plus optional review state.
     ///
-    /// Only authority-bearing reviews with automatic public ISI coverage enter the reviewed
-    /// projection. `needs_review` and reviews of audit-only/non-public candidates remain explicit
-    /// diagnostics; they never gain authority merely because they were present in UI state.
+    /// Approved CSV imports are accepted only as atomic `ManualAnnotationCSVApprovedBatch` values.
+    /// The public API accepts neither bare annotations nor a detached receipt array, so imported
+    /// evidence cannot be laundered through a nominally local-authoring argument.
     public static func snapshot(
         dataset: SpikeDataset,
         run: ClassicAnchorDetectionRun,
-        manualAnnotations: [ManualAnnotation] = [],
+        approvedManualAnnotationImports:
+            [ManualAnnotationCSVApprovedBatch] = [],
         candidateReviews: [STPDCandidateReviewInput] = [],
         candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        let evidence = try resolvedManualAnnotationEvidence(
+            localAnnotations: [],
+            approvedImports: approvedManualAnnotationImports
+        )
+        return try snapshotResolved(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: evidence.annotations,
+            manualAnnotationImportApprovals: evidence.receipts,
+            candidateReviews: candidateReviews,
+            candidateDiagnostics: candidateDiagnostics
+        )
+    }
+
+    fileprivate static func snapshotResolved(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation],
+        manualAnnotationImportApprovals:
+            [ManualAnnotationCSVApprovalReceipt],
+        candidateReviews: [STPDCandidateReviewInput],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput]
     ) throws -> STPDResultPackageInput {
         let orderedReviews = canonicalReviews(candidateReviews)
         try validateUniqueCandidateReviews(
             orderedReviews,
             expectedRunID: run.runIdentity.runID
         )
-        guard !manualAnnotations.isEmpty || !orderedReviews.isEmpty else {
+        guard !manualAnnotations.isEmpty
+                || !manualAnnotationImportApprovals.isEmpty
+                || !orderedReviews.isEmpty else {
             return automatic(
                 dataset: dataset,
                 run: run,
                 candidateDiagnostics: candidateDiagnostics
             )
         }
-        return try reviewed(
+        return try reviewedResolved(
             dataset: dataset,
             run: run,
             manualAnnotations: manualAnnotations,
+            manualAnnotationImportApprovals:
+                manualAnnotationImportApprovals,
             candidateReviews: orderedReviews,
+            candidateDiagnostics: candidateDiagnostics
+        )
+    }
+
+    /// Internal local-authoring/test path. Production imported annotations use the public atomic-batch
+    /// overload; this convenience never accepts detached approval evidence.
+    static func snapshot(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation],
+        candidateReviews: [STPDCandidateReviewInput] = [],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        try snapshotResolved(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: manualAnnotations,
+            manualAnnotationImportApprovals: [],
+            candidateReviews: candidateReviews,
             candidateDiagnostics: candidateDiagnostics
         )
     }
@@ -232,9 +342,33 @@ public struct STPDResultPackageInput: Sendable {
     public static func reviewed(
         dataset: SpikeDataset,
         run: ClassicAnchorDetectionRun,
-        manualAnnotations: [ManualAnnotation] = [],
+        approvedManualAnnotationImports:
+            [ManualAnnotationCSVApprovedBatch] = [],
         candidateReviews: [STPDCandidateReviewInput] = [],
         candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        let evidence = try resolvedManualAnnotationEvidence(
+            localAnnotations: [],
+            approvedImports: approvedManualAnnotationImports
+        )
+        return try reviewedResolved(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: evidence.annotations,
+            manualAnnotationImportApprovals: evidence.receipts,
+            candidateReviews: candidateReviews,
+            candidateDiagnostics: candidateDiagnostics
+        )
+    }
+
+    private static func reviewedResolved(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation],
+        manualAnnotationImportApprovals:
+            [ManualAnnotationCSVApprovalReceipt],
+        candidateReviews: [STPDCandidateReviewInput],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput]
     ) throws -> STPDResultPackageInput {
         let automaticInput = automatic(dataset: dataset, run: run)
         let orderedReviews = canonicalReviews(candidateReviews)
@@ -561,6 +695,8 @@ public struct STPDResultPackageInput: Sendable {
                 finalEvents: automaticInput.finalEvents,
                 finalISILabelRows: automaticInput.finalISILabelRows,
                 manualAnnotations: resolvedAnnotations,
+                manualAnnotationImportApprovals:
+                    manualAnnotationImportApprovals,
                 candidateReviews: orderedReviews,
                 reviewLinks: [],
                 candidateDiagnostics: diagnostics
@@ -579,10 +715,67 @@ public struct STPDResultPackageInput: Sendable {
             finalEvents: finalEvents,
             finalISILabelRows: finalRows,
             manualAnnotations: resolvedAnnotations,
+            manualAnnotationImportApprovals:
+                manualAnnotationImportApprovals,
             candidateReviews: orderedReviews,
             reviewLinks: canonicalLinks,
             candidateDiagnostics: diagnostics
         )
+    }
+
+    /// Internal local-authoring/test path. It cannot accept detached import approval evidence.
+    static func reviewed(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        manualAnnotations: [ManualAnnotation],
+        candidateReviews: [STPDCandidateReviewInput] = [],
+        candidateDiagnostics: [STPDCandidateDiagnosticInput] = []
+    ) throws -> STPDResultPackageInput {
+        try reviewedResolved(
+            dataset: dataset,
+            run: run,
+            manualAnnotations: manualAnnotations,
+            manualAnnotationImportApprovals: [],
+            candidateReviews: candidateReviews,
+            candidateDiagnostics: candidateDiagnostics
+        )
+    }
+
+    private static func resolvedManualAnnotationEvidence(
+        localAnnotations: [ManualAnnotation],
+        approvedImports: [ManualAnnotationCSVApprovedBatch]
+    ) throws -> (
+        annotations: [ManualAnnotation],
+        receipts: [ManualAnnotationCSVApprovalReceipt]
+    ) {
+        var annotationIDs = Set<UUID>()
+        for annotation in localAnnotations {
+            guard annotationIDs.insert(annotation.id).inserted else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual annotation \(annotation.id.uuidString) appears more than once"
+                )
+            }
+        }
+
+        var annotations = localAnnotations
+        var receipts: [ManualAnnotationCSVApprovalReceipt] = []
+        for batch in approvedImports {
+            guard batch.hasExactReceiptCoverage else {
+                throw STPDResultPackageError.invalidInput(
+                    "approved manual annotation import lacks exact receipt coverage"
+                )
+            }
+            for annotation in batch.annotations {
+                guard annotationIDs.insert(annotation.id).inserted else {
+                    throw STPDResultPackageError.invalidInput(
+                        "manual annotation \(annotation.id.uuidString) is supplied by more than one authority source"
+                    )
+                }
+                annotations.append(annotation)
+            }
+            receipts.append(batch.approvalReceipt)
+        }
+        return (annotations, receipts)
     }
 
     private static func causalChangedISIKeys(
@@ -1472,6 +1665,7 @@ private enum STPDResultColumnCatalog {
     ]
 
     private static let timestampColumns: Set<String> = [
+        "approved_at",
         "created_at",
         "reviewed_at",
         "updated_at",
@@ -1479,6 +1673,8 @@ private enum STPDResultColumnCatalog {
 
     private static let stringListColumns: Set<String> = [
         "audit_final_selected_event_subtypes",
+        "annotation_ids",
+        "annotation_source_semantic_digests",
         "automatic_support_isi_indices",
         "event_source_candidate_uids",
         "linked_isi_uids",
@@ -1573,8 +1769,10 @@ private enum STPDResultColumnCatalog {
         case .manualAnnotations:
             return [
                 "start_isi_index", "end_isi_index", "note", "annotator",
-                "annotator_identity_source",
+                "annotator_identity_source", "import_approval_id",
             ]
+        case .manualAnnotationImportApprovals:
+            return ["source_run_id"]
         case .reviewStatus:
             return [
                 "reviewer", "reviewed_run_id", "note",
@@ -1693,6 +1891,14 @@ public enum STPDResultPackageError: Error, LocalizedError, Sendable {
 }
 
 public enum STPDResultPackageBuilder {
+    struct ResolvedManualAnnotationImportApproval {
+        let approvalID: String
+        let receipt: ManualAnnotationCSVApprovalReceipt
+        let annotationUUIDs: [UUID]
+        let manualUIDs: [String]
+        let sourceSemanticDigests: [String]
+    }
+
     /// Verifies that an app export still represents the sealed detector invocation.
     ///
     /// The run identity check binds the export to the exact parsed dataset and detector-produced
@@ -1730,6 +1936,31 @@ public enum STPDResultPackageBuilder {
                     mismatches.joined(separator: "|")
             )
         }
+    }
+
+    /// Executes the same authority projection, normalized-table materialization, and fail-closed
+    /// validation used by export before an approved import is allowed to replace app state.
+    ///
+    /// Returning successfully proves that the exact approved annotations and their immutable receipt
+    /// form a complete v4 result package for the active sealed run. Callers must persist the batch
+    /// atomically after this succeeds; they must not retain the annotations without the receipt.
+    public static func preflightManualAnnotationImport(
+        dataset: SpikeDataset,
+        run: ClassicAnchorDetectionRun,
+        approvedBatch: ManualAnnotationCSVApprovedBatch
+    ) throws -> STPDResultPackageInput {
+        guard approvedBatch.hasExactReceiptCoverage else {
+            throw STPDResultPackageError.invalidInput(
+                "approved manual annotations do not have exact immutable receipt coverage"
+            )
+        }
+        let input = try STPDResultPackageInput.snapshot(
+            dataset: dataset,
+            run: run,
+            approvedManualAnnotationImports: [approvedBatch]
+        )
+        _ = try build(input)
+        return input
     }
 
     public static func build(_ input: STPDResultPackageInput) throws -> STPDResultPackage {
@@ -1773,6 +2004,18 @@ public enum STPDResultPackageBuilder {
             resolvedManualAnnotations: resolvedManualAnnotations,
             candidateUIDBySourceID: candidateUIDBySourceID,
             candidateBySourceID: candidateBySourceID
+        )
+        let resolvedImportApprovals =
+            try resolvedManualAnnotationImportApprovals(
+                identity: identity,
+                receipts: input.manualAnnotationImportApprovals,
+                annotations: resolvedManualAnnotations,
+                manualUIDByUUID: reviewAuthority.manualUIDByUUID
+            )
+        let importApprovalIDByAnnotationUUID = Dictionary(
+            uniqueKeysWithValues: resolvedImportApprovals.flatMap { approval in
+                approval.annotationUUIDs.map { ($0, approval.approvalID) }
+            }
         )
         try validateSourceMode(
             input,
@@ -1894,9 +2137,16 @@ public enum STPDResultPackageBuilder {
             identity: identity,
             annotations: resolvedManualAnnotations,
             manualUIDByUUID: reviewAuthority.manualUIDByUUID,
+            importApprovalIDByAnnotationUUID:
+                importApprovalIDByAnnotationUUID,
             linkedISIKeysByEvidenceUID: reviewAuthority.linkedISIKeysByEvidenceUID,
             isiUIDByKey: isiUIDByKey
         )
+        tables[.manualAnnotationImportApprovals] =
+            try manualAnnotationImportApprovalsTable(
+                identity: identity,
+                resolvedApprovals: resolvedImportApprovals
+            )
         tables[.reviewStatus] = try reviewStatusTable(
             identity: identity,
             reviews: input.candidateReviews,
@@ -1937,6 +2187,8 @@ public enum STPDResultPackageBuilder {
             expectedRun: input.run,
             expectedCandidateReviews: input.candidateReviews,
             expectedManualAnnotations: input.manualAnnotations,
+            expectedManualAnnotationImportApprovals:
+                input.manualAnnotationImportApprovals,
             expectedCandidateDiagnostics: input.candidateDiagnostics
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
@@ -1957,6 +2209,8 @@ public enum STPDResultPackageBuilder {
             expectedRun: input.run,
             expectedCandidateReviews: input.candidateReviews,
             expectedManualAnnotations: input.manualAnnotations,
+            expectedManualAnnotationImportApprovals:
+                input.manualAnnotationImportApprovals,
             expectedCandidateDiagnostics: input.candidateDiagnostics
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
@@ -1976,10 +2230,13 @@ public enum STPDResultPackageBuilder {
             expectedRun: input.run,
             expectedCandidateReviews: input.candidateReviews,
             expectedManualAnnotations: input.manualAnnotations,
+            expectedManualAnnotationImportApprovals:
+                input.manualAnnotationImportApprovals,
             expectedCandidateDiagnostics: input.candidateDiagnostics
         )
         // The complete package must contain exactly the tables its declared schema version requires
-        // (v3 → 18, including Data_quality_QC). Checked here, after the consistency table (which is
+        // (v4 includes Data_quality_QC and the manual-import approval ledger). Checked here, after
+        // the consistency table (which is
         // derived from validation output) has been assembled.
         try STPDResultPackageValidator.validateSchemaTableSet(
             schemaVersion: identity.resultSchemaVersion,
@@ -5875,12 +6132,14 @@ private extension STPDResultPackageBuilder {
         identity: DetectionRunIdentity,
         annotations: [ManualAnnotation],
         manualUIDByUUID: [UUID: String],
+        importApprovalIDByAnnotationUUID: [UUID: String],
         linkedISIKeysByEvidenceUID: [String: [String]],
         isiUIDByKey: [String: String]
     ) throws -> STPDResultTableData {
         let headers = [
             "run_id", "settings_digest", "annotation_id",
             "annotation_semantic_digest", "source_annotation_uuid",
+            "authority_source", "import_approval_id",
             "train_id", "label", "polarity", "start_sec", "end_sec",
             "start_isi_index", "end_isi_index",
             "start_spike_array_index", "end_spike_array_index",
@@ -5938,6 +6197,12 @@ private extension STPDResultPackageBuilder {
                 "settings_digest": identity.settingsDigest,
                 "annotation_id": annotationID,
                 "source_annotation_uuid": annotation.id.uuidString.lowercased(),
+                "authority_source":
+                    importApprovalIDByAnnotationUUID[annotation.id] == nil
+                        ? "local"
+                        : "approved_import",
+                "import_approval_id":
+                    importApprovalIDByAnnotationUUID[annotation.id] ?? "",
                 "train_id": annotation.trainID,
                 "label": annotation.label.rawValue,
                 "polarity": annotation.polarity.rawValue,
@@ -5971,6 +6236,207 @@ private extension STPDResultPackageBuilder {
             return makeRow(headers, values: values)
         }
         return try table(.manualAnnotations, headers: headers, rows: rows)
+    }
+
+    static func manualAnnotationImportApprovalsTable(
+        identity: DetectionRunIdentity,
+        resolvedApprovals: [ResolvedManualAnnotationImportApproval]
+    ) throws -> STPDResultTableData {
+        let headers = [
+            "run_id", "settings_digest", "approval_id",
+            "source_file_sha256", "approved_dataset_digest",
+            "approved_run_id", "approved_settings_digest",
+            "approver", "approver_identity_assurance",
+            "approved_at", "approved_at_unix_sec",
+            "source_schema_version", "source_run_id",
+            "source_review_state", "annotation_ids",
+            "annotation_source_semantic_digests", "annotation_count",
+        ]
+        let rows = resolvedApprovals.map { resolvedApproval in
+            makeRow(headers, values: [
+                "run_id": identity.runID,
+                "settings_digest": identity.settingsDigest,
+                "approval_id": resolvedApproval.approvalID,
+                "source_file_sha256":
+                    resolvedApproval.receipt.sourceFileDigest,
+                "approved_dataset_digest":
+                    resolvedApproval.receipt.activeDatasetDigest,
+                "approved_run_id":
+                    resolvedApproval.receipt.approvedRunID,
+                "approved_settings_digest":
+                    resolvedApproval.receipt.approvedSettingsDigest,
+                "approver": resolvedApproval.receipt.approver,
+                "approver_identity_assurance":
+                    resolvedApproval.receipt
+                        .approverIdentityAssurance.rawValue,
+                "approved_at": STPDCanonicalValue.date(
+                    resolvedApproval.receipt.approvedAt
+                ),
+                "approved_at_unix_sec": STPDCanonicalValue.double(
+                    resolvedApproval.receipt.approvedAt
+                        .timeIntervalSince1970
+                ),
+                "source_schema_version":
+                    resolvedApproval.receipt.sourceSchemaVersion,
+                "source_run_id":
+                    resolvedApproval.receipt.sourceRunID ?? "",
+                "source_review_state":
+                    resolvedApproval.receipt.sourceReviewState,
+                "annotation_ids": STPDCanonicalValue.stringList(
+                    resolvedApproval.manualUIDs
+                ),
+                "annotation_source_semantic_digests":
+                    STPDCanonicalValue.stringList(
+                        resolvedApproval.sourceSemanticDigests
+                    ),
+                "annotation_count":
+                    String(resolvedApproval.manualUIDs.count),
+            ])
+        }
+        return try table(
+            .manualAnnotationImportApprovals,
+            headers: headers,
+            rows: rows
+        )
+    }
+
+    static func resolvedManualAnnotationImportApprovals(
+        identity: DetectionRunIdentity,
+        receipts: [ManualAnnotationCSVApprovalReceipt],
+        annotations: [ManualAnnotation],
+        manualUIDByUUID: [UUID: String]
+    ) throws -> [ResolvedManualAnnotationImportApproval] {
+        let annotationByID = Dictionary(
+            uniqueKeysWithValues: annotations.map { ($0.id, $0) }
+        )
+        var claimedAnnotationIDs: Set<UUID> = []
+        let resolved = try receipts.map { receipt
+            -> ResolvedManualAnnotationImportApproval in
+            guard receipt.activeDatasetDigest == identity.datasetDigest else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual import approval targets a different dataset"
+                )
+            }
+            guard receipt.approvedRunID == identity.runID,
+                  receipt.approvedSettingsDigest
+                    == identity.settingsDigest else {
+                throw STPDResultPackageError.invalidInput(
+                    "manual import approval targets a different detector run or settings snapshot"
+                )
+            }
+            let pairs = try receipt.annotationBindings.map { binding
+                -> (uuid: UUID, manualUID: String, sourceDigest: String) in
+                guard claimedAnnotationIDs.insert(
+                    binding.annotationID
+                ).inserted else {
+                    throw STPDResultPackageError.invalidInput(
+                        "a manual annotation is claimed by multiple import approvals"
+                    )
+                }
+                guard let annotation = annotationByID[binding.annotationID],
+                      let manualUID = manualUIDByUUID[
+                        binding.annotationID
+                      ] else {
+                    throw STPDResultPackageError.invalidInput(
+                        "manual import approval references an absent annotation"
+                    )
+                }
+                guard ManualAnnotationCSVImporter.approvalSemanticDigest(
+                    annotation
+                ) == binding.sourceSemanticDigest else {
+                    throw STPDResultPackageError.invalidInput(
+                        "manual annotation content no longer matches its approved import batch"
+                    )
+                }
+                return (
+                    binding.annotationID,
+                    manualUID,
+                    binding.sourceSemanticDigest
+                )
+            }.sorted { lhs, rhs in
+                if lhs.manualUID != rhs.manualUID {
+                    return lhs.manualUID < rhs.manualUID
+                }
+                return lhs.uuid.uuidString < rhs.uuid.uuidString
+            }
+            let manualUIDs = pairs.map(\.manualUID)
+            let sourceSemanticDigests = pairs.map(\.sourceDigest)
+            let approvalID = manualAnnotationImportApprovalID(
+                receipt: receipt,
+                manualUIDs: manualUIDs,
+                sourceSemanticDigests: sourceSemanticDigests
+            )
+            return ResolvedManualAnnotationImportApproval(
+                approvalID: approvalID,
+                receipt: receipt,
+                annotationUUIDs: pairs.map(\.uuid),
+                manualUIDs: manualUIDs,
+                sourceSemanticDigests: sourceSemanticDigests
+            )
+        }.sorted { $0.approvalID < $1.approvalID }
+
+        let approvalIDs = resolved.map(\.approvalID)
+        guard Set(approvalIDs).count == approvalIDs.count else {
+            throw STPDResultPackageError.invalidInput(
+                "manual import approvals do not have unique scientific identities"
+            )
+        }
+        return resolved
+    }
+
+    static func manualAnnotationImportApprovalID(
+        receipt: ManualAnnotationCSVApprovalReceipt,
+        manualUIDs: [String],
+        sourceSemanticDigests: [String]
+    ) -> String {
+        manualAnnotationImportApprovalID(
+            sourceFileDigest: receipt.sourceFileDigest,
+            activeDatasetDigest: receipt.activeDatasetDigest,
+            approvedRunID: receipt.approvedRunID,
+            approvedSettingsDigest:
+                receipt.approvedSettingsDigest,
+            approver: receipt.approver,
+            approvedAtUnixSec: STPDCanonicalValue.double(
+                receipt.approvedAt.timeIntervalSince1970
+            ),
+            sourceSchemaVersion: receipt.sourceSchemaVersion,
+            sourceRunID: receipt.sourceRunID ?? "",
+            sourceReviewState: receipt.sourceReviewState,
+            manualUIDs: manualUIDs,
+            sourceSemanticDigests: sourceSemanticDigests
+        )
+    }
+
+    static func manualAnnotationImportApprovalID(
+        sourceFileDigest: String,
+        activeDatasetDigest: String,
+        approvedRunID: String,
+        approvedSettingsDigest: String,
+        approver: String,
+        approvedAtUnixSec: String,
+        sourceSchemaVersion: String,
+        sourceRunID: String,
+        sourceReviewState: String,
+        manualUIDs: [String],
+        sourceSemanticDigests: [String]
+    ) -> String {
+        STPDStableIdentifier.make(
+            prefix: "manual_import_approval",
+            domain: "stpd_manual_import_approval_uid_v2",
+            components: [
+                sourceFileDigest,
+                activeDatasetDigest,
+                approvedRunID,
+                approvedSettingsDigest,
+                approver,
+                approvedAtUnixSec,
+                sourceSchemaVersion,
+                sourceRunID,
+                sourceReviewState,
+                STPDCanonicalValue.stringList(manualUIDs),
+                STPDCanonicalValue.stringList(sourceSemanticDigests),
+            ]
+        )
     }
 
     private static func checkedManualSpikeOrdinal(
@@ -6399,6 +6865,8 @@ private extension STPDResultPackageBuilder {
 
     private static let manualAnnotationSemanticColumns = [
         "source_annotation_uuid",
+        "authority_source",
+        "import_approval_id",
         "train_id",
         "label",
         "polarity",
@@ -6426,7 +6894,7 @@ private extension STPDResultPackageBuilder {
     ) -> String {
         STPDStableIdentifier.make(
             prefix: "manual_semantics",
-            domain: "stpd_manual_annotation_semantics_v1",
+            domain: "stpd_manual_annotation_semantics_v2",
             components: manualAnnotationSemanticColumns.map {
                 values[$0] ?? ""
             }
@@ -7324,6 +7792,8 @@ enum STPDResultPackageValidator {
         expectedRun: ClassicAnchorDetectionRun? = nil,
         expectedCandidateReviews: [STPDCandidateReviewInput]? = nil,
         expectedManualAnnotations: [ManualAnnotation]? = nil,
+        expectedManualAnnotationImportApprovals:
+            [ManualAnnotationCSVApprovalReceipt]? = nil,
         expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]? = nil
     ) throws -> [STPDConsistencyCheck] {
         guard (expectedDataset == nil) == (expectedQualitySettings == nil) else {
@@ -7339,6 +7809,13 @@ enum STPDResultPackageValidator {
         guard expectedManualAnnotations == nil || expectedDataset != nil else {
             throw STPDResultPackageError.invalidInput(
                 "sealed manual-annotation validation requires the detector input dataset"
+            )
+        }
+        guard expectedManualAnnotationImportApprovals == nil
+                || (expectedDataset != nil
+                    && expectedManualAnnotations != nil) else {
+            throw STPDResultPackageError.invalidInput(
+                "sealed manual-import approval validation requires the detector dataset and manual annotations"
             )
         }
         guard expectedCandidateDiagnostics == nil || expectedRun != nil else {
@@ -7699,10 +8176,21 @@ enum STPDResultPackageValidator {
             "final_event_isi_consistency",
             details: "final events exactly partition the labeled ISIs with matching labels, geometry, subtype semantics, and review evidence"
         ))
+        let manualTable = try required(.manualAnnotations, in: tables)
+        let validatedManualAuthority = try validateManualRows(
+            identity: identity,
+            table: manualTable,
+            isiRecordsByUID: validatedISIRecords(
+                identity: identity,
+                isiTable
+            ),
+            expectedTrainIDs: expectedTrainIDs,
+            expectedDataset: expectedDataset
+        )
         try validateReviewEvidence(
             identity: identity,
             sourceMode: sourceMode,
-            manualTable: required(.manualAnnotations, in: tables),
+            manualTable: manualTable,
             reviewTable: required(.reviewStatus, in: tables),
             candidateTable: required(.candidateLedgerDiagnostic, in: tables),
             eventTable: eventTable,
@@ -7718,13 +8206,68 @@ enum STPDResultPackageValidator {
             "review_authority",
             details: "review evidence, ISI links, and authority flags are causally closed"
         ))
+        let validatedManualImportApprovals =
+            try validateManualAnnotationImportApprovals(
+            identity: identity,
+            approvalTable: required(
+                .manualAnnotationImportApprovals,
+                in: tables
+            ),
+            manualTable: manualTable,
+            manualAuthority: validatedManualAuthority
+        )
+        if let expectedManualAnnotationImportApprovals,
+           let expectedManualAnnotations,
+           let expectedDataset {
+            let resolved = try STPDResultPackageBuilder
+                .resolvedManualAnnotations(
+                    expectedManualAnnotations,
+                    dataset: expectedDataset
+                )
+            let manualUIDByUUID = Dictionary(
+                uniqueKeysWithValues: resolved.map { annotation in
+                    (
+                        annotation.id,
+                        STPDStableIdentifier.make(
+                            prefix: "manual",
+                            domain:
+                                "stpd_manual_annotation_uid_v1",
+                            components: [
+                                identity.datasetDigest,
+                                annotation.id.uuidString.lowercased(),
+                            ]
+                        )
+                    )
+                }
+            )
+            let resolvedApprovals =
+                try STPDResultPackageBuilder
+                    .resolvedManualAnnotationImportApprovals(
+                        identity: identity,
+                        receipts:
+                            expectedManualAnnotationImportApprovals,
+                        annotations: resolved,
+                        manualUIDByUUID: manualUIDByUUID
+                    )
+            try validateExactAuthorityTable(
+                required(
+                    .manualAnnotationImportApprovals,
+                    in: tables
+                ),
+                expected: try STPDResultPackageBuilder
+                    .manualAnnotationImportApprovalsTable(
+                        identity: identity,
+                        resolvedApprovals: resolvedApprovals
+                    )
+            )
+        }
         if let expectedRun, let expectedDataset {
             try validateEventSourceAuthority(
                 identity: identity,
                 eventTable: eventTable,
                 diagnosticTable: diagnosticTable,
                 isiTable: isiTable,
-                manualTable: required(.manualAnnotations, in: tables),
+                manualTable: manualTable,
                 reviewTable: required(.reviewStatus, in: tables),
                 candidateTable: required(
                     .candidateLedgerDiagnostic,
@@ -7736,6 +8279,8 @@ enum STPDResultPackageValidator {
                 sourceMode: sourceMode,
                 expectedCandidateReviews: expectedCandidateReviews,
                 expectedManualAnnotations: expectedManualAnnotations,
+                validatedManualImportApprovals:
+                    validatedManualImportApprovals,
                 expectedCandidateDiagnostics: expectedCandidateDiagnostics
             )
             checks.append(pass(
@@ -7797,6 +8342,407 @@ enum STPDResultPackageValidator {
                 reason: "table does not exactly regenerate from sealed detector authority"
             )
         }
+    }
+
+    private static func validateManualAnnotationImportApprovals(
+        identity: DetectionRunIdentity,
+        approvalTable: STPDResultTableData,
+        manualTable: STPDResultTableData,
+        manualAuthority: ValidatedManualAuthority
+    ) throws -> [ManualAnnotationCSVApprovalReceipt] {
+        let expectedHeaders = [
+            "run_id", "settings_digest", "approval_id",
+            "source_file_sha256", "approved_dataset_digest",
+            "approved_run_id", "approved_settings_digest",
+            "approver", "approver_identity_assurance",
+            "approved_at", "approved_at_unix_sec",
+            "source_schema_version", "source_run_id",
+            "source_review_state", "annotation_ids",
+            "annotation_source_semantic_digests", "annotation_count",
+        ]
+        guard approvalTable.headers == expectedHeaders else {
+            throw STPDResultPackageError.invalidTable(
+                table: approvalTable.contract.table.rawValue,
+                reason: "manual-import approval schema is not canonical"
+            )
+        }
+        let manualIDs = try values(
+            table: manualTable,
+            column: "annotation_id"
+        )
+        let manualIDIndex = try columnIndex(
+            "annotation_id",
+            in: manualTable
+        )
+        let authoritySourceIndex = try columnIndex(
+            "authority_source",
+            in: manualTable
+        )
+        let importApprovalIDIndex = try columnIndex(
+            "import_approval_id",
+            in: manualTable
+        )
+        var importedManualIDs: Set<String> = []
+        var importApprovalIDByManualID: [String: String] = [:]
+        for row in manualTable.rows {
+            let manualID = row[manualIDIndex]
+            let authoritySource = row[authoritySourceIndex]
+            let importApprovalID = row[importApprovalIDIndex]
+            switch authoritySource {
+            case "local":
+                guard importApprovalID.isEmpty else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: manualTable.contract.table.rawValue,
+                        reason: "a local manual annotation cannot reference an import approval"
+                    )
+                }
+            case "approved_import":
+                guard !importApprovalID.isEmpty,
+                      importedManualIDs.insert(manualID).inserted else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: manualTable.contract.table.rawValue,
+                        reason: "an imported manual annotation must carry one approval reverse link"
+                    )
+                }
+                importApprovalIDByManualID[manualID] =
+                    importApprovalID
+            default:
+                throw STPDResultPackageError.invalidTable(
+                    table: manualTable.contract.table.rawValue,
+                    reason: "manual annotation authority_source is not canonical"
+                )
+            }
+        }
+        let sourceSemanticDigestByManualID =
+            try manualApprovalSemanticDigestByID(manualTable)
+        let indexByHeader = Dictionary(
+            uniqueKeysWithValues: expectedHeaders.enumerated().map {
+                ($0.element, $0.offset)
+            }
+        )
+        var claimedManualIDs: Set<String> = []
+        var seenApprovalIDs: Set<String> = []
+        var reconstructedReceipts:
+            [(approvalID: String, receipt: ManualAnnotationCSVApprovalReceipt)] =
+                []
+        for row in approvalTable.rows {
+            func value(_ name: String) -> String {
+                row[indexByHeader[name]!]
+            }
+            let sourceDigest = value("source_file_sha256")
+            let approvalID = value("approval_id")
+            let datasetDigest = value("approved_dataset_digest")
+            let approvedRunID = value("approved_run_id")
+            let approvedSettingsDigest =
+                value("approved_settings_digest")
+            let approver = value("approver")
+            let approverIdentityAssurance =
+                value("approver_identity_assurance")
+            let approvedAt = value("approved_at")
+            let approvedAtUnixSec =
+                value("approved_at_unix_sec")
+            let schemaVersion = value("source_schema_version")
+            let sourceRunID = value("source_run_id")
+            let reviewState = value("source_review_state")
+            guard ManualAnnotationCSVImporter.isLowercaseSHA256(
+                    sourceDigest
+                  ),
+                  datasetDigest == identity.datasetDigest,
+                  approvedRunID == identity.runID,
+                  approvedSettingsDigest
+                    == identity.settingsDigest,
+                  approver == approver.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ),
+                  !approver.isEmpty,
+                  approverIdentityAssurance
+                    == ManualAnnotationCSVApproverIdentityAssurance
+                        .userSuppliedUnauthenticatedAuditAttribution
+                        .rawValue,
+                  schemaVersion
+                    == ManualAnnotationCSVExporter
+                        .identitySchemaVersion,
+                  reviewState
+                    == ManualAnnotationCSVReviewState
+                        .pendingConfirmation.rawValue,
+                  let timestamp = STPDResultTimestamp.exactSeconds(
+                    approvedAt
+                  ),
+                  let unixSeconds = Double(approvedAtUnixSec),
+                  unixSeconds.isFinite,
+                  STPDCanonicalValue.double(unixSeconds)
+                    == approvedAtUnixSec,
+                  timestamp == unixSeconds else {
+                throw STPDResultPackageError.invalidTable(
+                    table: approvalTable.contract.table.rawValue,
+                    reason: "manual-import approval identity is malformed"
+                )
+            }
+            guard let annotationIDs = STPDCanonicalValue
+                    .parseStringList(value("annotation_ids")),
+                  let sourceDigests = STPDCanonicalValue
+                    .parseStringList(
+                        value(
+                            "annotation_source_semantic_digests"
+                        )
+                    ),
+                  !annotationIDs.isEmpty,
+                  annotationIDs.count == sourceDigests.count,
+                  Set(annotationIDs).count == annotationIDs.count,
+                  annotationIDs == annotationIDs.sorted(),
+                  STPDCanonicalValue.stringList(annotationIDs)
+                    == value("annotation_ids"),
+                  STPDCanonicalValue.stringList(sourceDigests)
+                    == value(
+                        "annotation_source_semantic_digests"
+                    ),
+                  sourceDigests.allSatisfy({
+                    let prefix = "manual_import_semantics_"
+                    guard $0.hasPrefix(prefix) else {
+                        return false
+                    }
+                    return ManualAnnotationCSVImporter
+                        .isLowercaseSHA256(
+                            String($0.dropFirst(prefix.count))
+                        )
+                  }),
+                  let annotationCount = Int(
+                    value("annotation_count")
+                  ),
+                  annotationCount == annotationIDs.count,
+                  annotationIDs.allSatisfy(manualIDs.contains),
+                  annotationIDs.allSatisfy({
+                    importApprovalIDByManualID[$0] == approvalID
+                  }),
+                  zip(annotationIDs, sourceDigests).allSatisfy({
+                    sourceSemanticDigestByManualID[$0.0] == $0.1
+                  }),
+                  annotationIDs.allSatisfy({
+                    claimedManualIDs.insert($0).inserted
+                  }),
+                  seenApprovalIDs.insert(approvalID).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: approvalTable.contract.table.rawValue,
+                    reason: "manual-import approval bindings are incomplete or ambiguous"
+                )
+            }
+            let expectedApprovalID =
+                STPDResultPackageBuilder
+                    .manualAnnotationImportApprovalID(
+                        sourceFileDigest: sourceDigest,
+                        activeDatasetDigest: datasetDigest,
+                        approvedRunID: approvedRunID,
+                        approvedSettingsDigest:
+                            approvedSettingsDigest,
+                        approver: approver,
+                        approvedAtUnixSec: approvedAtUnixSec,
+                        sourceSchemaVersion: schemaVersion,
+                        sourceRunID: sourceRunID,
+                        sourceReviewState: reviewState,
+                        manualUIDs: annotationIDs,
+                        sourceSemanticDigests: sourceDigests
+                    )
+            guard approvalID == expectedApprovalID else {
+                throw STPDResultPackageError.invalidTable(
+                    table: approvalTable.contract.table.rawValue,
+                    reason: "manual-import approval ID is not reproducible"
+                )
+            }
+            let annotations = try annotationIDs.map { annotationID in
+                guard let record = manualAuthority.recordsByUID[
+                    annotationID
+                ] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: approvalTable.contract.table.rawValue,
+                        reason: "manual-import approval references an unknown normalized annotation"
+                    )
+                }
+                return record.annotation
+            }
+            guard let receipt = ManualAnnotationCSVApprovalReceipt(
+                sourceFileDigest: sourceDigest,
+                activeDatasetDigest: datasetDigest,
+                approvedRunID: approvedRunID,
+                approvedSettingsDigest: approvedSettingsDigest,
+                approver: approver,
+                approvedAt: Date(
+                    timeIntervalSince1970: unixSeconds
+                ),
+                sourceSchemaVersion: schemaVersion,
+                sourceRunID: sourceRunID.isEmpty ? nil : sourceRunID,
+                sourceReviewState: reviewState,
+                annotations: annotations
+            ) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: approvalTable.contract.table.rawValue,
+                    reason: "manual-import approval cannot reconstruct a sealed receipt"
+                )
+            }
+            reconstructedReceipts.append(
+                (approvalID: approvalID, receipt: receipt)
+            )
+        }
+        guard claimedManualIDs == importedManualIDs else {
+            throw STPDResultPackageError.invalidTable(
+                table: approvalTable.contract.table.rawValue,
+                reason: "manual-import approval rows and manual reverse links are not a complete bijection"
+            )
+        }
+        return reconstructedReceipts
+            .sorted { $0.approvalID < $1.approvalID }
+            .map(\.receipt)
+    }
+
+    /// Reconstructs the approval-bound semantic identity from the normalized manual table.
+    ///
+    /// The table's own semantic digest proves row integrity, but an approval receipt carries a
+    /// different source-semantic digest. Recomputing that second digest prevents an on-disk ledger
+    /// from pairing a valid manual row with a syntactically valid digest copied from another row.
+    private static func manualApprovalSemanticDigestByID(
+        _ table: STPDResultTableData
+    ) throws -> [String: String] {
+        let annotationIDIndex = try columnIndex(
+            "annotation_id",
+            in: table
+        )
+        let sourceUUIDIndex = try columnIndex(
+            "source_annotation_uuid",
+            in: table
+        )
+        let trainIDIndex = try columnIndex("train_id", in: table)
+        let labelIndex = try columnIndex("label", in: table)
+        let polarityIndex = try columnIndex("polarity", in: table)
+        let startSecIndex = try columnIndex("start_sec", in: table)
+        let endSecIndex = try columnIndex("end_sec", in: table)
+        let startISIIndex = try columnIndex(
+            "start_isi_index",
+            in: table
+        )
+        let endISIIndex = try columnIndex(
+            "end_isi_index",
+            in: table
+        )
+        let startSpikeIndex = try columnIndex(
+            "start_spike_array_index",
+            in: table
+        )
+        let endSpikeIndex = try columnIndex(
+            "end_spike_array_index",
+            in: table
+        )
+        let noteIndex = try columnIndex("note", in: table)
+        let annotatorIndex = try columnIndex(
+            "annotator",
+            in: table
+        )
+        let identitySourceIndex = try columnIndex(
+            "annotator_identity_source",
+            in: table
+        )
+        let createdIndex = try columnIndex(
+            "created_at_unix_sec",
+            in: table
+        )
+        let updatedIndex = try columnIndex(
+            "updated_at_unix_sec",
+            in: table
+        )
+
+        var result: [String: String] = [:]
+        for row in table.rows {
+            let annotationID = row[annotationIDIndex]
+            guard result[annotationID] == nil,
+                  let uuid = UUID(
+                    uuidString: row[sourceUUIDIndex]
+                  ),
+                  let label = ManualAnnotationLabel(
+                    rawValue: row[labelIndex]
+                  ),
+                  row[polarityIndex] == label.polarity.rawValue else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason:
+                        "manual annotation approval semantics cannot be reconstructed"
+                )
+            }
+            let identitySource: ManualAnnotationIdentitySource?
+            if row[identitySourceIndex].isEmpty {
+                identitySource = nil
+            } else {
+                guard let parsed =
+                        ManualAnnotationIdentitySource(
+                            rawValue: row[identitySourceIndex]
+                        ) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: table.contract.table.rawValue,
+                        reason:
+                            "manual annotation approval semantics contain an unknown identity source"
+                    )
+                }
+                identitySource = parsed
+            }
+            let annotation = ManualAnnotation(
+                id: uuid,
+                trainID: row[trainIDIndex],
+                label: label,
+                startSec: try parseFiniteReal(
+                    row[startSecIndex],
+                    table: table,
+                    column: "start_sec"
+                ),
+                endSec: try parseFiniteReal(
+                    row[endSecIndex],
+                    table: table,
+                    column: "end_sec"
+                ),
+                startISIIndex: try parseOptionalInteger(
+                    row[startISIIndex],
+                    table: table,
+                    column: "start_isi_index"
+                ),
+                endISIIndex: try parseOptionalInteger(
+                    row[endISIIndex],
+                    table: table,
+                    column: "end_isi_index"
+                ),
+                startSpikeIndex: try parseOptionalInteger(
+                    row[startSpikeIndex],
+                    table: table,
+                    column: "start_spike_array_index"
+                ),
+                endSpikeIndex: try parseOptionalInteger(
+                    row[endSpikeIndex],
+                    table: table,
+                    column: "end_spike_array_index"
+                ),
+                note: row[noteIndex].isEmpty
+                    ? nil
+                    : row[noteIndex],
+                annotator: row[annotatorIndex].isEmpty
+                    ? nil
+                    : row[annotatorIndex],
+                annotatorIdentitySource: identitySource,
+                createdAt: Date(
+                    timeIntervalSince1970: try parseFiniteReal(
+                        row[createdIndex],
+                        table: table,
+                        column: "created_at_unix_sec"
+                    )
+                ),
+                updatedAt: Date(
+                    timeIntervalSince1970: try parseFiniteReal(
+                        row[updatedIndex],
+                        table: table,
+                        column: "updated_at_unix_sec"
+                    )
+                )
+            )
+            result[annotationID] =
+                ManualAnnotationCSVImporter.approvalSemanticDigest(
+                    annotation
+                )
+        }
+        return result
     }
 
     private static func validateAutomaticProjectionAuthority(
@@ -7887,6 +8833,8 @@ enum STPDResultPackageValidator {
         sourceMode: STPDResultPackageSourceMode,
         expectedCandidateReviews: [STPDCandidateReviewInput]?,
         expectedManualAnnotations: [ManualAnnotation]?,
+        validatedManualImportApprovals:
+            [ManualAnnotationCSVApprovalReceipt],
         expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]?
     ) throws {
         let candidates = try STPDResultPackageBuilder.candidateRecords(
@@ -7940,11 +8888,14 @@ enum STPDResultPackageValidator {
                 .sorted { $0.uid < $1.uid }
                 .map(\.annotation)
         }
-        let projectedInput = try STPDResultPackageInput.snapshot(
+        let projectedInput = try STPDResultPackageInput.snapshotResolved(
             dataset: dataset,
             run: run,
             manualAnnotations: manualAnnotations,
-            candidateReviews: candidateReviews
+            manualAnnotationImportApprovals:
+                validatedManualImportApprovals,
+            candidateReviews: candidateReviews,
+            candidateDiagnostics: []
         )
         let expectedEvents = try STPDResultPackageBuilder.eventRecords(
             automaticEvents: projectedInput.finalEvents,
@@ -8511,7 +9462,7 @@ enum STPDResultPackageValidator {
     }
 
     /// Fail-closed compatibility gate: the package must contain exactly the tables required by its
-    /// declared result-package schema version (v2 → 17, v3 → 18). Unknown versions fail closed.
+    /// declared result-package schema version (v2 → 17, v3 → 18, v4 → 19). Unknown versions fail closed.
     /// Internal so the builder can invoke it on the complete package and compatibility tests can
     /// exercise it directly.
     static func validateSchemaTableSet(

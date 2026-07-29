@@ -730,6 +730,13 @@ public enum ManualAnnotationCSVAuthority: Hashable, Sendable {
     case eligibleAfterExplicitConfirmation
 }
 
+/// Records whether the approval digest is bound to the exact bytes selected by the user or only to
+/// a UTF-8 re-encoding of an already-decoded String. Only `exactRawBytes` may become authoritative.
+public enum ManualAnnotationCSVSourceDigestBinding: String, Hashable, Sendable {
+    case exactRawBytes
+    case decodedStringReencoding
+}
+
 /// The result of parsing a standalone CSV with its file-level identity envelope. This is not authority:
 /// it must be gated against an active dataset (`ManualAnnotationCSVImporter.gate`).
 ///
@@ -740,18 +747,20 @@ public enum ManualAnnotationCSVAuthority: Hashable, Sendable {
 /// stale digest, or erase parse-loss blockers before handing this value to `gate`. STPDCore constructs
 /// this value once (in `importIdentityBound`) and never mutates it, so `let` costs nothing internally.
 public struct ManualAnnotationCSVImport: Hashable, Sendable {
-    public let annotations: [ManualAnnotation]
+    let annotations: [ManualAnnotation]
     public let unsupportedLabels: [String]
     public let skippedRowCount: Int
     public let fileIdentity: ManualAnnotationCSVFileIdentity
     public let envelope: ManualAnnotationCSVIdentityEnvelope
-    /// The approval-bound source-file digest (lowercase SHA-256 hex). Its byte basis depends on the entry
-    /// point: via `importIdentityBound(data:)` it binds the EXACT supplied file bytes (raw-byte digest);
-    /// via `importIdentityBound(contents:)` it is the SHA-256 of `Data(contents.utf8)` (the re-encoding of
-    /// the already-decoded `String`, which need not equal the on-disk bytes). Either way it is carried
-    /// through gating unchanged so a typed approval verifies it is approving the same source that was
-    /// gated. Prefer the `data:` entry point when the raw file bytes are available.
+    /// Source-file digest (lowercase SHA-256 hex), carried through gating unchanged.
     public let sourceFileDigest: String
+    /// Whether `sourceFileDigest` binds the exact selected bytes. A String-derived digest is useful for
+    /// review provenance but is permanently ineligible for authority.
+    public let sourceDigestBinding: ManualAnnotationCSVSourceDigestBinding
+
+    public var annotationCount: Int {
+        annotations.count
+    }
 }
 
 /// A specific, typed reason authority is withheld. Recorded on every gated import so the reason is
@@ -761,42 +770,304 @@ public enum ManualAnnotationCSVAuthorityBlocker: Hashable, Sendable {
     case malformedIdentity
     case unsupportedSchema
     case datasetMismatch
+    /// The caller supplied an already-decoded String, so the digest cannot prove the exact selected bytes.
+    case exactSourceBytesUnavailable
     /// `review_state` is `review_only` (or missing → defaulted to `review_only`).
     case reviewOnlyState
     case geometryIncompatible
     case skippedRows(Int)
     case unsupportedLabels([String])
     case emptyImport
+    case nonFiniteEditTimestamps([UUID])
+    case conflictingLatestRevisions([UUID])
+    case ambiguousEqualTimestampOverlap
+    case missingAnnotatorIdentity([UUID])
+}
+
+/// Describes the identity assurance attached to an import-approval attribution.
+///
+/// The App accepts an editable user-supplied label. It does not authenticate that label against an
+/// operating-system account, directory service, certificate, or signature.
+public enum ManualAnnotationCSVApproverIdentityAssurance:
+    String, Hashable, Sendable
+{
+    case userSuppliedUnauthenticatedAuditAttribution =
+        "user_supplied_unauthenticated_audit_attribution"
 }
 
 /// An auditable approval record required to promote an eligible import to authoritative annotations.
-/// It records approval evidence (which file, which dataset, who, when); it does not cryptographically
-/// prove a human click — the App confirmation action is a later Phase 2.2C-B concern.
+/// It records which file, dataset, run, settings, user-supplied audit attribution, and time were
+/// approved. `approver` is not an authenticated or verified identity.
 public struct ManualAnnotationCSVApproval: Hashable, Sendable {
     public let sourceFileDigest: String
     public let activeDatasetDigest: String
+    public let approvedRunID: String
+    public let approvedSettingsDigest: String
     public let approver: String
     public let approvedAt: Date
 
-    /// Fails to construct when the approver identity is empty/whitespace, either digest is empty, or the
-    /// approval timestamp is non-finite (NaN/±infinity) — so an approval object can never exist without a
-    /// nonempty approver, both digests, and a finite, audit-quality timestamp. The timestamp check is
-    /// audit hardening only; it does not otherwise alter authority decisions.
+    public var approverIdentityAssurance:
+        ManualAnnotationCSVApproverIdentityAssurance
+    {
+        .userSuppliedUnauthenticatedAuditAttribution
+    }
+
+    /// Fails to construct unless the approval is bound to one exact selected file, active dataset,
+    /// detector run, and settings snapshot. `sourceRunID` in the CSV remains source provenance; these
+    /// target fields prevent replaying an approval into another detector run over the same dataset.
     public init?(
         sourceFileDigest: String,
         activeDatasetDigest: String,
+        approvedRunID: String,
+        approvedSettingsDigest: String,
         approver: String,
         approvedAt: Date
     ) {
         let trimmedApprover = approver.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedApprover.isEmpty, !sourceFileDigest.isEmpty, !activeDatasetDigest.isEmpty,
+        let trimmedRunID = approvedRunID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedApprover.isEmpty,
+              ManualAnnotationCSVImporter.isLowercaseSHA256(sourceFileDigest),
+              ManualAnnotationCSVImporter.isLowercaseSHA256(activeDatasetDigest),
+              !trimmedRunID.isEmpty,
+              ManualAnnotationCSVImporter.isLowercaseSHA256(
+                approvedSettingsDigest
+              ),
               approvedAt.timeIntervalSinceReferenceDate.isFinite else {
             return nil
         }
         self.sourceFileDigest = sourceFileDigest
         self.activeDatasetDigest = activeDatasetDigest
+        self.approvedRunID = trimmedRunID
+        self.approvedSettingsDigest = approvedSettingsDigest
         self.approver = trimmedApprover
         self.approvedAt = approvedAt
+    }
+}
+
+/// Immutable evidence that one exact, identity-bound CSV batch was explicitly approved.
+///
+/// The original annotation author remains on each `ManualAnnotation`. The approval attribution is
+/// deliberately separate: approving an import must never rewrite or impersonate the scientist who
+/// authored the annotation. The user-supplied approver label is not authenticated or verified. The
+/// receipt binds it, together with the exact raw source bytes, active dataset, file governance
+/// envelope, approval time, and canonical annotation IDs that were promoted.
+public struct ManualAnnotationCSVApprovalBinding: Hashable, Sendable {
+    public let annotationID: UUID
+    public let sourceSemanticDigest: String
+
+    init?(
+        annotationID: UUID,
+        sourceSemanticDigest: String
+    ) {
+        guard sourceSemanticDigest.hasPrefix("manual_import_semantics_"),
+              sourceSemanticDigest.count
+                == "manual_import_semantics_".count + 64 else {
+            return nil
+        }
+        self.annotationID = annotationID
+        self.sourceSemanticDigest = sourceSemanticDigest
+    }
+}
+
+public struct ManualAnnotationCSVApprovalReceipt: Hashable, Sendable {
+    public let sourceFileDigest: String
+    public let activeDatasetDigest: String
+    public let approvedRunID: String
+    public let approvedSettingsDigest: String
+    public let approver: String
+    public let approvedAt: Date
+    public let sourceSchemaVersion: String
+    public let sourceRunID: String?
+    public let sourceReviewState: String
+    public let annotationBindings: [ManualAnnotationCSVApprovalBinding]
+
+    public var annotationIDs: [UUID] {
+        annotationBindings.map(\.annotationID)
+    }
+
+    public var approverIdentityAssurance:
+        ManualAnnotationCSVApproverIdentityAssurance
+    {
+        .userSuppliedUnauthenticatedAuditAttribution
+    }
+
+    init?(
+        sourceFileDigest: String,
+        activeDatasetDigest: String,
+        approvedRunID: String,
+        approvedSettingsDigest: String,
+        approver: String,
+        approvedAt: Date,
+        sourceSchemaVersion: String,
+        sourceRunID: String?,
+        sourceReviewState: String,
+        annotations: [ManualAnnotation]
+    ) {
+        let normalizedApprover = approver.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedApprovedRunID = approvedRunID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedSchema = sourceSchemaVersion.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedReviewState = sourceReviewState.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedRunID = sourceRunID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonicalAnnotations = annotations.sorted {
+            $0.id.uuidString < $1.id.uuidString
+        }
+        let canonicalIDs = canonicalAnnotations.map(\.id)
+        let bindings = canonicalAnnotations.compactMap {
+            ManualAnnotationCSVApprovalBinding(
+                annotationID: $0.id,
+                sourceSemanticDigest:
+                    ManualAnnotationCSVImporter.approvalSemanticDigest($0)
+            )
+        }
+        guard ManualAnnotationCSVImporter.isLowercaseSHA256(sourceFileDigest),
+              ManualAnnotationCSVImporter.isLowercaseSHA256(activeDatasetDigest),
+              !normalizedApprovedRunID.isEmpty,
+              ManualAnnotationCSVImporter.isLowercaseSHA256(
+                approvedSettingsDigest
+              ),
+              !normalizedApprover.isEmpty,
+              approvedAt.timeIntervalSinceReferenceDate.isFinite,
+              normalizedSchema == ManualAnnotationCSVExporter.identitySchemaVersion,
+              normalizedReviewState == ManualAnnotationCSVReviewState
+                .pendingConfirmation.rawValue,
+              !canonicalIDs.isEmpty,
+              Set(canonicalIDs).count == canonicalIDs.count,
+              bindings.count == canonicalIDs.count else {
+            return nil
+        }
+        self.sourceFileDigest = sourceFileDigest
+        self.activeDatasetDigest = activeDatasetDigest
+        self.approvedRunID = normalizedApprovedRunID
+        self.approvedSettingsDigest = approvedSettingsDigest
+        self.approver = normalizedApprover
+        self.approvedAt = approvedAt
+        self.sourceSchemaVersion = normalizedSchema
+        self.sourceRunID =
+            normalizedRunID?.isEmpty == false ? normalizedRunID : nil
+        self.sourceReviewState = normalizedReviewState
+        self.annotationBindings = bindings
+    }
+}
+
+/// The atomic output of an approved import. Its annotation payload and receipt are intentionally
+/// package-internal: public callers can pass the sealed batch onward, but cannot dismantle it and
+/// accidentally retain only the annotations or only the approval evidence.
+///
+/// The custom mirror also keeps ordinary Swift reflection from accidentally exposing either
+/// authority-bearing payload. This is an API-misuse boundary, not cryptographic secrecy against
+/// arbitrary code already executing in the same process.
+public struct ManualAnnotationCSVApprovedBatch:
+    Hashable,
+    Sendable,
+    CustomReflectable
+{
+    let annotations: [ManualAnnotation]
+    let approvalReceipt: ManualAnnotationCSVApprovalReceipt
+
+    init?(
+        annotations: [ManualAnnotation],
+        approvalReceipt: ManualAnnotationCSVApprovalReceipt
+    ) {
+        let annotationIDs = annotations.map(\.id)
+        let bindings = approvalReceipt.annotationBindings
+        let bindingIDs = bindings.map(\.annotationID)
+        guard !annotationIDs.isEmpty,
+              Set(annotationIDs).count == annotationIDs.count,
+              annotationIDs.count == bindingIDs.count,
+              Set(bindingIDs).count == bindingIDs.count,
+              Set(annotationIDs) == Set(bindingIDs) else {
+            return nil
+        }
+        let annotationByID = Dictionary(
+            uniqueKeysWithValues: annotations.map { ($0.id, $0) }
+        )
+        guard bindings.allSatisfy({ binding in
+            guard let annotation = annotationByID[binding.annotationID] else {
+                return false
+            }
+            return ManualAnnotationCSVImporter.approvalSemanticDigest(annotation)
+                == binding.sourceSemanticDigest
+        }) else {
+            return nil
+        }
+        self.annotations = annotations
+        self.approvalReceipt = approvalReceipt
+    }
+
+    public var hasExactReceiptCoverage: Bool {
+        let annotationByID = Dictionary(
+            uniqueKeysWithValues: annotations.map { ($0.id, $0) }
+        )
+        let bindings = approvalReceipt.annotationBindings
+        return annotationByID.count == annotations.count
+            && bindings.count == annotations.count
+            && Set(bindings.map(\.annotationID)) == Set(annotationByID.keys)
+            && bindings.allSatisfy { binding in
+                guard let annotation = annotationByID[binding.annotationID] else {
+                    return false
+                }
+                return ManualAnnotationCSVImporter.approvalSemanticDigest(
+                    annotation
+                ) == binding.sourceSemanticDigest
+            }
+    }
+
+    public var annotationCount: Int {
+        annotations.count
+    }
+
+    public var customMirror: Mirror {
+        let children: [Mirror.Child] = [
+            ("annotationCount", annotationCount),
+            ("hasExactReceiptCoverage", hasExactReceiptCoverage),
+        ]
+        return Mirror(
+            self,
+            children: children,
+            displayStyle: .struct
+        )
+    }
+
+    /// Returns whether this sealed batch still belongs to the exact detector authority context.
+    ///
+    /// A detector rerun creates a new run identity even when the dataset is unchanged. Imported
+    /// annotations approved for the previous run must therefore be retired instead of remaining
+    /// visible as authoritative evidence that can only fail later during package validation.
+    public func isAuthorityBound(
+        toRunID runID: String,
+        settingsDigest: String
+    ) -> Bool {
+        hasExactReceiptCoverage
+            && approvalReceipt.approvedRunID == runID
+            && approvalReceipt.approvedSettingsDigest == settingsDigest
+    }
+
+    /// Keeps only batches approved for the exact current run and settings.
+    ///
+    /// This pure helper is shared by the App lifecycle and Core tests so retirement behavior cannot
+    /// drift into an untested UI-only rule.
+    public static func retainingAuthorityBound(
+        _ batches: [ManualAnnotationCSVApprovedBatch],
+        toRunID runID: String,
+        settingsDigest: String
+    ) -> [ManualAnnotationCSVApprovedBatch] {
+        batches.filter {
+            $0.isAuthorityBound(
+                toRunID: runID,
+                settingsDigest: settingsDigest
+            )
+        }
     }
 }
 
@@ -804,6 +1075,7 @@ public enum ManualAnnotationCSVAuthorityError: Error, LocalizedError {
     case notEligibleForAuthority(ManualAnnotationCSVIdentity, [ManualAnnotationCSVAuthorityBlocker])
     case sourceFileDigestMismatch
     case datasetDigestMismatch
+    case invalidApprovalReceipt
 
     public var errorDescription: String? {
         switch self {
@@ -814,38 +1086,48 @@ public enum ManualAnnotationCSVAuthorityError: Error, LocalizedError {
             return "Approval source-file digest does not match the gated import."
         case .datasetDigestMismatch:
             return "Approval dataset digest does not match the gated import's active dataset."
+        case .invalidApprovalReceipt:
+            return "The manual annotation approval receipt is incomplete or internally inconsistent."
         }
     }
 }
 
-/// A standalone CSV import gated against an active dataset. The ONLY way to obtain authoritative
-/// annotations is `authoritativeAnnotations(approval:)` with a matching `ManualAnnotationCSVApproval`;
-/// it succeeds solely when the import is `eligibleAfterExplicitConfirmation` (active-dataset digest
-/// match AND geometry compatibility AND no parse loss AND a non-`review_only` state) and the approval's
-/// source-file and dataset digests match. There is no no-argument promotion and no boolean bypass; a
-/// mismatched, legacy, malformed, unsupported, geometry-incompatible, review-only, partially-parsed, or
-/// empty import can never be promoted. Import never mutates detector labels or application state.
+/// A standalone CSV import gated against an active dataset. The ONLY authority-bearing promotion is
+/// `authoritativeBatch(approval:)`, which returns the annotations and immutable approval receipt as one
+/// value. It succeeds solely when the import is `eligibleAfterExplicitConfirmation` (active-dataset
+/// digest match AND geometry compatibility AND no parse loss AND a non-`review_only` state) and the
+/// approval's source-file and dataset digests match. There is no annotations-only promotion,
+/// no-argument promotion, or boolean bypass; a mismatched, legacy, malformed, unsupported,
+/// geometry-incompatible, review-only, partially-parsed, or empty import can never be promoted.
+/// Import never mutates detector labels or application state.
 public struct ManualAnnotationCSVGatedImport: Hashable, Sendable {
     /// When `authority == .eligibleAfterExplicitConfirmation`, these are the geometry-resolved
     /// annotations (indices recomputed against the active dataset from authoritative time). Otherwise
     /// they are the raw parsed annotations and must be treated as review-only.
-    public let annotations: [ManualAnnotation]
+    let annotations: [ManualAnnotation]
     public let identity: ManualAnnotationCSVIdentity
     public let authority: ManualAnnotationCSVAuthority
     /// The specific, typed reasons authority is withheld (empty iff `eligibleAfterExplicitConfirmation`).
     public let blockers: [ManualAnnotationCSVAuthorityBlocker]
     public let sourceFileDigest: String
+    public let sourceDigestBinding: ManualAnnotationCSVSourceDigestBinding
     public let activeDatasetDigest: String
     public let envelope: ManualAnnotationCSVIdentityEnvelope
     public let unsupportedLabels: [String]
     public let skippedRowCount: Int
 
-    /// Promote to authoritative annotations using an auditable approval record. Throws unless the import
-    /// is eligible AND the approval's `sourceFileDigest` and `activeDatasetDigest` match this gated
-    /// import. Returns exactly the geometry-resolved annotations. There is no no-argument promotion.
-    public func authoritativeAnnotations(
+    public var annotationCount: Int {
+        annotations.count
+    }
+
+    /// Promotes the geometry-resolved canonical batch together with its immutable approval receipt.
+    /// The receipt preserves the original annotator identity on every annotation and records the
+    /// separate, user-supplied audit attribution entered for this approval. That attribution is not
+    /// authenticated or verified. Callers cannot request an annotations-only result because that
+    /// would sever exact-source and approval evidence.
+    public func authoritativeBatch(
         approval: ManualAnnotationCSVApproval
-    ) throws -> [ManualAnnotation] {
+    ) throws -> ManualAnnotationCSVApprovedBatch {
         guard authority == .eligibleAfterExplicitConfirmation else {
             throw ManualAnnotationCSVAuthorityError.notEligibleForAuthority(identity, blockers)
         }
@@ -855,11 +1137,67 @@ public struct ManualAnnotationCSVGatedImport: Hashable, Sendable {
         guard approval.activeDatasetDigest == activeDatasetDigest else {
             throw ManualAnnotationCSVAuthorityError.datasetDigestMismatch
         }
-        return annotations
+        guard let schemaVersion = envelope.schemaVersion,
+              let reviewState = envelope.reviewState,
+              let receipt = ManualAnnotationCSVApprovalReceipt(
+                sourceFileDigest: approval.sourceFileDigest,
+                activeDatasetDigest: approval.activeDatasetDigest,
+                approvedRunID: approval.approvedRunID,
+                approvedSettingsDigest:
+                    approval.approvedSettingsDigest,
+                approver: approval.approver,
+                approvedAt: approval.approvedAt,
+                sourceSchemaVersion: schemaVersion,
+                sourceRunID: envelope.runID,
+                sourceReviewState: reviewState,
+                annotations: annotations
+              ) else {
+            throw ManualAnnotationCSVAuthorityError.invalidApprovalReceipt
+        }
+        guard let batch = ManualAnnotationCSVApprovedBatch(
+            annotations: annotations,
+            approvalReceipt: receipt
+        ) else {
+            throw ManualAnnotationCSVAuthorityError.invalidApprovalReceipt
+        }
+        return batch
     }
 }
 
 public extension ManualAnnotationCSVImporter {
+    static func isLowercaseSHA256(_ value: String) -> Bool {
+        let bytes = value.utf8
+        return bytes.count == 64 && bytes.allSatisfy {
+            (0x30...0x39).contains($0) || (0x61...0x66).contains($0)
+        }
+    }
+
+    static func approvalSemanticDigest(
+        _ annotation: ManualAnnotation
+    ) -> String {
+        STPDStableIdentifier.make(
+            prefix: "manual_import_semantics",
+            domain: "stpd_manual_import_annotation_semantics_v1",
+            components: [
+                annotation.id.uuidString.lowercased(),
+                annotation.trainID,
+                annotation.label.rawValue,
+                annotation.polarity.rawValue,
+                STPDCanonicalValue.double(annotation.normalizedStartSec),
+                STPDCanonicalValue.double(annotation.normalizedEndSec),
+                STPDCanonicalValue.int(annotation.startISIIndex),
+                STPDCanonicalValue.int(annotation.endISIIndex),
+                STPDCanonicalValue.int(annotation.startSpikeIndex),
+                STPDCanonicalValue.int(annotation.endSpikeIndex),
+                annotation.note ?? "",
+                annotation.annotator ?? "",
+                annotation.annotatorIdentitySource?.rawValue ?? "",
+                STPDCanonicalValue.date(annotation.createdAt),
+                STPDCanonicalValue.date(annotation.updatedAt),
+            ]
+        )
+    }
+
     /// Lowercase SHA-256 (hex) over the EXACT supplied bytes. This is the raw-byte, approval-bound
     /// source-file digest: it binds the precise bytes of the file the user selected (BOM included; a
     /// LF file and its CRLF twin hash differently). The bytes are never normalized before hashing.
@@ -876,12 +1214,15 @@ public extension ManualAnnotationCSVImporter {
         sourceFileDigest(Data(contents.utf8))
     }
 
-    /// Parses a standalone CSV (decoded `String`) and classifies its file-level identity envelope. Its
-    /// approval-bound digest is the SHA-256 of `Data(contents.utf8)` (see `sourceFileDigest(_:String)`),
-    /// which does NOT necessarily equal the original file's on-disk bytes. Observable behavior is
-    /// unchanged from earlier phases. Prefer `importIdentityBound(data:)` when the raw bytes are available.
+    /// Parses a standalone CSV from an already-decoded `String`. Its digest is useful for review
+    /// provenance, but this path can never become authoritative because it cannot prove the exact source
+    /// bytes. Use `importIdentityBound(data:)` for an authority-eligible import.
     static func importIdentityBound(contents: String) throws -> ManualAnnotationCSVImport {
-        try makeIdentityBoundImport(contents: contents, sourceFileDigest: sourceFileDigest(contents))
+        try makeIdentityBoundImport(
+            contents: contents,
+            sourceFileDigest: sourceFileDigest(contents),
+            sourceDigestBinding: .decodedStringReencoding
+        )
     }
 
     /// Raw-byte identity-bound import. The approval-bound source digest binds the EXACT supplied bytes:
@@ -895,7 +1236,11 @@ public extension ManualAnnotationCSVImporter {
         guard let contents = String(data: data, encoding: .utf8) else {
             throw ImportError.invalidUTF8
         }
-        return try makeIdentityBoundImport(contents: contents, sourceFileDigest: digest)
+        return try makeIdentityBoundImport(
+            contents: contents,
+            sourceFileDigest: digest,
+            sourceDigestBinding: .exactRawBytes
+        )
     }
 
     /// Shared identity-bound import: parses the decoded `contents` and classifies its identity envelope,
@@ -904,7 +1249,8 @@ public extension ManualAnnotationCSVImporter {
     /// only difference between the two entry points is which bytes the digest binds.
     private static func makeIdentityBoundImport(
         contents: String,
-        sourceFileDigest digest: String
+        sourceFileDigest digest: String,
+        sourceDigestBinding: ManualAnnotationCSVSourceDigestBinding
     ) throws -> ManualAnnotationCSVImport {
         let base = try parseAnnotationsCore(contents: contents)
         let (fileIdentity, envelope) = try classifyIdentityEnvelope(contents: contents)
@@ -914,7 +1260,8 @@ public extension ManualAnnotationCSVImporter {
             skippedRowCount: base.skippedRowCount,
             fileIdentity: fileIdentity,
             envelope: envelope,
-            sourceFileDigest: digest
+            sourceFileDigest: digest,
+            sourceDigestBinding: sourceDigestBinding
         )
     }
 
@@ -933,6 +1280,10 @@ public extension ManualAnnotationCSVImporter {
         var blockers: [ManualAnnotationCSVAuthorityBlocker] = []
         var identity: ManualAnnotationCSVIdentity
         var resolvedAnnotations = imported.annotations
+
+        if imported.sourceDigestBinding != .exactRawBytes {
+            blockers.append(.exactSourceBytesUnavailable)
+        }
 
         switch imported.fileIdentity {
         case .legacyUnbound:
@@ -958,16 +1309,67 @@ public extension ManualAnnotationCSVImporter {
                 if effectiveReviewState == .reviewOnly {
                     blockers.append(.reviewOnlyState)
                 }
+                let nonFiniteIDs = imported.annotations.compactMap {
+                    $0.createdAt.timeIntervalSince1970.isFinite &&
+                        $0.updatedAt.timeIntervalSince1970.isFinite
+                        ? nil
+                        : $0.id
+                }
+                if !nonFiniteIDs.isEmpty {
+                    blockers.append(.nonFiniteEditTimestamps(
+                        Array(Set(nonFiniteIDs)).sorted {
+                            $0.uuidString < $1.uuidString
+                        }
+                    ))
+                }
+                let conflictingIDs = conflictingLatestRevisionIDs(
+                    imported.annotations
+                )
+                if !conflictingIDs.isEmpty {
+                    blockers.append(.conflictingLatestRevisions(
+                        conflictingIDs
+                    ))
+                }
+                let canonicalAnnotations =
+                    ManualAnnotationProjector.canonicalizedAnnotations(
+                        imported.annotations
+                    )
                 // Geometry gate: authoritative time (startSec/endSec) resolves indices against the active
                 // dataset; a missing train or out-of-train time fails. Cached indices are recomputed, not
                 // trusted, so a stale cached index never blocks a time-compatible annotation.
-                let resolved = imported.annotations.map {
+                let resolved = canonicalAnnotations.map {
                     ManualAnnotationGeometryResolver.resolvingIndicesIfCompatible($0, in: activeDataset.trains)
                 }
                 if resolved.contains(where: { $0 == nil }) {
                     blockers.append(.geometryIncompatible)
                 } else {
                     resolvedAnnotations = resolved.compactMap { $0 }
+                    if hasAmbiguousEqualTimestampOverlap(
+                        resolvedAnnotations
+                    ) {
+                        blockers.append(.ambiguousEqualTimestampOverlap)
+                    }
+                    let missingIdentityIDs = resolvedAnnotations.compactMap {
+                        annotation -> UUID? in
+                        let annotator = annotation.annotator?
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            ) ?? ""
+                        guard !annotator.isEmpty,
+                              let source =
+                                annotation.annotatorIdentitySource,
+                              source != .unknown else {
+                            return annotation.id
+                        }
+                        return nil
+                    }
+                    if !missingIdentityIDs.isEmpty {
+                        blockers.append(.missingAnnotatorIdentity(
+                            Array(Set(missingIdentityIDs)).sorted {
+                                $0.uuidString < $1.uuidString
+                            }
+                        ))
+                    }
                 }
             }
         }
@@ -985,11 +1387,89 @@ public extension ManualAnnotationCSVImporter {
             authority: authority,
             blockers: blockers,
             sourceFileDigest: imported.sourceFileDigest,
+            sourceDigestBinding: imported.sourceDigestBinding,
             activeDatasetDigest: activeDigest,
             envelope: imported.envelope,
             unsupportedLabels: imported.unsupportedLabels,
             skippedRowCount: imported.skippedRowCount
         )
+    }
+
+    private static func conflictingLatestRevisionIDs(
+        _ annotations: [ManualAnnotation]
+    ) -> [UUID] {
+        Dictionary(grouping: annotations, by: \.id).compactMap {
+            id, revisions -> UUID? in
+            guard revisions.count > 1,
+                  let latest = revisions.max(by: manualRevisionIsOlder) else {
+                return nil
+            }
+            let tiedLatest = revisions.filter {
+                $0.updatedAt.timeIntervalSince1970
+                    == latest.updatedAt.timeIntervalSince1970
+                    && $0.createdAt.timeIntervalSince1970
+                    == latest.createdAt.timeIntervalSince1970
+            }
+            return Set(tiedLatest).count > 1 ? id : nil
+        }.sorted { $0.uuidString < $1.uuidString }
+    }
+
+    private static func manualRevisionIsOlder(
+        _ lhs: ManualAnnotation,
+        _ rhs: ManualAnnotation
+    ) -> Bool {
+        let leftUpdated = lhs.updatedAt.timeIntervalSince1970
+        let rightUpdated = rhs.updatedAt.timeIntervalSince1970
+        if leftUpdated != rightUpdated {
+            return leftUpdated < rightUpdated
+        }
+        let leftCreated = lhs.createdAt.timeIntervalSince1970
+        let rightCreated = rhs.createdAt.timeIntervalSince1970
+        return leftCreated != rightCreated && leftCreated < rightCreated
+    }
+
+    private static func hasAmbiguousEqualTimestampOverlap(
+        _ annotations: [ManualAnnotation]
+    ) -> Bool {
+        guard annotations.count > 1 else { return false }
+        let ordered = annotations.sorted {
+            if $0.trainID != $1.trainID { return $0.trainID < $1.trainID }
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt < $1.updatedAt
+            }
+            if $0.createdAt != $1.createdAt {
+                return $0.createdAt < $1.createdAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+        for leftIndex in ordered.indices {
+            let left = ordered[leftIndex]
+            for right in ordered[ordered.index(after: leftIndex)...] {
+                guard left.trainID == right.trainID,
+                      left.updatedAt == right.updatedAt,
+                      left.createdAt == right.createdAt,
+                      rangesOverlap(left, right) else {
+                    continue
+                }
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func rangesOverlap(
+        _ lhs: ManualAnnotation,
+        _ rhs: ManualAnnotation
+    ) -> Bool {
+        if let lhsStart = lhs.startISIIndex,
+           let lhsEnd = lhs.endISIIndex,
+           let rhsStart = rhs.startISIIndex,
+           let rhsEnd = rhs.endISIIndex {
+            return max(min(lhsStart, lhsEnd), min(rhsStart, rhsEnd))
+                <= min(max(lhsStart, lhsEnd), max(rhsStart, rhsEnd))
+        }
+        return max(lhs.normalizedStartSec, rhs.normalizedStartSec)
+            <= min(lhs.normalizedEndSec, rhs.normalizedEndSec)
     }
 
     /// Validates the four identity columns as a repeated file-level envelope and classifies the file.
@@ -1082,8 +1562,14 @@ public extension ManualAnnotationCSVImporter {
         if let rv = review.value, ManualAnnotationCSVReviewState(rawValue: rv) == nil {
             return (.malformedIdentity, envelope)
         }
-        // Binding requires a consistent, nonempty dataset_digest anchor.
-        guard digest.declared, let datasetDigest = digest.value else {
+        // Binding requires both the recognized schema marker and a consistent, nonempty
+        // dataset_digest anchor. A file without schema_version is review-only/malformed before the
+        // App can ever present an approval action.
+        guard schema.declared,
+              schema.value
+                == ManualAnnotationCSVExporter.identitySchemaVersion,
+              digest.declared,
+              let datasetDigest = digest.value else {
             return (.malformedIdentity, envelope)
         }
         return (.bound(datasetDigest: datasetDigest), envelope)

@@ -66,6 +66,18 @@ struct ContentView: View {
                 .labelStyle(.iconOnly)
                 .liquidGlassToolbarButtonStyle()
 
+                Button {
+                    document.importManualAnnotationsWithPanel()
+                } label: {
+                    Label("Import Manual Annotations", systemImage: "person.text.rectangle")
+                }
+                .labelStyle(.iconOnly)
+                .liquidGlassToolbarButtonStyle()
+                .disabled(
+                    !document.canImportAuthoritativeManualAnnotations
+                )
+                .help("Import identity-bound manual annotations with explicit approval")
+
                 ResultPackageExportButton(document: document)
                     .labelStyle(.iconOnly)
                     .liquidGlassToolbarButtonStyle()

@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 @main
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private static var retainedDelegate: AppDelegate?
 
     private let document = RasterDocument()
@@ -48,6 +48,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func loadSample() {
         document.loadBundledSample()
         showMainWindow()
+    }
+
+    @objc private func importManualAnnotations() {
+        showMainWindow()
+        document.importManualAnnotationsWithPanel()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(importManualAnnotations) {
+            return document.canImportAuthoritativeManualAnnotations
+        }
+        return true
     }
 
     // Temporary DEBUG path: open a window inspecting the distribution-first foundation (D1-D3) for the
@@ -154,6 +166,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action: #selector(openCSV),
             keyEquivalent: "o"
         ).target = self
+        fileMenu.addItem(
+            withTitle: "Import Manual Annotations...",
+            action: #selector(importManualAnnotations),
+            keyEquivalent: ""
+        ).target = self
+        fileMenu.addItem(.separator())
         fileMenu.addItem(
             withTitle: "Load Sample",
             action: #selector(loadSample),

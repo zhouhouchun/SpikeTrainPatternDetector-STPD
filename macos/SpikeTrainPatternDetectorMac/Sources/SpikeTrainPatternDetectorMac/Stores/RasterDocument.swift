@@ -94,6 +94,7 @@ final class RasterDocument {
     var isiStateSpaceBreakThresholdMs = 150.0
     var classicAnchorDetectionRun: ClassicAnchorDetectionRun?
     var isResultPackageExporting = false
+    var isManualAnnotationImporting = false
     var focusedClassicAnchorCandidateID: String?
     var classicAnchorFocusRequestID = 0
     var classicAnchorReviewStatuses: [String: ClassicAnchorReviewStatus] = [:]
@@ -101,9 +102,13 @@ final class RasterDocument {
     /// Imported or legacy status-only rows have no entry and cannot silently
     /// inherit the identity of the person who later exports them.
     var classicAnchorReviewInputs: [String: STPDCandidateReviewInput] = [:]
-    /// User-authored annotations are independent of candidate review statuses.
-    /// Empty by default, so they have no effect until the reviewer authors one.
+    /// Reserved for a future sealed local-authoring workflow. Bare entries are never populated by
+    /// CSV import and are rejected by result-package export until that workflow supplies provenance.
     var manualAnnotationsByTrain: [String: [ManualAnnotation]] = [:]
+    /// Atomic identity-bound CSV batches. Their annotation payload is intentionally not mirrored
+    /// into `manualAnnotationsByTrain`, so imported evidence cannot outlive its approval receipt.
+    var approvedManualAnnotationImports:
+        [ManualAnnotationCSVApprovedBatch] = []
     var detectorStatusMessage = "Detector has not run."
     var detectorLastRunDate: Date?
     /// Part of detector authority and result-package provenance. The default
@@ -350,7 +355,7 @@ final class RasterDocument {
     }
 
     func runAdaptiveClassicAnchorDetection() {
-        guard !isDetectorRunning else {
+        guard canRunAdaptiveClassicAnchorDetection else {
             return
         }
 
@@ -394,6 +399,13 @@ final class RasterDocument {
         }
     }
 
+    var canRunAdaptiveClassicAnchorDetection: Bool {
+        dataset != nil
+            && !isDetectorRunning
+            && !isManualAnnotationImporting
+            && !isResultPackageExporting
+    }
+
     private func finishAdaptiveClassicAnchorDetection(
         _ run: ClassicAnchorDetectionRun,
         annotationCache: ClassicAnchorAnnotationCache,
@@ -403,6 +415,12 @@ final class RasterDocument {
             return
         }
 
+        approvedManualAnnotationImports =
+            ManualAnnotationCSVApprovedBatch.retainingAuthorityBound(
+                approvedManualAnnotationImports,
+                toRunID: run.runIdentity.runID,
+                settingsDigest: run.runIdentity.settingsDigest
+            )
         classicAnchorDetectionRun = run
         classicAnchorAnnotationCache = annotationCache
         retainReviewStatuses(for: run)
@@ -867,6 +885,7 @@ final class RasterDocument {
             classicAnchorReviewStatuses = [:]
             classicAnchorReviewInputs = [:]
             manualAnnotationsByTrain = [:]
+            approvedManualAnnotationImports = []
             detectorLastRunDate = nil
             detectorStatusMessage = "Detector has not run."
             selectedTrainIDs = []
@@ -926,6 +945,7 @@ final class RasterDocument {
         classicAnchorReviewStatuses = [:]
         classicAnchorReviewInputs = [:]
         manualAnnotationsByTrain = [:]
+        approvedManualAnnotationImports = []
         detectorLastRunDate = nil
         detectorStatusMessage = "Detector has not run."
         selectedTrainIDs = preserveSelection && !retainedSelection.isEmpty ? retainedSelection : defaultVisibleTrainIDs(for: parsed)

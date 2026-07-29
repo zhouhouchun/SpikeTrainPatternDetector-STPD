@@ -239,7 +239,7 @@ struct StructuralCandidatesView: View {
                 )
             }
             .liquidGlassButtonStyle(prominent: true)
-            .disabled(document.dataset == nil || document.isDetectorRunning)
+            .disabled(!document.canRunAdaptiveClassicAnchorDetection)
         }
     }
 

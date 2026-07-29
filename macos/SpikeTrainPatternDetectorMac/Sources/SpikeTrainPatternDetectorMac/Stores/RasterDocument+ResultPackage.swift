@@ -7,11 +7,23 @@ extension RasterDocument {
     /// Cheap UI readiness check. The export action still performs the complete, fail-closed
     /// geometry, settings, authority, and table validation.
     var canExportCurrentResultPackage: Bool {
-        guard dataset != nil, let run = classicAnchorDetectionRun else {
+        guard !isManualAnnotationImporting,
+              !isDetectorRunning,
+              !isResultPackageExporting,
+              dataset != nil,
+              let run = classicAnchorDetectionRun else {
+            return false
+        }
+        guard approvedManualAnnotationImports.allSatisfy({
+            $0.isAuthorityBound(
+                toRunID: run.runIdentity.runID,
+                settingsDigest: run.runIdentity.settingsDigest
+            )
+        }) else {
             return false
         }
         let activeCandidateIDs = Set(run.candidates.map(\.id))
-        return classicAnchorReviewStatuses.allSatisfy { candidateID, status in
+        guard classicAnchorReviewStatuses.allSatisfy({ candidateID, status in
             guard activeCandidateIDs.contains(candidateID) else {
                 return false
             }
@@ -30,7 +42,14 @@ extension RasterDocument {
                     && !reviewer.isEmpty
                     && reviewedAt?.isFinite == true
             }
+        }) else {
+            return false
         }
+        guard let liveSeed = try? currentResultPackageExportSeed() else {
+            return false
+        }
+        return liveSeed.currentSettingsSnapshot.digest
+            == run.runIdentity.settingsDigest
     }
 
     /// Freezes the exact public detector/review snapshot currently shown by the app.
@@ -46,7 +65,40 @@ extension RasterDocument {
     }
 
     func exportResultPackageWithPanel() {
-        guard !isResultPackageExporting else {
+        guard !isResultPackageExporting,
+              !isManualAnnotationImporting,
+              !isDetectorRunning,
+              let dataset,
+              let run = classicAnchorDetectionRun else {
+            return
+        }
+
+        let panel = NSSavePanel()
+        let packageType =
+            UTType(filenameExtension: "stpdresult", conformingTo: .package)
+            ?? .package
+        panel.allowedContentTypes = [packageType]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = defaultResultPackageExportFileName(
+            datasetName: dataset.name,
+            runID: run.runIdentity.runID
+        )
+        panel.message = "Export a normalized, provenance-bound detector result package. Existing packages are never overwritten."
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        // A save panel may remain open while another window changes document state.
+        // Freeze the export seed only after the panel returns and after rechecking
+        // all mutually exclusive operations on the MainActor.
+        guard !isResultPackageExporting,
+              !isManualAnnotationImporting,
+              !isDetectorRunning else {
+            statusMessage = "Result-package export blocked."
+            lastErrorMessage =
+                "Detection, manual import, or another result-package export is active."
             return
         }
 
@@ -59,41 +111,21 @@ extension RasterDocument {
             return
         }
 
-        let panel = NSSavePanel()
-        let packageType =
-            UTType(filenameExtension: "stpdresult", conformingTo: .package)
-            ?? .package
-        panel.allowedContentTypes = [packageType]
-        panel.canCreateDirectories = true
-        panel.isExtensionHidden = false
-        panel.nameFieldStringValue = defaultResultPackageExportFileName(
-            datasetName: seed.dataset.name,
-            runID: seed.run.runIdentity.runID
-        )
-        panel.message = "Export a normalized, provenance-bound detector result package. Existing packages are never overwritten."
-
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
         isResultPackageExporting = true
         statusMessage = "Exporting result package…"
         lastErrorMessage = nil
 
         Task { [weak self] in
-            let outcome = await Task.detached(priority: .userInitiated) {
+            let buildOutcome = await Task.detached(priority: .userInitiated) {
                 do {
                     // Validation, authoritative projection, normalized table construction,
-                    // hashing, and disk I/O all run away from the MainActor.
+                    // and hashing run away from the MainActor. Publication is deliberately
+                    // deferred until the live authority context is revalidated.
                     let input = try seed.snapshot()
                     let package = try STPDResultPackageBuilder.build(input)
-                    try STPDResultPackageWriter.write(package, to: url)
-                    return ResultPackageExportOutcome.success(
-                        tableCount: package.manifest.tables.count,
-                        sourceMode: package.manifest.sourceMode
-                    )
+                    return ResultPackageBuildOutcome.success(package)
                 } catch {
-                    return ResultPackageExportOutcome.failure(
+                    return ResultPackageBuildOutcome.failure(
                         message: error.localizedDescription
                     )
                 }
@@ -102,17 +134,37 @@ extension RasterDocument {
             guard let self else {
                 return
             }
-            self.isResultPackageExporting = false
-            switch outcome {
-            case let .success(tableCount, sourceMode):
-                self.statusMessage =
-                    "Exported \(tableCount)-table \(sourceMode) result package " +
-                    "to \(url.lastPathComponent)."
-                self.lastErrorMessage = nil
+            switch buildOutcome {
+            case let .success(package):
+                do {
+                    // The detached build may overlap a dataset, run, review, import, or
+                    // settings change. Re-capture every authority-bearing input immediately
+                    // before publication and fail closed unless it is byte-for-byte equivalent
+                    // to the seed used to build the package. The writer runs synchronously on
+                    // the MainActor so no app mutation can interleave between this check and
+                    // the atomic no-replace publication.
+                    let liveSeed = try self.currentResultPackageExportSeed()
+                    guard seed.hasSameAuthorityContext(as: liveSeed) else {
+                        throw STPDResultPackageError.invalidInput(
+                            "the active dataset, run, settings, reviews, or approved " +
+                                "manual imports changed while the result package was built"
+                        )
+                    }
+                    try STPDResultPackageWriter.write(package, to: url)
+                    self.statusMessage =
+                        "Exported \(package.manifest.tables.count)-table " +
+                        "\(package.manifest.sourceMode) result package " +
+                        "to \(url.lastPathComponent)."
+                    self.lastErrorMessage = nil
+                } catch {
+                    self.statusMessage = "Result-package export blocked."
+                    self.lastErrorMessage = error.localizedDescription
+                }
             case let .failure(message):
                 self.statusMessage = "Result-package export failed."
                 self.lastErrorMessage = message
             }
+            self.isResultPackageExporting = false
         }
     }
 
@@ -120,7 +172,10 @@ extension RasterDocument {
     ///
     /// The expensive authority projection and package snapshot are intentionally
     /// deferred to `ResultPackageExportSeed.snapshot()` on a detached task.
-    private func currentResultPackageExportSeed() throws -> ResultPackageExportSeed {
+    func currentResultPackageExportSeed(
+        approvedManualAnnotationImportsOverride:
+            [ManualAnnotationCSVApprovedBatch]? = nil
+    ) throws -> ResultPackageExportSeed {
         guard let dataset, let run = classicAnchorDetectionRun else {
             throw STPDResultPackageError.invalidInput(
                 "run detection before exporting a result package"
@@ -178,9 +233,22 @@ extension RasterDocument {
         return ResultPackageExportSeed(
             dataset: dataset,
             run: run,
-            manualAnnotations: runtime.manualAnnotations,
+            approvedManualAnnotationImports:
+                approvedManualAnnotationImportsOverride
+                    ?? runtime.approvedManualAnnotationImports,
             candidateReviews: candidateReviews,
             currentSettingsSnapshot: currentSettings
+        )
+    }
+
+    /// Captures the exact prospective import together with the live review and detector-settings
+    /// authority currently held by the document. The resulting seed is immutable and Sendable, so the
+    /// expensive v4 materialization can run off the MainActor without silently dropping live evidence.
+    func currentManualAnnotationImportPreflightSeed(
+        _ approvedBatch: ManualAnnotationCSVApprovedBatch
+    ) throws -> ResultPackageExportSeed {
+        try currentResultPackageExportSeed(
+            approvedManualAnnotationImportsOverride: [approvedBatch]
         )
     }
 
@@ -201,10 +269,11 @@ extension RasterDocument {
     }
 }
 
-private struct ResultPackageExportSeed: Sendable {
+struct ResultPackageExportSeed: Sendable {
     let dataset: SpikeDataset
     let run: ClassicAnchorDetectionRun
-    let manualAnnotations: [ManualAnnotation]
+    let approvedManualAnnotationImports:
+        [ManualAnnotationCSVApprovedBatch]
     let candidateReviews: [STPDCandidateReviewInput]
     let currentSettingsSnapshot: DetectionRunSettingsSnapshot
 
@@ -217,19 +286,31 @@ private struct ResultPackageExportSeed: Sendable {
         return try STPDResultPackageInput.snapshot(
             dataset: dataset,
             run: run,
-            manualAnnotations: manualAnnotations,
+            approvedManualAnnotationImports:
+                approvedManualAnnotationImports,
             candidateReviews: candidateReviews
         )
     }
+
+    func hasSameAuthorityContext(as other: ResultPackageExportSeed) -> Bool {
+        DetectionDatasetSnapshot.make(dataset: dataset).digest
+            == DetectionDatasetSnapshot.make(dataset: other.dataset).digest
+            && run.runIdentity.runID == other.run.runIdentity.runID
+            && approvedManualAnnotationImports
+                == other.approvedManualAnnotationImports
+            && candidateReviews == other.candidateReviews
+            && currentSettingsSnapshot == other.currentSettingsSnapshot
+    }
 }
 
-private enum ResultPackageExportOutcome: Sendable {
-    case success(tableCount: Int, sourceMode: String)
+private enum ResultPackageBuildOutcome: Sendable {
+    case success(STPDResultPackage)
     case failure(message: String)
 }
 
 private struct ResultPackageRuntimeState: Sendable {
-    let manualAnnotations: [ManualAnnotation]
+    let approvedManualAnnotationImports:
+        [ManualAnnotationCSVApprovedBatch]
     let manualThresholdProfile: ManualThresholdProfile
     let manualThresholdScope: ManualThresholdScope
     let useAdaptiveV2Canonicalization: Bool
@@ -240,6 +321,8 @@ private struct ResultPackageRuntimeState: Sendable {
         dataset: SpikeDataset
     ) throws -> ResultPackageRuntimeState {
         let annotationsByTrain = document.manualAnnotationsByTrain
+        let approvedImports =
+            document.approvedManualAnnotationImports
         let adaptiveV2 = document.useAdaptiveV2Canonicalization
         let burstMode = document.manualBurstMode
         let hfsMode = document.manualHFSMode
@@ -333,8 +416,20 @@ private struct ResultPackageRuntimeState: Sendable {
         let annotations = annotationsByTrain.keys.sorted().flatMap {
             annotationsByTrain[$0, default: []]
         }
+        guard annotations.isEmpty else {
+            throw STPDResultPackageError.invalidInput(
+                "bare local manual annotations have no sealed authoring authority and cannot be exported"
+            )
+        }
+        for approvedImport in approvedImports {
+            guard approvedImport.hasExactReceiptCoverage else {
+                throw STPDResultPackageError.invalidInput(
+                    "an approved manual import no longer matches its approval receipt"
+                )
+            }
+        }
         return ResultPackageRuntimeState(
-            manualAnnotations: annotations,
+            approvedManualAnnotationImports: approvedImports,
             manualThresholdProfile: profile,
             manualThresholdScope: scope,
             useAdaptiveV2Canonicalization: adaptiveV2

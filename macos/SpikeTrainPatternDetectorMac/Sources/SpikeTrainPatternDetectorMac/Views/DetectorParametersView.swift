@@ -60,7 +60,7 @@ struct DetectorParametersView: View {
                 Label(document.hasDetectorResults ? "重新检测" : "运行检测", systemImage: "play.fill")
             }
             .liquidGlassButtonStyle(prominent: true)
-            .disabled(document.isDetectorRunning || document.dataset == nil)
+            .disabled(!document.canRunAdaptiveClassicAnchorDetection)
         }
     }
 

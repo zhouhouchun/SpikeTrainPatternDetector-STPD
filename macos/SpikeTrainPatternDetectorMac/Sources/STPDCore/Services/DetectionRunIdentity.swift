@@ -20,6 +20,7 @@ public enum STPDResultTable: String, CaseIterable, Hashable, Sendable {
     case candidateDiagnosticAudit = "Candidate_diagnostic_audit.csv"
     case resultConsistencyCheck = "Result_consistency_check.csv"
     case manualAnnotations = "Manual_annotations.csv"
+    case manualAnnotationImportApprovals = "Manual_annotation_import_approvals.csv"
     case reviewStatus = "Review_status.csv"
     case hfsBurstArbitrationAudit = "HFS_burst_arbitration_audit.csv"
     case taskEvents = "Task_events.csv"
@@ -46,28 +47,36 @@ public struct STPDResultTableContract: Hashable, Sendable {
 }
 
 public enum STPDResultSchema {
-    public static let version = "stpd_result_package_v3"
+    public static let version = "stpd_result_package_v4"
     /// The immediately-preceding schema version. Retained so the schema layer can express the v2 table
-    /// layout for schema-version-aware expected-table-set validation (v2 = 17 tables, without
-    /// `Data_quality_QC.csv`). This is table-set recognition only, not an on-disk v2 package reader.
-    public static let previousVersion = "stpd_result_package_v2"
+    /// and v3 layouts for schema-version-aware expected-table-set validation. This is table-set
+    /// recognition only, not an on-disk legacy package reader.
+    public static let previousVersion = "stpd_result_package_v3"
+    public static let legacyVersion = "stpd_result_package_v2"
     public static let detectorVersion = "stpd_mac_structure_first_v1"
     public static let manifestFileName = "manifest.json"
 
     /// The exact set of table file names expected for a given result-package schema version.
     ///
     /// v2 expects the original 17 tables (no `Data_quality_QC.csv`); v3 expects 18 tables including
-    /// `Data_quality_QC.csv`. An unknown version returns `nil` so callers fail closed.
+    /// `Data_quality_QC.csv`; v4 adds the normalized manual-import approval ledger. An unknown version
+    /// returns `nil` so callers fail closed.
     ///
-    /// Schema-version-aware expected-table-set validation recognizes the v2 17-table layout and the v3
-    /// 18-table layout. This helper does not implement an on-disk package reader or end-to-end
-    /// backward-compatible package validation. The current full v3 build/validation path unconditionally
-    /// requires `Data_quality_QC.csv`.
+    /// This helper does not implement an on-disk package reader or end-to-end backward-compatible
+    /// package validation. The current full v4 build/validation path unconditionally requires both
+    /// `Data_quality_QC.csv` and `Manual_annotation_import_approvals.csv`.
     public static func requiredTableFileNames(forSchemaVersion version: String) -> Set<String>? {
         switch version {
+        case legacyVersion:
+            return Set(STPDResultTable.allCases
+                .filter {
+                    $0 != .dataQualityQC &&
+                        $0 != .manualAnnotationImportApprovals
+                }
+                .map(\.rawValue))
         case previousVersion:
             return Set(STPDResultTable.allCases
-                .filter { $0 != .dataQualityQC }
+                .filter { $0 != .manualAnnotationImportApprovals }
                 .map(\.rawValue))
         case Self.version:
             return Set(STPDResultTable.allCases.map(\.rawValue))
@@ -149,6 +158,11 @@ public enum STPDResultSchema {
             table: .manualAnnotations,
             grain: "one row per manual annotation",
             primaryKey: ["run_id", "annotation_id"]
+        ),
+        .init(
+            table: .manualAnnotationImportApprovals,
+            grain: "one row per explicitly approved identity-bound manual annotation import batch",
+            primaryKey: ["run_id", "approval_id"]
         ),
         .init(
             table: .reviewStatus,

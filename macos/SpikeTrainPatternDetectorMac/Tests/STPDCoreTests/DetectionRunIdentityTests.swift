@@ -133,8 +133,8 @@ private func snapshotDigest(_ rows: [String]) -> String {
 
 @Test
 func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
-    #expect(STPDResultSchema.version == "stpd_result_package_v3")
-    #expect(STPDResultSchema.previousVersion == "stpd_result_package_v2")
+    #expect(STPDResultSchema.version == "stpd_result_package_v4")
+    #expect(STPDResultSchema.previousVersion == "stpd_result_package_v3")
     #expect(STPDResultSchema.manifestFileName == "manifest.json")
     #expect(STPDResultSchema.tables.map(\.table) == [
         .runMetadata,
@@ -151,6 +151,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         .candidateDiagnosticAudit,
         .resultConsistencyCheck,
         .manualAnnotations,
+        .manualAnnotationImportApprovals,
         .reviewStatus,
         .hfsBurstArbitrationAudit,
         .taskEvents,
@@ -171,6 +172,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         "one row per candidate diagnostic stage",
         "one row per consistency assertion",
         "one row per manual annotation",
+        "one row per explicitly approved identity-bound manual annotation import batch",
         "one row per reviewed candidate",
         "one row per HFS/burst arbitration decision",
         "one row per normalized task or stimulus event",
@@ -191,6 +193,7 @@ func resultSchemaContractPinsNormalizedTablesAndIdentityColumns() {
         ["run_id", "candidate_uid", "stage_id"],
         ["run_id", "check_id"],
         ["run_id", "annotation_id"],
+        ["run_id", "approval_id"],
         ["run_id", "candidate_uid"],
         ["run_id", "audit_row_id"],
         ["run_id", "task_event_uid"],
