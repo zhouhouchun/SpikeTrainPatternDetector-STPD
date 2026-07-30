@@ -34,6 +34,10 @@ struct ContentView: View {
                 isInspectorVisible = false
             }
         }
+        .onChange(of: document.resultPackageLoadCompletionID) { _, _ in
+            // A verified result package finished loading — surface it on the Events / Output page.
+            selectedSection = .eventsOutput
+        }
         .toolbar {
             ToolbarItem {
                 Button {
@@ -77,6 +81,16 @@ struct ContentView: View {
                     !document.canImportAuthoritativeManualAnnotations
                 )
                 .help("Import identity-bound manual annotations with explicit approval")
+
+                Button {
+                    document.openResultPackageWithPanel()
+                } label: {
+                    Label("Open Result Package", systemImage: "shippingbox")
+                }
+                .labelStyle(.iconOnly)
+                .liquidGlassToolbarButtonStyle()
+                .disabled(document.isResultPackageReading)
+                .help("Open a verified .stpdresult package (read-only)")
 
                 ResultPackageExportButton(document: document)
                     .labelStyle(.iconOnly)

@@ -31,6 +31,9 @@ struct WorkbenchDetailView: View {
         case .detectorParameters:
             DetectorParametersView(document: document)
                 .id(section.id)
+        case .eventsOutput:
+            ResultPackageReadbackView(document: document)
+                .id(section.id)
         default:
             ModulePlaceholderView(document: document, section: section)
         }

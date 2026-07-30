@@ -172,7 +172,7 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
 
     var isLive: Bool {
         switch self {
-        case .alignedRaster, .rawRaster, .isiProfile, .isiStateSpace, .datasetISIHistogram, .dataQC, .structuralCandidates, .detectorParameters:
+        case .alignedRaster, .rawRaster, .isiProfile, .isiStateSpace, .datasetISIHistogram, .dataQC, .structuralCandidates, .detectorParameters, .eventsOutput:
             return true
         default:
             return false

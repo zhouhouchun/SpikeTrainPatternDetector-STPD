@@ -95,6 +95,23 @@ final class RasterDocument {
     var classicAnchorDetectionRun: ClassicAnchorDetectionRun?
     var isResultPackageExporting = false
     var isManualAnnotationImporting = false
+    // MARK: Result package readback (Phase 2.2C-B4) — strictly read-only, isolated from the active
+    // detector document. Loading a package never touches dataset / run / settings / reviews / manual
+    // annotations. See RasterDocument+ResultPackageReadback.swift for the read flow.
+    /// The immutable, verified result of the last successful `.stpdresult` read-back, if any.
+    var loadedResultPackage: STPDResultPackageReadResult?
+    /// The selected package URL, retained only for display.
+    var loadedResultPackageURL: URL?
+    /// True while a read is in flight; also used to prevent duplicate read requests.
+    var isResultPackageReading = false
+    /// The last read failure message (`error.localizedDescription`), cleared on success.
+    var resultPackageReadbackErrorMessage: String?
+    /// Monotonically increasing token; a detached read whose token is stale (superseded by a newer
+    /// request or an explicit clear) is ignored on completion.
+    @ObservationIgnored var resultPackageReadRequestToken = 0
+    /// Bumps on each SUCCESSFUL load so the UI can navigate to `.eventsOutput`, including on a reload of
+    /// the same URL.
+    var resultPackageLoadCompletionID = 0
     var focusedClassicAnchorCandidateID: String?
     var classicAnchorFocusRequestID = 0
     var classicAnchorReviewStatuses: [String: ClassicAnchorReviewStatus] = [:]

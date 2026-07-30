@@ -55,9 +55,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         document.importManualAnnotationsWithPanel()
     }
 
+    @objc private func openResultPackage() {
+        showMainWindow()
+        document.openResultPackageWithPanel()
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(importManualAnnotations) {
             return document.canImportAuthoritativeManualAnnotations
+        }
+        if menuItem.action == #selector(openResultPackage) {
+            return !document.isResultPackageReading
         }
         return true
     }
@@ -169,6 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileMenu.addItem(
             withTitle: "Import Manual Annotations...",
             action: #selector(importManualAnnotations),
+            keyEquivalent: ""
+        ).target = self
+        fileMenu.addItem(
+            withTitle: "Open Result Package...",
+            action: #selector(openResultPackage),
             keyEquivalent: ""
         ).target = self
         fileMenu.addItem(.separator())
