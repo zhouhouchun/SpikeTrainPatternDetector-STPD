@@ -1331,6 +1331,12 @@ public struct STPDResultTableData: Sendable {
         columnDefinitions: [STPDResultColumnDefinition]? = nil,
         rows: [[String]]
     ) throws {
+        guard headers == contract.orderedColumns else {
+            throw STPDResultPackageError.invalidTable(
+                table: contract.table.rawValue,
+                reason: "ordered headers do not match the authoritative schema"
+            )
+        }
         guard Set(headers).count == headers.count else {
             throw STPDResultPackageError.invalidTable(
                 table: contract.table.rawValue,
@@ -1349,12 +1355,19 @@ public struct STPDResultTableData: Sendable {
                 reason: "row width does not match header width"
             )
         }
-        let resolvedDefinitions = columnDefinitions
-            ?? STPDResultColumnCatalog.definitions(
-                table: contract.table,
-                headers: headers,
-                nonNullable: Set(contract.requiredIdentityColumns + contract.primaryKey)
+        let authoritativeDefinitions = STPDResultColumnCatalog.definitions(
+            table: contract.table,
+            headers: contract.orderedColumns,
+            nonNullable: Set(contract.requiredIdentityColumns + contract.primaryKey)
+        )
+        if let columnDefinitions,
+           columnDefinitions != authoritativeDefinitions {
+            throw STPDResultPackageError.invalidTable(
+                table: contract.table.rawValue,
+                reason: "column definitions do not match the authoritative schema"
             )
+        }
+        let resolvedDefinitions = authoritativeDefinitions
         guard resolvedDefinitions.map(\.name) == headers else {
             throw STPDResultPackageError.invalidTable(
                 table: contract.table.rawValue,
@@ -1480,13 +1493,34 @@ public struct STPDResultTableData: Sendable {
                 isValid = false
             }
         case .integer:
-            isValid = Int(value) != nil
+            if let parsed = Int(value) {
+                isValid =
+                    STPDCanonicalValue.int(parsed) == value &&
+                    (!requiresNonnegativeInteger(definition.name) || parsed >= 0)
+            } else {
+                isValid = false
+            }
         case .real:
-            isValid = Double(value)?.isFinite == true
+            if let parsed = Double(value), parsed.isFinite {
+                let canonical = STPDCanonicalValue.double(parsed) == value
+                let inRange =
+                    !requiresUnitInterval(definition.name) ||
+                    (parsed >= 0 && parsed <= 1)
+                isValid = canonical && inRange
+            } else {
+                isValid = false
+            }
         case .boolean:
             isValid = value == "true" || value == "false"
         case .timestamp:
-            isValid = STPDResultTimestamp.parse(value) != nil
+            if let seconds = STPDResultTimestamp.exactSeconds(value) {
+                isValid =
+                    STPDCanonicalTimestamp.string(
+                        Date(timeIntervalSince1970: seconds)
+                    ) == value
+            } else {
+                isValid = false
+            }
         }
         guard isValid else {
             throw STPDResultPackageError.invalidTable(
@@ -1496,6 +1530,21 @@ public struct STPDResultTableData: Sendable {
                     definition.type.rawValue
             )
         }
+    }
+
+    private static func requiresNonnegativeInteger(_ name: String) -> Bool {
+        name.contains("count") ||
+            name.hasSuffix("_index") ||
+            name.hasSuffix("_ordinal") ||
+            name.hasSuffix("_start_isi") ||
+            name.hasSuffix("_end_isi") ||
+            name == "n_isi" ||
+            name == "n_valid_isi" ||
+            name == "n_spikes"
+    }
+
+    private static func requiresUnitInterval(_ name: String) -> Bool {
+        name.hasSuffix("_fraction") || name.hasSuffix("_coverage")
     }
 
     private static func cellPrecedes(
@@ -1525,7 +1574,7 @@ public struct STPDResultTableData: Sendable {
     }
 }
 
-private enum STPDResultColumnCatalog {
+enum STPDResultColumnCatalog {
     private static let booleanColumns: Set<String> = [
         "anchor_is_seed",
         "anchor_band_ordered",
@@ -1893,6 +1942,51 @@ public enum STPDResultPackageError: Error, LocalizedError, Sendable {
             return "Result-package destination already exists: \(path)"
         }
     }
+}
+
+private struct STPDISIQualityClassification {
+    let isArtifact: Bool
+    let isRefractorySuspect: Bool
+    let isValid: Bool
+
+    var exportedClass: String {
+        if isArtifact {
+            return "artifact_below_floor"
+        }
+        if isRefractorySuspect {
+            return "refractory_suspect"
+        }
+        return "valid"
+    }
+
+    /// Artifact and valid are the primary QC partition. Refractory-suspect is an orthogonal warning
+    /// overlay on the non-artifact side, not a third population bucket.
+    var hasCompletePrimaryPartition: Bool {
+        isArtifact != isValid
+    }
+}
+
+private func stpdISIQualityClassification(
+    _ value: Double,
+    artifactThreshold: Double,
+    refractoryThreshold: Double
+) -> STPDISIQualityClassification {
+    let artifactTolerance = max(
+        1e-12,
+        abs(artifactThreshold) * 1e-6
+    )
+    let refractoryTolerance = max(
+        1e-12,
+        abs(refractoryThreshold) * 1e-6
+    )
+    return STPDISIQualityClassification(
+        isArtifact: value < artifactThreshold - artifactTolerance,
+        isRefractorySuspect:
+            refractoryThreshold > artifactThreshold
+            && value >= artifactThreshold - artifactTolerance
+            && value < refractoryThreshold - refractoryTolerance,
+        isValid: value >= artifactThreshold
+    )
 }
 
 public enum STPDResultPackageBuilder {
@@ -2347,6 +2441,173 @@ struct STPDConsistencyCheck {
     let status: String
     let severity: String
     let details: String
+}
+
+enum STPDResultConsistencyLedgerShape {
+    case baselineB3V4
+    case currentV4
+}
+
+/// The single semantic authority for every accepted v4 consistency-ledger row.
+///
+/// B3.1 added two package-only count checks without changing the v4 schema identifier.
+/// Consequently, readback accepts exactly two complete historical shapes:
+/// - baseline B3 v4: this contract without the two B3.1-only count rows;
+/// - current v4: all rows below.
+///
+/// Writer validation and package readback both consume this contract so their fixed
+/// `check_id`/status/severity/details vocabulary cannot drift independently.
+enum STPDResultConsistencyLedgerContract {
+    static let currentOnlyCheckIDs: Set<String> = [
+        "isi_declared_row_count",
+        "task_event_count",
+    ]
+
+    static let packageOnlyCheckIDs: Set<String> = [
+        "candidate_counts",
+        "candidate_diagnostic_one_to_one",
+        "candidate_foreign_keys",
+        "candidate_one_to_one",
+        "candidate_public_diagnostic_partition",
+        "event_source_evidence",
+        "final_event_isi_consistency",
+        "isi_declared_row_count",
+        "isi_qc_provenance",
+        "primary_keys",
+        "required_table_set",
+        "review_authority",
+        "run_identity",
+        "run_metadata",
+        "source_mode",
+        "task_event_count",
+    ]
+
+    static let currentV4Checks: [STPDConsistencyCheck] = [
+        make(
+            "automatic_projection_authority",
+            "every automatic ISI label, subtype, source candidate, and candidate UID independently regenerates from the sealed detector run"
+        ),
+        make(
+            "candidate_counts",
+            "run metadata reports the public and diagnostic candidate populations exactly"
+        ),
+        make(
+            "candidate_diagnostic_one_to_one",
+            "diagnostic ledger, feature, and decision candidate UID sets are identical, preserve every candidate, and deterministically rederive each scientific UID"
+        ),
+        make(
+            "candidate_foreign_keys",
+            "public projections resolve to Candidate_ledger and diagnostic/audit references resolve to the all-candidate registry"
+        ),
+        make(
+            "candidate_one_to_one",
+            "public ledger, feature, and decision candidate UID sets are identical and authority-bearing"
+        ),
+        make(
+            "candidate_population_authority",
+            "public and diagnostic candidate populations and all normalized candidate semantics exactly regenerate from the sealed detector run"
+        ),
+        make(
+            "candidate_public_diagnostic_partition",
+            "public candidates are authority-bearing, form a subset of diagnostics, and are byte-identical to their diagnostic rows"
+        ),
+        make(
+            "event_source_authority",
+            "event source candidates, automatic support, source annotations, diagnostics, and stage UIDs exactly regenerate from the sealed detector run plus validated manual/review authority"
+        ),
+        make(
+            "event_source_evidence",
+            "every event-source diagnostic resolves to a final event"
+        ),
+        make(
+            "final_event_isi_consistency",
+            "final events exactly partition the labeled ISIs with matching labels, geometry, subtype semantics, and review evidence"
+        ),
+        make(
+            "isi_complete_coverage",
+            "every dataset ISI is present exactly once with sealed train, spike, time, and UID geometry"
+        ),
+        make(
+            "isi_declared_row_count",
+            "the declared number of ISI rows is present"
+        ),
+        make(
+            "isi_qc_provenance",
+            "authoritative ISI classifications, thresholds, and train QC snapshots are internally consistent"
+        ),
+        make(
+            "parameter_authority",
+            "requested and resolved parameter tables exactly regenerate from the sealed invocation snapshot, run provenance, resolutions, and dataset QC"
+        ),
+        make(
+            "primary_keys",
+            "all table primary keys are unique and non-empty"
+        ),
+        make(
+            "required_table_set",
+            "all required tables for this validation stage are present"
+        ),
+        make(
+            "review_authority",
+            "review evidence, ISI links, and authority flags are causally closed"
+        ),
+        make(
+            "run_identity",
+            "all rows carry the declared run identity"
+        ),
+        make(
+            "run_metadata",
+            "run metadata exactly matches the sealed run identity, dataset snapshot, and materialized table populations"
+        ),
+        make(
+            "source_mode",
+            "metadata source mode is explicit and consistent"
+        ),
+        make(
+            "task_event_count",
+            "the declared task-event count matches the Task_events table row count"
+        ),
+        make(
+            "task_event_projection",
+            "Task_events exactly and deterministically represents every dataset task/stimulus event"
+        ),
+    ]
+
+    static let baselineB3V4Checks: [STPDConsistencyCheck] =
+        currentV4Checks.filter { !currentOnlyCheckIDs.contains($0.id) }
+
+    static let packageOnlyChecks: [STPDConsistencyCheck] =
+        currentV4Checks.filter { packageOnlyCheckIDs.contains($0.id) }
+
+    static func checks(
+        for shape: STPDResultConsistencyLedgerShape
+    ) -> [STPDConsistencyCheck] {
+        switch shape {
+        case .baselineB3V4:
+            return baselineB3V4Checks
+        case .currentV4:
+            return currentV4Checks
+        }
+    }
+
+    static func check(id: String) -> STPDConsistencyCheck {
+        guard let check = currentV4Checks.first(where: { $0.id == id }) else {
+            preconditionFailure("unregistered result consistency check: \(id)")
+        }
+        return check
+    }
+
+    private static func make(
+        _ id: String,
+        _ details: String
+    ) -> STPDConsistencyCheck {
+        STPDConsistencyCheck(
+            id: id,
+            status: "pass",
+            severity: "info",
+            details: details
+        )
+    }
 }
 
 private struct STPDResolvedReviewAuthority {
@@ -4789,6 +5050,36 @@ private extension STPDResultPackageBuilder {
         )
     }
 
+    static let qualitySnapshotKeys: [String] = [
+        "artifact_fraction",
+        "artifact_isi_count",
+        "artifact_min_isi_sec",
+        "dropped_duplicate_timestamp_count",
+        "duplicate_timestamp_count",
+        "duplicate_timestamp_policy",
+        "duration_sec",
+        "firing_rate_hz",
+        "first_spike_sec",
+        "input_duplicate_timestamp_step_count",
+        "input_nonmonotonic_step_count",
+        "input_was_unsorted",
+        "input_zero_or_negative_step_count",
+        "last_spike_sec",
+        "max_isi_sec",
+        "median_isi_sec",
+        "min_valid_isi_sec",
+        "percentile_status",
+        "raw_min_isi_sec",
+        "refractory_suspect_fraction",
+        "refractory_suspect_isi_count",
+        "spike_count",
+        "valid_isi_count",
+        "warning_level",
+        "warning_message",
+        "zero_or_negative_isi_count",
+        "zero_or_negative_timestamp_step_count",
+    ]
+
     static func qualitySnapshotValues(
         _ quality: SpikeTrainQuality
     ) -> [String: String] {
@@ -4864,24 +5155,12 @@ private extension STPDResultPackageBuilder {
         _ value: Double,
         settings: SpikeQualitySettings
     ) -> String {
-        let artifactTolerance = max(
-            1e-12,
-            abs(settings.artifactThresholdSec) * 1e-6
-        )
-        if value < settings.artifactThresholdSec - artifactTolerance {
-            return "artifact_below_floor"
-        }
-        let refractoryTolerance = max(
-            1e-12,
-            abs(settings.refractorySuspectThresholdSec) * 1e-6
-        )
-        if settings.refractorySuspectThresholdSec
-            > settings.artifactThresholdSec,
-           value < settings.refractorySuspectThresholdSec
-                - refractoryTolerance {
-            return "refractory_suspect"
-        }
-        return "valid"
+        stpdISIQualityClassification(
+            value,
+            artifactThreshold: settings.artifactThresholdSec,
+            refractoryThreshold:
+                settings.refractorySuspectThresholdSec
+        ).exportedClass
     }
 
     static func canonicalEqual(_ lhs: Double, _ rhs: Double) -> Bool {
@@ -5422,7 +5701,7 @@ private extension STPDResultPackageBuilder {
                 ]) { _, new in new }))
             }
             let qualityValues = qualitySnapshotValues(quality)
-            for key in qualityValues.keys.sorted() {
+            for key in qualitySnapshotKeys {
                 appendQuality(key, qualityValues[key] ?? "")
             }
         }
@@ -6531,7 +6810,6 @@ private extension STPDResultPackageBuilder {
             "trial_id", "source",
         ]
         var seenSourceEventIDs = Set<String>()
-        var seenTrialIDs = Set<String>()
         let records = try events.map { event -> (event: TaskEvent, uid: String) in
             guard !event.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !event.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -6543,10 +6821,9 @@ private extension STPDResultPackageBuilder {
                     "task event contains an invalid identity, time, source column, row index, or trial"
                 )
             }
-            guard seenSourceEventIDs.insert(event.id).inserted,
-                  seenTrialIDs.insert(event.trialID).inserted else {
+            guard seenSourceEventIDs.insert(event.id).inserted else {
                 throw STPDResultPackageError.invalidInput(
-                    "task event source ids and trial ids must each be unique"
+                    "task event source ids must be unique"
                 )
             }
             return (
@@ -6595,7 +6872,7 @@ private extension STPDResultPackageBuilder {
     /// Grain: one row per dataset train (every train, independent of any UI/selected-train state).
     /// `train_id` is the originating dataset train's stable ID (never the display name, which is what
     /// `SpikeTrainQuality.id` holds and can collide across trains that share a name).
-    fileprivate static func materializeDataQualityQCTable(
+    static func materializeDataQualityQCTable(
         identity: DetectionRunIdentity,
         dataset: SpikeDataset,
         qualitySettings: SpikeQualitySettings
@@ -6623,8 +6900,9 @@ private extension STPDResultPackageBuilder {
             // Authoritative raw real-ISI-slot count; never negative (0- and 1-spike trains -> 0).
             let rawISICount = max(quality.spikeCount - 1, 0)
 
-            // Fail-closed invariants: no negative counts; valid + artifact cannot exceed raw ISI slots;
-            // fractions must be finite and within [0, 1].
+            // Fail closed if the analyzer's tolerance-aware artifact rule and exact valid-floor rule
+            // leave any real ISI slot unclassified. A result package must never materialize a QC
+            // population whose primary artifact/valid partition does not exactly cover the raw slots.
             let counts = [
                 quality.spikeCount, rawISICount, quality.validISICount, quality.artifactISICount,
                 quality.refractorySuspectISICount, quality.zeroOrNegativeISICount,
@@ -6636,9 +6914,9 @@ private extension STPDResultPackageBuilder {
                     "Data_quality_QC negative count for train \(train.id)"
                 )
             }
-            guard quality.validISICount + quality.artifactISICount <= rawISICount else {
+            guard quality.validISICount + quality.artifactISICount == rawISICount else {
                 throw STPDResultPackageError.invalidInput(
-                    "Data_quality_QC valid+artifact ISI exceeds raw ISI slots for train \(train.id)"
+                    "Data_quality_QC artifact/valid partition does not exactly cover raw ISI slots for train \(train.id)"
                 )
             }
             for fraction in [quality.artifactFraction, quality.refractorySuspectFraction] {
@@ -7843,10 +8121,7 @@ enum STPDResultPackageValidator {
         }
 
         var checks: [STPDConsistencyCheck] = [
-            pass(
-                "required_table_set",
-                details: "all required tables for this validation stage are present"
-            )
+            pass("required_table_set")
         ]
 
         for table in tables.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
@@ -7856,8 +8131,8 @@ enum STPDResultPackageValidator {
             try validateIdentity(identity, table: data)
             try validatePrimaryKey(table: data)
         }
-        checks.append(pass("run_identity", details: "all rows carry the declared run identity"))
-        checks.append(pass("primary_keys", details: "all table primary keys are unique and non-empty"))
+        checks.append(pass("run_identity"))
+        checks.append(pass("primary_keys"))
 
         guard let metadata = tables[.runMetadata],
               metadata.rowCount == 1,
@@ -7867,7 +8142,7 @@ enum STPDResultPackageValidator {
                 reason: "source_mode does not match the package input"
             )
         }
-        checks.append(pass("source_mode", details: "metadata source mode is explicit and consistent"))
+        checks.append(pass("source_mode"))
 
         if let expectedRun, let expectedDataset {
             try STPDResultPackageBuilder.validateDeclaredIdentity(
@@ -7950,14 +8225,8 @@ enum STPDResultPackageValidator {
                     tableKind: .finalDecisionsDiagnostic
                 )
             )
-            checks.append(pass(
-                "parameter_authority",
-                details: "requested and resolved parameter tables exactly regenerate from the sealed invocation snapshot, run provenance, resolutions, and dataset QC"
-            ))
-            checks.append(pass(
-                "candidate_population_authority",
-                details: "public and diagnostic candidate populations and all normalized candidate semantics exactly regenerate from the sealed detector run"
-            ))
+            checks.append(pass("parameter_authority"))
+            checks.append(pass("candidate_population_authority"))
         }
 
         let publicCandidateUIDs = try values(
@@ -7983,10 +8252,7 @@ enum STPDResultPackageValidator {
             ledger: required(.candidateLedger, in: tables),
             decisions: required(.finalDecisions, in: tables)
         )
-        checks.append(pass(
-            "candidate_one_to_one",
-            details: "public ledger, feature, and decision candidate UID sets are identical and authority-bearing"
-        ))
+        checks.append(pass("candidate_one_to_one"))
 
         let diagnosticCandidateUIDs = try values(
             table: required(.candidateLedgerDiagnostic, in: tables),
@@ -8013,10 +8279,7 @@ enum STPDResultPackageValidator {
             features: required(.candidateFeaturesDiagnostic, in: tables),
             decisions: required(.finalDecisionsDiagnostic, in: tables)
         )
-        checks.append(pass(
-            "candidate_diagnostic_one_to_one",
-            details: "diagnostic ledger, feature, and decision candidate UID sets are identical, preserve every candidate, and deterministically rederive each scientific UID"
-        ))
+        checks.append(pass("candidate_diagnostic_one_to_one"))
 
         let diagnosticTable = try required(.candidateDiagnosticAudit, in: tables)
         let diagnosticRegistryUIDs = try validateDiagnosticCandidateRegistry(
@@ -8046,10 +8309,7 @@ enum STPDResultPackageValidator {
             publicTable: required(.finalDecisions, in: tables),
             diagnosticTable: required(.finalDecisionsDiagnostic, in: tables)
         )
-        checks.append(pass(
-            "candidate_public_diagnostic_partition",
-            details: "public candidates are authority-bearing, form a subset of diagnostics, and are byte-identical to their diagnostic rows"
-        ))
+        checks.append(pass("candidate_public_diagnostic_partition"))
 
         try validateCandidateForeignKeys(
             table: diagnosticTable,
@@ -8089,20 +8349,14 @@ enum STPDResultPackageValidator {
             column: "source_candidate_uids",
             candidates: publicCandidateUIDs
         )
-        checks.append(pass(
-            "candidate_foreign_keys",
-            details: "public projections resolve to Candidate_ledger and diagnostic/audit references resolve to the all-candidate registry"
-        ))
+        checks.append(pass("candidate_foreign_keys"))
 
         try validateCandidateCounts(
             metadata: metadata,
             publicCount: publicCandidateUIDs.count,
             diagnosticCount: diagnosticCandidateUIDs.count
         )
-        checks.append(pass(
-            "candidate_counts",
-            details: "run metadata reports the public and diagnostic candidate populations exactly"
-        ))
+        checks.append(pass("candidate_counts"))
 
         let isiTable = try required(.isiLabelsFinal, in: tables)
         guard isiTable.rowCount == expectedISICount else {
@@ -8111,12 +8365,14 @@ enum STPDResultPackageValidator {
                 reason: "expected \(expectedISICount) interval rows, got \(isiTable.rowCount)"
             )
         }
+        checks.append(pass("isi_declared_row_count"))
         if let expectedDataset {
             try validateExactISICoverage(
                 identity: identity,
                 table: isiTable,
                 dataset: expectedDataset
             )
+            checks.append(pass("isi_complete_coverage"))
         }
         if let expectedRun, let expectedDataset {
             try validateAutomaticProjectionAuthority(
@@ -8127,57 +8383,45 @@ enum STPDResultPackageValidator {
                 dataset: expectedDataset,
                 run: expectedRun
             )
-            checks.append(pass(
-                "automatic_projection_authority",
-                details: "every automatic ISI label, subtype, source candidate, and candidate UID independently regenerates from the sealed detector run"
-            ))
+            checks.append(pass("automatic_projection_authority"))
         }
-        checks.append(pass(
-            "isi_complete_coverage",
-            details: expectedDataset == nil
-                ? "the declared number of ISI rows is present"
-                : "every dataset ISI is present exactly once with sealed train, spike, time, and UID geometry"
-        ))
 
-        if let expectedTaskEvents {
-            try validateTaskEvents(
-                identity: identity,
-                table: required(.taskEvents, in: tables),
-                expected: expectedTaskEvents
+        let taskEventsTable = try required(.taskEvents, in: tables)
+        guard identity.taskEventCount == taskEventsTable.rowCount else {
+            throw STPDResultPackageError.invalidTable(
+                table: STPDResultTable.taskEvents.rawValue,
+                reason: "task-event row count contradicts the declared identity task-event count"
             )
-            checks.append(pass(
-                "task_event_projection",
-                details: "Task_events exactly and deterministically represents every dataset task/stimulus event"
-            ))
-        } else {
-            // Package-only mode (no original detector inputs): the Task_events table's structure and cells
-            // are already validated; cross-check only that its row count agrees with the run identity's
-            // declared task-event count, without asserting emptiness (which would reject valid packages
-            // that legitimately contain task events).
-            let taskEventsTable = try required(.taskEvents, in: tables)
-            guard identity.taskEventCount == taskEventsTable.rowCount else {
-                throw STPDResultPackageError.invalidTable(
-                    table: STPDResultTable.taskEvents.rawValue,
-                    reason: "task-event row count contradicts the declared identity task-event count"
-                )
-            }
-            checks.append(pass(
-                "task_event_projection",
-                details: "the declared task-event count matches the Task_events table row count"
-            ))
+        }
+        checks.append(pass("task_event_count"))
+        let materializedTaskEventSourceDigest = try validateTaskEvents(
+            identity: identity,
+            table: taskEventsTable,
+            expected: expectedTaskEvents
+        )
+        if expectedTaskEvents != nil {
+            checks.append(pass("task_event_projection"))
         }
 
         // Fail-closed QC validation. This intentionally does NOT append a row to the
         // Result_consistency_check ledger: adding a check row would change that pre-existing table's
         // bytes. The validation is still enforced (it throws on any violation) — enforcement, not
         // ledger logging, is what guards integrity.
-        try validateDataQualityQC(
+        let qcTable = try required(.dataQualityQC, in: tables)
+        let resolvedParameters = try required(.resolvedParameters, in: tables)
+        let materializedISIEvidence = try validateDataQualityQC(
             identity: identity,
-            table: required(.dataQualityQC, in: tables),
+            table: qcTable,
             isiTable: isiTable,
             expectedTrainIDs: expectedTrainIDs,
             expectedDataset: expectedDataset,
             expectedRun: expectedRun
+        )
+        try validatePopulationConsistentWithResolvedParameters(
+            identity: identity,
+            qcTable: qcTable,
+            resolvedParameters: resolvedParameters,
+            isiEvidenceByTrain: materializedISIEvidence
         )
 
         let eventTable = try required(.eventsFinal, in: tables)
@@ -8186,20 +8430,14 @@ enum STPDResultPackageValidator {
             table: required(.candidateDiagnosticAudit, in: tables),
             events: eventUIDs
         )
-        checks.append(pass(
-            "event_source_evidence",
-            details: "every event-source diagnostic resolves to a final event"
-        ))
+        checks.append(pass("event_source_evidence"))
 
         try validateFinalEventProjection(
             identity: identity,
             eventTable: eventTable,
             isiTable: isiTable
         )
-        checks.append(pass(
-            "final_event_isi_consistency",
-            details: "final events exactly partition the labeled ISIs with matching labels, geometry, subtype semantics, and review evidence"
-        ))
+        checks.append(pass("final_event_isi_consistency"))
         let manualTable = try required(.manualAnnotations, in: tables)
         let validatedManualAuthority = try validateManualRows(
             identity: identity,
@@ -8226,10 +8464,7 @@ enum STPDResultPackageValidator {
             expectedManualAnnotations: expectedManualAnnotations,
             publicCandidateUIDs: publicCandidateUIDs
         )
-        checks.append(pass(
-            "review_authority",
-            details: "review evidence, ISI links, and authority flags are causally closed"
-        ))
+        checks.append(pass("review_authority"))
         let validatedManualImportApprovals =
             try validateManualAnnotationImportApprovals(
             identity: identity,
@@ -8307,34 +8542,27 @@ enum STPDResultPackageValidator {
                     validatedManualImportApprovals,
                 expectedCandidateDiagnostics: expectedCandidateDiagnostics
             )
-            checks.append(pass(
-                "event_source_authority",
-                details: "event source candidates, automatic support, source annotations, diagnostics, and stage UIDs exactly regenerate from the sealed detector run plus validated manual/review authority"
-            ))
+            checks.append(pass("event_source_authority"))
         }
 
         try validateQCColumns(
             isiTable,
-            resolvedParameters: required(.resolvedParameters, in: tables),
+            resolvedParameters: resolvedParameters,
             expectedDataset: expectedDataset,
             expectedSettings: expectedQualitySettings
         )
-        checks.append(pass(
-            "isi_qc_provenance",
-            details: "authoritative ISI classifications, thresholds, and train QC snapshots are internally consistent"
-        ))
+        checks.append(pass("isi_qc_provenance"))
 
         try validateRunMetadata(
             identity: identity,
             sourceMode: sourceMode,
             metadata: metadata,
             expectedDatasetMetadata: expectedDatasetMetadata,
+            materializedTaskEventSourceDigest:
+                materializedTaskEventSourceDigest,
             tables: tables
         )
-        checks.append(pass(
-            "run_metadata",
-            details: "run metadata exactly matches the sealed run identity, dataset snapshot, and materialized table populations"
-        ))
+        checks.append(pass("run_metadata"))
 
         let sortedChecks = checks.sorted { $0.id < $1.id }
         if let consistencyTable = tables[.resultConsistencyCheck] {
@@ -9516,6 +9744,17 @@ enum STPDResultPackageValidator {
         }
     }
 
+    struct MaterializedISITrainEvidence {
+        let trainName: String
+        let spikeCount: Int
+        let rawISICount: Int
+        let artifactThresholdSec: String
+        let refractoryThresholdSec: String
+        let derivedQualityValues: [String: String]
+        let repeatedQualityValues: [String: String]
+    }
+
+    @discardableResult
     static func validateDataQualityQC(
         identity: DetectionRunIdentity,
         table: STPDResultTableData,
@@ -9523,7 +9762,7 @@ enum STPDResultPackageValidator {
         expectedTrainIDs: Set<String>?,
         expectedDataset: SpikeDataset?,
         expectedRun: ClassicAnchorDetectionRun?
-    ) throws {
+    ) throws -> [String: MaterializedISITrainEvidence] {
         let headers = [
             "run_id", "settings_digest", "dataset_digest", "train_id", "train_name",
             "spike_count", "raw_isi_count", "valid_isi_count", "artifact_isi_count", "artifact_fraction",
@@ -9544,6 +9783,7 @@ enum STPDResultPackageValidator {
         let settingsIndex = try columnIndex("settings_digest", in: table)
         let datasetIndex = try columnIndex("dataset_digest", in: table)
         let trainIDIndex = try columnIndex("train_id", in: table)
+        let spikeIndex = try columnIndex("spike_count", in: table)
         let validIndex = try columnIndex("valid_isi_count", in: table)
         let artifactIndex = try columnIndex("artifact_isi_count", in: table)
         let rawIndex = try columnIndex("raw_isi_count", in: table)
@@ -9551,6 +9791,7 @@ enum STPDResultPackageValidator {
         let refractoryFracIndex = try columnIndex("refractory_suspect_fraction", in: table)
 
         var seenTrainIDs = Set<String>()
+        var materializedSpikeCount = 0
         for row in table.rows {
             guard row[runIDIndex] == identity.runID,
                   row[settingsIndex] == identity.settingsDigest,
@@ -9582,16 +9823,33 @@ enum STPDResultPackageValidator {
                 }
                 return value
             }
+            let spikes = try intOf(spikeIndex, "spike_count")
             let valid = try intOf(validIndex, "valid_isi_count")
             let artifact = try intOf(artifactIndex, "artifact_isi_count")
             let raw = try intOf(rawIndex, "raw_isi_count")
-            guard valid >= 0, artifact >= 0, raw >= 0 else {
+            guard spikes >= 0, valid >= 0, artifact >= 0, raw >= 0 else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
-                    reason: "negative ISI count"
+                    reason: "negative spike or ISI count"
                 )
             }
-            guard valid + artifact <= raw else {
+            let expectedRawISICount = spikes > 0 ? spikes - 1 : 0
+            guard raw == expectedRawISICount else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "raw_isi_count contradicts spike_count for train \(trainID)"
+                )
+            }
+            let spikeAddition =
+                materializedSpikeCount.addingReportingOverflow(spikes)
+            guard !spikeAddition.overflow else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "materialized spike population overflows Int"
+                )
+            }
+            materializedSpikeCount = spikeAddition.partialValue
+            guard valid <= raw, artifact <= raw - valid else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
                     reason: "valid+artifact ISI exceeds raw ISI slots"
@@ -9612,6 +9870,18 @@ enum STPDResultPackageValidator {
                 }
             }
         }
+        guard table.rowCount == identity.trainCount else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "QC row count contradicts the declared identity train count"
+            )
+        }
+        guard materializedSpikeCount == identity.spikeCount else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "QC spike-count sum contradicts the declared identity spike count"
+            )
+        }
         if let expectedTrainIDs, seenTrainIDs != expectedTrainIDs {
             let missing = expectedTrainIDs.subtracting(seenTrainIDs)
             let extra = seenTrainIDs.subtracting(expectedTrainIDs)
@@ -9623,7 +9893,10 @@ enum STPDResultPackageValidator {
             )
         }
 
-        try validateQCConsistentWithISI(qcTable: table, isiTable: isiTable)
+        let materializedISIEvidence = try validateQCConsistentWithISI(
+            qcTable: table,
+            isiTable: isiTable
+        )
 
         if let expectedRun, let expectedDataset {
             try validateExactAuthorityTable(
@@ -9635,15 +9908,17 @@ enum STPDResultPackageValidator {
                 )
             )
         }
+        return materializedISIEvidence
     }
 
-    /// Conditional cross-table check: for every train that has `ISI_labels_final` rows, the shared
-    /// QC values must byte-equal the `train_qc_*` projection embedded there. Degenerate trains (no ISI
-    /// rows) still have a QC row but are not cross-checked here.
+    /// Cross-table population and snapshot check. Every QC row's `raw_isi_count` must equal the
+    /// materialized `ISI_labels_final` population for that train (including zero for degenerate trains).
+    /// For trains with ISI rows, the shared QC values must also byte-equal the repeated `train_qc_*`
+    /// projection embedded there.
     private static func validateQCConsistentWithISI(
         qcTable: STPDResultTableData,
         isiTable: STPDResultTableData
-    ) throws {
+    ) throws -> [String: MaterializedISITrainEvidence] {
         let sharedFields = [
             "warning_level", "warning_message", "duration_sec", "firing_rate_hz",
             "raw_min_isi_sec", "min_valid_isi_sec", "artifact_min_isi_sec", "median_isi_sec",
@@ -9654,11 +9929,65 @@ enum STPDResultPackageValidator {
             "percentile_status",
         ]
         let qcTrainIndex = try columnIndex("train_id", in: qcTable)
+        let qcTrainNameIndex = try columnIndex("train_name", in: qcTable)
+        let qcSpikeCountIndex = try columnIndex("spike_count", in: qcTable)
+        let qcRawISIIndex = try columnIndex("raw_isi_count", in: qcTable)
+        let qcArtifactThresholdIndex = try columnIndex(
+            "artifact_threshold_sec",
+            in: qcTable
+        )
+        let qcRefractoryThresholdIndex = try columnIndex(
+            "refractory_suspect_threshold_sec",
+            in: qcTable
+        )
         let isiTrainIndex = try columnIndex("train_id", in: isiTable)
+        let isiTrainNameIndex = try columnIndex("train_name", in: isiTable)
+        let isiIndexValue = try columnIndex("isi_index", in: isiTable)
+        let leftArrayIndex = try columnIndex(
+            "left_spike_array_index",
+            in: isiTable
+        )
+        let rightArrayIndex = try columnIndex(
+            "right_spike_array_index",
+            in: isiTable
+        )
+        let leftOrdinalIndex = try columnIndex(
+            "left_spike_ordinal",
+            in: isiTable
+        )
+        let rightOrdinalIndex = try columnIndex(
+            "right_spike_ordinal",
+            in: isiTable
+        )
+        let timestampIndex = try columnIndex("timestamp_sec", in: isiTable)
+        let alignedTimestampIndex = try columnIndex(
+            "aligned_timestamp_sec",
+            in: isiTable
+        )
+        let isiSecIndex = try columnIndex("isi_sec", in: isiTable)
+        let isiArtifactThresholdIndex = try columnIndex(
+            "qc_artifact_threshold_sec",
+            in: isiTable
+        )
+        let isiRefractoryThresholdIndex = try columnIndex(
+            "qc_refractory_threshold_sec",
+            in: isiTable
+        )
         var qcByTrain: [String: [String]] = [:]
         for row in qcTable.rows { qcByTrain[row[qcTrainIndex]] = row }
         let qcIndices = try sharedFields.map { try columnIndex($0, in: qcTable) }
-        let isiIndices = try sharedFields.map { try columnIndex("train_qc_\($0)", in: isiTable) }
+        let isiIndices = try sharedFields.map {
+            try columnIndex("train_qc_\($0)", in: isiTable)
+        }
+        let snapshotColumns = isiTable.headers.filter {
+            $0.hasPrefix("train_qc_")
+        }
+        let snapshotIndices = try snapshotColumns.map {
+            try columnIndex($0, in: isiTable)
+        }
+        var isiIndicesByTrain: [String: Set<Int>] = [:]
+        var isiRowsByTrain: [String: [[String]]] = [:]
+        var repeatedSnapshotByTrain: [String: [String: String]] = [:]
         for row in isiTable.rows {
             let trainID = row[isiTrainIndex]
             guard let qcRow = qcByTrain[trainID] else {
@@ -9667,27 +9996,461 @@ enum STPDResultPackageValidator {
                     reason: "ISI_labels_final references train \(trainID) with no Data_quality_QC row"
                 )
             }
-            for (qcIndex, isiIndex) in zip(qcIndices, isiIndices) where qcRow[qcIndex] != row[isiIndex] {
+            let index = try parseInteger(
+                row[isiIndexValue],
+                table: isiTable,
+                column: "isi_index"
+            )
+            let leftArray = try parseInteger(
+                row[leftArrayIndex],
+                table: isiTable,
+                column: "left_spike_array_index"
+            )
+            let rightArray = try parseInteger(
+                row[rightArrayIndex],
+                table: isiTable,
+                column: "right_spike_array_index"
+            )
+            let leftOrdinal = try parseInteger(
+                row[leftOrdinalIndex],
+                table: isiTable,
+                column: "left_spike_ordinal"
+            )
+            let rightOrdinal = try parseInteger(
+                row[rightOrdinalIndex],
+                table: isiTable,
+                column: "right_spike_ordinal"
+            )
+            guard index > 0 else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason:
+                        "ISI_labels_final train name or spike geometry is invalid for train " +
+                        "\(trainID) index \(index)"
+                )
+            }
+            let rightOrdinalExpectation =
+                index.addingReportingOverflow(1)
+            guard row[isiTrainNameIndex] == qcRow[qcTrainNameIndex],
+                  leftArray == index - 1,
+                  rightArray == index,
+                  leftOrdinal == index,
+                  !rightOrdinalExpectation.overflow,
+                  rightOrdinal == rightOrdinalExpectation.partialValue else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason:
+                        "ISI_labels_final train name or spike geometry is invalid for train " +
+                        "\(trainID) index \(index)"
+                )
+            }
+            guard isiIndicesByTrain[trainID, default: []].insert(index).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason: "ISI_labels_final duplicates train/index \(trainID):\(index)"
+                )
+            }
+            guard row[isiArtifactThresholdIndex] ==
+                    qcRow[qcArtifactThresholdIndex],
+                  row[isiRefractoryThresholdIndex] ==
+                    qcRow[qcRefractoryThresholdIndex] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: qcTable.contract.table.rawValue,
+                    reason:
+                        "Data_quality_QC thresholds disagree with ISI_labels_final for train \(trainID)"
+                )
+            }
+            for (qcIndex, isiIndex) in zip(qcIndices, isiIndices)
+            where qcRow[qcIndex] != row[isiIndex] {
                 throw STPDResultPackageError.invalidTable(
                     table: qcTable.contract.table.rawValue,
                     reason: "Data_quality_QC disagrees with ISI_labels_final train_qc_* for train \(trainID)"
                 )
             }
+            let repeatedSnapshot = Dictionary(
+                uniqueKeysWithValues: zip(
+                    snapshotColumns.map {
+                        String($0.dropFirst("train_qc_".count))
+                    },
+                    snapshotIndices.map { row[$0] }
+                )
+            )
+            if let prior = repeatedSnapshotByTrain[trainID],
+               prior != repeatedSnapshot {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason:
+                        "train \(trainID) has inconsistent repeated QC snapshots"
+                )
+            }
+            repeatedSnapshotByTrain[trainID] = repeatedSnapshot
+            isiRowsByTrain[trainID, default: []].append(row)
         }
+
+        let realQualityKeys: Set<String> = [
+            "artifact_fraction", "artifact_min_isi_sec", "duration_sec",
+            "firing_rate_hz", "first_spike_sec", "last_spike_sec",
+            "max_isi_sec", "median_isi_sec", "min_valid_isi_sec",
+            "raw_min_isi_sec", "refractory_suspect_fraction",
+        ]
+        func valuesAgree(
+            _ actual: String,
+            _ expected: String,
+            key: String
+        ) -> Bool {
+            guard realQualityKeys.contains(key) else {
+                return actual == expected
+            }
+            if actual.isEmpty || expected.isEmpty {
+                return actual == expected
+            }
+            guard let actualValue = Double(actual),
+                  let expectedValue = Double(expected) else {
+                return false
+            }
+            return nearlyEqual(actualValue, expectedValue)
+        }
+        func median(_ values: [Double]) -> Double? {
+            guard !values.isEmpty else { return nil }
+            let sorted = values.sorted()
+            let middle = sorted.count / 2
+            if sorted.count.isMultiple(of: 2) {
+                return (sorted[middle - 1] + sorted[middle]) / 2
+            }
+            return sorted[middle]
+        }
+        func percentileStatus(_ validCount: Int) -> String {
+            if validCount < 30 { return "disabled_lt30" }
+            if validCount < 50 { return "weak_lt50" }
+            return "reliable"
+        }
+
+        var globalThresholdPair: (artifact: String, refractory: String)?
+        var evidenceByTrain: [String: MaterializedISITrainEvidence] = [:]
+        for trainID in qcByTrain.keys.sorted() {
+            guard let qcRow = qcByTrain[trainID] else {
+                continue
+            }
+            guard let spikeCount = Int(qcRow[qcSpikeCountIndex]),
+                  spikeCount >= 0,
+                  let rawISICount = Int(qcRow[qcRawISIIndex]),
+                  rawISICount >= 0,
+                  let artifactThreshold = Double(
+                      qcRow[qcArtifactThresholdIndex]
+                  ),
+                  artifactThreshold.isFinite,
+                  artifactThreshold >= 0,
+                  let refractoryThreshold = Double(
+                      qcRow[qcRefractoryThresholdIndex]
+                  ),
+                  refractoryThreshold.isFinite,
+                  refractoryThreshold >= 0 else {
+                throw STPDResultPackageError.invalidTable(
+                    table: qcTable.contract.table.rawValue,
+                    reason:
+                        "invalid spike count, raw_isi_count, or QC threshold for train \(trainID)"
+                )
+            }
+            let thresholdPair = (
+                artifact: qcRow[qcArtifactThresholdIndex],
+                refractory: qcRow[qcRefractoryThresholdIndex]
+            )
+            if let globalThresholdPair,
+               globalThresholdPair.artifact != thresholdPair.artifact
+                || globalThresholdPair.refractory !=
+                    thresholdPair.refractory {
+                throw STPDResultPackageError.invalidTable(
+                    table: qcTable.contract.table.rawValue,
+                    reason:
+                        "Data_quality_QC rows disagree on the run-wide QC thresholds"
+                )
+            }
+            globalThresholdPair = globalThresholdPair ?? thresholdPair
+
+            let orderedRows = (isiRowsByTrain[trainID] ?? []).sorted {
+                (Int($0[isiIndexValue]) ?? 0) <
+                    (Int($1[isiIndexValue]) ?? 0)
+            }
+            guard rawISICount == orderedRows.count else {
+                throw STPDResultPackageError.invalidTable(
+                    table: qcTable.contract.table.rawValue,
+                    reason:
+                        "raw_isi_count contradicts the materialized ISI row count for train \(trainID)"
+                )
+            }
+            let expectedIndices: Set<Int> = rawISICount > 0
+                ? Set(1...rawISICount)
+                : []
+            guard isiIndicesByTrain[trainID, default: []] == expectedIndices else {
+                throw STPDResultPackageError.invalidTable(
+                    table: isiTable.contract.table.rawValue,
+                    reason:
+                        "ISI_labels_final does not exactly cover contiguous indices " +
+                        "1...\(rawISICount) for train \(trainID)"
+                )
+            }
+
+            var derived: [String: String] = [
+                "spike_count": String(spikeCount),
+                "artifact_isi_count": "0",
+                "refractory_suspect_isi_count": "0",
+                "valid_isi_count": "0",
+                "duplicate_timestamp_count": "0",
+                "zero_or_negative_isi_count": "0",
+                "zero_or_negative_timestamp_step_count": "0",
+                "percentile_status": "disabled_lt30",
+                "duration_sec": "",
+                "firing_rate_hz": "",
+                "raw_min_isi_sec": "",
+                "min_valid_isi_sec": "",
+                "artifact_min_isi_sec": "",
+                "median_isi_sec": "",
+                "max_isi_sec": "",
+                "artifact_fraction": "",
+                "refractory_suspect_fraction": "",
+            ]
+
+            if !orderedRows.isEmpty {
+                var timestamps: [Double] = []
+                var alignedTimestamps: [Double] = []
+                var isiValues: [Double] = []
+                for row in orderedRows {
+                    timestamps.append(
+                        try parseFiniteReal(
+                            row[timestampIndex],
+                            table: isiTable,
+                            column: "timestamp_sec"
+                        )
+                    )
+                    alignedTimestamps.append(
+                        try parseFiniteReal(
+                            row[alignedTimestampIndex],
+                            table: isiTable,
+                            column: "aligned_timestamp_sec"
+                        )
+                    )
+                    isiValues.append(
+                        try parseFiniteReal(
+                            row[isiSecIndex],
+                            table: isiTable,
+                            column: "isi_sec"
+                        )
+                    )
+                }
+                for offset in 1..<orderedRows.count {
+                    guard nearlyEqual(
+                        timestamps[offset] - timestamps[offset - 1],
+                        isiValues[offset]
+                    ),
+                    nearlyEqual(
+                        alignedTimestamps[offset] -
+                            alignedTimestamps[offset - 1],
+                        isiValues[offset]
+                    ) else {
+                        throw STPDResultPackageError.invalidTable(
+                            table: isiTable.contract.table.rawValue,
+                            reason:
+                                "ISI_labels_final temporal geometry is inconsistent for train \(trainID) index \(offset + 1)"
+                        )
+                    }
+                }
+
+                let firstSpike = timestamps[0] - isiValues[0]
+                let lastSpike = timestamps[timestamps.count - 1]
+                guard firstSpike.isFinite, lastSpike.isFinite else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: isiTable.contract.table.rawValue,
+                        reason:
+                            "ISI_labels_final cannot reconstruct finite train boundaries for train \(trainID)"
+                    )
+                }
+                let duration = lastSpike - firstSpike
+                let classifications = isiValues.map {
+                    stpdISIQualityClassification(
+                        $0,
+                        artifactThreshold: artifactThreshold,
+                        refractoryThreshold: refractoryThreshold
+                    )
+                }
+                guard classifications.allSatisfy(
+                    \.hasCompletePrimaryPartition
+                ) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: isiTable.contract.table.rawValue,
+                        reason:
+                            "ISI_labels_final contains a value in the unresolved artifact-floor tolerance band for train \(trainID)"
+                    )
+                }
+                let artifactValues = zip(isiValues, classifications)
+                    .compactMap { value, classification in
+                        classification.isArtifact ? value : nil
+                    }
+                let refractoryValues = zip(isiValues, classifications)
+                    .compactMap { value, classification in
+                        classification.isRefractorySuspect
+                            ? value
+                            : nil
+                    }
+                let validValues = zip(isiValues, classifications)
+                    .compactMap { value, classification in
+                        classification.isValid ? value : nil
+                    }
+                let duplicateCount = isiValues.filter { $0 == 0 }.count
+                let nonpositiveCount =
+                    isiValues.filter { $0 <= 0 }.count
+
+                derived.merge([
+                    "first_spike_sec":
+                        STPDCanonicalValue.double(firstSpike),
+                    "last_spike_sec":
+                        STPDCanonicalValue.double(lastSpike),
+                    "duration_sec":
+                        STPDCanonicalValue.double(
+                            duration > 0 ? duration : nil
+                        ),
+                    "firing_rate_hz":
+                        STPDCanonicalValue.double(
+                            duration > 0
+                                ? Double(rawISICount) / duration
+                                : nil
+                        ),
+                    "raw_min_isi_sec":
+                        STPDCanonicalValue.double(isiValues.min()),
+                    "min_valid_isi_sec":
+                        STPDCanonicalValue.double(validValues.min()),
+                    "artifact_min_isi_sec":
+                        STPDCanonicalValue.double(
+                            artifactValues.min()
+                        ),
+                    "median_isi_sec":
+                        STPDCanonicalValue.double(median(validValues)),
+                    "max_isi_sec":
+                        STPDCanonicalValue.double(isiValues.max()),
+                    "duplicate_timestamp_count":
+                        String(duplicateCount),
+                    "zero_or_negative_isi_count":
+                        String(nonpositiveCount),
+                    "zero_or_negative_timestamp_step_count":
+                        String(nonpositiveCount),
+                    "artifact_isi_count":
+                        String(artifactValues.count),
+                    "artifact_fraction":
+                        STPDCanonicalValue.double(
+                            Double(artifactValues.count) /
+                                Double(rawISICount)
+                        ),
+                    "refractory_suspect_isi_count":
+                        String(refractoryValues.count),
+                    "refractory_suspect_fraction":
+                        STPDCanonicalValue.double(
+                            Double(refractoryValues.count) /
+                                Double(rawISICount)
+                        ),
+                    "valid_isi_count": String(validValues.count),
+                    "percentile_status":
+                        percentileStatus(validValues.count),
+                ]) { _, new in new }
+            }
+
+            let qcDerivedColumns: [String: String] = [
+                "spike_count": "spike_count",
+                "raw_isi_count": "raw_isi_count",
+                "valid_isi_count": "valid_isi_count",
+                "artifact_isi_count": "artifact_isi_count",
+                "artifact_fraction": "artifact_fraction",
+                "refractory_suspect_isi_count":
+                    "refractory_suspect_isi_count",
+                "refractory_suspect_fraction":
+                    "refractory_suspect_fraction",
+                "zero_or_negative_isi_count":
+                    "zero_or_negative_isi_count",
+                "duplicate_timestamp_count":
+                    "duplicate_timestamp_count",
+                "firing_rate_hz": "firing_rate_hz",
+                "duration_sec": "duration_sec",
+                "raw_min_isi_sec": "raw_min_isi_sec",
+                "min_valid_isi_sec": "min_valid_isi_sec",
+                "artifact_min_isi_sec": "artifact_min_isi_sec",
+                "median_isi_sec": "median_isi_sec",
+                "max_isi_sec": "max_isi_sec",
+                "percentile_status": "percentile_status",
+            ]
+            var expectedQCValues = derived
+            expectedQCValues["raw_isi_count"] =
+                String(rawISICount)
+            for (column, key) in qcDerivedColumns {
+                let actual = qcRow[
+                    try columnIndex(column, in: qcTable)
+                ]
+                guard let expected = expectedQCValues[key],
+                      valuesAgree(actual, expected, key: key) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: qcTable.contract.table.rawValue,
+                        reason:
+                            "Data_quality_QC \(column) contradicts reconstructed ISI evidence for train \(trainID)"
+                    )
+                }
+            }
+
+            let repeated =
+                repeatedSnapshotByTrain[trainID] ?? [:]
+            for key in [
+                "duration_sec", "firing_rate_hz",
+                "raw_min_isi_sec", "min_valid_isi_sec",
+                "artifact_min_isi_sec", "median_isi_sec",
+                "max_isi_sec", "duplicate_timestamp_count",
+                "zero_or_negative_isi_count",
+                "zero_or_negative_timestamp_step_count",
+                "artifact_isi_count", "artifact_fraction",
+                "refractory_suspect_isi_count",
+                "refractory_suspect_fraction",
+                "valid_isi_count", "percentile_status",
+            ] {
+                if rawISICount == 0 &&
+                    repeated[key] == nil {
+                    continue
+                }
+                guard let actual = repeated[key],
+                      let expected = derived[key],
+                      valuesAgree(actual, expected, key: key) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: isiTable.contract.table.rawValue,
+                        reason:
+                            "ISI_labels_final train_qc_\(key) contradicts reconstructed ISI evidence for train \(trainID)"
+                    )
+                }
+            }
+
+            evidenceByTrain[trainID] =
+                MaterializedISITrainEvidence(
+                    trainName: qcRow[qcTrainNameIndex],
+                    spikeCount: spikeCount,
+                    rawISICount: rawISICount,
+                    artifactThresholdSec:
+                        thresholdPair.artifact,
+                    refractoryThresholdSec:
+                        thresholdPair.refractory,
+                    derivedQualityValues: derived,
+                    repeatedQualityValues: repeated
+                )
+        }
+        return evidenceByTrain
     }
 
     private static func validateTaskEvents(
         identity: DetectionRunIdentity,
         table: STPDResultTableData,
-        expected: [TaskEvent]
-    ) throws {
-        guard identity.taskEventCount == expected.count,
-              table.rowCount == expected.count else {
+        expected: [TaskEvent]?
+    ) throws -> String {
+        guard identity.taskEventCount == table.rowCount,
+              expected.map({ $0.count == table.rowCount }) ?? true else {
             throw STPDResultPackageError.invalidTable(
                 table: table.contract.table.rawValue,
                 reason: "task-event row count contradicts the detector input identity"
             )
         }
+        let runIDIndex = try columnIndex("run_id", in: table)
+        let settingsDigestIndex = try columnIndex("settings_digest", in: table)
         let uidIndex = try columnIndex("task_event_uid", in: table)
         let sourceIDIndex = try columnIndex("source_event_id", in: table)
         let nameIndex = try columnIndex("event_name", in: table)
@@ -9697,9 +10460,75 @@ enum STPDResultPackageValidator {
         let trialIndex = try columnIndex("trial_id", in: table)
         let sourceIndex = try columnIndex("source", in: table)
 
+        func validRequiredIdentity(_ value: String) -> Bool {
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        var materializedByUID: [String: TaskEvent] = [:]
+        var materializedSourceEventIDs = Set<String>()
+        for row in table.rows {
+            let uid = row[uidIndex]
+            let parsedTime = try parseFiniteReal(
+                row[timeIndex],
+                table: table,
+                column: "event_time_sec"
+            )
+            let parsedEventIndex = try parseInteger(
+                row[eventIndexValue],
+                table: table,
+                column: "source_event_index"
+            )
+            let rowEvent = TaskEvent(
+                id: row[sourceIDIndex],
+                name: row[nameIndex],
+                timeSec: parsedTime,
+                column: row[columnIndexValue],
+                eventIndex: parsedEventIndex,
+                trialID: row[trialIndex],
+                source: row[sourceIndex]
+            )
+            guard row[runIDIndex] == identity.runID,
+                  row[settingsDigestIndex] == identity.settingsDigest,
+                  validRequiredIdentity(rowEvent.id),
+                  validRequiredIdentity(rowEvent.name),
+                  rowEvent.timeSec.isFinite,
+                  validRequiredIdentity(rowEvent.column),
+                  rowEvent.eventIndex > 0,
+                  validRequiredIdentity(rowEvent.trialID) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task-event row has invalid run authority, identity, or geometry"
+                )
+            }
+            guard materializedSourceEventIDs.insert(rowEvent.id).inserted else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task-event source ids must be unique"
+                )
+            }
+            let rederivedUID = STPDResultPackageBuilder.taskEventUID(
+                rowEvent,
+                datasetDigest: identity.datasetDigest
+            )
+            guard rederivedUID == uid,
+                  materializedByUID.updateValue(rowEvent, forKey: uid) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "task-event row does not match its deterministic scientific identity"
+                )
+            }
+        }
+
+        let materializedSourceDigest =
+            DetectionDatasetMetadataSnapshot.taskEventSourceDigest(
+                Array(materializedByUID.values)
+            )
+        guard let expected else {
+            return materializedSourceDigest
+        }
+
         var expectedByUID: [String: TaskEvent] = [:]
-        var seenSourceEventIDs = Set<String>()
-        var seenTrialIDs = Set<String>()
+        var expectedSourceEventIDs = Set<String>()
         for event in expected {
             guard !event.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !event.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -9712,11 +10541,10 @@ enum STPDResultPackageValidator {
                     reason: "expected task event has invalid identity or geometry"
                 )
             }
-            guard seenSourceEventIDs.insert(event.id).inserted,
-                  seenTrialIDs.insert(event.trialID).inserted else {
+            guard expectedSourceEventIDs.insert(event.id).inserted else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
-                    reason: "expected task event source ids and trial ids must each be unique"
+                    reason: "expected task event source ids must be unique"
                 )
             }
             let uid = STPDResultPackageBuilder.taskEventUID(
@@ -9731,56 +10559,29 @@ enum STPDResultPackageValidator {
             }
         }
 
-        var seen = Set<String>()
-        for row in table.rows {
-            let uid = row[uidIndex]
-            let parsedTime = try parseFiniteReal(
-                row[timeIndex],
-                table: table,
-                column: "event_time_sec"
+        guard Set(materializedByUID.keys) == Set(expectedByUID.keys) else {
+            throw STPDResultPackageError.invalidTable(
+                table: table.contract.table.rawValue,
+                reason: "task-event table does not exactly cover the detector input"
             )
-            guard let parsedEventIndex = Int(row[eventIndexValue]) else {
-                throw STPDResultPackageError.invalidTable(
-                    table: table.contract.table.rawValue,
-                    reason: "task-event row has an invalid source event index"
-                )
-            }
-            let rowEvent = TaskEvent(
-                id: row[sourceIDIndex],
-                name: row[nameIndex],
-                timeSec: parsedTime,
-                column: row[columnIndexValue],
-                eventIndex: parsedEventIndex,
-                trialID: row[trialIndex],
-                source: row[sourceIndex]
-            )
-            let rederivedUID = STPDResultPackageBuilder.taskEventUID(
-                rowEvent,
-                datasetDigest: identity.datasetDigest
-            )
+        }
+        for uid in expectedByUID.keys.sorted() {
             guard let event = expectedByUID[uid],
-                  seen.insert(uid).inserted,
-                  rederivedUID == uid,
-                  row[sourceIDIndex] == event.id,
-                  row[nameIndex] == event.name,
-                  row[timeIndex] == STPDCanonicalValue.double(event.timeSec),
-                  row[columnIndexValue] == event.column,
-                  row[eventIndexValue] == String(event.eventIndex),
-                  row[trialIndex] == event.trialID,
-                  row[sourceIndex] == event.source,
-                  parsedTime.bitPattern == event.timeSec.bitPattern else {
+                  let materialized = materializedByUID[uid],
+                  materialized.id == event.id,
+                  materialized.name == event.name,
+                  materialized.timeSec.bitPattern == event.timeSec.bitPattern,
+                  materialized.column == event.column,
+                  materialized.eventIndex == event.eventIndex,
+                  materialized.trialID == event.trialID,
+                  materialized.source == event.source else {
                 throw STPDResultPackageError.invalidTable(
                     table: table.contract.table.rawValue,
                     reason: "task-event row does not match its deterministic detector-input projection"
                 )
             }
         }
-        guard seen == Set(expectedByUID.keys) else {
-            throw STPDResultPackageError.invalidTable(
-                table: table.contract.table.rawValue,
-                reason: "task-event table does not exactly cover the detector input"
-            )
-        }
+        return materializedSourceDigest
     }
 
     private static func validateCandidateForeignKeys(
@@ -12067,6 +12868,7 @@ enum STPDResultPackageValidator {
         sourceMode: STPDResultPackageSourceMode,
         metadata: STPDResultTableData,
         expectedDatasetMetadata: DetectionDatasetMetadataSnapshot?,
+        materializedTaskEventSourceDigest: String,
         tables: [STPDResultTable: STPDResultTableData]
     ) throws {
         guard metadata.rowCount == 1 else {
@@ -12140,6 +12942,10 @@ enum STPDResultPackageValidator {
             STPDResultPackageOwnership.ownerEmail
         )
         try requireEqual("source_mode", sourceMode.rawValue)
+        try requireEqual(
+            "task_event_source_digest",
+            materializedTaskEventSourceDigest
+        )
 
         if let expectedDatasetMetadata {
             try requireEqual("dataset_name", expectedDatasetMetadata.name)
@@ -12270,6 +13076,422 @@ enum STPDResultPackageValidator {
         }
     }
 
+    /// Cross-checks the package tables that separately preserve zero-ISI train membership.
+    ///
+    /// `ISI_labels_final` cannot represent zero- and one-spike trains, so a coordinated
+    /// rewrite of QC rows and run metadata could otherwise add or remove such a train
+    /// without contradicting any ISI row. The separately materialized resolved quality
+    /// rows detect partial population rewrites by requiring exact agreement with QC.
+    /// This is an internal-consistency check, not a cryptographic seal: as documented by
+    /// `STPDResultPackageReader`, a forger who rewrites every dependent table and the
+    /// unsigned manifest remains outside the package-only reader's threat model.
+    private static func validatePopulationConsistentWithResolvedParameters(
+        identity: DetectionRunIdentity,
+        qcTable: STPDResultTableData,
+        resolvedParameters: STPDResultTableData,
+        isiEvidenceByTrain:
+            [String: MaterializedISITrainEvidence]
+    ) throws {
+        let qcTrainIDIndex = try columnIndex("train_id", in: qcTable)
+        let qcTrainNameIndex = try columnIndex("train_name", in: qcTable)
+        let qcSpikeCountIndex = try columnIndex("spike_count", in: qcTable)
+
+        func canonicalNonnegativeInteger(
+            _ value: String,
+            table: STPDResultTableData,
+            field: String
+        ) throws -> Int {
+            guard let parsed = Int(value),
+                  parsed >= 0,
+                  String(parsed) == value else {
+                throw STPDResultPackageError.invalidTable(
+                    table: table.contract.table.rawValue,
+                    reason: "\(field) is not a canonical nonnegative integer"
+                )
+            }
+            return parsed
+        }
+
+        var qcPopulation:
+            [String: (name: String, spikeCount: Int, row: [String])] = [:]
+        for row in qcTable.rows {
+            let trainID = row[qcTrainIDIndex]
+            let entry = (
+                name: row[qcTrainNameIndex],
+                spikeCount: try canonicalNonnegativeInteger(
+                    row[qcSpikeCountIndex],
+                    table: qcTable,
+                    field: "QC spike_count"
+                ),
+                row: row
+            )
+            guard qcPopulation.updateValue(entry, forKey: trainID) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: qcTable.contract.table.rawValue,
+                    reason: "duplicate train in materialized QC population"
+                )
+            }
+        }
+
+        let scopeTypeIndex = try columnIndex(
+            "scope_type",
+            in: resolvedParameters
+        )
+        let scopeIDIndex = try columnIndex(
+            "scope_id",
+            in: resolvedParameters
+        )
+        let scopeNameIndex = try columnIndex(
+            "scope_name",
+            in: resolvedParameters
+        )
+        let parameterKeyIndex = try columnIndex(
+            "parameter_key",
+            in: resolvedParameters
+        )
+        let effectiveValueIndex = try columnIndex(
+            "effective_value",
+            in: resolvedParameters
+        )
+        let sourceIndex = try columnIndex(
+            "source",
+            in: resolvedParameters
+        )
+        let runIDIndex = try columnIndex(
+            "run_id",
+            in: resolvedParameters
+        )
+        let settingsDigestIndex = try columnIndex(
+            "settings_digest",
+            in: resolvedParameters
+        )
+        let requestedValueIndex = try columnIndex(
+            "requested_value",
+            in: resolvedParameters
+        )
+        let adaptiveValueIndex = try columnIndex(
+            "adaptive_value",
+            in: resolvedParameters
+        )
+        let resolutionModeIndex = try columnIndex(
+            "resolution_mode",
+            in: resolvedParameters
+        )
+        let resolutionNoteIndex = try columnIndex(
+            "resolution_note",
+            in: resolvedParameters
+        )
+        let histogramValueIndex = try columnIndex(
+            "histogram_value",
+            in: resolvedParameters
+        )
+        let defaultValueIndex = try columnIndex(
+            "default_value",
+            in: resolvedParameters
+        )
+
+        let expectedQualityKeys = Set(
+            STPDResultPackageBuilder.qualitySnapshotKeys
+        )
+        let sharedQualityColumns = qcTable.headers.filter {
+            expectedQualityKeys.contains($0)
+        }.sorted()
+        let sharedQualityColumnIndices = try Dictionary(
+            uniqueKeysWithValues: sharedQualityColumns.map {
+                ($0, try columnIndex($0, in: qcTable))
+            }
+        )
+
+        var resolvedQualityByTrain: [String: [String: String]] = [:]
+        var datasetTrainCountRows: [[String]] = []
+        var requestedQCThresholdRows: [String: [[String]]] = [:]
+        for row in resolvedParameters.rows {
+            let parameterKey = row[parameterKeyIndex]
+            if row[scopeTypeIndex] == "run",
+               [
+                   "quality.artifact_threshold_sec",
+                   "quality.refractory_suspect_threshold_sec",
+               ].contains(parameterKey) {
+                requestedQCThresholdRows[
+                    parameterKey,
+                    default: []
+                ].append(row)
+            }
+            if parameterKey == "dataset_prior.train_count" {
+                datasetTrainCountRows.append(row)
+                continue
+            }
+
+            let isTrainQualityParameter =
+                row[scopeTypeIndex] == "train"
+                && parameterKey.hasPrefix("quality.")
+            let isQualityAnalyzerRow =
+                row[sourceIndex] == "quality_analyzer"
+            guard isTrainQualityParameter || isQualityAnalyzerRow else {
+                continue
+            }
+            guard row[scopeTypeIndex] == "train",
+                  row[sourceIndex] == "quality_analyzer",
+                  parameterKey.hasPrefix("quality.") else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population has invalid scope, key, or source"
+                )
+            }
+
+            let qualityKey = String(
+                parameterKey.dropFirst("quality.".count)
+            )
+            guard expectedQualityKeys.contains(qualityKey) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population contains unexpected key \(qualityKey)"
+                )
+            }
+
+            let trainID = row[scopeIDIndex]
+            guard let qc = qcPopulation[trainID] else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population references train \(trainID) outside materialized QC"
+                )
+            }
+            guard row[scopeNameIndex] == qc.name else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population has the wrong train name for train \(trainID)"
+                )
+            }
+            guard row[runIDIndex] == identity.runID,
+                  row[settingsDigestIndex] ==
+                    identity.settingsDigest,
+                  row[requestedValueIndex].isEmpty,
+                  row[adaptiveValueIndex].isEmpty,
+                  row[resolutionModeIndex] ==
+                    "not_applicable",
+                  row[resolutionNoteIndex].isEmpty,
+                  row[histogramValueIndex].isEmpty,
+                  row[defaultValueIndex].isEmpty else {
+                throw STPDResultPackageError.invalidTable(
+                    table:
+                        resolvedParameters.contract.table.rawValue,
+                    reason:
+                        "resolved quality population has an invalid fixed row envelope for train \(trainID)"
+                )
+            }
+
+            var values = resolvedQualityByTrain[trainID] ?? [:]
+            guard values.updateValue(
+                row[effectiveValueIndex],
+                forKey: qualityKey
+            ) == nil else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population contains duplicate key \(qualityKey) for train \(trainID)"
+                )
+            }
+            resolvedQualityByTrain[trainID] = values
+        }
+
+        guard Set(resolvedQualityByTrain.keys) == Set(qcPopulation.keys) else {
+            throw STPDResultPackageError.invalidTable(
+                table: resolvedParameters.contract.table.rawValue,
+                reason: "resolved quality population does not exactly match materialized QC trains"
+            )
+        }
+        guard Set(isiEvidenceByTrain.keys) ==
+                Set(qcPopulation.keys) else {
+            throw STPDResultPackageError.invalidTable(
+                table: resolvedParameters.contract.table.rawValue,
+                reason:
+                    "reconstructed ISI evidence does not exactly match materialized QC trains"
+            )
+        }
+        let realQualityKeys: Set<String> = [
+            "artifact_fraction", "artifact_min_isi_sec",
+            "duration_sec", "firing_rate_hz",
+            "first_spike_sec", "last_spike_sec",
+            "max_isi_sec", "median_isi_sec",
+            "min_valid_isi_sec", "raw_min_isi_sec",
+            "refractory_suspect_fraction",
+        ]
+        func qualityValuesAgree(
+            _ actual: String,
+            _ expected: String,
+            key: String
+        ) -> Bool {
+            guard realQualityKeys.contains(key) else {
+                return actual == expected
+            }
+            if actual.isEmpty || expected.isEmpty {
+                return actual == expected
+            }
+            guard let actualValue = Double(actual),
+                  let expectedValue = Double(expected) else {
+                return false
+            }
+            return nearlyEqual(actualValue, expectedValue)
+        }
+        for trainID in qcPopulation.keys.sorted() {
+            guard let qc = qcPopulation[trainID],
+                  let qualityValues =
+                    resolvedQualityByTrain[trainID],
+                  let isiEvidence =
+                    isiEvidenceByTrain[trainID] else {
+                continue
+            }
+            let actualKeys = Set(qualityValues.keys)
+            guard actualKeys == expectedQualityKeys else {
+                let missing = expectedQualityKeys
+                    .subtracting(actualKeys)
+                    .sorted()
+                    .joined(separator: ",")
+                let unexpected = actualKeys
+                    .subtracting(expectedQualityKeys)
+                    .sorted()
+                    .joined(separator: ",")
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality population has an incomplete key set for train \(trainID) (missing=[\(missing)], unexpected=[\(unexpected)])"
+                )
+            }
+            guard qualityValues["spike_count"] ==
+                    String(qc.spikeCount) else {
+                throw STPDResultPackageError.invalidTable(
+                    table: resolvedParameters.contract.table.rawValue,
+                    reason: "resolved quality.spike_count differs from materialized QC for train \(trainID)"
+                )
+            }
+            for key in sharedQualityColumns {
+                guard let qcIndex = sharedQualityColumnIndices[key],
+                      qualityValues[key] == qc.row[qcIndex] else {
+                    throw STPDResultPackageError.invalidTable(
+                        table: resolvedParameters.contract.table.rawValue,
+                        reason: "resolved quality.\(key) differs from materialized QC for train \(trainID)"
+                    )
+                }
+            }
+            for (key, expected) in
+                isiEvidence.derivedQualityValues {
+                guard let actual = qualityValues[key],
+                      qualityValuesAgree(
+                          actual,
+                          expected,
+                          key: key
+                      ) else {
+                    throw STPDResultPackageError.invalidTable(
+                        table:
+                            resolvedParameters.contract.table.rawValue,
+                        reason:
+                            "resolved quality.\(key) contradicts reconstructed ISI evidence for train \(trainID)"
+                    )
+                }
+            }
+            for key in [
+                "input_duplicate_timestamp_step_count",
+                "input_zero_or_negative_step_count",
+            ] {
+                guard let repeated =
+                        isiEvidence.repeatedQualityValues[key]
+                else {
+                    continue
+                }
+                guard qualityValues[key] == repeated else {
+                    throw STPDResultPackageError.invalidTable(
+                        table:
+                            resolvedParameters.contract.table.rawValue,
+                        reason:
+                            "resolved quality.\(key) differs from the materialized ISI snapshot for train \(trainID)"
+                    )
+                }
+            }
+            if isiEvidence.rawISICount == 0 {
+                let first =
+                    qualityValues["first_spike_sec"] ?? ""
+                let last =
+                    qualityValues["last_spike_sec"] ?? ""
+                if isiEvidence.spikeCount == 0 {
+                    guard first.isEmpty, last.isEmpty else {
+                        throw STPDResultPackageError.invalidTable(
+                            table:
+                                resolvedParameters.contract.table
+                                .rawValue,
+                            reason:
+                                "resolved single-point timing contradicts an empty train \(trainID)"
+                        )
+                    }
+                } else {
+                    guard isiEvidence.spikeCount == 1,
+                          let firstValue = Double(first),
+                          firstValue.isFinite,
+                          let lastValue = Double(last),
+                          lastValue.isFinite,
+                          nearlyEqual(firstValue, lastValue)
+                    else {
+                        throw STPDResultPackageError.invalidTable(
+                            table:
+                                resolvedParameters.contract.table
+                                .rawValue,
+                            reason:
+                                "resolved single-spike timing is invalid for train \(trainID)"
+                        )
+                    }
+                }
+            }
+        }
+
+        let materializedThresholds: [String: [String]] = [
+            "quality.artifact_threshold_sec":
+                isiEvidenceByTrain.values.map(\.artifactThresholdSec),
+            "quality.refractory_suspect_threshold_sec":
+                isiEvidenceByTrain.values.map(\.refractoryThresholdSec),
+        ]
+        for key in materializedThresholds.keys.sorted() {
+            guard let rows = requestedQCThresholdRows[key],
+                  rows.count == 1,
+                  let row = rows.first,
+                  row[runIDIndex] == identity.runID,
+                  row[settingsDigestIndex] ==
+                    identity.settingsDigest,
+                  row[scopeIDIndex] == identity.runID,
+                  row[scopeNameIndex] == "detector_run",
+                  row[sourceIndex] == "requested",
+                  row[resolutionModeIndex] == "requested",
+                  let parsedRequested = Double(row[requestedValueIndex]),
+                  parsedRequested.isFinite,
+                  STPDCanonicalValue.double(parsedRequested)
+                    == row[requestedValueIndex],
+                  materializedThresholds[key, default: []].allSatisfy({
+                      $0 == row[requestedValueIndex]
+                  }) else {
+                throw STPDResultPackageError.invalidTable(
+                    table:
+                        resolvedParameters.contract.table.rawValue,
+                    reason:
+                        "resolved requested \(key) does not match materialized QC thresholds"
+                )
+            }
+        }
+
+        guard datasetTrainCountRows.count == 1,
+              let datasetCountRow = datasetTrainCountRows.first,
+              datasetCountRow[scopeTypeIndex] == "dataset",
+              datasetCountRow[scopeIDIndex] == identity.datasetDigest,
+              datasetCountRow[scopeNameIndex] == "dataset_prior",
+              datasetCountRow[sourceIndex] == "detector_run_provenance",
+              try canonicalNonnegativeInteger(
+                  datasetCountRow[effectiveValueIndex],
+                  table: resolvedParameters,
+                  field: "resolved dataset_prior.train_count"
+              ) == identity.trainCount,
+              identity.trainCount == qcPopulation.count else {
+            throw STPDResultPackageError.invalidTable(
+                table: resolvedParameters.contract.table.rawValue,
+                reason: "resolved dataset_prior.train_count population does not match the package identity and materialized QC"
+            )
+        }
+    }
+
     private static func validateQCColumns(
         _ table: STPDResultTableData,
         resolvedParameters: STPDResultTableData,
@@ -12375,7 +13597,10 @@ enum STPDResultPackageValidator {
             "train_qc_artifact_fraction",
             "train_qc_refractory_suspect_fraction",
         ]
-        for (trainID, snapshot) in snapshotByTrain {
+        for trainID in snapshotByTrain.keys.sorted() {
+            guard let snapshot = snapshotByTrain[trainID] else {
+                continue
+            }
             let values = Dictionary(
                 uniqueKeysWithValues: zip(snapshotColumns, snapshot)
             )
@@ -12706,15 +13931,7 @@ enum STPDResultPackageValidator {
         return index
     }
 
-    private static func pass(
-        _ id: String,
-        details: String
-    ) -> STPDConsistencyCheck {
-        STPDConsistencyCheck(
-            id: id,
-            status: "pass",
-            severity: "info",
-            details: details
-        )
+    private static func pass(_ id: String) -> STPDConsistencyCheck {
+        STPDResultConsistencyLedgerContract.check(id: id)
     }
 }

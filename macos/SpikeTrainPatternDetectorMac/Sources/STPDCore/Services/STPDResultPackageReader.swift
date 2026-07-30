@@ -1,6 +1,69 @@
 import Darwin
 import Foundation
 
+/// Explicit memory/complexity bounds for fail-closed result-package readback.
+public struct STPDResultPackageReadLimits: Sendable, Hashable {
+    public let maximumManifestBytes: Int
+    public let maximumTableBytes: Int
+    public let maximumTotalBytes: Int
+    public let maximumRowsPerTable: Int
+    public let maximumColumnsPerTable: Int
+    public let maximumFieldUnicodeScalars: Int
+    public let maximumCellsPerTable: Int
+    public let maximumTotalDecodedRows: Int
+    public let maximumTotalDecodedCells: Int
+    public let maximumTotalDecodedUTF8Bytes: Int
+
+    public static let standard = STPDResultPackageReadLimits(
+        maximumManifestBytes: 16 * 1_024 * 1_024,
+        maximumTableBytes: 64 * 1_024 * 1_024,
+        maximumTotalBytes: 512 * 1_024 * 1_024,
+        maximumRowsPerTable: 1_000_000,
+        maximumColumnsPerTable: 512,
+        maximumFieldUnicodeScalars: 1 * 1_024 * 1_024,
+        maximumCellsPerTable: 5_000_000,
+        maximumTotalDecodedRows: 1_000_000,
+        maximumTotalDecodedCells: 5_000_000,
+        maximumTotalDecodedUTF8Bytes: 256 * 1_024 * 1_024
+    )!
+
+    public init?(
+        maximumManifestBytes: Int,
+        maximumTableBytes: Int,
+        maximumTotalBytes: Int,
+        maximumRowsPerTable: Int,
+        maximumColumnsPerTable: Int,
+        maximumFieldUnicodeScalars: Int,
+        maximumCellsPerTable: Int,
+        maximumTotalDecodedRows: Int,
+        maximumTotalDecodedCells: Int,
+        maximumTotalDecodedUTF8Bytes: Int
+    ) {
+        guard maximumManifestBytes > 0,
+              maximumTableBytes > 0,
+              maximumTotalBytes > 0,
+              maximumRowsPerTable > 0,
+              maximumColumnsPerTable > 0,
+              maximumFieldUnicodeScalars > 0,
+              maximumCellsPerTable > 0,
+              maximumTotalDecodedRows > 0,
+              maximumTotalDecodedCells > 0,
+              maximumTotalDecodedUTF8Bytes > 0 else {
+            return nil
+        }
+        self.maximumManifestBytes = maximumManifestBytes
+        self.maximumTableBytes = maximumTableBytes
+        self.maximumTotalBytes = maximumTotalBytes
+        self.maximumRowsPerTable = maximumRowsPerTable
+        self.maximumColumnsPerTable = maximumColumnsPerTable
+        self.maximumFieldUnicodeScalars = maximumFieldUnicodeScalars
+        self.maximumCellsPerTable = maximumCellsPerTable
+        self.maximumTotalDecodedRows = maximumTotalDecodedRows
+        self.maximumTotalDecodedCells = maximumTotalDecodedCells
+        self.maximumTotalDecodedUTF8Bytes = maximumTotalDecodedUTF8Bytes
+    }
+}
+
 /// Reads and strictly verifies a previously-written on-disk `.stpdresult` package directory.
 ///
 /// This is the read-back half of the result-package provenance loop. It NEVER modifies, normalizes,
@@ -14,32 +77,81 @@ import Foundation
 /// It does not claim cryptographic protection against a determined forger who recomputes every dependent
 /// digest inside the package (the manifest itself is not signed); such coordinated forgery is out of scope.
 public enum STPDResultPackageReader {
+    static let unexpectedEntryDiagnosticName = "<unexpected-package-entry>"
+
+    enum Checkpoint: Hashable, Sendable {
+        case rootOpened
+        case beforeFinalDirectoryValidation
+    }
+
     /// Reads the `.stpdresult` bundle at `url` and returns an immutable, fully-verified read result, or
     /// throws a typed `STPDResultPackageReaderError` identifying the failing file/table/field. The
     /// package on disk is never modified.
+    @_disfavoredOverload
     public static func read(
         packageAt url: URL,
-        fileManager: FileManager = .default
+        limits: STPDResultPackageReadLimits = .standard
+    ) throws -> STPDResultPackageReadResult {
+        try read(
+            packageAt: url,
+            limits: limits,
+            checkpoint: { _ in }
+        )
+    }
+
+    /// Source-compatible entry point retained for callers compiled against the B3 reader API.
+    ///
+    /// Descriptor-relative I/O is intentionally authoritative; the supplied `FileManager` is not used
+    /// to reopen or enumerate package entries.
+    @available(*, deprecated, message: "Use read(packageAt:limits:) instead.")
+    public static func read(
+        packageAt url: URL,
+        fileManager: FileManager
+    ) throws -> STPDResultPackageReadResult {
+        _ = fileManager
+        return try read(packageAt: url, limits: .standard)
+    }
+
+    static func readForTesting(
+        packageAt url: URL,
+        limits: STPDResultPackageReadLimits = .standard,
+        checkpoint: (Checkpoint) throws -> Void
+    ) throws -> STPDResultPackageReadResult {
+        try read(
+            packageAt: url,
+            limits: limits,
+            checkpoint: checkpoint
+        )
+    }
+
+    private static func read(
+        packageAt url: URL,
+        limits: STPDResultPackageReadLimits,
+        checkpoint: (Checkpoint) throws -> Void
     ) throws -> STPDResultPackageReadResult {
         let rootPath = url.path
 
-        // 1. The package root must be a real directory. Following a user-supplied symlink to the root is
-        // acceptable; symlink escape is prevented per-entry below via openat(..., O_NOFOLLOW).
-        var rootStat = stat()
-        guard stat(rootPath, &rootStat) == 0 else {
-            throw STPDResultPackageReaderError.packageRootUnreadable(path: rootPath)
-        }
-        guard (rootStat.st_mode & S_IFMT) == S_IFDIR else {
-            throw STPDResultPackageReaderError.packageRootNotADirectory(path: rootPath)
-        }
-        let dirFD = open(rootPath, O_RDONLY | O_DIRECTORY)
+        // Open the root once and use that descriptor for both enumeration and entry reads. Following a
+        // user-supplied symlink to the root is allowed, but later retargeting cannot split the authority.
+        let dirFD = open(rootPath, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard dirFD >= 0 else {
+            if errno == ENOTDIR {
+                throw STPDResultPackageReaderError.packageRootNotADirectory(path: rootPath)
+            }
             throw STPDResultPackageReaderError.packageRootUnreadable(path: rootPath)
         }
         defer { close(dirFD) }
+        try checkpoint(.rootOpened)
+        var totalBytes = 0
 
         // 2. Decode the manifest strictly (all declared fields required and correctly typed).
-        let manifestBytes = try readRegularFile(dirFD: dirFD, name: STPDResultSchema.manifestFileName)
+        let manifestBytes = try readRegularFile(
+            dirFD: dirFD,
+            name: STPDResultSchema.manifestFileName,
+            maximumBytes: limits.maximumManifestBytes,
+            maximumTotalBytes: limits.maximumTotalBytes,
+            totalBytes: &totalBytes
+        )
         let manifest: STPDResultManifest
         do {
             manifest = try JSONDecoder().decode(STPDResultManifest.self, from: manifestBytes)
@@ -47,6 +159,17 @@ public enum STPDResultPackageReader {
             throw STPDResultPackageReaderError.manifestUndecodable(
                 reason: shortDecodingReason(error)
             )
+        }
+        let canonicalManifestBytes: Data
+        do {
+            canonicalManifestBytes = try manifest.encodedData()
+        } catch {
+            throw STPDResultPackageReaderError.manifestUndecodable(
+                reason: shortDecodingReason(error)
+            )
+        }
+        guard canonicalManifestBytes == manifestBytes else {
+            throw STPDResultPackageReaderError.manifestNotCanonical
         }
 
         // 3. Reject unsupported/unknown schema versions. This reader implements the current v4 contract;
@@ -80,18 +203,21 @@ public enum STPDResultPackageReader {
                 unexpected: manifestNames.subtracting(requiredFileNames).sorted()
             )
         }
+        let expectedManifestTableOrder = STPDResultTable.allCases.map(\.rawValue)
+        guard manifest.tables.map(\.fileName) == expectedManifestTableOrder else {
+            throw STPDResultPackageReaderError.manifestContractMismatch(
+                table: STPDResultSchema.manifestFileName,
+                field: "table_order"
+            )
+        }
 
         // 6/8. The on-disk directory must contain EXACTLY the required tables plus the manifest — no
         // unexpected entries, no traversal/absolute/nested names.
-        let entries = try fileManager.contentsOfDirectory(atPath: rootPath)
         let allowedEntries = requiredFileNames.union([STPDResultSchema.manifestFileName])
-        for entry in entries {
-            try requireLegalCanonicalFileName(entry)
-            guard allowedEntries.contains(entry) else {
-                throw STPDResultPackageReaderError.unexpectedPackageEntry(entry)
-            }
-        }
-        let entrySet = Set(entries)
+        let entrySet = try directoryEntries(
+            dirFD: dirFD,
+            allowedEntries: allowedEntries
+        )
         if entrySet != allowedEntries {
             throw STPDResultPackageReaderError.tableSetMismatch(
                 missing: allowedEntries.subtracting(entrySet).sorted(),
@@ -106,6 +232,9 @@ public enum STPDResultPackageReader {
         // order, and primary-key structure).
         var tables: [STPDResultTable: STPDResultTableData] = [:]
         var summaries: [STPDResultPackageReadResult.VerifiedTable] = []
+        var totalDecodedRows = 0
+        var totalDecodedCells = 0
+        var totalDecodedUTF8Bytes = 0
         for fileName in requiredFileNames.sorted() {
             guard let table = tableByFileName[fileName],
                   let manifestTable = manifestTableByName[fileName] else {
@@ -115,7 +244,13 @@ public enum STPDResultPackageReader {
                 )
             }
 
-            let bytes = try readRegularFile(dirFD: dirFD, name: fileName)
+            let bytes = try readRegularFile(
+                dirFD: dirFD,
+                name: fileName,
+                maximumBytes: limits.maximumTableBytes,
+                maximumTotalBytes: limits.maximumTotalBytes,
+                totalBytes: &totalBytes
+            )
 
             // The manifest's declared digest must itself be canonical lowercase 64-hex — a non-canonical
             // form (e.g. uppercase) is rejected, not accepted by lowercasing it before comparison.
@@ -127,29 +262,107 @@ public enum STPDResultPackageReader {
                 throw STPDResultPackageReaderError.digestMismatch(table: fileName)
             }
 
-            guard let text = String(data: bytes, encoding: .utf8) else {
-                throw STPDResultPackageReaderError.invalidUTF8(table: fileName)
-            }
-
-            let parsed: [[String]]
+            let parsed: ParsedCSV
             do {
-                parsed = try parseStrictCSV(text)
+                let rowBudget = tighterBudget(
+                    CSVResourceBudget(
+                        maximum: includingHeader(limits.maximumRowsPerTable),
+                        resource: "rows per table",
+                        reportedLimit: limits.maximumRowsPerTable
+                    ),
+                    CSVResourceBudget(
+                        maximum: limits.maximumTotalDecodedRows - totalDecodedRows,
+                        resource: "total decoded rows",
+                        reportedLimit: limits.maximumTotalDecodedRows
+                    )
+                )
+                let cellBudget = tighterBudget(
+                    CSVResourceBudget(
+                        maximum: limits.maximumCellsPerTable,
+                        resource: "cells per table",
+                        reportedLimit: limits.maximumCellsPerTable
+                    ),
+                    CSVResourceBudget(
+                        maximum: limits.maximumTotalDecodedCells - totalDecodedCells,
+                        resource: "total decoded cells",
+                        reportedLimit: limits.maximumTotalDecodedCells
+                    )
+                )
+                let decodedUTF8Budget = CSVResourceBudget(
+                    maximum:
+                        limits.maximumTotalDecodedUTF8Bytes
+                            - totalDecodedUTF8Bytes,
+                    resource: "total decoded UTF-8 bytes",
+                    reportedLimit: limits.maximumTotalDecodedUTF8Bytes
+                )
+                parsed = try parseStrictCSV(
+                    bytes,
+                    rowBudget: rowBudget,
+                    maximumColumns: limits.maximumColumnsPerTable,
+                    maximumFieldUnicodeScalars: limits.maximumFieldUnicodeScalars,
+                    cellBudget: cellBudget,
+                    decodedUTF8Budget: decodedUTF8Budget
+                )
             } catch let error as CSVParseFailure {
+                if error.invalidUTF8 {
+                    throw STPDResultPackageReaderError.invalidUTF8(table: fileName)
+                }
+                if let resource = error.resource, let limit = error.limit {
+                    throw STPDResultPackageReaderError.resourceLimitExceeded(
+                        resource: resource,
+                        limit: limit
+                    )
+                }
                 throw STPDResultPackageReaderError.malformedCSV(
                     table: fileName, reason: error.reason
                 )
             }
-            guard let header = parsed.first else {
+            guard let header = parsed.header else {
                 throw STPDResultPackageReaderError.malformedCSV(
                     table: fileName, reason: "no header row"
                 )
             }
-            let dataRows = Array(parsed.dropFirst())
+            let dataRows = parsed.rows
+            try addToAggregate(
+                parsed.rowCountIncludingHeader,
+                total: &totalDecodedRows,
+                limit: limits.maximumTotalDecodedRows,
+                resource: "total decoded rows"
+            )
+            try addToAggregate(
+                parsed.cellCount,
+                total: &totalDecodedCells,
+                limit: limits.maximumTotalDecodedCells,
+                resource: "total decoded cells"
+            )
+            try addToAggregate(
+                parsed.decodedUTF8ByteCount,
+                total: &totalDecodedUTF8Bytes,
+                limit: limits.maximumTotalDecodedUTF8Bytes,
+                resource: "total decoded UTF-8 bytes"
+            )
 
-            // Header must exactly match the manifest's declared column names and order.
+            let contract = try tableContract(for: table)
+
+            // Header and manifest definitions must independently match the authoritative registry.
             let declaredColumns = manifestTable.columns.map(\.name)
             guard header == declaredColumns else {
                 throw STPDResultPackageReaderError.headerMismatch(table: fileName)
+            }
+            guard header == contract.orderedColumns else {
+                throw STPDResultPackageReaderError.manifestContractMismatch(
+                    table: fileName, field: "ordered_columns"
+                )
+            }
+            let authoritativeDefinitions = STPDResultColumnCatalog.definitions(
+                table: table,
+                headers: contract.orderedColumns,
+                nonNullable: Set(contract.requiredIdentityColumns + contract.primaryKey)
+            )
+            guard manifestTable.columns == authoritativeDefinitions else {
+                throw STPDResultPackageReaderError.manifestContractMismatch(
+                    table: fileName, field: "columns"
+                )
             }
             // Declared row count must equal the parsed data-row count.
             guard dataRows.count == manifestTable.rowCount else {
@@ -162,12 +375,12 @@ public enum STPDResultPackageReader {
 
             // Reconstruct via the writer's validating constructor: header/column-order exactness against
             // the schema-version column catalog, canonical cell values/units, and primary-key structure.
-            let contract = try tableContract(for: table)
             let tableData: STPDResultTableData
             do {
                 tableData = try STPDResultTableData(
                     contract: contract,
                     headers: header,
+                    columnDefinitions: authoritativeDefinitions,
                     rows: dataRows
                 )
             } catch {
@@ -189,15 +402,25 @@ public enum STPDResultPackageReader {
             guard manifestTable.columns == tableData.columnDefinitions else {
                 throw STPDResultPackageReaderError.manifestContractMismatch(table: fileName, field: "columns")
             }
+            guard tableData.csvData == bytes else {
+                throw STPDResultPackageReaderError.nonCanonicalCSV(table: fileName)
+            }
 
             tables[table] = tableData
             summaries.append(
-                .init(fileName: fileName, rowCount: dataRows.count, sha256: digest)
+                .init(
+                    fileName: fileName,
+                    rowCount: dataRows.count,
+                    sha256: digest,
+                    columns: tableData.columnDefinitions,
+                    rows: tableData.rows
+                )
             )
         }
 
-        // 17. Reconstruct the run identity from the manifest (authority fields) plus the byte-integrity-
-        // verified run-metadata counts, then invoke the COMPLETE package validator in package-only mode.
+        // 17. Reconstruct the run identity from manifest authority fields plus materialized population
+        // tables. Run_metadata is then independently checked against those populations by the shared
+        // validator; it never self-authenticates its own counts.
         guard let sourceMode = STPDResultPackageSourceMode(rawValue: manifest.sourceMode) else {
             throw STPDResultPackageReaderError.invalidManifestField(
                 field: "source_mode", value: manifest.sourceMode
@@ -214,11 +437,10 @@ public enum STPDResultPackageReader {
             )
         }
 
-        // The `Result_consistency_check.csv` table records the self-checks the WRITER's dataset-backed
-        // validation executed at build time. Package-only re-validation runs a different (dataset-free)
-        // subset, so it cannot reproduce that build-time audit record and must not cross-check it against
-        // its own reduced check list. The reader has already byte- and structure-verified that table
-        // (digest, header, row count, canonical cells) above; here it is excluded from re-validation.
+        // The `Result_consistency_check.csv` table records the writer's dataset-backed self-checks.
+        // Package-only re-validation runs a dataset-free subset, so exclude the historical ledger from
+        // validator input and independently require every regenerated package-only check to have an
+        // exact matching ledger row below.
         let validationTables = tables.filter { $0.key != .resultConsistencyCheck }
         let checks: [STPDConsistencyCheck]
         do {
@@ -234,11 +456,29 @@ public enum STPDResultPackageReader {
             )
         }
 
-        // Package-only validation cannot reproduce the dataset-backed check list, but the consistency
-        // ledger is not semantically ignored: this narrow validator requires every row to carry the
-        // reconstructed run identity, unique check ids, and a "pass"/"info" verdict, failing closed on any
-        // malformed or contradictory row. It does not fabricate or regenerate dataset-backed check details.
-        try validateConsistencyLedger(tables[.resultConsistencyCheck], identity: identity)
+        // Package-only validation cannot reproduce every dataset-backed check. It does regenerate the
+        // checks available from package contents, and the ledger validator requires exact status, severity,
+        // and detail agreement for each of those checks in addition to validating every historical row.
+        try validateConsistencyLedger(
+            tables[.resultConsistencyCheck],
+            identity: identity,
+            requiredChecks: checks
+        )
+
+        // Recheck the exact entry set through the same pinned directory descriptor immediately before
+        // returning success. This closes the validation-window gap where an undeclared entry could be
+        // inserted after the initial enumeration while all declared files were being verified.
+        try checkpoint(.beforeFinalDirectoryValidation)
+        let finalEntrySet = try directoryEntries(
+            dirFD: dirFD,
+            allowedEntries: allowedEntries
+        )
+        if finalEntrySet != allowedEntries {
+            throw STPDResultPackageReaderError.tableSetMismatch(
+                missing: allowedEntries.subtracting(finalEntrySet).sorted(),
+                unexpected: finalEntrySet.subtracting(allowedEntries).sorted()
+            )
+        }
 
         return STPDResultPackageReadResult(
             schemaVersion: manifest.schemaVersion,
@@ -263,20 +503,43 @@ public enum STPDResultPackageReader {
         manifest: STPDResultManifest,
         tables: [STPDResultTable: STPDResultTableData]
     ) throws -> DetectionRunIdentity {
-        // Counts are not carried in the manifest; read them from the run-metadata table whose exact bytes
-        // were already verified against the manifest SHA-256, so they cannot have been tampered undetected.
+        // Run_metadata must exist, but it is not the population authority: otherwise a coordinated edit
+        // of its declared counts and digest would compare the table back to itself.
         guard let metadata = tables[.runMetadata], metadata.rowCount == 1 else {
             throw STPDResultPackageReaderError.invalidManifestField(
                 field: STPDResultTable.runMetadata.rawValue, value: "expected exactly one metadata row"
             )
         }
-        func intColumn(_ column: String) throws -> Int {
-            guard let raw = metadata.value(row: 0, column: column), let value = Int(raw) else {
+        guard let quality = tables[.dataQualityQC] else {
+            throw STPDResultPackageReaderError.invalidManifestField(
+                field: STPDResultTable.dataQualityQC.rawValue,
+                value: "missing materialized train population"
+            )
+        }
+        var spikeCount = 0
+        for row in 0..<quality.rowCount {
+            guard let raw = quality.value(row: row, column: "spike_count"),
+                  let value = Int(raw),
+                  value >= 0 else {
                 throw STPDResultPackageReaderError.invalidManifestField(
-                    field: column, value: metadata.value(row: 0, column: column) ?? "<missing>"
+                    field: "spike_count",
+                    value: quality.value(row: row, column: "spike_count") ?? "<missing>"
                 )
             }
-            return value
+            let addition = spikeCount.addingReportingOverflow(value)
+            guard !addition.overflow else {
+                throw STPDResultPackageReaderError.invalidManifestField(
+                    field: "spike_count",
+                    value: "materialized population overflows Int"
+                )
+            }
+            spikeCount = addition.partialValue
+        }
+        guard let taskEvents = tables[.taskEvents] else {
+            throw STPDResultPackageReaderError.invalidManifestField(
+                field: STPDResultTable.taskEvents.rawValue,
+                value: "missing materialized task-event population"
+            )
         }
         return DetectionRunIdentity(
             runID: manifest.runID,
@@ -285,9 +548,9 @@ public enum STPDResultPackageReader {
             resultSchemaVersion: manifest.schemaVersion,
             detectorVersion: manifest.detectorVersion,
             buildCommit: manifest.buildIdentifier,
-            trainCount: try intColumn("train_count"),
-            spikeCount: try intColumn("spike_count"),
-            taskEventCount: try intColumn("task_event_count"),
+            trainCount: quality.rowCount,
+            spikeCount: spikeCount,
+            taskEventCount: taskEvents.rowCount,
             settingsSnapshot: nil
         )
     }
@@ -311,6 +574,10 @@ public enum STPDResultPackageReader {
         return value.unicodeScalars.allSatisfy { scalar in
             (scalar >= "0" && scalar <= "9") || (scalar >= "a" && scalar <= "f")
         }
+    }
+
+    private static func includingHeader(_ maximumDataRows: Int) -> Int {
+        maximumDataRows == Int.max ? Int.max : maximumDataRows + 1
     }
 
     /// Binds the top-level (unsigned) manifest provenance fields to their canonical authorities AND to the
@@ -359,13 +626,20 @@ public enum STPDResultPackageReader {
         }
     }
 
-    /// A narrow package-only validator for `Result_consistency_check.csv`: every row must carry the
-    /// reconstructed run identity, `check_id` values must be unique and non-empty, and the verdict must be
-    /// exactly `pass`/`info`. It fails closed on any malformed or contradictory row and does NOT reproduce
-    /// or fabricate the dataset-backed check details.
+    /// A package-only validator for `Result_consistency_check.csv`: every row must carry the reconstructed
+    /// run identity, `check_id` values must be unique and non-empty, and the verdict must be exactly
+    /// `pass`/`info`. It also requires the complete ledger to exactly match one recognized v4 shape and
+    /// requires package-only regeneration to execute the complete package-only check subset.
+    ///
+    /// The v4 schema has two exact historical ledger shapes. The original B3 writer used the dataset-backed
+    /// `isi_complete_coverage` and `task_event_projection` rows as the only counterparts of the package-only
+    /// count checks. B3.1 added explicit `isi_declared_row_count` and `task_event_count` rows without changing
+    /// the schema identifier. Readback therefore recognizes either complete shape, but rejects mixed,
+    /// incomplete, extended, or textually altered ledgers.
     private static func validateConsistencyLedger(
         _ table: STPDResultTableData?,
-        identity: DetectionRunIdentity
+        identity: DetectionRunIdentity,
+        requiredChecks: [STPDConsistencyCheck]
     ) throws {
         guard let table else {
             throw STPDResultPackageReaderError.consistencyLedgerInvalid(reason: "missing consistency table")
@@ -376,6 +650,7 @@ public enum STPDResultPackageReader {
             throw STPDResultPackageReaderError.consistencyLedgerInvalid(reason: "consistency ledger is empty")
         }
         var seenCheckIDs = Set<String>()
+        var ledgerByCheckID: [String: (status: String, severity: String, details: String)] = [:]
         for row in 0..<table.rowCount {
             func cell(_ column: String) throws -> String {
                 guard let value = table.value(row: row, column: column) else {
@@ -406,6 +681,66 @@ public enum STPDResultPackageReader {
             guard seenCheckIDs.insert(checkID).inserted else {
                 throw STPDResultPackageReaderError.consistencyLedgerInvalid(reason: "duplicate check_id")
             }
+            ledgerByCheckID[checkID] = (
+                status: try cell("status"),
+                severity: try cell("severity"),
+                details: try cell("details")
+            )
+        }
+
+        let regeneratedRows = requiredChecks.map {
+            [$0.id, $0.status, $0.severity, $0.details]
+        }
+        let requiredPackageOnlyRows =
+            STPDResultConsistencyLedgerContract.packageOnlyChecks.map {
+                [$0.id, $0.status, $0.severity, $0.details]
+            }
+        guard regeneratedRows == requiredPackageOnlyRows else {
+            throw STPDResultPackageReaderError.consistencyLedgerInvalid(
+                reason: "package-only validator did not execute its exact required check contract"
+            )
+        }
+
+        let currentShapeIDs =
+            STPDResultConsistencyLedgerContract.currentOnlyCheckIDs
+        let presentCurrentShapeIDs = currentShapeIDs.filter {
+            ledgerByCheckID[$0] != nil
+        }
+        let shape: STPDResultConsistencyLedgerShape
+        switch presentCurrentShapeIDs.count {
+        case 0:
+            shape = .baselineB3V4
+        case currentShapeIDs.count:
+            shape = .currentV4
+        default:
+            throw STPDResultPackageReaderError.consistencyLedgerInvalid(
+                reason: "consistency ledger mixes baseline-B3 and current v4 package-only check shapes"
+            )
+        }
+
+        let expectedChecks =
+            STPDResultConsistencyLedgerContract.checks(for: shape)
+        let expectedCheckIDs = Set(expectedChecks.map(\.id))
+        let actualCheckIDs = Set(ledgerByCheckID.keys)
+        guard actualCheckIDs == expectedCheckIDs else {
+            let missing = expectedCheckIDs.subtracting(actualCheckIDs).sorted()
+            let unexpected = actualCheckIDs.subtracting(expectedCheckIDs).sorted()
+            throw STPDResultPackageReaderError.consistencyLedgerInvalid(
+                reason:
+                    "consistency ledger shape mismatch; missing=\(missing.joined(separator: "|")); " +
+                    "unexpected=\(unexpected.joined(separator: "|"))"
+            )
+        }
+
+        for expected in expectedChecks {
+            guard let ledger = ledgerByCheckID[expected.id],
+                  ledger.status == expected.status,
+                  ledger.severity == expected.severity,
+                  ledger.details == expected.details else {
+                throw STPDResultPackageReaderError.consistencyLedgerInvalid(
+                    reason: "consistency check \(expected.id) does not match its canonical ledger row"
+                )
+            }
         }
     }
 
@@ -413,8 +748,18 @@ public enum STPDResultPackageReader {
 
     /// Reads an entry's exact bytes relative to the package directory fd, rejecting symlinks and any
     /// non-regular file. Using `openat` with `O_NOFOLLOW` prevents symlink escape from the package root.
-    private static func readRegularFile(dirFD: Int32, name: String) throws -> Data {
-        let fd = openat(dirFD, name, O_RDONLY | O_NOFOLLOW)
+    private static func readRegularFile(
+        dirFD: Int32,
+        name: String,
+        maximumBytes: Int,
+        maximumTotalBytes: Int,
+        totalBytes: inout Int
+    ) throws -> Data {
+        let fd = openat(
+            dirFD,
+            name,
+            O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC
+        )
         if fd < 0 {
             let code = errno
             if code == ELOOP {
@@ -437,20 +782,106 @@ public enum STPDResultPackageReader {
         guard (meta.st_mode & S_IFMT) == S_IFREG else {
             throw STPDResultPackageReaderError.entryNotARegularFile(name: name)
         }
+        guard meta.st_size >= 0,
+              meta.st_size <= off_t(maximumBytes) else {
+            throw STPDResultPackageReaderError.resourceLimitExceeded(
+                resource: "\(name) bytes", limit: maximumBytes
+            )
+        }
+        guard totalBytes <= maximumTotalBytes - Int(meta.st_size) else {
+            throw STPDResultPackageReaderError.resourceLimitExceeded(
+                resource: "total package bytes", limit: maximumTotalBytes
+            )
+        }
         var data = Data()
+        data.reserveCapacity(Int(meta.st_size))
         let bufferSize = 1 << 16
         var buffer = [UInt8](repeating: 0, count: bufferSize)
         while true {
             let count = buffer.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, bufferSize) }
             if count < 0 {
+                if errno == EINTR {
+                    continue
+                }
                 throw STPDResultPackageReaderError.entryUnreadable(
                     name: name, reason: String(cString: strerror(errno))
                 )
             }
             if count == 0 { break }
+            guard data.count <= maximumBytes - count,
+                  totalBytes <= maximumTotalBytes - count else {
+                throw STPDResultPackageReaderError.resourceLimitExceeded(
+                    resource: "\(name) or total package bytes",
+                    limit: min(maximumBytes, maximumTotalBytes)
+                )
+            }
             data.append(contentsOf: buffer[0..<count])
+            totalBytes += count
         }
         return data
+    }
+
+    /// Enumerates the already-open package root. `fdopendir` owns and closes the duplicated descriptor,
+    /// while the original descriptor remains authoritative for all `openat` reads.
+    private static func directoryEntries(
+        dirFD: Int32,
+        allowedEntries: Set<String>
+    ) throws -> Set<String> {
+        let duplicate = fcntl(dirFD, F_DUPFD_CLOEXEC, 0)
+        guard duplicate >= 0 else {
+            throw STPDResultPackageReaderError.entryUnreadable(
+                name: "<package-root>", reason: String(cString: strerror(errno))
+            )
+        }
+        // Duplicated directory descriptors share the same open-file-description offset. Reset the
+        // duplicate before every enumeration so the final TOCTOU recheck sees the complete pinned root.
+        guard lseek(duplicate, 0, SEEK_SET) >= 0 else {
+            let code = errno
+            close(duplicate)
+            throw STPDResultPackageReaderError.entryUnreadable(
+                name: "<package-root>", reason: String(cString: strerror(code))
+            )
+        }
+        guard let directory = fdopendir(duplicate) else {
+            let code = errno
+            close(duplicate)
+            throw STPDResultPackageReaderError.entryUnreadable(
+                name: "<package-root>", reason: String(cString: strerror(code))
+            )
+        }
+        defer { closedir(directory) }
+        var names: Set<String> = []
+        errno = 0
+        while let entry = readdir(directory) {
+            var tuple = entry.pointee.d_name
+            let name = withUnsafePointer(to: &tuple) { pointer in
+                pointer.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) {
+                    String(cString: $0)
+                }
+            }
+            if name != ".", name != ".." {
+                try requireLegalCanonicalFileName(name)
+                guard allowedEntries.contains(name) else {
+                    throw STPDResultPackageReaderError.unexpectedPackageEntry(
+                        unexpectedEntryDiagnosticName
+                    )
+                }
+                names.insert(name)
+                guard names.count <= allowedEntries.count else {
+                    throw STPDResultPackageReaderError.resourceLimitExceeded(
+                        resource: "package directory entries",
+                        limit: allowedEntries.count
+                    )
+                }
+            }
+            errno = 0
+        }
+        if errno != 0 {
+            throw STPDResultPackageReaderError.entryUnreadable(
+                name: "<package-root>", reason: String(cString: strerror(errno))
+            )
+        }
+        return names
     }
 
     /// A package entry name must be a bare canonical filename: not empty, not "." / "..", no path
@@ -468,87 +899,285 @@ public enum STPDResultPackageReader {
 
     // MARK: - Strict RFC 4180 parsing (the exact inverse of STPDRFC4180.data)
 
-    private struct CSVParseFailure: Error { let reason: String }
+    private struct ParsedCSV {
+        let header: [String]?
+        let rows: [[String]]
+        let rowCountIncludingHeader: Int
+        let cellCount: Int
+        let decodedUTF8ByteCount: Int
+
+        var matrix: [[String]] {
+            guard let header else { return rows }
+            return [header] + rows
+        }
+    }
+
+    private struct CSVResourceBudget {
+        let maximum: Int
+        let resource: String
+        let reportedLimit: Int
+    }
+
+    private struct CSVParseFailure: Error {
+        let reason: String
+        let resource: String?
+        let limit: Int?
+        let invalidUTF8: Bool
+
+        static func malformed(_ reason: String) -> CSVParseFailure {
+            CSVParseFailure(
+                reason: reason,
+                resource: nil,
+                limit: nil,
+                invalidUTF8: false
+            )
+        }
+
+        static var invalidUTF8Field: CSVParseFailure {
+            CSVParseFailure(
+                reason: "field is not valid UTF-8",
+                resource: nil,
+                limit: nil,
+                invalidUTF8: true
+            )
+        }
+
+        static func limit(resource: String, limit: Int) -> CSVParseFailure {
+            CSVParseFailure(
+                reason: "\(resource) exceeds the configured limit",
+                resource: resource,
+                limit: limit,
+                invalidUTF8: false
+            )
+        }
+    }
 
     /// Parses the repository's RFC 4180 dialect exactly as produced by `STPDRFC4180.data`:
     /// comma-separated fields, records terminated by CRLF (with a trailing CRLF), and quoted fields
     /// (`"..."`) that may contain commas, CR, and LF, using `""` for a literal quote. Non-ASCII UTF-8
     /// content inside fields is preserved verbatim. Any structural violation throws — nothing is repaired.
     static func parseStrictCSV(_ text: String) throws -> [[String]] {
-        let scalars = Array(text.unicodeScalars)
-        var rows: [[String]] = []
-        var currentRow: [String] = []
-        var field = String.UnicodeScalarView()
-        var index = 0
-        let comma: UnicodeScalar = ","
-        let quote: UnicodeScalar = "\""
-        let cr: UnicodeScalar = "\r"
-        let lf: UnicodeScalar = "\n"
+        try parseStrictCSV(
+            Data(text.utf8),
+            rowBudget: CSVResourceBudget(
+                maximum: includingHeader(
+                    STPDResultPackageReadLimits.standard.maximumRowsPerTable
+                ),
+                resource: "rows per table",
+                reportedLimit:
+                    STPDResultPackageReadLimits.standard.maximumRowsPerTable
+            ),
+            maximumColumns: STPDResultPackageReadLimits.standard.maximumColumnsPerTable,
+            maximumFieldUnicodeScalars:
+                STPDResultPackageReadLimits.standard.maximumFieldUnicodeScalars,
+            cellBudget: CSVResourceBudget(
+                maximum: STPDResultPackageReadLimits.standard.maximumCellsPerTable,
+                resource: "cells per table",
+                reportedLimit:
+                    STPDResultPackageReadLimits.standard.maximumCellsPerTable
+            ),
+            decodedUTF8Budget: CSVResourceBudget(
+                maximum: Int.max,
+                resource: "decoded UTF-8 bytes",
+                reportedLimit: Int.max
+            )
+        ).matrix
+    }
 
-        func endField() { currentRow.append(String(field)); field = String.UnicodeScalarView() }
-        func endRecord() { endField(); rows.append(currentRow); currentRow = [] }
+    private static func parseStrictCSV(
+        _ bytes: Data,
+        rowBudget: CSVResourceBudget,
+        maximumColumns: Int,
+        maximumFieldUnicodeScalars: Int,
+        cellBudget: CSVResourceBudget,
+        decodedUTF8Budget: CSVResourceBudget
+    ) throws -> ParsedCSV {
+        let maximumFieldUTF8Bytes =
+            maximumFieldUnicodeScalars > Int.max / 4
+                ? Int.max
+                : maximumFieldUnicodeScalars * 4
 
-        while index < scalars.count {
-            let scalar = scalars[index]
-            if scalar == quote {
-                // A quote may open a field only at the field's start.
-                guard field.isEmpty else {
-                    throw CSVParseFailure(reason: "unexpected quote inside an unquoted field")
+        return try bytes.withUnsafeBytes { rawBytes in
+            let input = rawBytes.bindMemory(to: UInt8.self)
+            var header: [String]?
+            var rows: [[String]] = []
+            var currentRow: [String] = []
+            var fieldBytes: [UInt8] = []
+            var totalCells = 0
+            var totalRows = 0
+            var decodedUTF8ByteCount = 0
+            var index = 0
+            let comma: UInt8 = 0x2C
+            let quote: UInt8 = 0x22
+            let cr: UInt8 = 0x0D
+            let lf: UInt8 = 0x0A
+
+            func appendFieldByte(_ byte: UInt8) throws {
+                guard fieldBytes.count < maximumFieldUTF8Bytes else {
+                    throw CSVParseFailure.limit(
+                        resource: "field Unicode scalars",
+                        limit: maximumFieldUnicodeScalars
+                    )
                 }
-                index += 1
-                // Consume the quoted body.
-                while true {
-                    guard index < scalars.count else {
-                        throw CSVParseFailure(reason: "unterminated quoted field")
+                guard decodedUTF8ByteCount <= decodedUTF8Budget.maximum,
+                      fieldBytes.count
+                        < decodedUTF8Budget.maximum - decodedUTF8ByteCount else {
+                    throw CSVParseFailure.limit(
+                        resource: decodedUTF8Budget.resource,
+                        limit: decodedUTF8Budget.reportedLimit
+                    )
+                }
+                fieldBytes.append(byte)
+            }
+
+            func endField() throws {
+                guard currentRow.count < maximumColumns else {
+                    throw CSVParseFailure.limit(
+                        resource: "columns per table",
+                        limit: maximumColumns
+                    )
+                }
+                guard totalCells < cellBudget.maximum else {
+                    throw CSVParseFailure.limit(
+                        resource: cellBudget.resource,
+                        limit: cellBudget.reportedLimit
+                    )
+                }
+                guard let field = String(bytes: fieldBytes, encoding: .utf8) else {
+                    throw CSVParseFailure.invalidUTF8Field
+                }
+                guard field.unicodeScalars.count <= maximumFieldUnicodeScalars else {
+                    throw CSVParseFailure.limit(
+                        resource: "field Unicode scalars",
+                        limit: maximumFieldUnicodeScalars
+                    )
+                }
+                currentRow.append(field)
+                totalCells += 1
+                decodedUTF8ByteCount += fieldBytes.count
+                fieldBytes.removeAll(keepingCapacity: true)
+            }
+
+            func endRecord() throws {
+                guard totalRows < rowBudget.maximum else {
+                    throw CSVParseFailure.limit(
+                        resource: rowBudget.resource,
+                        limit: rowBudget.reportedLimit
+                    )
+                }
+                try endField()
+                if header == nil {
+                    header = currentRow
+                } else {
+                    rows.append(currentRow)
+                }
+                totalRows += 1
+                currentRow = []
+            }
+
+            while index < input.count {
+                let byte = input[index]
+                if byte == quote {
+                    guard fieldBytes.isEmpty else {
+                        throw CSVParseFailure.malformed(
+                            "unexpected quote inside an unquoted field"
+                        )
                     }
-                    let inner = scalars[index]
-                    if inner == quote {
-                        if index + 1 < scalars.count, scalars[index + 1] == quote {
-                            field.append(quote)
-                            index += 2
-                            continue
+                    index += 1
+                    while true {
+                        guard index < input.count else {
+                            throw CSVParseFailure.malformed("unterminated quoted field")
                         }
-                        // Closing quote: must be followed by a comma or CRLF (or end of input).
+                        let inner = input[index]
+                        if inner == quote {
+                            if index + 1 < input.count, input[index + 1] == quote {
+                                try appendFieldByte(quote)
+                                index += 2
+                                continue
+                            }
+                            index += 1
+                            break
+                        }
+                        try appendFieldByte(inner)
                         index += 1
-                        break
                     }
-                    field.append(inner)
+                    guard index < input.count else {
+                        throw CSVParseFailure.malformed(
+                            "quoted field not terminated by CRLF"
+                        )
+                    }
+                    let next = input[index]
+                    if next == comma {
+                        try endField()
+                        index += 1
+                    } else if next == cr {
+                        guard index + 1 < input.count, input[index + 1] == lf else {
+                            throw CSVParseFailure.malformed(
+                                "record terminator must be CRLF"
+                            )
+                        }
+                        try endRecord()
+                        index += 2
+                    } else {
+                        throw CSVParseFailure.malformed(
+                            "unexpected character after closing quote"
+                        )
+                    }
+                } else if byte == comma {
+                    try endField()
+                    index += 1
+                } else if byte == cr {
+                    guard index + 1 < input.count, input[index + 1] == lf else {
+                        throw CSVParseFailure.malformed(
+                            "record terminator must be CRLF"
+                        )
+                    }
+                    try endRecord()
+                    index += 2
+                } else if byte == lf {
+                    throw CSVParseFailure.malformed(
+                        "bare LF is not a legal record terminator"
+                    )
+                } else {
+                    try appendFieldByte(byte)
                     index += 1
                 }
-                // After a closing quote only a delimiter or record terminator is legal.
-                if index >= scalars.count {
-                    throw CSVParseFailure(reason: "quoted field not terminated by CRLF")
-                }
-                let next = scalars[index]
-                if next == comma {
-                    endField(); index += 1
-                } else if next == cr {
-                    guard index + 1 < scalars.count, scalars[index + 1] == lf else {
-                        throw CSVParseFailure(reason: "record terminator must be CRLF")
-                    }
-                    endRecord(); index += 2
-                } else {
-                    throw CSVParseFailure(reason: "unexpected character after closing quote")
-                }
-            } else if scalar == comma {
-                endField(); index += 1
-            } else if scalar == cr {
-                guard index + 1 < scalars.count, scalars[index + 1] == lf else {
-                    throw CSVParseFailure(reason: "record terminator must be CRLF")
-                }
-                endRecord(); index += 2
-            } else if scalar == lf {
-                throw CSVParseFailure(reason: "bare LF is not a legal record terminator")
-            } else {
-                field.append(scalar)
-                index += 1
             }
+            guard fieldBytes.isEmpty, currentRow.isEmpty else {
+                throw CSVParseFailure.malformed(
+                    "file does not end with a CRLF-terminated record"
+                )
+            }
+            return ParsedCSV(
+                header: header,
+                rows: rows,
+                rowCountIncludingHeader: totalRows,
+                cellCount: totalCells,
+                decodedUTF8ByteCount: decodedUTF8ByteCount
+            )
         }
-        // A well-formed file ends exactly on a record boundary (trailing CRLF), leaving no dangling field.
-        guard field.isEmpty, currentRow.isEmpty else {
-            throw CSVParseFailure(reason: "file does not end with a CRLF-terminated record")
+    }
+
+    private static func tighterBudget(
+        _ first: CSVResourceBudget,
+        _ second: CSVResourceBudget
+    ) -> CSVResourceBudget {
+        second.maximum <= first.maximum ? second : first
+    }
+
+    private static func addToAggregate(
+        _ value: Int,
+        total: inout Int,
+        limit: Int,
+        resource: String
+    ) throws {
+        guard value <= limit - total else {
+            throw STPDResultPackageReaderError.resourceLimitExceeded(
+                resource: resource,
+                limit: limit
+            )
         }
-        return rows
+        total += value
     }
 
     // MARK: - Error context helpers (never leak arbitrary file contents)
@@ -589,8 +1218,8 @@ public struct STPDResultPackageReadResult: Sendable, Hashable {
     public let sourceMode: String
     public let ownerName: String
     public let ownerEmail: String
-    /// One entry per verified table, sorted by file name. `sha256` is the recomputed exact-byte digest
-    /// (which equalled the manifest's declared digest).
+    /// One immutable normalized snapshot per verified table, sorted by file name. `sha256` is the
+    /// recomputed exact-byte digest (which equalled the manifest's declared digest).
     public let tables: [VerifiedTable]
     /// The consistency checks returned by the reused complete package validator.
     public let consistencyChecks: [ConsistencyCheck]
@@ -601,6 +1230,17 @@ public struct STPDResultPackageReadResult: Sendable, Hashable {
         public let fileName: String
         public let rowCount: Int
         public let sha256: String
+        public let columns: [STPDResultColumnDefinition]
+        public let rows: [[String]]
+
+        public func value(row: Int, column: String) -> String? {
+            guard rows.indices.contains(row),
+                  let index = columns.firstIndex(where: { $0.name == column }),
+                  rows[row].indices.contains(index) else {
+                return nil
+            }
+            return rows[row][index]
+        }
     }
 
     public struct ConsistencyCheck: Sendable, Hashable {
@@ -608,6 +1248,10 @@ public struct STPDResultPackageReadResult: Sendable, Hashable {
         public let status: String
         public let severity: String
         public let details: String
+    }
+
+    public func table(_ table: STPDResultTable) -> VerifiedTable? {
+        tables.first { $0.fileName == table.rawValue }
     }
 }
 
@@ -617,6 +1261,7 @@ public enum STPDResultPackageReaderError: Error, LocalizedError, Hashable {
     case packageRootUnreadable(path: String)
     case packageRootNotADirectory(path: String)
     case manifestUndecodable(reason: String)
+    case manifestNotCanonical
     case unsupportedSchemaVersion(String)
     case tableSetMismatch(missing: [String], unexpected: [String])
     case duplicateManifestTableName(String)
@@ -626,8 +1271,10 @@ public enum STPDResultPackageReaderError: Error, LocalizedError, Hashable {
     case entryMissing(name: String)
     case entryUnreadable(name: String, reason: String)
     case entryNotARegularFile(name: String)
+    case resourceLimitExceeded(resource: String, limit: Int)
     case nonCanonicalDigest(table: String)
     case digestMismatch(table: String)
+    case nonCanonicalCSV(table: String)
     case manifestContractMismatch(table: String, field: String)
     case consistencyLedgerInvalid(reason: String)
     case rowCountMismatch(table: String, declared: Int, actual: Int)
@@ -646,6 +1293,8 @@ public enum STPDResultPackageReaderError: Error, LocalizedError, Hashable {
             return "Result package root is not a directory: \(path)."
         case .manifestUndecodable(let reason):
             return "Result package manifest.json could not be decoded: \(reason)."
+        case .manifestNotCanonical:
+            return "Result package manifest.json is not the canonical writer encoding."
         case .unsupportedSchemaVersion(let version):
             return "Result package schema version is unsupported by this reader: \(version)."
         case .tableSetMismatch(let missing, let unexpected):
@@ -665,10 +1314,14 @@ public enum STPDResultPackageReaderError: Error, LocalizedError, Hashable {
             return "Result package entry \(name) is unreadable: \(reason)."
         case .entryNotARegularFile(let name):
             return "Result package entry is not a regular file: \(name)."
+        case .resourceLimitExceeded(let resource, let limit):
+            return "Result package exceeds the configured \(resource) limit of \(limit)."
         case .nonCanonicalDigest(let table):
             return "Result package manifest declares a non-canonical (non-lowercase-64-hex) SHA-256 for table \(table)."
         case .digestMismatch(let table):
             return "Result package table \(table) does not match its declared SHA-256 digest."
+        case .nonCanonicalCSV(let table):
+            return "Result package table \(table) is semantically valid but not encoded in canonical writer CSV bytes."
         case .manifestContractMismatch(let table, let field):
             return "Result package manifest table \(table) \(field) does not match the schema contract."
         case .consistencyLedgerInvalid(let reason):

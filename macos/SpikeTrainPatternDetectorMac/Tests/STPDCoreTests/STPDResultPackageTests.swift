@@ -1,10 +1,132 @@
+import Darwin
 import Foundation
 import Testing
 @testable import STPDCore
 
 private let resultPackageBuildCommit = "0123456789abcdef0123456789abcdef01234567"
+private let resultPackageCurrentReaderEntryPoint:
+    @Sendable (URL, STPDResultPackageReadLimits) throws
+        -> STPDResultPackageReadResult =
+    STPDResultPackageReader.read
+private let resultPackageLegacyReaderEntryPoint =
+    STPDResultPackageReader.read
+private let resultPackageCurrentWriterEntryPoint:
+    @Sendable (
+        STPDResultPackage,
+        URL,
+        STPDResultPackageParentDirectoryPolicy
+    ) throws
+        -> Void =
+    STPDResultPackageWriter.write
+private let resultPackageLegacyWriterEntryPoint =
+    STPDResultPackageWriter.write
 
 private struct ResultPackageWriterInjectedFailure: Error {}
+
+private struct ResultPackageACLTestFailure: Error {
+    let operation: String
+    let code: Int32
+}
+
+private enum ResultPackageTestACLKind {
+    case allowWrite(inheritable: Bool)
+    case denyDelete
+}
+
+private func installResultPackageTestExtendedACL(
+    at directory: URL,
+    kind: ResultPackageTestACLKind = .allowWrite(inheritable: false)
+) throws {
+    let descriptor = open(
+        directory.path,
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC
+    )
+    guard descriptor >= 0 else {
+        throw ResultPackageACLTestFailure(
+            operation: "open",
+            code: errno
+        )
+    }
+    defer {
+        _ = close(descriptor)
+    }
+
+    let rule: String
+    switch kind {
+    case .allowWrite(let inheritable):
+        rule =
+            "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:"
+            + "everyone:12:allow:write,delete_child"
+            + (inheritable ? ":file_inherit,directory_inherit" : "")
+    case .denyDelete:
+        rule =
+            "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:"
+            + "everyone:12:deny:delete"
+    }
+    let text = "!#acl 1\n\(rule)\n"
+    let acl = text.withCString { acl_from_text($0) }
+    guard let acl else {
+        throw ResultPackageACLTestFailure(
+            operation: "acl_from_text",
+            code: errno
+        )
+    }
+    defer {
+        _ = acl_free(UnsafeMutableRawPointer(acl))
+    }
+    guard acl_set_fd_np(
+        descriptor,
+        acl,
+        ACL_TYPE_EXTENDED
+    ) == 0 else {
+        throw ResultPackageACLTestFailure(
+            operation: "acl_set_fd_np",
+            code: errno
+        )
+    }
+}
+
+private func resultPackageEntryHasExtendedACL(at url: URL) throws -> Bool {
+    let descriptor = open(
+        url.path,
+        O_RDONLY | O_NOFOLLOW | O_CLOEXEC
+    )
+    guard descriptor >= 0 else {
+        throw ResultPackageACLTestFailure(
+            operation: "open for ACL inspection",
+            code: errno
+        )
+    }
+    defer {
+        _ = close(descriptor)
+    }
+    errno = 0
+    guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
+        if errno == ENOENT {
+            return false
+        }
+        throw ResultPackageACLTestFailure(
+            operation: "acl_get_fd_np",
+            code: errno
+        )
+    }
+    defer {
+        _ = acl_free(UnsafeMutableRawPointer(acl))
+    }
+    var entry: acl_entry_t?
+    let result = acl_get_entry(
+        acl,
+        Int32(ACL_FIRST_ENTRY.rawValue),
+        &entry
+    )
+    guard result == 0 || result == 1 else {
+        throw ResultPackageACLTestFailure(
+            operation: "acl_get_entry",
+            code: errno
+        )
+    }
+    return result == 0 && entry != nil
+}
 
 private func resultPackageFixture(
     taskEvents: [TaskEvent] = []
@@ -1038,6 +1160,7 @@ func resultPackageBuildsAllNineteenNormalizedTables() throws {
         "candidate_one_to_one",
         "candidate_diagnostic_one_to_one",
         "candidate_foreign_keys",
+        "isi_declared_row_count",
         "isi_complete_coverage",
         "final_event_isi_consistency",
     ]))
@@ -1400,6 +1523,7 @@ func resultPackageExportsQCEventEvidenceSubtypesAndExactConsistencyChecks() thro
         "event_source_evidence",
         "event_source_authority",
         "final_event_isi_consistency",
+        "isi_declared_row_count",
         "isi_complete_coverage",
         "isi_qc_provenance",
         "automatic_projection_authority",
@@ -1411,6 +1535,7 @@ func resultPackageExportsQCEventEvidenceSubtypesAndExactConsistencyChecks() thro
         "run_metadata",
         "run_identity",
         "source_mode",
+        "task_event_count",
         "task_event_projection",
     ])
     #expect(try resultPackageColumn(checks, "status").allSatisfy { $0 == "pass" })
@@ -2622,7 +2747,7 @@ func resultPackageTaskEventUIDExcludesSourceButTracksScientificFields() throws {
 }
 
 @Test
-func resultPackageRejectsDuplicateTaskSourceOrTrialIdentifiers() throws {
+func resultPackageRejectsDuplicateTaskSourceIdentifiersAndAllowsSharedTrial() throws {
     let first = TaskEvent(
         id: "stimulus:1",
         name: "Stimulus",
@@ -2641,27 +2766,44 @@ func resultPackageRejectsDuplicateTaskSourceOrTrialIdentifiers() throws {
         trialID: "trial:2",
         source: "fixture.csv"
     )
-    let duplicateTrialID = TaskEvent(
-        id: "stimulus:2",
-        name: "Stimulus",
+    let sharedTrialEvent = TaskEvent(
+        id: "reward:1",
+        name: "Reward",
         timeSec: 1.25,
-        column: "event_stimulus",
+        column: "event_reward",
         eventIndex: 2,
         trialID: first.trialID,
         source: "fixture.csv"
     )
 
-    for events in [
-        [first, duplicateSourceID],
-        [first, duplicateTrialID],
-    ] {
-        let fixture = resultPackageFixture(taskEvents: events)
-        #expect(throws: STPDResultPackageError.self) {
-            _ = try STPDResultPackageBuilder.build(
-                .automatic(dataset: fixture.dataset, run: fixture.run)
+    let duplicateSourceFixture = resultPackageFixture(
+        taskEvents: [first, duplicateSourceID]
+    )
+    #expect(throws: STPDResultPackageError.self) {
+        _ = try STPDResultPackageBuilder.build(
+            .automatic(
+                dataset: duplicateSourceFixture.dataset,
+                run: duplicateSourceFixture.run
             )
-        }
+        )
     }
+
+    let sharedTrialFixture = resultPackageFixture(
+        taskEvents: [first, sharedTrialEvent]
+    )
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(
+            dataset: sharedTrialFixture.dataset,
+            run: sharedTrialFixture.run
+        )
+    )
+    let taskEvents = try #require(package.table(.taskEvents))
+    #expect(taskEvents.rowCount == 2)
+    #expect(try resultPackageColumn(taskEvents, "trial_id")
+        == [first.trialID, first.trialID])
+    #expect(Set(try resultPackageColumn(taskEvents, "source_event_id"))
+        == [first.id, sharedTrialEvent.id])
+    #expect(Set(try resultPackageColumn(taskEvents, "task_event_uid")).count == 2)
 }
 
 @Test
@@ -5012,6 +5154,298 @@ func resultPackageWriterUsesRFC4180AndPublishesACompleteDirectory() throws {
 }
 
 @Test
+func resultPackageWriterLegacyFileManagerEntryPointRemainsSourceCompatible()
+    throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-writer-legacy-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent("result", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+
+    try STPDResultPackageWriter.write(
+        package,
+        to: destination,
+        fileManager: .default
+    )
+    #expect(
+        try STPDResultPackageReader.read(packageAt: destination).verified
+    )
+}
+
+@Test
+func resultPackageCurrentAndLegacyEntryPointsRemainUnambiguousFunctionValues()
+    throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-current-function-value-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent(
+        "result",
+        isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+
+    try resultPackageCurrentWriterEntryPoint(
+        package,
+        destination,
+        .privateCurrentUserOnly
+    )
+    let result = try resultPackageCurrentReaderEntryPoint(
+        destination,
+        .standard
+    )
+    #expect(result.verified)
+
+    let legacyDestination = root.appendingPathComponent(
+        "legacy-result",
+        isDirectory: true
+    )
+    try resultPackageLegacyWriterEntryPoint(
+        package,
+        legacyDestination,
+        FileManager.default
+    )
+    let legacyResult = try resultPackageLegacyReaderEntryPoint(
+        legacyDestination,
+        FileManager.default
+    )
+    #expect(legacyResult.verified)
+}
+
+@Test
+func resultPackageWriterPublicationFlagsRemainAvailableBeforeMacOS26() {
+    let baseline = UInt32(RENAME_EXCL | RENAME_NOFOLLOW_ANY)
+    let resolveBeneath = UInt32(0x20)
+
+    #expect(
+        STPDResultPackageWriter.publicationRenameFlagsForTesting(
+            resolveBeneathAvailable: false
+        ) == baseline
+    )
+    #expect(
+        STPDResultPackageWriter.publicationRenameFlagsForTesting(
+            resolveBeneathAvailable: true
+        ) == baseline | resolveBeneath
+    )
+}
+
+@Test
+func resultPackageWriterRequiresExplicitPolicyForSharedParents() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let modes: [mode_t] = [
+        mode_t(0o770),
+        mode_t(S_ISVTX) | mode_t(0o777),
+    ]
+
+    for mode in modes {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "stpd-result-shared-parent-\(UUID().uuidString.lowercased())",
+            isDirectory: true
+        )
+        let destination = root.appendingPathComponent("result", isDirectory: true)
+        defer {
+            _ = chmod(root.path, mode_t(0o700))
+            try? FileManager.default.removeItem(at: root)
+        }
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: false
+        )
+        try #require(chmod(root.path, mode) == 0)
+
+        #expect(throws: STPDResultPackageError.self) {
+            try STPDResultPackageWriter.write(package, to: destination)
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+
+        try STPDResultPackageWriter.write(
+            package,
+            to: destination,
+            parentDirectoryPolicy: .allowShared
+        )
+        var metadata = stat()
+        try #require(lstat(destination.path, &metadata) == 0)
+        #expect(metadata.st_mode & mode_t(0o777) == mode_t(0o700))
+        let readback = try STPDResultPackageReader.read(packageAt: destination)
+        #expect(readback.verified)
+        #expect(readback.runID == package.manifest.runID)
+    }
+}
+
+@Test
+func resultPackageWriterRequiresExplicitSharedPolicyForExtendedACLParent()
+    throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-acl-parent-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent(
+        "result",
+        isDirectory: true
+    )
+    defer {
+        try? FileManager.default.removeItem(at: root)
+    }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+    try #require(chmod(root.path, mode_t(0o700)) == 0)
+    try installResultPackageTestExtendedACL(at: root)
+
+    do {
+        try STPDResultPackageWriter.write(
+            package,
+            to: destination
+        )
+        Issue.record(
+            "Expected privateCurrentUserOnly to reject a parent with an extended ACL"
+        )
+    } catch let error as STPDResultPackageError {
+        guard case .invalidInput(let reason) = error else {
+            Issue.record("Expected invalidInput, got \(error)")
+            return
+        }
+        #expect(reason.contains("extended ACL"))
+    }
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+
+    try STPDResultPackageWriter.write(
+        package,
+        to: destination,
+        parentDirectoryPolicy: .allowShared
+    )
+    var metadata = stat()
+    try #require(lstat(destination.path, &metadata) == 0)
+    #expect(metadata.st_mode & mode_t(0o777) == mode_t(0o700))
+    let readback = try STPDResultPackageReader.read(
+        packageAt: destination
+    )
+    #expect(readback.verified)
+    #expect(readback.runID == package.manifest.runID)
+}
+
+@Test
+func resultPackageWriterPrivatePolicyPermitsDenyOnlyParentACL() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-deny-acl-parent-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent("result", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+    try #require(chmod(root.path, mode_t(0o700)) == 0)
+    try installResultPackageTestExtendedACL(
+        at: root,
+        kind: .denyDelete
+    )
+
+    try STPDResultPackageWriter.write(package, to: destination)
+    #expect(
+        try STPDResultPackageReader.read(packageAt: destination).verified
+    )
+}
+
+@Test
+func resultPackageWriterSharedPolicyStripsInheritedAllowACLFromPackageEntries()
+    throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-inherited-acl-parent-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent("result", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+    try #require(chmod(root.path, mode_t(0o700)) == 0)
+    try installResultPackageTestExtendedACL(
+        at: root,
+        kind: .allowWrite(inheritable: true)
+    )
+
+    try STPDResultPackageWriter.write(
+        package,
+        to: destination,
+        parentDirectoryPolicy: .allowShared
+    )
+    #expect(try !resultPackageEntryHasExtendedACL(at: destination))
+    #expect(
+        try !resultPackageEntryHasExtendedACL(
+            at: destination.appendingPathComponent(
+                STPDResultTable.runMetadata.rawValue
+            )
+        )
+    )
+    #expect(
+        try STPDResultPackageReader.read(packageAt: destination).verified
+    )
+}
+
+@Test
+func resultPackageAllNineteenTablesUseOneOrderedColumnAuthority() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let contractByTable = Dictionary(
+        uniqueKeysWithValues: STPDResultSchema.tables.map { ($0.table, $0) }
+    )
+    let manifestByName = Dictionary(
+        uniqueKeysWithValues: package.manifest.tables.map {
+            ($0.fileName, $0)
+        }
+    )
+
+    #expect(STPDResultTable.allCases.count == 19)
+    #expect(contractByTable.count == STPDResultTable.allCases.count)
+    for table in STPDResultTable.allCases {
+        let contract = try #require(contractByTable[table])
+        let data = try #require(package.table(table))
+        let manifest = try #require(manifestByName[table.rawValue])
+        #expect(contract.orderedColumns == data.headers)
+        #expect(data.columnDefinitions.map(\.name) == contract.orderedColumns)
+        #expect(manifest.columns == data.columnDefinitions)
+    }
+}
+
+@Test
 func resultPackageWriterDurabilityCheckpointsFollowPublicationOrder() throws {
     let fixture = resultPackageFixture()
     let package = try STPDResultPackageBuilder.build(
@@ -5181,6 +5615,60 @@ func resultPackageWriterNoReplacePreservesConcurrentDestinationSymlinks()
 }
 
 @Test
+func resultPackageWriterPinsOpenedParentAcrossPathReplacement() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let container = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+            "stpd-result-writer-parent-race-\(UUID().uuidString.lowercased())",
+            isDirectory: true
+        )
+    let parent = container.appendingPathComponent("parent", isDirectory: true)
+    let movedParent = container.appendingPathComponent(
+        "opened-parent",
+        isDirectory: true
+    )
+    let destination = parent.appendingPathComponent(
+        "result",
+        isDirectory: true
+    )
+    defer { try? FileManager.default.removeItem(at: container) }
+    try FileManager.default.createDirectory(
+        at: parent,
+        withIntermediateDirectories: true
+    )
+
+    var replaced = false
+    try STPDResultPackageWriter.writeForTesting(
+        package,
+        to: destination
+    ) { checkpoint in
+        guard checkpoint == .willPublish else { return }
+        try FileManager.default.moveItem(at: parent, to: movedParent)
+        try FileManager.default.createDirectory(
+            at: parent,
+            withIntermediateDirectories: false
+        )
+        replaced = true
+    }
+
+    let pinnedDestination = movedParent.appendingPathComponent(
+        "result",
+        isDirectory: true
+    )
+    #expect(replaced)
+    #expect(FileManager.default.fileExists(atPath: pinnedDestination.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+    let readback = try STPDResultPackageReader.read(
+        packageAt: pinnedDestination
+    )
+    #expect(readback.runID == package.manifest.runID)
+    #expect(readback.verified)
+}
+
+@Test
 func resultPackageWriterPostpublicationFailureLeavesCompleteDestination()
     throws {
     let fixture = resultPackageFixture()
@@ -5222,6 +5710,64 @@ func resultPackageWriterPostpublicationFailureLeavesCompleteDestination()
         includingPropertiesForKeys: nil
     )
     #expect(siblings.map(\.lastPathComponent) == ["result"])
+}
+
+@Test
+func resultPackageWriterRejectsReplacedStagingPayloadBeforePublication()
+    throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "stpd-result-writer-staging-race-\(UUID().uuidString.lowercased())",
+        isDirectory: true
+    )
+    let destination = root.appendingPathComponent("result", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root,
+        withIntermediateDirectories: false
+    )
+
+    var replacementMarker: URL?
+    #expect(throws: STPDResultPackageError.self) {
+        try STPDResultPackageWriter.writeForTesting(
+            package,
+            to: destination
+        ) { checkpoint in
+            guard checkpoint == .willPublish else { return }
+            let siblings = try FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: nil
+            )
+            let workspace = try #require(
+                siblings.first {
+                    $0.lastPathComponent.hasPrefix(".result.tmp.")
+                }
+            )
+            let payload = workspace.appendingPathComponent(
+                "payload",
+                isDirectory: true
+            )
+            let displaced = workspace.appendingPathComponent(
+                "displaced-payload",
+                isDirectory: true
+            )
+            try FileManager.default.moveItem(at: payload, to: displaced)
+            try FileManager.default.createDirectory(
+                at: payload,
+                withIntermediateDirectories: false
+            )
+            let marker = payload.appendingPathComponent("replacement.txt")
+            try Data("must never publish".utf8).write(to: marker)
+            replacementMarker = marker
+        }
+    }
+
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+    let marker = try #require(replacementMarker)
+    #expect(try Data(contentsOf: marker) == Data("must never publish".utf8))
 }
 
 @Test
@@ -5302,79 +5848,104 @@ func resultPackageRejectsLegacyUnidentifiedRun() {
 }
 
 @Test
-func resultPackageTableDataRejectsMalformedSchemasAndTypedCells() {
-    let contract = STPDResultTableContract(
-        table: .runMetadata,
-        grain: "test row",
-        primaryKey: ["run_id"],
-        requiredIdentityColumns: ["run_id"]
+func resultPackageTableDataRejectsMalformedSchemasAndTypedCells() throws {
+    let fixture = resultPackageFixture()
+    let automaticPackage = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
     )
-    let headers = [
-        "run_id", "integer_value", "real_value", "boolean_value",
-        "timestamp_value", "string_list_value",
-    ]
-    let definitions: [STPDResultColumnDefinition] = [
-        .init(name: "run_id", type: .string, nullable: false),
-        .init(name: "integer_value", type: .integer, nullable: false),
-        .init(name: "real_value", type: .real, nullable: false),
-        .init(name: "boolean_value", type: .boolean, nullable: false),
-        .init(name: "timestamp_value", type: .timestamp, nullable: false),
-        .init(name: "string_list_value", type: .stringList, nullable: false),
-    ]
-    let validRow = [
-        "run", "1", "0.5", "true", "2026-07-24T00:00:00Z",
-        STPDCanonicalValue.stringList(["a", "b"]),
-    ]
+    let annotation = try resultPackageManualTonicAnnotation(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        id: UUID(
+            uuidString: "a1100000-0000-0000-0000-000000000001"
+        )!
+    )
+    let reviewedPackage = try STPDResultPackageBuilder.build(
+        resultPackageReviewedInput(
+            dataset: fixture.dataset,
+            run: fixture.run,
+            manualAnnotations: [annotation]
+        )
+    )
+    let metadata = try #require(automaticPackage.table(.runMetadata))
 
+    // Schema failures remain independently covered by real table contracts.
     #expect(throws: STPDResultPackageError.self) {
         _ = try STPDResultTableData(
-            contract: contract,
+            contract: metadata.contract,
             headers: ["run_id", "run_id"],
             rows: [["run", "duplicate"]]
         )
     }
     #expect(throws: STPDResultPackageError.self) {
         _ = try STPDResultTableData(
-            contract: contract,
-            headers: headers,
-            columnDefinitions: Array(definitions.dropLast()),
-            rows: [validRow]
+            contract: metadata.contract,
+            headers: metadata.headers,
+            columnDefinitions: Array(metadata.columnDefinitions.dropLast()),
+            rows: metadata.rows
         )
     }
-    for (column, invalidValue) in [
-        (0, ""),
-        (1, "1.5"),
-        (2, "nan"),
-        (3, "yes"),
-        (4, "not-a-timestamp"),
-    ] {
-        var row = validRow
-        row[column] = invalidValue
+
+    func expectTypedCellRejection(
+        _ table: STPDResultTableData,
+        column: String,
+        invalidValue: String
+    ) throws {
+        let columnIndex = try #require(
+            table.headers.firstIndex(of: column)
+        )
+        var rows = table.rows
+        try #require(!rows.isEmpty)
+        rows[0][columnIndex] = invalidValue
         #expect(throws: STPDResultPackageError.self) {
             _ = try STPDResultTableData(
-                contract: contract,
-                headers: headers,
-                columnDefinitions: definitions,
-                rows: [row]
+                contract: table.contract,
+                headers: table.headers,
+                columnDefinitions: table.columnDefinitions,
+                rows: rows
             )
         }
     }
+
+    try expectTypedCellRejection(
+        metadata,
+        column: "run_id",
+        invalidValue: ""
+    )
+    try expectTypedCellRejection(
+        metadata,
+        column: "train_count",
+        invalidValue: "1.5"
+    )
+    try expectTypedCellRejection(
+        try #require(automaticPackage.table(.dataQualityQC)),
+        column: "artifact_fraction",
+        invalidValue: "nan"
+    )
+    try expectTypedCellRejection(
+        metadata,
+        column: "build_reproducibility_attested",
+        invalidValue: "yes"
+    )
+    let manualTable = try #require(
+        reviewedPackage.table(.manualAnnotations)
+    )
+    try expectTypedCellRejection(
+        manualTable,
+        column: "created_at",
+        invalidValue: "not-a-timestamp"
+    )
     for invalidValue in [
         "[\"a\", \"b\"]",
         "[\"a\",\"a\"]",
         "[\"\"]",
         "not-json",
     ] {
-        var row = validRow
-        row[5] = invalidValue
-        #expect(throws: STPDResultPackageError.self) {
-            _ = try STPDResultTableData(
-                contract: contract,
-                headers: headers,
-                columnDefinitions: definitions,
-                rows: [row]
-            )
-        }
+        try expectTypedCellRejection(
+            manualTable,
+            column: "linked_isi_uids",
+            invalidValue: invalidValue
+        )
     }
 }
 
@@ -8245,6 +8816,224 @@ private func dataQualityQCRowByTrain(_ table: STPDResultTableData) throws -> [St
     }
 }
 
+private func resultPackageQCBoundaryFixture(
+    isiSec: Double,
+    artifactThresholdSec: Double,
+    refractoryThresholdSec: Double
+) -> (
+    dataset: SpikeDataset,
+    run: ClassicAnchorDetectionRun,
+    qualitySettings: SpikeQualitySettings
+) {
+    let qualitySettings = SpikeQualitySettings(
+        artifactThresholdSec: artifactThresholdSec,
+        refractorySuspectThresholdSec: refractoryThresholdSec
+    )
+    let dataset = SpikeDataset(
+        name: "result-package-qc-boundary",
+        sourceDescription: "result package QC boundary fixture",
+        trains: [
+            SpikeTrain(
+                name: "qc_boundary_train",
+                timestampsSec: [0, isiSec]
+            ),
+        ]
+    )
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(
+            minValidISISec: artifactThresholdSec,
+            histogramBinWidthSec: max(artifactThresholdSec, 0.001)
+        ),
+        qualitySettings: qualitySettings,
+        buildCommit: resultPackageBuildCommit
+    )
+    return (dataset, run, qualitySettings)
+}
+
+@Test func resultPackageRejectsUnresolvedArtifactToleranceBand() throws {
+    let artifactThreshold = 0.001
+    let artifactTolerance = max(
+        1e-12,
+        abs(artifactThreshold) * 1e-6
+    )
+    let fixture = resultPackageQCBoundaryFixture(
+        isiSec: artifactThreshold - (artifactTolerance / 2),
+        artifactThresholdSec: artifactThreshold,
+        refractoryThresholdSec: artifactThreshold
+    )
+    let quality = SpikeQualityAnalyzer.quality(
+        for: fixture.dataset.trains[0],
+        settings: fixture.qualitySettings
+    )
+
+    // The analyzer's tolerance-aware artifact predicate and exact valid-floor predicate leave this
+    // narrow interval in neither primary population. Export must fail closed rather than publish
+    // raw_isi_count=1 with artifact_isi_count=0 and valid_isi_count=0.
+    #expect(quality.artifactISICount == 0)
+    #expect(quality.validISICount == 0)
+    #expect(throws: STPDResultPackageError.self) {
+        _ = try STPDResultPackageBuilder.dataQualityQCTable(
+            identity: fixture.run.runIdentity,
+            dataset: fixture.dataset,
+            qualitySettings: fixture.qualitySettings
+        )
+    }
+    #expect(throws: STPDResultPackageError.self) {
+        _ = try STPDResultPackageBuilder.build(
+            .automatic(
+                dataset: fixture.dataset,
+                run: fixture.run
+            )
+        )
+    }
+}
+
+@Test func resultPackageQCClassificationPinsArtifactAndRefractoryBoundaries()
+    throws
+{
+    struct BoundaryCase {
+        let name: String
+        let isiSec: Double
+        let artifactThresholdSec: Double
+        let refractoryThresholdSec: Double
+        let artifactCount: Int
+        let validCount: Int
+        let refractoryCount: Int
+        let isiQCClass: String
+    }
+
+    let artifactThreshold = 0.001
+    let artifactTolerance = max(
+        1e-12,
+        abs(artifactThreshold) * 1e-6
+    )
+    let refractoryThreshold = 0.002
+    let refractoryTolerance = max(
+        1e-12,
+        abs(refractoryThreshold) * 1e-6
+    )
+    let cases = [
+        BoundaryCase(
+            name: "artifact below tolerance",
+            isiSec: artifactThreshold - (2 * artifactTolerance),
+            artifactThresholdSec: artifactThreshold,
+            refractoryThresholdSec: artifactThreshold,
+            artifactCount: 1,
+            validCount: 0,
+            refractoryCount: 0,
+            isiQCClass: "artifact_below_floor"
+        ),
+        BoundaryCase(
+            name: "artifact threshold is valid",
+            isiSec: artifactThreshold,
+            artifactThresholdSec: artifactThreshold,
+            refractoryThresholdSec: artifactThreshold,
+            artifactCount: 0,
+            validCount: 1,
+            refractoryCount: 0,
+            isiQCClass: "valid"
+        ),
+        BoundaryCase(
+            name: "below refractory cutoff",
+            isiSec: refractoryThreshold - (2 * refractoryTolerance),
+            artifactThresholdSec: artifactThreshold,
+            refractoryThresholdSec: refractoryThreshold,
+            artifactCount: 0,
+            validCount: 1,
+            refractoryCount: 1,
+            isiQCClass: "refractory_suspect"
+        ),
+        BoundaryCase(
+            name: "inside refractory tolerance",
+            isiSec: refractoryThreshold - (refractoryTolerance / 2),
+            artifactThresholdSec: artifactThreshold,
+            refractoryThresholdSec: refractoryThreshold,
+            artifactCount: 0,
+            validCount: 1,
+            refractoryCount: 0,
+            isiQCClass: "valid"
+        ),
+        BoundaryCase(
+            name: "refractory threshold is valid",
+            isiSec: refractoryThreshold,
+            artifactThresholdSec: artifactThreshold,
+            refractoryThresholdSec: refractoryThreshold,
+            artifactCount: 0,
+            validCount: 1,
+            refractoryCount: 0,
+            isiQCClass: "valid"
+        ),
+    ]
+
+    for boundaryCase in cases {
+        let fixture = resultPackageQCBoundaryFixture(
+            isiSec: boundaryCase.isiSec,
+            artifactThresholdSec: boundaryCase.artifactThresholdSec,
+            refractoryThresholdSec: boundaryCase.refractoryThresholdSec
+        )
+        let package = try STPDResultPackageBuilder.build(
+            .automatic(
+                dataset: fixture.dataset,
+                run: fixture.run
+            )
+        )
+        let qcTable = try #require(package.table(.dataQualityQC))
+        let isiTable = try #require(package.table(.isiLabelsFinal))
+        #expect(
+            qcTable.rows.count == 1,
+            Comment(rawValue: boundaryCase.name)
+        )
+        #expect(
+            isiTable.rows.count == 1,
+            Comment(rawValue: boundaryCase.name)
+        )
+        let artifactCount = try #require(
+            Int(dataQualityQCColumn(qcTable, "artifact_isi_count", row: 0))
+        )
+        let validCount = try #require(
+            Int(dataQualityQCColumn(qcTable, "valid_isi_count", row: 0))
+        )
+        let refractoryCount = try #require(
+            Int(
+                dataQualityQCColumn(
+                    qcTable,
+                    "refractory_suspect_isi_count",
+                    row: 0
+                )
+            )
+        )
+        let rawCount = try #require(
+            Int(dataQualityQCColumn(qcTable, "raw_isi_count", row: 0))
+        )
+        #expect(
+            artifactCount == boundaryCase.artifactCount,
+            Comment(rawValue: boundaryCase.name)
+        )
+        #expect(
+            validCount == boundaryCase.validCount,
+            Comment(rawValue: boundaryCase.name)
+        )
+        #expect(
+            refractoryCount == boundaryCase.refractoryCount,
+            Comment(rawValue: boundaryCase.name)
+        )
+        #expect(
+            artifactCount + validCount == rawCount,
+            Comment(rawValue: boundaryCase.name)
+        )
+        #expect(
+            try #require(
+                resultPackageColumn(
+                    isiTable,
+                    "isi_qc_class"
+                ).first
+            ) == boundaryCase.isiQCClass,
+            Comment(rawValue: boundaryCase.name)
+        )
+    }
+}
+
 @Test func dataQualityQCHandlesZeroSpikeAndOneSpikeTrains() throws {
     // Built at table level: the full pipeline is not required to accept degenerate/empty datasets.
     let dataset = SpikeDataset(
@@ -8421,21 +9210,13 @@ private func dataQualityQCTampered(
     let package = try STPDResultPackageBuilder.build(.automatic(dataset: fixture.dataset, run: fixture.run))
     let isi = try #require(package.tables[.isiLabelsFinal])
     let ids = Set(fixture.dataset.trains.map(\.id))
-    // Negative count.
-    let negative = try dataQualityQCTampered(package, column: "valid_isi_count", value: "-1")
+    // Canonical table construction rejects invalid primitive ranges before the
+    // cross-column validator runs.
     #expect(throws: STPDResultPackageError.self) {
-        try STPDResultPackageValidator.validateDataQualityQC(
-            identity: package.identity, table: negative, isiTable: isi,
-            expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
-        )
+        _ = try dataQualityQCTampered(package, column: "valid_isi_count", value: "-1")
     }
-    // Fraction above 1.
-    let badFraction = try dataQualityQCTampered(package, column: "artifact_fraction", value: "2.0")
     #expect(throws: STPDResultPackageError.self) {
-        try STPDResultPackageValidator.validateDataQualityQC(
-            identity: package.identity, table: badFraction, isiTable: isi,
-            expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
-        )
+        _ = try dataQualityQCTampered(package, column: "artifact_fraction", value: "2.0")
     }
     // valid + artifact exceeding raw.
     let tooMany = try dataQualityQCTampered(package, column: "artifact_isi_count", value: "9999")
@@ -8444,6 +9225,118 @@ private func dataQualityQCTampered(
             identity: package.identity, table: tooMany, isiTable: isi,
             expectedTrainIDs: ids, expectedDataset: nil, expectedRun: nil
         )
+    }
+}
+
+@Test func dataQualityQCValidatorRejectsIntegerOverflowWithoutTrapping() throws {
+    let fixture = resultPackageFixture()
+    let package = try STPDResultPackageBuilder.build(
+        .automatic(dataset: fixture.dataset, run: fixture.run)
+    )
+    let original = try #require(package.tables[.dataQualityQC])
+    let isi = try #require(package.tables[.isiLabelsFinal])
+
+    func table(mutating changes: [String: String]) throws
+        -> STPDResultTableData {
+        var rows = original.rows
+        for (column, value) in changes {
+            let index = try #require(original.headers.firstIndex(of: column))
+            rows[0][index] = value
+        }
+        return try STPDResultTableData(
+            contract: original.contract,
+            headers: original.headers,
+            columnDefinitions: original.columnDefinitions,
+            rows: rows
+        )
+    }
+
+    func overflowRow(
+        basedOn row: [String],
+        trainID: String,
+        trainName: String,
+        spikeCount: Int,
+        rawISICount: Int
+    ) throws -> [String] {
+        var row = row
+        for (column, value) in [
+            ("train_id", trainID),
+            ("train_name", trainName),
+            ("spike_count", String(spikeCount)),
+            ("raw_isi_count", String(rawISICount)),
+            ("valid_isi_count", "0"),
+            ("artifact_isi_count", "0"),
+            ("artifact_fraction", "0"),
+            ("refractory_suspect_isi_count", "0"),
+            ("refractory_suspect_fraction", "0"),
+        ] {
+            let index = try #require(original.headers.firstIndex(of: column))
+            row[index] = value
+        }
+        return row
+    }
+
+    let overflowingPopulation = try STPDResultTableData(
+        contract: original.contract,
+        headers: original.headers,
+        columnDefinitions: original.columnDefinitions,
+        rows: [
+            try overflowRow(
+                basedOn: try #require(original.rows.first),
+                trainID: "a-overflow-base",
+                trainName: "overflow_base",
+                spikeCount: Int.max,
+                rawISICount: Int.max - 1
+            ),
+            try overflowRow(
+                basedOn: try #require(original.rows.dropFirst().first),
+                trainID: "b-overflow-addend",
+                trainName: "overflow_addend",
+                spikeCount: 2,
+                rawISICount: 1
+            ),
+        ]
+    )
+    do {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity,
+            table: overflowingPopulation,
+            isiTable: isi,
+            expectedTrainIDs: nil,
+            expectedDataset: nil,
+            expectedRun: nil
+        )
+        Issue.record("expected materialized spike-population overflow")
+    } catch STPDResultPackageError.invalidTable(let table, let reason) {
+        #expect(table == STPDResultTable.dataQualityQC.rawValue)
+        #expect(reason == "materialized spike population overflows Int")
+    } catch {
+        Issue.record("unexpected overflow error: \(error)")
+    }
+
+    let overflowingISIArithmetic = try table(
+        mutating: [
+            "spike_count": String(Int.max),
+            "raw_isi_count": String(Int.max - 1),
+            "valid_isi_count": String(Int.max - 1),
+            "artifact_isi_count": String(Int.max),
+        ]
+    )
+    do {
+        try STPDResultPackageValidator.validateDataQualityQC(
+            identity: package.identity,
+            table: overflowingISIArithmetic,
+            isiTable: isi,
+            expectedTrainIDs: nil,
+            expectedDataset: nil,
+            expectedRun: nil
+        )
+        Issue.record("expected overflow-safe valid/artifact ISI rejection")
+    } catch STPDResultPackageError.invalidTable(let table, let reason) {
+        #expect(table == STPDResultTable.dataQualityQC.rawValue)
+        #expect(reason == "valid+artifact ISI exceeds raw ISI slots")
+    } catch {
+        Issue.record("unexpected ISI arithmetic error: \(error)")
     }
 }
 
@@ -8514,7 +9407,7 @@ private func dataQualityQCTampered(
         .eventsFinal: "26f82209b6c40a7777662571ac2a1f250ba981a318156df1ee01c8008608b4be",
         .isiLabelsFinal: "f642731f8722bcd97fccccd72fee8c26dc1d34a2be1ae0712adce43537727384",
         .candidateDiagnosticAudit: "647f4ce8f00ff2da27c8b054b639c8fabbf0808b1bc6de2b108119ddce1a78d0",
-        .resultConsistencyCheck: "5c483861be3b6cd7833df12720466ff9cfeacc41d44e7d5b5e6692242f95c3df",
+        .resultConsistencyCheck: "8cc44940f534e9180783d91464ef303b0a98b704f91114d44b954824621a3dba",
         .manualAnnotations: "7f9599665876bcfbb2b0b65ca0e9a6192b8d2631f087375305cee89edb104420",
         .reviewStatus: "c2b068df2ad0734f1363868ba3c74450f97cd491069d2eb291b05cb0353f37fa",
         .hfsBurstArbitrationAudit: "a3dbbf392b3b40e04f5fcb029716a49ec17d9eab05da2fcecf60e44d22775953",

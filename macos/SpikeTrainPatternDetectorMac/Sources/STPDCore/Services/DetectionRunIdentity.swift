@@ -32,6 +32,7 @@ public struct STPDResultTableContract: Hashable, Sendable {
     public let grain: String
     public let primaryKey: [String]
     public let requiredIdentityColumns: [String]
+    public let orderedColumns: [String]
 
     public init(
         table: STPDResultTable,
@@ -43,6 +44,7 @@ public struct STPDResultTableContract: Hashable, Sendable {
         self.grain = grain
         self.primaryKey = primaryKey
         self.requiredIdentityColumns = requiredIdentityColumns
+        self.orderedColumns = STPDResultSchemaColumns.columns(for: table)
     }
 }
 
@@ -443,13 +445,13 @@ public struct DetectionDatasetMetadataSnapshot: Hashable, Sendable {
         DetectionDatasetMetadataSnapshot(
             name: dataset.name,
             sourceDescription: dataset.sourceDescription,
-            taskEventSourceDigest: makeTaskEventSourceDigest(
+            taskEventSourceDigest: taskEventSourceDigest(
                 dataset.taskEvents
             )
         )
     }
 
-    private static func makeTaskEventSourceDigest(
+    static func taskEventSourceDigest(
         _ events: [TaskEvent]
     ) -> String {
         let ordered = events.sorted {

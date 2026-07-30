@@ -284,7 +284,29 @@ public struct STPDResultManifest: Codable, Hashable, Sendable {
     }
 }
 
+/// Controls which existing parent directories may receive a result package.
+public enum STPDResultPackageParentDirectoryPolicy: Sendable, Hashable {
+    /// Require the parent to be owned by the current user, not group/world writable, and free of
+    /// extended ACL entries that grant another principal authority over published packages. Deny-only
+    /// ACLs commonly installed by macOS on user folders are permitted.
+    /// This is the default for fail-closed local scientific-result publication.
+    case privateCurrentUserOnly
+
+    /// Permit an existing group/world-writable or differently-owned parent directory.
+    ///
+    /// Descriptor-relative staging, private package permissions, removal of inherited ACLs from newly
+    /// created package entries, and no-replace publication still protect the write transaction itself.
+    /// A collaborator or administrator with write authority
+    /// over the parent may move, replace, or delete the completed directory after return, so this
+    /// policy does not claim persistent authenticity in a shared directory. Use only when that
+    /// collaboration model is intentional and independently governed.
+    case allowShared
+}
+
 public enum STPDResultPackageWriter {
+    /// These checkpoints mean the writer completed `fsync` (with EINTR retry) for the relevant file or
+    /// directory descriptors. They describe kernel/filesystem synchronization order, not an absolute
+    /// physical-media durability guarantee against storage hardware that falsely acknowledges flushes.
     enum Checkpoint: Hashable, Sendable {
         case stagedContentsDurable
         case stagingEntryDurable
@@ -297,29 +319,52 @@ public enum STPDResultPackageWriter {
     ///
     /// The destination must not already exist. This prevents a partial or ambiguous overwrite from
     /// replacing a prior scientific result package. Callers should use a run-specific destination.
+    /// The default parent policy rejects shared directories; callers must opt in explicitly when a
+    /// laboratory-managed shared parent is required.
+    @_disfavoredOverload
     public static func write(
         _ package: STPDResultPackage,
         to destinationURL: URL,
-        fileManager: FileManager = .default
+        parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy =
+            .privateCurrentUserOnly
     ) throws {
         try write(
             package,
             to: destinationURL,
-            fileManager: fileManager,
+            parentDirectoryPolicy: parentDirectoryPolicy,
             checkpoint: { _ in }
+        )
+    }
+
+    /// Source-compatible entry point retained for callers compiled against the B2 writer API.
+    ///
+    /// Descriptor-relative I/O is intentionally authoritative; the supplied `FileManager` is not used
+    /// to create, enumerate, replace, or publish package entries.
+    @available(*, deprecated, message: "Use write(_:to:parentDirectoryPolicy:) instead.")
+    public static func write(
+        _ package: STPDResultPackage,
+        to destinationURL: URL,
+        fileManager: FileManager
+    ) throws {
+        _ = fileManager
+        try write(
+            package,
+            to: destinationURL,
+            parentDirectoryPolicy: .privateCurrentUserOnly
         )
     }
 
     static func writeForTesting(
         _ package: STPDResultPackage,
         to destinationURL: URL,
-        fileManager: FileManager = .default,
+        parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy =
+            .privateCurrentUserOnly,
         checkpoint: (Checkpoint) throws -> Void
     ) throws {
         try write(
             package,
             to: destinationURL,
-            fileManager: fileManager,
+            parentDirectoryPolicy: parentDirectoryPolicy,
             checkpoint: checkpoint
         )
     }
@@ -327,122 +372,456 @@ public enum STPDResultPackageWriter {
     private static func write(
         _ package: STPDResultPackage,
         to destinationURL: URL,
-        fileManager: FileManager,
+        parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy,
         checkpoint: (Checkpoint) throws -> Void
     ) throws {
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            throw STPDResultPackageError.destinationAlreadyExists(destinationURL.path)
-        }
-
         let parent = destinationURL.deletingLastPathComponent()
-        try requireExistingDirectory(parent)
-        let temporaryURL = parent.appendingPathComponent(
-            ".\(destinationURL.lastPathComponent).tmp.\(UUID().uuidString.lowercased())",
-            isDirectory: true
+        let destinationName = destinationURL.lastPathComponent
+        try requireBareEntryName(destinationName, path: destinationURL.path)
+
+        let parentFD = open(
+            parent.path,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
         )
+        guard parentFD >= 0 else {
+            let code = errno
+            throw STPDResultPackageError.invalidInput(
+                "result-package parent must already exist as a real directory: "
+                    + "\(parent.path) (\(String(cString: strerror(code))))"
+            )
+        }
+        defer { close(parentFD) }
+        try requireTrustedParent(
+            parentFD: parentFD,
+            path: parent.path,
+            policy: parentDirectoryPolicy
+        )
+        try requireDestinationAbsent(
+            parentFD: parentFD,
+            destinationName: destinationName,
+            destinationPath: destinationURL.path
+        )
+
+        let workspaceName =
+            ".\(destinationName).tmp.\(UUID().uuidString.lowercased())"
+        guard mkdirat(parentFD, workspaceName, mode_t(S_IRWXU)) == 0 else {
+            throw posixError(path: parent.appendingPathComponent(workspaceName).path)
+        }
+        let workspaceFD = openat(
+            parentFD,
+            workspaceName,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard workspaceFD >= 0 else {
+            let openingError = posixError(
+                path: parent.appendingPathComponent(workspaceName).path
+            )
+            _ = unlinkat(parentFD, workspaceName, AT_REMOVEDIR)
+            throw openingError
+        }
+        defer { close(workspaceFD) }
+        do {
+            try removeExtendedACL(
+                descriptor: workspaceFD,
+                path: parent.appendingPathComponent(workspaceName).path
+            )
+        } catch {
+            _ = unlinkat(parentFD, workspaceName, AT_REMOVEDIR)
+            throw error
+        }
+        let workspaceIdentity = try descriptorIdentity(
+            workspaceFD,
+            path: parent.appendingPathComponent(workspaceName).path
+        )
+
+        let payloadName = "payload"
+        guard mkdirat(workspaceFD, payloadName, mode_t(S_IRWXU)) == 0 else {
+            let error = posixError(path: payloadName)
+            _ = unlinkat(parentFD, workspaceName, AT_REMOVEDIR)
+            throw error
+        }
+        let payloadFD = openat(
+            workspaceFD,
+            payloadName,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard payloadFD >= 0 else {
+            let error = posixError(path: payloadName)
+            _ = unlinkat(workspaceFD, payloadName, AT_REMOVEDIR)
+            _ = unlinkat(parentFD, workspaceName, AT_REMOVEDIR)
+            throw error
+        }
+        defer { close(payloadFD) }
+        do {
+            try removeExtendedACL(
+                descriptor: payloadFD,
+                path: parent.appendingPathComponent(workspaceName)
+                    .appendingPathComponent(payloadName).path
+            )
+        } catch {
+            _ = unlinkat(workspaceFD, payloadName, AT_REMOVEDIR)
+            _ = unlinkat(parentFD, workspaceName, AT_REMOVEDIR)
+            throw error
+        }
+        let payloadIdentity = try descriptorIdentity(
+            payloadFD,
+            path: payloadName
+        )
+
         var published = false
+        var stagedNames: [String] = []
 
         do {
-            try fileManager.createDirectory(at: temporaryURL, withIntermediateDirectories: false)
             for table in STPDResultTable.allCases {
                 guard let data = package.tables[table] else {
                     throw STPDResultPackageError.missingTable(table.rawValue)
                 }
-                let tableURL = temporaryURL.appendingPathComponent(table.rawValue)
-                try data.csvData.write(
-                    to: tableURL,
-                    options: .atomic
+                try writeNewRegularFile(
+                    data.csvData,
+                    name: table.rawValue,
+                    directoryFD: payloadFD,
+                    stagedNames: &stagedNames
                 )
-                try syncRegularFile(tableURL)
             }
-            let manifestURL = temporaryURL.appendingPathComponent(
-                STPDResultSchema.manifestFileName
+            try writeNewRegularFile(
+                package.manifest.encodedData(),
+                name: STPDResultSchema.manifestFileName,
+                directoryFD: payloadFD,
+                stagedNames: &stagedNames
             )
-            try package.manifest.encodedData().write(
-                to: manifestURL,
-                options: .atomic
+            try syncDescriptor(
+                payloadFD,
+                path: parent.appendingPathComponent(workspaceName)
+                    .appendingPathComponent(payloadName).path
             )
-            try syncRegularFile(manifestURL)
-            try syncDirectory(temporaryURL)
             try checkpoint(.stagedContentsDurable)
-            try syncDirectory(parent)
+            try syncDescriptor(
+                workspaceFD,
+                path: parent.appendingPathComponent(workspaceName).path
+            )
+            try syncDescriptor(parentFD, path: parent.path)
             try checkpoint(.stagingEntryDurable)
             try checkpoint(.willPublish)
-            try renameWithoutReplacing(temporaryURL, to: destinationURL)
+            try requireOpenedEntryUnchanged(
+                directoryFD: workspaceFD,
+                name: payloadName,
+                expected: payloadIdentity,
+                path: parent.appendingPathComponent(workspaceName)
+                    .appendingPathComponent(payloadName).path
+            )
+            try renameWithoutReplacing(
+                sourceDirectoryFD: workspaceFD,
+                sourceName: payloadName,
+                destinationDirectoryFD: parentFD,
+                destinationName: destinationName,
+                destinationPath: destinationURL.path
+            )
             published = true
+            removeOpenedDirectoryEntryIfUnchanged(
+                directoryFD: parentFD,
+                name: workspaceName,
+                expected: workspaceIdentity
+            )
             try checkpoint(.published)
-            try syncDirectory(parent)
+            try syncDescriptor(parentFD, path: parent.path)
             try checkpoint(.publicationDurable)
         } catch {
-            if !published, fileManager.fileExists(atPath: temporaryURL.path) {
-                try? fileManager.removeItem(at: temporaryURL)
-                try? syncDirectory(parent)
+            if !published {
+                for name in stagedNames.reversed() {
+                    _ = unlinkat(payloadFD, name, 0)
+                }
+                removeOpenedDirectoryEntryIfUnchanged(
+                    directoryFD: workspaceFD,
+                    name: payloadName,
+                    expected: payloadIdentity
+                )
+                removeOpenedDirectoryEntryIfUnchanged(
+                    directoryFD: parentFD,
+                    name: workspaceName,
+                    expected: workspaceIdentity
+                )
+                try? syncDescriptor(parentFD, path: parent.path)
             }
             throw error
         }
     }
 
-    private static func syncRegularFile(_ url: URL) throws {
-        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            throw posixError(path: url.path)
+    private static func requireBareEntryName(_ name: String, path: String) throws {
+        guard !name.isEmpty,
+              name != ".",
+              name != "..",
+              !name.contains("/"),
+              !name.contains("\0") else {
+            throw STPDResultPackageError.invalidInput(
+                "result-package destination must have a legal bare name: \(path)"
+            )
         }
-        defer { close(descriptor) }
+    }
+
+    private static func requireDestinationAbsent(
+        parentFD: Int32,
+        destinationName: String,
+        destinationPath: String
+    ) throws {
+        var metadata = stat()
+        if fstatat(parentFD, destinationName, &metadata, AT_SYMLINK_NOFOLLOW) == 0 {
+            throw STPDResultPackageError.destinationAlreadyExists(destinationPath)
+        }
+        guard errno == ENOENT else {
+            throw posixError(path: destinationPath)
+        }
+    }
+
+    private struct FileIdentity {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    private static func descriptorIdentity(
+        _ descriptor: Int32,
+        path: String
+    ) throws -> FileIdentity {
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0 else {
-            throw posixError(path: url.path)
+            throw posixError(path: path)
         }
-        guard metadata.st_mode & S_IFMT == S_IFREG else {
+        return FileIdentity(device: metadata.st_dev, inode: metadata.st_ino)
+    }
+
+    private static func requireOpenedEntryUnchanged(
+        directoryFD: Int32,
+        name: String,
+        expected: FileIdentity,
+        path: String
+    ) throws {
+        var metadata = stat()
+        guard fstatat(directoryFD, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFDIR,
+              metadata.st_dev == expected.device,
+              metadata.st_ino == expected.inode else {
             throw STPDResultPackageError.invalidInput(
-                "staged result-package entry is not a regular file: \(url.path)"
+                "result-package staging entry changed before publication: \(path)"
             )
         }
-        guard fsync(descriptor) == 0 else {
-            throw posixError(path: url.path)
-        }
     }
 
-    private static func syncDirectory(_ url: URL) throws {
-        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            throw posixError(path: url.path)
+    private static func removeOpenedDirectoryEntryIfUnchanged(
+        directoryFD: Int32,
+        name: String,
+        expected: FileIdentity
+    ) {
+        var metadata = stat()
+        guard fstatat(directoryFD, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFDIR,
+              metadata.st_dev == expected.device,
+              metadata.st_ino == expected.inode else {
+            return
         }
-        defer { close(descriptor) }
-        guard fsync(descriptor) == 0 else {
-            throw posixError(path: url.path)
-        }
+        _ = unlinkat(directoryFD, name, AT_REMOVEDIR)
     }
 
-    private static func requireExistingDirectory(_ url: URL) throws {
-        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            let code = errno
+    private static func requireTrustedParent(
+        parentFD: Int32,
+        path: String,
+        policy: STPDResultPackageParentDirectoryPolicy
+    ) throws {
+        var metadata = stat()
+        guard fstat(parentFD, &metadata) == 0 else {
+            throw posixError(path: path)
+        }
+        guard policy == .privateCurrentUserOnly else {
+            return
+        }
+        let unsafeWriteBits = mode_t(S_IWGRP | S_IWOTH)
+        guard metadata.st_uid == geteuid(),
+              metadata.st_mode & unsafeWriteBits == 0 else {
             throw STPDResultPackageError.invalidInput(
-                "result-package parent must already exist as a real directory: "
-                    + "\(url.path) (\(String(cString: strerror(code))))"
+                "result-package parent must be owned by the current user and not group/world writable: "
+                    + path
             )
         }
-        close(descriptor)
+        try requireNoGrantingExtendedACL(parentFD: parentFD, path: path)
     }
 
-    private static func renameWithoutReplacing(_ source: URL, to destination: URL) throws {
-        let result = source.path.withCString { sourcePath in
-            destination.path.withCString { destinationPath in
-                renameatx_np(
-                    AT_FDCWD,
-                    sourcePath,
-                    AT_FDCWD,
-                    destinationPath,
-                    UInt32(RENAME_EXCL)
+    private static func requireNoGrantingExtendedACL(
+        parentFD: Int32,
+        path: String
+    ) throws {
+        errno = 0
+        guard let acl = acl_get_fd_np(parentFD, ACL_TYPE_EXTENDED) else {
+            if errno == ENOENT {
+                return
+            }
+            throw STPDResultPackageError.invalidInput(
+                "unable to inspect result-package parent extended ACL: \(path)"
+            )
+        }
+        defer {
+            _ = acl_free(UnsafeMutableRawPointer(acl))
+        }
+
+        var entryID = ACL_FIRST_ENTRY
+        while true {
+            var entry: acl_entry_t?
+            errno = 0
+            let result = acl_get_entry(
+                acl,
+                Int32(entryID.rawValue),
+                &entry
+            )
+            if result == -1,
+               errno == EINVAL,
+               entryID == ACL_NEXT_ENTRY {
+                break
+            }
+            guard result == 0, let entry else {
+                throw STPDResultPackageError.invalidInput(
+                    "unable to inspect result-package parent extended ACL entries: \(path)"
                 )
             }
+            var tag = ACL_UNDEFINED_TAG
+            guard acl_get_tag_type(entry, &tag) == 0 else {
+                throw STPDResultPackageError.invalidInput(
+                    "unable to inspect result-package parent extended ACL tag: \(path)"
+                )
+            }
+            guard tag != ACL_EXTENDED_ALLOW else {
+                throw STPDResultPackageError.invalidInput(
+                    "result-package parent extended ACL grants authority under privateCurrentUserOnly: "
+                        + path
+                )
+            }
+            guard tag == ACL_EXTENDED_DENY else {
+                throw STPDResultPackageError.invalidInput(
+                    "result-package parent carries an unsupported ACL entry under "
+                        + "privateCurrentUserOnly: \(path)"
+                )
+            }
+            entryID = ACL_NEXT_ENTRY
         }
+    }
+
+    /// Removes any ACL inherited by a newly-created staging entry. Mode bits remain the authoritative
+    /// package permission surface (0700 directories, 0600 files), including under `allowShared`.
+    private static func removeExtendedACL(
+        descriptor: Int32,
+        path: String
+    ) throws {
+        guard let emptyACL = acl_init(0) else {
+            throw STPDResultPackageError.invalidInput(
+                "unable to allocate empty ACL for result-package entry: \(path)"
+            )
+        }
+        defer {
+            _ = acl_free(UnsafeMutableRawPointer(emptyACL))
+        }
+        guard acl_set_fd_np(descriptor, emptyACL, ACL_TYPE_EXTENDED) == 0 else {
+            throw STPDResultPackageError.invalidInput(
+                "unable to remove inherited ACL from result-package entry: \(path)"
+            )
+        }
+    }
+
+    private static func writeNewRegularFile(
+        _ data: Data,
+        name: String,
+        directoryFD: Int32,
+        stagedNames: inout [String]
+    ) throws {
+        let descriptor = openat(
+            directoryFD,
+            name,
+            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+            mode_t(S_IRUSR | S_IWUSR)
+        )
+        guard descriptor >= 0 else {
+            throw posixError(path: name)
+        }
+        stagedNames.append(name)
+        defer { close(descriptor) }
+        try removeExtendedACL(descriptor: descriptor, path: name)
+
+        try data.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { return }
+            var offset = 0
+            while offset < bytes.count {
+                let count = Darwin.write(
+                    descriptor,
+                    base.advanced(by: offset),
+                    bytes.count - offset
+                )
+                if count < 0 {
+                    if errno == EINTR {
+                        continue
+                    }
+                    throw posixError(path: name)
+                }
+                guard count > 0 else {
+                    throw STPDResultPackageError.invalidInput(
+                        "zero-byte write while staging result-package entry: \(name)"
+                    )
+                }
+                offset += count
+            }
+        }
+        try syncDescriptor(descriptor, path: name)
+    }
+
+    private static func syncDescriptor(_ descriptor: Int32, path: String) throws {
+        while fsync(descriptor) != 0 {
+            if errno == EINTR {
+                continue
+            }
+            throw posixError(path: path)
+        }
+    }
+
+    private static func renameWithoutReplacing(
+        sourceDirectoryFD: Int32,
+        sourceName: String,
+        destinationDirectoryFD: Int32,
+        destinationName: String,
+        destinationPath: String
+    ) throws {
+        let result = renameatx_np(
+            sourceDirectoryFD,
+            sourceName,
+            destinationDirectoryFD,
+            destinationName,
+            publicationRenameFlags
+        )
         guard result == 0 else {
             if errno == EEXIST {
-                throw STPDResultPackageError.destinationAlreadyExists(destination.path)
+                throw STPDResultPackageError.destinationAlreadyExists(destinationPath)
             }
-            throw posixError(path: "\(source.path) -> \(destination.path)")
+            throw posixError(path: "\(sourceName) -> \(destinationPath)")
         }
+    }
+
+    /// `RENAME_RESOLVE_BENEATH` was added to the Darwin SDK after this package's
+    /// macOS 14 deployment baseline. Keep the ABI bit local so older SDKs compile,
+    /// and request it only on systems that implement it.
+    private static let renameResolveBeneathFlag: UInt32 = 0x20
+
+    static func publicationRenameFlagsForTesting(
+        resolveBeneathAvailable: Bool
+    ) -> UInt32 {
+        var flags = UInt32(RENAME_EXCL | RENAME_NOFOLLOW_ANY)
+        if resolveBeneathAvailable {
+            flags |= renameResolveBeneathFlag
+        }
+        return flags
+    }
+
+    private static var publicationRenameFlags: UInt32 {
+        if #available(macOS 26.0, *) {
+            return publicationRenameFlagsForTesting(
+                resolveBeneathAvailable: true
+            )
+        }
+        return publicationRenameFlagsForTesting(
+            resolveBeneathAvailable: false
+        )
     }
 
     private static func posixError(path: String) -> NSError {
