@@ -2078,8 +2078,15 @@ public enum STPDResultPackageBuilder {
             autoAnnotations: automaticEvents,
             projectionsByTrain: [:]
         )
+        let normalizedCandidates = candidatesWithFinalSpanCV2(
+            input.run.candidates,
+            dataset: input.dataset,
+            bandMinimumValidISISec: input.run.bandSettings.minValidISISec,
+            artifactThresholdSec:
+                input.run.qualitySettings.artifactThresholdSec
+        )
         let candidates = try candidateRecords(
-            candidates: input.run.candidates,
+            candidates: normalizedCandidates,
             datasetDigest: identity.datasetDigest,
             dataset: input.dataset
         )
@@ -2288,7 +2295,8 @@ public enum STPDResultPackageBuilder {
             expectedManualAnnotations: input.manualAnnotations,
             expectedManualAnnotationImportApprovals:
                 input.manualAnnotationImportApprovals,
-            expectedCandidateDiagnostics: input.candidateDiagnostics
+            expectedCandidateDiagnostics: input.candidateDiagnostics,
+            precomputedSealedCandidates: candidates
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
             identity: identity,
@@ -2310,7 +2318,8 @@ public enum STPDResultPackageBuilder {
             expectedManualAnnotations: input.manualAnnotations,
             expectedManualAnnotationImportApprovals:
                 input.manualAnnotationImportApprovals,
-            expectedCandidateDiagnostics: input.candidateDiagnostics
+            expectedCandidateDiagnostics: input.candidateDiagnostics,
+            precomputedSealedCandidates: candidates
         )
         tables[.resultConsistencyCheck] = try consistencyTable(
             identity: identity,
@@ -2331,7 +2340,8 @@ public enum STPDResultPackageBuilder {
             expectedManualAnnotations: input.manualAnnotations,
             expectedManualAnnotationImportApprovals:
                 input.manualAnnotationImportApprovals,
-            expectedCandidateDiagnostics: input.candidateDiagnostics
+            expectedCandidateDiagnostics: input.candidateDiagnostics,
+            precomputedSealedCandidates: candidates
         )
         // The complete package must contain exactly the tables its declared schema version requires
         // (v4 includes Data_quality_QC and the manual-import approval ledger). Checked here, after
@@ -2379,7 +2389,7 @@ public enum STPDResultPackageBuilder {
     }
 }
 
-private struct STPDCandidateRecord {
+struct STPDCandidateRecord {
     let candidate: ClassicAnchorCandidate
     let uid: String
 }
@@ -3070,7 +3080,74 @@ private extension STPDResultPackageBuilder {
             denialTerms.contains { field.contains($0) }
         }
     }
+}
 
+extension STPDResultPackageBuilder {
+    /// Completes a missing ordered-span metric before deterministic candidate IDs are made.
+    /// Detector output is not mutated; the returned copies are scoped to result packaging.
+    /// The effective floor is the stricter of the detector-band and exported-QC floors, so an
+    /// ISI classified as an artifact by the result package can never contribute to CV2.
+    static func candidatesWithFinalSpanCV2(
+        _ candidates: [ClassicAnchorCandidate],
+        dataset: SpikeDataset,
+        bandMinimumValidISISec: Double,
+        artifactThresholdSec: Double
+    ) -> [ClassicAnchorCandidate] {
+        guard bandMinimumValidISISec.isFinite,
+              bandMinimumValidISISec >= 0,
+              artifactThresholdSec.isFinite,
+              artifactThresholdSec >= 0 else {
+            return candidates
+        }
+        let minimumValidISISec = max(
+            bandMinimumValidISISec,
+            artifactThresholdSec
+        )
+        let trainsByID = Dictionary(
+            uniqueKeysWithValues: dataset.trains.map { ($0.id, $0) }
+        )
+        let tolerance = max(1e-12, abs(minimumValidISISec) * 1e-6)
+
+        return candidates.map { candidate in
+            guard candidate.cv2 == nil else {
+                return candidate
+            }
+            do {
+                try validateCandidate(candidate, trainsByID: trainsByID)
+            } catch {
+                return candidate
+            }
+            guard candidate.startISIIndex >= 1,
+                  candidate.endISIIndex >= candidate.startISIIndex,
+                  candidate.nISI == candidate.endISIIndex - candidate.startISIIndex + 1,
+                  let train = trainsByID[candidate.trainID],
+                  candidate.endISIIndex < train.isiSec.count else {
+                return candidate
+            }
+
+            var orderedISIs: [Double] = []
+            orderedISIs.reserveCapacity(candidate.nISI)
+            for index in candidate.startISIIndex...candidate.endISIIndex {
+                guard let value = train.isiSec[index],
+                      value.isFinite,
+                      value >= minimumValidISISec - tolerance else {
+                    return candidate
+                }
+                orderedISIs.append(value)
+            }
+            guard orderedISIs.count == candidate.nISI,
+                  let cv2 = STPDStatistics.coefficientOfVariation2(orderedISIs) else {
+                return candidate
+            }
+
+            var normalized = candidate
+            normalized.cv2 = cv2
+            return normalized
+        }
+    }
+}
+
+private extension STPDResultPackageBuilder {
     static func candidateRecords(
         candidates: [ClassicAnchorCandidate],
         datasetDigest: String,
@@ -8078,7 +8155,8 @@ enum STPDResultPackageValidator {
         expectedManualAnnotations: [ManualAnnotation]? = nil,
         expectedManualAnnotationImportApprovals:
             [ManualAnnotationCSVApprovalReceipt]? = nil,
-        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]? = nil
+        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]? = nil,
+        precomputedSealedCandidates: [STPDCandidateRecord]? = nil
     ) throws -> [STPDConsistencyCheck] {
         guard (expectedDataset == nil) == (expectedQualitySettings == nil) else {
             throw STPDResultPackageError.invalidInput(
@@ -8105,6 +8183,12 @@ enum STPDResultPackageValidator {
         guard expectedCandidateDiagnostics == nil || expectedRun != nil else {
             throw STPDResultPackageError.invalidInput(
                 "sealed candidate-diagnostic validation requires the detector run"
+            )
+        }
+        guard precomputedSealedCandidates == nil
+                || (expectedRun != nil && expectedDataset != nil) else {
+            throw STPDResultPackageError.invalidInput(
+                "precomputed sealed candidates require the detector run and dataset"
             )
         }
         let tableSet = Set(tables.keys)
@@ -8144,6 +8228,7 @@ enum STPDResultPackageValidator {
         }
         checks.append(pass("source_mode"))
 
+        var sealedCandidatesForEventAuthority: [STPDCandidateRecord]?
         if let expectedRun, let expectedDataset {
             try STPDResultPackageBuilder.validateDeclaredIdentity(
                 identity,
@@ -8164,12 +8249,37 @@ enum STPDResultPackageValidator {
                     dataset: expectedDataset
                 )
             )
-            let sealedCandidates = try STPDResultPackageBuilder
-                .candidateRecords(
-                    candidates: expectedRun.candidates,
-                    datasetDigest: identity.datasetDigest,
-                    dataset: expectedDataset
+            let normalizedExpectedCandidates = STPDResultPackageBuilder
+                .candidatesWithFinalSpanCV2(
+                    expectedRun.candidates,
+                    dataset: expectedDataset,
+                    bandMinimumValidISISec:
+                        expectedRun.bandSettings.minValidISISec,
+                    artifactThresholdSec:
+                        expectedRun.qualitySettings.artifactThresholdSec
                 )
+            let sealedCandidates: [STPDCandidateRecord]
+            if let precomputedSealedCandidates {
+                let suppliedCandidates = precomputedSealedCandidates
+                    .map(\.candidate)
+                    .sorted { $0.id < $1.id }
+                let expectedCandidates = normalizedExpectedCandidates
+                    .sorted { $0.id < $1.id }
+                guard suppliedCandidates == expectedCandidates else {
+                    throw STPDResultPackageError.invalidInput(
+                        "precomputed sealed candidates do not match the detector run"
+                    )
+                }
+                sealedCandidates = precomputedSealedCandidates
+            } else {
+                sealedCandidates = try STPDResultPackageBuilder
+                    .candidateRecords(
+                        candidates: normalizedExpectedCandidates,
+                        datasetDigest: identity.datasetDigest,
+                        dataset: expectedDataset
+                    )
+            }
+            sealedCandidatesForEventAuthority = sealedCandidates
             let sealedPublicCandidates = sealedCandidates.filter {
                 STPDResultPackageBuilder.isPublicCandidate($0.candidate)
             }
@@ -8521,6 +8631,11 @@ enum STPDResultPackageValidator {
             )
         }
         if let expectedRun, let expectedDataset {
+            guard let sealedCandidatesForEventAuthority else {
+                throw STPDResultPackageError.invalidInput(
+                    "sealed candidate authority was not materialized"
+                )
+            }
             try validateEventSourceAuthority(
                 identity: identity,
                 eventTable: eventTable,
@@ -8540,7 +8655,8 @@ enum STPDResultPackageValidator {
                 expectedManualAnnotations: expectedManualAnnotations,
                 validatedManualImportApprovals:
                     validatedManualImportApprovals,
-                expectedCandidateDiagnostics: expectedCandidateDiagnostics
+                expectedCandidateDiagnostics: expectedCandidateDiagnostics,
+                sealedCandidates: sealedCandidatesForEventAuthority
             )
             checks.append(pass("event_source_authority"))
         }
@@ -9087,20 +9203,16 @@ enum STPDResultPackageValidator {
         expectedManualAnnotations: [ManualAnnotation]?,
         validatedManualImportApprovals:
             [ManualAnnotationCSVApprovalReceipt],
-        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]?
+        expectedCandidateDiagnostics: [STPDCandidateDiagnosticInput]?,
+        sealedCandidates: [STPDCandidateRecord]
     ) throws {
-        let candidates = try STPDResultPackageBuilder.candidateRecords(
-            candidates: run.candidates,
-            datasetDigest: identity.datasetDigest,
-            dataset: dataset
-        )
         let candidateUIDBySourceID = Dictionary(
-            uniqueKeysWithValues: candidates.map {
+            uniqueKeysWithValues: sealedCandidates.map {
                 ($0.candidate.id, $0.uid)
             }
         )
         let candidateBySourceID = Dictionary(
-            uniqueKeysWithValues: candidates.map {
+            uniqueKeysWithValues: sealedCandidates.map {
                 ($0.candidate.id, $0.candidate)
             }
         )
@@ -9181,7 +9293,7 @@ enum STPDResultPackageValidator {
 
         let expectedDiagnostics = try STPDResultPackageBuilder.diagnosticsTable(
             identity: identity,
-            candidates: candidates,
+            candidates: sealedCandidates,
             events: expectedEvents,
             supplied: expectedCandidateDiagnostics ?? [],
             candidateUIDBySourceID: candidateUIDBySourceID

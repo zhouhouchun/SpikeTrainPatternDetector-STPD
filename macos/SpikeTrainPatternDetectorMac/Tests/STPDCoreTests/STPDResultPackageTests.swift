@@ -9395,18 +9395,20 @@ private func dataQualityQCTampered(
     // v4 intentionally extends Manual_annotations with authority_source + import_approval_id and
     // adds the approval ledger. Every unaffected historical non-metadata table remains byte-identical
     // to its frozen v2 baseline.
+    // Candidate-linked hashes include package-time completion of missing ordered-span CV2 before
+    // deterministic candidate UID derivation; detector selection and geometry remain unchanged.
     let historicalHashes: [STPDResultTable: String] = [
         .parametersReport: "1fdef9b34fdfde5ca551aedb9a6216b94a76b3ff9e5a4202a59675d195cfa53e",
         .resolvedParameters: "99f3aca8e4033cb23c57826866298d76a8b36109cd43d1634d4c2039322d172b",
-        .candidateLedger: "ca00c3e28e95b24112aae86fe1528fcfbb77cfe987f1842a9fcecf8266de2449",
-        .candidateFeatures: "880f0f3cbc604b769ba6423a4a0213cba060154c302139465bd55446c17ac40a",
-        .finalDecisions: "c35d4deb093ccd1e2551b3bf21c976c25545a35651967258a6162e73c03aca45",
-        .candidateLedgerDiagnostic: "f7591ab716cffa35651aa9d14e5079e459597cbc49109f024af451176f5de6f9",
-        .candidateFeaturesDiagnostic: "bb6b5ac1ac23bf2a08177f0cefe147101917cd79adb494b218df0dec83679565",
-        .finalDecisionsDiagnostic: "521034082ab4b42944d7f52ab8a10e81f70f29619ccc677d7bb2d20f49ab8013",
-        .eventsFinal: "26f82209b6c40a7777662571ac2a1f250ba981a318156df1ee01c8008608b4be",
-        .isiLabelsFinal: "f642731f8722bcd97fccccd72fee8c26dc1d34a2be1ae0712adce43537727384",
-        .candidateDiagnosticAudit: "647f4ce8f00ff2da27c8b054b639c8fabbf0808b1bc6de2b108119ddce1a78d0",
+        .candidateLedger: "50c8c5f2f5a8bdef0adfba3dba6b042f4e5fe3ec7a48ac6a155371f806a6de13",
+        .candidateFeatures: "c41d580f171dabd4979bebc721f57be53f65bfaa613d939a0f1457f57e942aea",
+        .finalDecisions: "4fa4967dbf19062a1f7a0223ee622c9a715804750d4621001653d966125cb924",
+        .candidateLedgerDiagnostic: "2ca98522b4fd5b5eb63939ac244bca44f2817c111bd308e37dc4c327d033be32",
+        .candidateFeaturesDiagnostic: "96baa00893be9ebe13b1a6e595ca12836df78d446e66cd4e3dff2e1353fe7afa",
+        .finalDecisionsDiagnostic: "38ebc641d8490d01a3d0a96705ae708b68146ad8eb536ea03296dbee0da5ef2e",
+        .eventsFinal: "9291a1f3f4f7c29ad8eccb7ce4d0df9885249c2e23f2b54415ccbcbd8803ef2d",
+        .isiLabelsFinal: "4d755475ee5149a12df88e5212438cc3562ea4243aa15e5601d4ccea136d7dfb",
+        .candidateDiagnosticAudit: "7b89094eed171bb742f2834bb2fabce149a0eaae61f6c1876259d8dd1e54aef3",
         .resultConsistencyCheck: "8cc44940f534e9180783d91464ef303b0a98b704f91114d44b954824621a3dba",
         .manualAnnotations: "7f9599665876bcfbb2b0b65ca0e9a6192b8d2631f087375305cee89edb104420",
         .reviewStatus: "c2b068df2ad0734f1363868ba3c74450f97cd491069d2eb291b05cb0353f37fa",
