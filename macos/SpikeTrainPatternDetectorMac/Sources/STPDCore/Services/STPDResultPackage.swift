@@ -2303,28 +2303,8 @@ public enum STPDResultPackageBuilder {
             checks: checks
         )
 
-        let completeChecks = try STPDResultPackageValidator.validate(
-            identity: identity,
-            sourceMode: input.sourceMode,
-            tables: tables,
-            expectedISICount: input.dataset.trains.reduce(0) { $0 + max(0, $1.spikeCount - 1) },
-            expectedTaskEvents: input.dataset.taskEvents,
-            expectedDatasetMetadata: input.run.datasetMetadataSnapshot,
-            expectedTrainIDs: Set(input.dataset.trains.map(\.id)),
-            expectedDataset: input.dataset,
-            expectedQualitySettings: input.run.qualitySettings,
-            expectedRun: input.run,
-            expectedCandidateReviews: input.candidateReviews,
-            expectedManualAnnotations: input.manualAnnotations,
-            expectedManualAnnotationImportApprovals:
-                input.manualAnnotationImportApprovals,
-            expectedCandidateDiagnostics: input.candidateDiagnostics,
-            precomputedSealedCandidates: candidates
-        )
-        tables[.resultConsistencyCheck] = try consistencyTable(
-            identity: identity,
-            checks: completeChecks
-        )
+        // Validate the complete table set once. This also verifies that the consistency table
+        // generated above exactly matches the checks returned by the pre-consistency pass.
         _ = try STPDResultPackageValidator.validate(
             identity: identity,
             sourceMode: input.sourceMode,
