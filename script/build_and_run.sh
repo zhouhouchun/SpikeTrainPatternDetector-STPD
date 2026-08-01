@@ -25,6 +25,7 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SAMPLE_CSV="$ROOT_DIR/inst/extdata/Grechishnikova_STN_2017_subset.csv"
+ICON_SOURCE="$APP_DIR/Resources/AppIcon.icns"
 GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 LOCK_FILE="$DIST_DIR/.build_and_run.lock"
 BUNDLE_TRANSACTION_HELPER="$ROOT_DIR/script/bundle_transaction.py"
@@ -89,7 +90,7 @@ PY
 }
 
 source_digest() {
-  python3 - "$APP_DIR" "$SAMPLE_CSV" <<'PY'
+  python3 - "$APP_DIR" "$SAMPLE_CSV" "$ICON_SOURCE" <<'PY'
 import hashlib
 import os
 import pathlib
@@ -98,6 +99,7 @@ import sys
 
 root = pathlib.Path(sys.argv[1])
 sample_csv = pathlib.Path(sys.argv[2])
+icon_source = pathlib.Path(sys.argv[3])
 
 def require_real_path(path, *, directory):
     try:
@@ -148,6 +150,10 @@ if os.path.lexists(sample_csv):
         raise SystemExit(f"sample is not a regular file: {sample_csv}")
     paths.append(sample_csv)
 
+if os.path.lexists(icon_source):
+    require_real_path(icon_source, directory=False)
+    paths.append(icon_source)
+
 digest = hashlib.sha256()
 for path in sorted(paths, key=lambda item: item.as_posix()):
     if path == sample_csv:
@@ -177,6 +183,7 @@ validate_managed_path "$APP_DIR" >/dev/null
 validate_managed_path "$APP_DIR/Package.swift" >/dev/null
 validate_managed_path "$APP_DIR/Sources" >/dev/null
 validate_managed_path "$SAMPLE_CSV" >/dev/null
+validate_managed_path "$ICON_SOURCE" >/dev/null
 validate_managed_path "$APP_BUNDLE" >/dev/null
 validate_managed_path "$LOCK_FILE" >/dev/null
 validate_managed_path "$BUNDLE_TRANSACTION_HELPER" >/dev/null
@@ -615,7 +622,25 @@ if [[ -f "$SAMPLE_CSV" ]]; then
   cp "$SAMPLE_CSV" "$STAGED_APP_RESOURCES/"
 fi
 
-cat >"$STAGED_INFO_PLIST" <<PLIST
+APP_ICON_PRESENT=false
+if [[ -e "$ICON_SOURCE" || -L "$ICON_SOURCE" ]]; then
+  validate_managed_path "$ICON_SOURCE" >/dev/null
+  if [[ ! -f "$ICON_SOURCE" || -L "$ICON_SOURCE" ]]; then
+    echo "app icon is not a real file: $ICON_SOURCE" >&2
+    exit 1
+  fi
+  STAGED_APP_ICON="$STAGED_APP_RESOURCES/AppIcon.icns"
+  validate_managed_path "$STAGED_APP_ICON" >/dev/null
+  cp "$ICON_SOURCE" "$STAGED_APP_ICON"
+  if ! cmp -s "$ICON_SOURCE" "$STAGED_APP_ICON"; then
+    echo "packaged app icon does not match its source: $ICON_SOURCE" >&2
+    exit 1
+  fi
+  APP_ICON_PRESENT=true
+fi
+
+{
+cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -628,6 +653,14 @@ cat >"$STAGED_INFO_PLIST" <<PLIST
   <string>$APP_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+PLIST
+if [[ "$APP_ICON_PRESENT" == true ]]; then
+cat <<'PLIST'
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+PLIST
+fi
+cat <<PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>STPDBuildIdentifier</key>
@@ -637,6 +670,7 @@ cat >"$STAGED_INFO_PLIST" <<PLIST
 </dict>
 </plist>
 PLIST
+} >"$STAGED_INFO_PLIST"
 
 POST_PACKAGE_DIGEST="$(source_digest)"
 if [[ "$POST_PACKAGE_DIGEST" != "$SOURCE_DIGEST" ]]; then

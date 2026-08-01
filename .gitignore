@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Local assistant workspace state
+/.claude/settings.local.json
+/macos/SpikeTrainPatternDetectorMac/.codex/
+
 # R session and IDE files
 .Rhistory
 .RData
