@@ -57,7 +57,9 @@ final class HFSBurstArbitrationAuditTests: XCTestCase {
         )
 
         let row = try XCTUnwrap(rows.first)
-        // The non-dominated HFS remains selected alongside the burst overlay.
+        // Updated expectation (HFS internal-packet retention fix): the non-dominated HFS is
+        // now retained as an overlay alongside the selected burst, so the audit records an
+        // HFS-retained-with-burst-conflict outcome rather than burst-wins-HFS-not-selected.
         XCTAssertEqual(row.finalDecision, .hfsSelectedWithBurstConflict)
         XCTAssertEqual(row.hfsRawScore, 27.5, accuracy: 1e-12)
         XCTAssertEqual(row.packetCount, 1)
@@ -170,6 +172,25 @@ final class HFSBurstArbitrationAuditTests: XCTestCase {
         XCTAssertTrue(HFSBurstArbitrationAuditRow.csvHeader.contains("seed_fraction"))
         XCTAssertTrue(HFSBurstArbitrationAuditRow.csvHeader.contains("bridge_fraction"))
         XCTAssertTrue(HFSBurstArbitrationAuditRow.csvHeader.contains("final_decision"))
+    }
+
+    // MM removal regression: `isVariableHFSpikingState` must be driven only by CV / LV /
+    // HFS large-fraction evidence. The former `mm >= 3.0` term is gone, so a regular HFS state
+    // (low CV, low LV, no large-fraction) can no longer be flagged "variable".
+    func testIsVariableHFSpikingStateDependsOnCVLVLargeFractionNotMM() {
+        // Regular HFS candidate: low CV (0.10) / low LV (0.10) / no large-fraction -> not variable.
+        let regular = makeCandidate(id: "regular", label: .highFrequencySpiking, start: 1, end: 20)
+        XCTAssertNil(regular.hfSpikingLargeFraction)
+        XCTAssertFalse(regular.isVariableHFSpikingState)
+
+        // High CV alone flips it variable.
+        let highCV = makeCandidate(id: "highcv", label: .highFrequencySpiking, start: 1, end: 20, cv: 0.70)
+        XCTAssertTrue(highCV.isVariableHFSpikingState)
+
+        // HFS large-fraction alone flips it variable, with CV/LV still classic-regular.
+        var highLargeFraction = makeCandidate(id: "hlf", label: .highFrequencySpiking, start: 1, end: 20)
+        highLargeFraction.hfSpikingLargeFraction = 0.10
+        XCTAssertTrue(highLargeFraction.isVariableHFSpikingState)
     }
 
     private func makeTrain(name: String, intervals: [Double]) -> SpikeTrain {

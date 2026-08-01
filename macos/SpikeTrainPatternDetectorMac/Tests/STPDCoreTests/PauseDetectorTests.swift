@@ -107,6 +107,43 @@ func pauseDetectorAddsEventCoreRelativeGapEvidenceBelowClassicGlobalGuard() thro
 }
 
 @Test
+func pauseDetectorSourceAblationSeparatesClassicCoreFromEventCoreGaps() throws {
+    let train = SpikeTrain(
+        name: "pause_source_ablation_unit",
+        timestampsSec: [
+            0,
+            0.050,
+            0.100,
+            0.150,
+            0.350,
+            0.400,
+            0.450,
+            0.570,
+            0.620,
+            0.670,
+            0.720,
+            0.770
+        ]
+    )
+    let coreOnlySettings = PauseDetectorSettings(eventCoreGapEnabled: false)
+    let fullSettings = PauseDetectorSettings(eventCoreGapEnabled: true)
+
+    let coreOnly = PauseDetector.detect(train: train, settings: coreOnlySettings)
+    let full = PauseDetector.detect(train: train, settings: fullSettings)
+
+    #expect(coreOnly.candidates.map(\.candidateLayer) == ["pause_detector"])
+    #expect(coreOnly.candidates.first?.startISIIndex == 4)
+    #expect(full.candidates.contains {
+        $0.candidateLayer == "pause_detector" &&
+            $0.startISIIndex == 4
+    })
+    #expect(full.candidates.contains {
+        $0.candidateLayer == "event_core_pause_gap" &&
+            $0.startISIIndex == 7
+    })
+}
+
+@Test
 func pauseDetectorAppliesAntiTonicVetoToStablePauseBlocks() throws {
     let train = SpikeTrain(
         name: "pause_anti_tonic_unit",
@@ -190,6 +227,29 @@ func classicAnchorPipelineIncludesPauseCandidates() throws {
     #expect(burstResult.candidates.contains { $0.finalLabel == .burst })
     #expect(pauseResult.candidates.contains { $0.finalLabel == .pause })
     #expect(run.eventAnnotations(in: dataset, tracks: [.gap]).contains { $0.label == .pause })
+}
+
+@Test
+func pipelineDoesNotInventPausesInCleanTonicTrain() throws {
+    let train = SpikeTrain(
+        name: "clean_tonic_no_pause_unit",
+        timestampsSec: stride(from: 0.0, through: 0.700, by: 0.050).map { $0 }
+    )
+    let dataset = SpikeDataset(
+        name: "clean tonic pause upper bound",
+        sourceDescription: "unit-test",
+        trains: [train]
+    )
+
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let result = try #require(run.result(for: "clean_tonic_no_pause_unit"))
+    let selectedPauses = result.candidates.filter { $0.selectedForAuto && $0.finalLabel == .pause }
+
+    #expect(selectedPauses.isEmpty)
+    #expect(run.eventAnnotations(in: dataset, tracks: [.gap]).isEmpty)
 }
 
 @Test

@@ -267,6 +267,250 @@ func classicAnchorEpisodeRescuesDenseLowISIPacketOutsideStrictSeedRun() throws {
 }
 
 @Test
+func adaptiveLocalHFBurstPacketIsDetectedForTwoSidedCompressedPacketAboveTheBand() throws {
+    // Reproduces the user false negative (GPi RT1D3.999_SPK 01a, packet ~0.18-0.24 s): a short fast
+    // cluster (~9-11 ms ISIs) that is locally compressed — faster than its slower ~22 ms local
+    // background and bounded on BOTH sides by several-fold-larger gaps. Its q90 sits ABOVE the
+    // learned burst band (8 ms), so the seed-centred routes never seed it and the train-global
+    // compactness ceiling (q80 * 0.35 ~ a few ms) rejects it in structure-first. The adaptive route
+    // admits it via `band * headroom` (capped by the mandatory local-compression self-gate).
+    let background = Array(repeating: 0.022, count: 12)
+    let packet = [0.0090, 0.0105, 0.0095, 0.0110, 0.0098, 0.0102, 0.0096]   // 7 ISIs, ~9-11 ms
+    let isi = background + [0.035] + packet + [0.040] + background
+    let train = SpikeTrain(name: "unit_adaptive_hf_packet_a", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,        // learned burst band: below the packet q90 (~10.7 ms)
+        burstBridgeUpperSec: 0.008,      // bridge ≈ band (the RT1D3.999 condition that hid Packet B)
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+
+    let packetCandidate = try #require(result.candidates.first { candidate in
+        candidate.candidateLayer == "adaptive_local_hf_burst_packet"
+    })
+    #expect(packetCandidate.finalLabel.isCanonicalBurstFamily)
+    #expect(packetCandidate.stateHighFrequencySubtype == "hf_burst_packet")
+    #expect(packetCandidate.isEligibleForAutoSelection)
+    #expect(packetCandidate.action == "accept")
+    #expect(packetCandidate.nISI == 7)
+    #expect(packetCandidate.candidateClass == "adaptive_two_sided_local_compression_hf_packet")
+    #expect(packetCandidate.decisionPath.contains("source=local_flank_compression"))
+    #expect(packetCandidate.decisionPath.contains("band_collapsed=false"))
+    #expect((packetCandidate.localCompressionQ90Ratio ?? 0) > 1)
+
+    // The packet was a genuine false negative: no OTHER route produced a canonical burst-family
+    // candidate covering the same ISI span.
+    let otherCanonicalOnSpan = result.candidates.contains { candidate in
+        candidate.candidateLayer != "adaptive_local_hf_burst_packet" &&
+            candidate.finalLabel.isCanonicalBurstFamily &&
+            candidate.startISIIndex <= packetCandidate.startISIIndex &&
+            candidate.endISIIndex >= packetCandidate.endISIIndex &&
+            candidate.isEligibleForAutoSelection
+    }
+    #expect(!otherCanonicalOnSpan)
+}
+
+@Test
+func adaptiveLocalHFBurstPacketIsDetectedForLongerSecondPacketShape() throws {
+    // Second user example (packet ~1.09-1.16 s): a 10-ISI packet, longer than the classic
+    // structure-first span cap (classicMaxSpikes - 1 = 8), so even with a healthy band the
+    // structure-first route cannot enumerate it. The adaptive route admits up to
+    // highFrequencyBurstMaxSpikes, again gated by local compression.
+    let background = Array(repeating: 0.022, count: 12)
+    let packet = [0.0095, 0.0100, 0.0098, 0.0102, 0.0096, 0.0101, 0.0097, 0.0103, 0.0099, 0.0100]
+    let isi = background + [0.040] + packet + [0.038] + background
+    let train = SpikeTrain(name: "unit_adaptive_hf_packet_b", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,
+        burstBridgeUpperSec: 0.008,
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    let packetCandidate = try #require(result.candidates.first { candidate in
+        candidate.candidateLayer == "adaptive_local_hf_burst_packet"
+    })
+    #expect(packetCandidate.finalLabel.isCanonicalBurstFamily)
+    #expect(packetCandidate.stateHighFrequencySubtype == "hf_burst_packet")
+    #expect(packetCandidate.isEligibleForAutoSelection)
+    #expect(packetCandidate.nISI == 10)
+}
+
+@Test
+func sustainedHighFrequencyRunIsNotConvertedToAdaptiveHFBurstPackets() throws {
+    // Negative control: a long uniform high-frequency run with NO bilateral large boundaries.
+    // It is high-frequency activity, but it is not a discrete packet, so the adaptive route must
+    // decline (no two-sided several-fold boundaries anywhere). Sustained HF must not be converted
+    // wholesale into burst packets.
+    let isi = Array(repeating: 0.006, count: 40)
+    let train = SpikeTrain(name: "unit_sustained_hf", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,
+        burstBridgeUpperSec: 0.020,
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    #expect(!result.candidates.contains { $0.candidateLayer == "adaptive_local_hf_burst_packet" })
+}
+
+@Test
+func oneSidedPacketDoesNotTriggerAdaptiveHFBurstPacket() throws {
+    // Boundary guardrail: a compressed run with a large boundary on ONE side only (the other
+    // side dissolves into the high-frequency background). The adaptive route requires TWO-sided
+    // several-fold boundaries, so it must not fabricate a packet across / beside a single pause.
+    let background = Array(repeating: 0.006, count: 12)
+    let packet = [0.0090, 0.0102, 0.0095, 0.0110, 0.0088, 0.0100, 0.0096]
+    let isi = background + [0.035] + packet + background      // NO trailing large boundary
+    let train = SpikeTrain(name: "unit_one_sided_packet", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,
+        burstBridgeUpperSec: 0.020,
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    #expect(!result.candidates.contains { $0.candidateLayer == "adaptive_local_hf_burst_packet" })
+}
+
+@Test
+func slowTonicClusterBoundedByLongPausesIsNotAnAdaptiveHFBurstPacket() throws {
+    // Defense-in-depth: a genuinely SLOW run (~30 ms ISIs) flanked by long pauses (~100 ms) is a
+    // tonic-with-pauses window, NOT a high-frequency burst packet — even when the learned bridge
+    // ceiling is (deliberately) inflated to 40 ms. The two-sided/compression gates alone would
+    // admit it (100/30 ~ 3.3 on every ratio), so the route must additionally bound the packet
+    // core to the learned burst band (band-relative headroom), keeping it inside the HF regime.
+    let tonic = Array(repeating: 0.030, count: 12)
+    let cluster = Array(repeating: 0.030, count: 7)
+    let isi = tonic + [0.100] + cluster + [0.100] + tonic
+    let train = SpikeTrain(name: "unit_slow_tonic_pauses", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,        // band-relative headroom -> core ceiling ~16 ms
+        burstBridgeUpperSec: 0.040,      // deliberately inflated bridge ceiling (~40 ms)
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    #expect(!result.candidates.contains { $0.candidateLayer == "adaptive_local_hf_burst_packet" })
+}
+
+@Test
+func slowTonicClusterIsNotAnAdaptiveHFBurstPacketWhenStructureBandIsSlow() throws {
+    // Structure-path slow-tonic guard for a SLOW learned burst band. With burstBandUpperSec 18 ms,
+    // `band * 2` = 36 ms would admit a ~30 ms slow-tonic cluster (every boundary/compression ratio
+    // is ~3.3), so the band ceiling alone is NOT sufficient. The MANDATORY local-compression
+    // self-gate (core must be faster than its ~30 ms neighbourhood) rejects it: the cluster core
+    // (~30 ms) ≈ its background, ratio ≈ 1, far below the ~1.47 threshold.
+    let tonic = Array(repeating: 0.030, count: 12)
+    let cluster = Array(repeating: 0.030, count: 7)
+    let isi = tonic + [0.100] + cluster + [0.100] + tonic
+    let train = SpikeTrain(name: "unit_slow_band_slow_tonic", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.018,        // slow learned band: band * 2 = 36 ms > the 30 ms cluster
+        burstBridgeUpperSec: 0.018,
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    #expect(!result.candidates.contains { $0.candidateLayer == "adaptive_local_hf_burst_packet" })
+}
+
+@Test
+func adaptiveLocalHFBurstPacketIsDetectedWhenBurstBandCollapsedToNoStructure() throws {
+    // Second-pass regression for the real screenshot trains (RT1D3.999_SPK 01a / LT1D5.083_SPK 01c)
+    // where the resolution is `upper=2ms bridge=2ms source=none`: there is NO usable burst band, so
+    // both the seed-centred routes AND the previous `band * 2` core ceiling (~4 ms) reject visually
+    // clear HF packets whose internal ISIs are ~5-10 ms. The packet sits in a slower (tonic-like)
+    // local background and is bounded by gaps several-fold its median, but its q90-based boundary
+    // contrast (~2.7) is just under the strict classic gate, so structure-first also misses it. The
+    // collapsed-band fallback (local-background-derived ceiling) must now recover it.
+    let background = Array(repeating: 0.030, count: 14)
+    let packet = [0.0050, 0.0065, 0.0052, 0.0090, 0.0068, 0.0055, 0.0085]   // median ~6.5, q90 ~8.9 ms
+    let isi = background + [0.024] + packet + [0.025] + background
+    let train = SpikeTrain(name: "unit_collapsed_band_packet", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.002,        // collapsed/narrow band (mirrors resolution upper=2 ms)
+        burstBridgeUpperSec: 0.002,      // collapsed bridge: band ceiling ~4 ms, below the packet
+        burstBandSource: .none,          // source=none => canUseSeedBand false (seed routes off)
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    let packetCandidate = try #require(result.candidates.first { candidate in
+        candidate.candidateLayer == "adaptive_local_hf_burst_packet"
+    })
+    #expect(packetCandidate.finalLabel.isCanonicalBurstFamily)
+    #expect(packetCandidate.stateHighFrequencySubtype == "hf_burst_packet")
+    #expect(packetCandidate.isEligibleForAutoSelection)
+    #expect(packetCandidate.nISI == 7)
+    #expect(packetCandidate.decisionPath.contains("band_collapsed=true"))
+    #expect(packetCandidate.decisionPath.contains("core_ceiling_source=local_background_q75_fraction"))
+
+    // Genuine false negative: no other route produced a canonical burst-family candidate here.
+    let otherCanonicalOnSpan = result.candidates.contains { candidate in
+        candidate.candidateLayer != "adaptive_local_hf_burst_packet" &&
+            candidate.finalLabel.isCanonicalBurstFamily &&
+            candidate.startISIIndex <= packetCandidate.startISIIndex &&
+            candidate.endISIIndex >= packetCandidate.endISIIndex &&
+            candidate.isEligibleForAutoSelection
+    }
+    #expect(!otherCanonicalOnSpan)
+}
+
+@Test
+func slowTonicClusterIsNotAnAdaptiveHFBurstPacketEvenWhenBandCollapsed() throws {
+    // Defense-in-depth for the collapsed-band fallback: a genuinely slow ~30 ms cluster flanked by
+    // long pauses, with NO usable burst band (source=none). Every boundary/compression ratio is
+    // high, so the two-sided gates pass — but the local-background ceiling rejects it, because the
+    // cluster core (~30 ms) is NOT faster than its own ~30 ms neighbourhood. Slow tonic must never
+    // be converted into an HF burst packet, with or without a collapsed band.
+    let tonic = Array(repeating: 0.030, count: 12)
+    let cluster = Array(repeating: 0.030, count: 7)
+    let isi = tonic + [0.100] + cluster + [0.100] + tonic
+    let train = SpikeTrain(name: "unit_collapsed_slow_tonic", timestampsSec: cumulativeTimestamps(isi))
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.002,
+        burstBridgeUpperSec: 0.002,
+        burstBandSource: .none,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    #expect(!result.candidates.contains { $0.candidateLayer == "adaptive_local_hf_burst_packet" })
+}
+
+@Test
 func classicAnchorAcceptsStartBoundaryBurstWithSinglePostFlank() throws {
     let train = SpikeTrain(
         name: "unit_start_boundary",

@@ -2,6 +2,28 @@ import STPDCore
 import Testing
 
 @Test
+func qualitySettingsConvertsMillisecondsToSeconds() {
+    let settings = SpikeQualitySettings(
+        artifactThresholdMilliseconds: 0.9,
+        refractorySuspectThresholdMilliseconds: 1.0
+    )
+
+    #expect(abs(settings.artifactThresholdSec - 0.0009) < 1e-12)
+    #expect(abs(settings.refractorySuspectThresholdSec - 0.0010) < 1e-12)
+}
+
+@Test
+func qualitySettingsKeepsRefractoryAtLeastArtifactAfterMillisecondConversion() {
+    let settings = SpikeQualitySettings(
+        artifactThresholdMilliseconds: 1.2,
+        refractorySuspectThresholdMilliseconds: 1.0
+    )
+
+    #expect(abs(settings.artifactThresholdSec - 0.0012) < 1e-12)
+    #expect(abs(settings.refractorySuspectThresholdSec - 0.0012) < 1e-12)
+}
+
+@Test
 func reportsArtifactAndRefractorySuspectISI() throws {
     let dataset = SpikeDataset(
         name: "qc",

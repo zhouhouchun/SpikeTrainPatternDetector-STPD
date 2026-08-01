@@ -214,8 +214,9 @@ final class GapTrackResolverTests: XCTestCase {
         ])
         let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
 
-        // A selected burst remains an event overlay; it does not erase a
-        // non-dominated sustained HFS state.
+        // Updated expectation (HFS internal-packet retention fix): the burst event is still
+        // selected, but a non-dominated HFS is no longer erased by the overlap — it is
+        // retained as a packetization overlay.
         XCTAssertEqual(byID["hfs-1"]?.selectedForAuto, true)
         XCTAssertEqual(byID["burst-1"]?.selectedForAuto, true)
         XCTAssertEqual(

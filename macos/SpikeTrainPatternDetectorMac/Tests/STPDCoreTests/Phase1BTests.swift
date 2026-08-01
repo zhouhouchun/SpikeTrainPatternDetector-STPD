@@ -37,6 +37,9 @@ final class Phase1BTests: XCTestCase {
         XCTAssertNil(byID["burst"]?.suppressedOriginalLabel)
         XCTAssertNotEqual(byID["burst"]?.suppressedByHFSpikingState, true)
         XCTAssertEqual(byID["hfs"]?.hfSpikingBurstDominated, false)
+        // Updated expectation (HFS internal-packet retention fix): a non-dominated HFS is
+        // retained as a packetization overlay, selected alongside the burst event rather
+        // than erased by the overlap.
         XCTAssertEqual(finalByID["hfs"]?.selectedForAuto, true)
         XCTAssertEqual(finalByID["burst"]?.selectedForAuto, true)
         XCTAssertEqual(
@@ -126,6 +129,9 @@ final class Phase1BTests: XCTestCase {
         XCTAssertEqual(protectedBurst?.action, "accept")
         XCTAssertNotEqual(protectedBurst?.suppressedByHFSpikingState, true)
         let final = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(protected)
+        // Updated expectation (HFS internal-packet retention fix): the packet-like but
+        // non-dominated HFS is now retained at final arbitration as an overlay, selected
+        // alongside the burst event.
         XCTAssertEqual(final.first { $0.id == "hfs" }?.selectedForAuto, true)
         XCTAssertEqual(
             final.first { $0.id == "hfs" }?.selectionStatus,
@@ -168,7 +174,94 @@ final class Phase1BTests: XCTestCase {
         XCTAssertEqual(protectedHFS?.hfSpikingEmbeddedBurstCoverage, 0)
     }
 
+    func testNonDominatedHFSRetainedWithInternalBurstPacketOverlay() {
+        // A long HFS state with a single internal compact burst packet (not burst-dominated)
+        // must be retained as a packetization overlay rather than erased by the overlap.
+        // Before the fix the "any burst overlap kills HFS" rule unselected it.
+        var hfs = makeCandidate(
+            id: "hfs",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 100,
+            priority: 1_040,
+            cv: 0.20,
+            selected: true
+        )
+        hfs.hfSpikingBurstDominated = false
+        hfs.hfSpikingBurstPacketLike = false
+        let burst = makeCandidate(
+            id: "burst",
+            label: .burst,
+            start: 20,
+            end: 24,
+            priority: 1_500,
+            selected: true
+        )
+
+        let result = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack([hfs, burst])
+        let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+
+        XCTAssertEqual(byID["hfs"]?.selectedForAuto, true)
+        XCTAssertEqual(
+            byID["hfs"]?.selectionStatus,
+            "selected_by_state_track_weighted_interval_grammar__hfs_retained_with_internal_burst_packet_overlay"
+        )
+        XCTAssertEqual(byID["burst"]?.selectedForAuto, true)
+    }
+
+    func testBurstDominatedHFSStillRejectedAtArbitration() {
+        // Guard against overcorrection: a burst-dominated HFS must still be rejected so that
+        // genuine burst trains are not turned into HFS.
+        var hfs = makeCandidate(
+            id: "hfs",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 100,
+            priority: 1_040,
+            cv: 0.20,
+            selected: true
+        )
+        hfs.hfSpikingBurstDominated = true
+        let burst = makeCandidate(
+            id: "burst",
+            label: .burst,
+            start: 20,
+            end: 24,
+            priority: 1_500,
+            selected: true
+        )
+
+        let result = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack([hfs, burst])
+        let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+
+        XCTAssertEqual(byID["hfs"]?.selectedForAuto, false)
+        XCTAssertEqual(byID["hfs"]?.selectionStatus, "not_selected__hfs_burst_packet_dominance")
+        XCTAssertEqual(byID["burst"]?.selectedForAuto, true)
+    }
+
+    func testTrueIsolatedBurstStillWinsWithoutSustainedHFS() {
+        // With no HFS state present, a compact isolated burst is still a selected burst event.
+        let burst = makeCandidate(
+            id: "burst",
+            label: .burst,
+            start: 10,
+            end: 14,
+            priority: 1_500,
+            selected: true
+        )
+
+        let result = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack([burst])
+        let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+
+        XCTAssertEqual(byID["burst"]?.selectedForAuto, true)
+        XCTAssertEqual(byID["burst"]?.finalLabel, .burst)
+    }
+
     func testHFSIsSplitBySelectedGapButNotByInternalBurst() {
+        // Replaces the old "split by selected burst and gap" expectation. Pause/gap still
+        // splits HFS (pause-separated epochs must not become one continuous HFS), but an
+        // internal selected burst no longer fragments the sustained HFS — it is retained as
+        // an overlay and dominance is decided later by HFSpikingProtection / arbitration.
         let train = makeTrain(
             name: "train-1",
             intervals: Array(repeating: 0.01, count: 29) +
@@ -214,11 +307,62 @@ final class Phase1BTests: XCTestCase {
             settings: settings
         )
 
-        // Pause/gap boundaries split sustained HFS; an internal burst remains an
-        // event overlay and is handled by downstream dominance arbitration.
+        // Split only at the pause (index 30): the burst at 10-13 stays inside the left epoch.
         XCTAssertEqual(fragments.map(\.startISIIndex), [1, 31])
         XCTAssertEqual(fragments.map(\.endISIIndex), [29, 60])
         XCTAssertTrue(fragments.allSatisfy { $0.finalLabel == .highFrequencySpiking })
+    }
+
+    func testSustainedHFSWithFewInternalBurstsRemainsSelectedThroughPipeline() {
+        // End-to-end (Phase 1B) regression for the user's report: a long, sustained, dense
+        // HFS run with a few internal compact burst packets and NO pause boundary must remain
+        // selected as ONE sustained HFS epoch. Before the fix the internal bursts cut the HFS
+        // into sub-threshold fragments and the parent was rejected for overlapping a burst, so
+        // the region was lost; now the bursts are overlays and the sustained state survives.
+        let train = makeTrain(name: "train-1", intervals: Array(repeating: 0.008, count: 100))
+        let hfs = makeCandidate(
+            id: "hfs-parent",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 100,
+            priority: 1_040,
+            cv: 0.20
+        )
+        // Three internal compact burst packets — far below the burst-dominance group/coverage
+        // thresholds, so the epoch is not burst-dominated.
+        let burstRanges = [20...23, 50...53, 80...83]
+        let bursts = burstRanges.enumerated().map { index, range in
+            makeCandidate(
+                id: "burst-\(index)",
+                label: .burst,
+                start: range.lowerBound,
+                end: range.upperBound,
+                priority: 1_500
+            )
+        }
+
+        let resolved = MultiTrackPhase1BResolver.resolve(
+            train: train,
+            candidates: [hfs] + bursts,
+            pauseSettings: PauseDetectorSettings(
+                minValidISISec: 0.001,
+                strongThresholdSec: 0.12
+            ),
+            stateSettings: StatePatternDetectorSettings(
+                highFrequencySpikingMinSpikes: 20,
+                highFrequencySpikingMinDurationSec: 0,
+                highFrequencySpikingInternalPacketizationPolicy: .multiTrackEventOverlay
+            ),
+            stagePrefix: "test-hfs-internal-burst-retention"
+        )
+
+        let selectedHFS = resolved.filter {
+            $0.selectedForAuto && $0.finalLabel == .highFrequencySpiking
+        }
+        // The whole sustained epoch is retained as a single selected HFS (no pause to split it).
+        XCTAssertTrue(selectedHFS.contains { $0.startISIIndex == 1 && $0.endISIIndex == 100 })
+        // The internal burst packets remain selected as overlays.
+        XCTAssertTrue(resolved.contains { $0.id == "burst-0" && $0.selectedForAuto })
     }
 
     func testTonicIsSplitBySelectedCanonicalEvent() {

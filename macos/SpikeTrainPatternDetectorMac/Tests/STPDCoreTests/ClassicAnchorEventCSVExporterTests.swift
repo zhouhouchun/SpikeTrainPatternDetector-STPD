@@ -66,6 +66,161 @@ func classicAnchorEventCSVExporterIncludesRangesReviewStatusAndEscapesFields() t
     #expect((Int(values["dataset_structural_burst_anchor_count"] ?? "") ?? 0) >= 1)
     #expect(csv.contains("\"unit-test, \"\"source\"\"\""))
     #expect(csv.contains("\"unit, \"\"alpha\"\"\""))
+    // MM (max/mean ratio) was removed from the Mac detection algorithm; the CSV schema
+    // intentionally no longer carries an `mm` column (CV/CV2/LV remain).
+    #expect(!header.contains("mm"))
+    #expect(values["cv"] != nil)
+    #expect(values["lv"] != nil)
+}
+
+@Test
+func candidateCSVExportIncludesTonicSubtypeColumn() throws {
+    let tonicTrain = SpikeTrain(
+        name: "csv_subtype_tonic",
+        timestampsSec: Array(stride(from: 0.0, through: 0.480, by: 0.040))
+    )
+    let dataset = SpikeDataset(
+        name: "tonic subtype export",
+        sourceDescription: "unit-test",
+        trains: [tonicTrain]
+    )
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let exportedAt = try #require(ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z"))
+
+    // The unified header carries the new column (so default event export is unchanged in shape).
+    let defaultCSV = ClassicAnchorEventCSVExporter.csv(
+        dataset: dataset,
+        run: run,
+        annotations: run.eventAnnotations(in: dataset),
+        reviewStatuses: [:],
+        exportedAt: exportedAt
+    )
+    let defaultHeader = try #require(parseCSV(defaultCSV).first)
+    #expect(defaultHeader.contains("state_tonic_subtype"))
+
+    // The full/audit export carries the subtype value for the tonic state candidate.
+    let fullCSV = ClassicAnchorEventCSVExporter.csv(
+        dataset: dataset,
+        run: run,
+        annotations: run.eventAnnotations(in: dataset),
+        reviewStatuses: [:],
+        includeUnselectedCandidates: true,
+        exportedAt: exportedAt
+    )
+    let rows = parseCSV(fullCSV)
+    let header = try #require(rows.first)
+    #expect(header.contains("state_tonic_subtype"))
+    let tonicRow = try #require(rows.dropFirst().first { row in
+        let values = Dictionary(uniqueKeysWithValues: zip(header, row))
+        return values["label"] == "tonic"
+    })
+    let values = Dictionary(uniqueKeysWithValues: zip(header, tonicRow))
+    #expect(values["state_tonic_subtype"] == "classic")
+}
+
+@Test
+func candidateCSVExportCarriesHFBurstPacketSubtypeForAdaptiveLocalHFBurstPacket() throws {
+    // An adaptive local HF burst packet (two-sided, locally compressed) exports its additive,
+    // audit-only HF-family subtype through the appended state_high_frequency_subtype column,
+    // without changing finalLabel or any existing column position.
+    let background = Array(repeating: 0.022, count: 12)
+    let packet = [0.0090, 0.0105, 0.0095, 0.0110, 0.0098, 0.0102, 0.0096]
+    let isi = background + [0.035] + packet + [0.040] + background
+    var timestamps = [0.0]
+    for value in isi {
+        timestamps.append((timestamps.last ?? 0) + value)
+    }
+    let train = SpikeTrain(name: "csv_hf_burst_packet", timestampsSec: timestamps)
+    let dataset = SpikeDataset(
+        name: "hf burst packet export",
+        sourceDescription: "unit-test",
+        trains: [train]
+    )
+    let settings = ClassicAnchorSettings(
+        minValidISISec: 0.0009,
+        burstBandLowerSec: 0.001,
+        burstBandUpperSec: 0.008,
+        burstBridgeUpperSec: 0.008,
+        burstBandSource: .userPatternISILimit,
+        burstContrastMin: 3.0,
+        possibleBurstContrastMin: 2.0
+    )
+    let result = ClassicAnchorDetector.detect(train: train, settings: settings)
+    let packetCandidate = try #require(result.candidates.first { candidate in
+        candidate.candidateLayer == "adaptive_local_hf_burst_packet"
+    })
+    let run = ClassicAnchorDetectionRun(
+        bandSettings: TrainAdaptiveBandSettings(),
+        qualitySettings: SpikeQualitySettings(),
+        resolutions: [],
+        results: [result]
+    )
+    let exportedAt = try #require(ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z"))
+    let csv = ClassicAnchorEventCSVExporter.csv(
+        dataset: dataset,
+        run: run,
+        annotations: [],
+        reviewStatuses: [:],
+        includeUnselectedCandidates: true,
+        exportedAt: exportedAt
+    )
+
+    let rows = parseCSV(csv)
+    let header = try #require(rows.first)
+    #expect(header.contains("state_high_frequency_subtype"))
+    let packetRow = try #require(rows.dropFirst().first { row in
+        Dictionary(uniqueKeysWithValues: zip(header, row))["candidate_id"] == packetCandidate.id
+    })
+    let values = Dictionary(uniqueKeysWithValues: zip(header, packetRow))
+    #expect(values["state_high_frequency_subtype"] == "hf_burst_packet")
+    #expect(values["candidate_layer"] == "adaptive_local_hf_burst_packet")
+    #expect(values["label"]?.contains("burst") == true)
+}
+
+@Test
+func selectedTrackCSVExportCarriesIrregularTonicSubtypeForSelectedStateRows() throws {
+    // Irregular GPi-like train: a selected irregular-tonic state row must carry the subtype
+    // in the same selected-track export surface the app uses (event/gap/state/review tracks).
+    let isiMs: [Double] = [
+        47.9, 65.3, 26.3, 29.0, 43.6, 39.7, 59.2, 18.0, 73.5, 40.1, 42.3, 24.4, 32.0, 34.7, 57.1,
+        25.9, 40.6, 60.0, 26.1, 32.5, 38.9, 35.6, 39.3, 30.1, 75.0, 20.6, 38.3, 27.2, 50.9, 39.1,
+        68.7, 64.9, 22.1, 29.6, 50.0, 34.3, 25.3, 52.1, 34.4, 18.9, 60.0, 21.1, 30.0, 33.2, 75.0,
+        25.6, 30.2, 25.5, 66.8, 18.2, 26.2, 55.2, 74.5, 48.3, 34.7, 37.8, 47.6, 20.6, 33.2, 26.4,
+        75.0, 35.4, 43.5, 29.3, 26.3, 51.4, 71.4, 43.5, 18.5, 34.8, 51.4, 35.5, 47.7, 18.0, 29.7,
+        32.3, 56.2, 25.8, 18.7, 20.4, 39.3, 49.0, 56.1, 30.3, 27.0, 54.1, 18.0, 25.5, 35.5, 53.0,
+        46.6, 34.1, 49.4, 39.8, 26.3, 40.8, 44.6, 32.6, 30.7, 34.8, 18.0, 43.5, 48.6, 43.4, 37.6,
+        51.0, 37.0, 42.4, 24.3, 48.7, 38.8, 37.9, 31.2, 52.5, 74.0, 43.6, 46.6, 75.0, 18.0, 26.2
+    ]
+    var ts = [0.0]
+    for value in isiMs { ts.append((ts.last ?? 0) + value / 1000) }
+    let train = SpikeTrain(name: "irregular_csv_tonic", timestampsSec: ts)
+    let dataset = SpikeDataset(name: "irregular tonic csv export", sourceDescription: "unit-test", trains: [train])
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let exportedAt = try #require(ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z"))
+
+    // Selected-track export (default selected-only), matching the app's export surface.
+    let selectedAnnotations = run.eventAnnotations(in: dataset, tracks: [.event, .gap, .state, .review])
+    let csv = ClassicAnchorEventCSVExporter.csv(
+        dataset: dataset,
+        run: run,
+        annotations: selectedAnnotations,
+        reviewStatuses: [:],
+        exportedAt: exportedAt
+    )
+    let rows = parseCSV(csv)
+    let header = try #require(rows.first)
+    let irregularRow = try #require(rows.dropFirst().first { row in
+        let values = Dictionary(uniqueKeysWithValues: zip(header, row))
+        return values["label"] == "tonic" && values["state_tonic_subtype"] == "irregular"
+    })
+    let values = Dictionary(uniqueKeysWithValues: zip(header, irregularRow))
+    #expect(values["state_tonic_subtype"] == "irregular")
 }
 
 @Test

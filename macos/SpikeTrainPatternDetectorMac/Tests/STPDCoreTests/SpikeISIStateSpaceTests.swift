@@ -110,17 +110,24 @@ func sampleISIStateSpacePointCountsMatchDataset() throws {
 }
 
 @Test
-func pdSTNISIStateSpaceRegression() throws {
-    let pdURL = URL(fileURLWithPath: "/Users/zark/Desktop/Code/PD/STN/PD_STN.csv")
-    guard FileManager.default.fileExists(atPath: pdURL.path) else {
-        return
-    }
-
-    try assertStateSpaceCounts(
-        csvURL: pdURL,
-        datasetName: "PD_STN",
-        expectDuplicatePoints: true
+func duplicateTimestampStateSpaceRegressionUsesInlineFixture() throws {
+    let csv = """
+    duplicate_train
+    0.0000
+    0.0000
+    0.0005
+    0.0016
+    0.0040
+    """
+    let dataset = try CSVSpikeMatrixParser.parse(
+        contents: csv,
+        datasetName: "duplicate_regression",
+        sourceDescription: "inline",
+        unit: .seconds,
+        duplicatePolicy: .errorKeep
     )
+
+    try assertStateSpaceCounts(dataset: dataset, expectDuplicatePoints: true)
 }
 
 private func assertStateSpaceCounts(
@@ -136,6 +143,14 @@ private func assertStateSpaceCounts(
         unit: .seconds,
         duplicatePolicy: .errorKeep
     )
+
+    try assertStateSpaceCounts(dataset: dataset, expectDuplicatePoints: expectDuplicatePoints)
+}
+
+private func assertStateSpaceCounts(
+    dataset: SpikeDataset,
+    expectDuplicatePoints: Bool
+) throws {
     let settings = SpikeQualitySettings(
         artifactThresholdSec: 0.0009,
         refractorySuspectThresholdSec: 0.0010

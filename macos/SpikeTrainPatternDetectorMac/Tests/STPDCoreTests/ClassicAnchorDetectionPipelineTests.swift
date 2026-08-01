@@ -166,6 +166,132 @@ func sampleClassicAnchorKeepsShortValidISIInsideBurstCandidate() throws {
 }
 
 @Test
+func sampleClearTwoSidedBurstClusterWithToleratedInternalTailIsDetected() throws {
+    // Regression for the bundled sample miss: train LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2
+    // has a compact two-sided burst-like cluster (raw 30.108540 ... 30.154347 s, internal ISIs
+    // 14.954/9.531/12.038/9.284 ms, pre-gap 63.844 ms, post-gap 66.638 ms). Its intraQ90 passes
+    // the adaptive compactness upper but its max internal ISI (14.954 ms) sits ~0.046 ms above
+    // it, so the strict max-ISI gate erased a clearly-bounded packet. It must now produce a
+    // selected burst-family event.
+    let sampleURL = repositoryRoot()
+        .appendingPathComponent("inst/extdata/Grechishnikova_STN_2017_subset.csv")
+    let csv = try String(contentsOf: sampleURL, encoding: .utf8)
+    let dataset = try CSVSpikeMatrixParser.parse(
+        contents: csv,
+        datasetName: "sample",
+        sourceDescription: sampleURL.path,
+        unit: .seconds
+    )
+    let train = try #require(dataset.trains.first { $0.name == "LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2" })
+
+    // Locate the cluster by spike time so the assertion does not depend on hard-coded indices.
+    let clusterStartSpike = try #require(train.timestampsSec.firstIndex { abs($0 - 30.108540) <= 1e-4 })
+    let clusterEndSpike = try #require(train.timestampsSec.firstIndex { abs($0 - 30.154347) <= 1e-4 })
+    let clusterISIRange = (clusterStartSpike + 1)...clusterEndSpike
+
+    let singleTrainDataset = SpikeDataset(
+        name: "single sample train",
+        sourceDescription: sampleURL.path,
+        trains: [train]
+    )
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: singleTrainDataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+
+    // A selected burst-family EVENT must overlap the cluster.
+    let clusterBursts = selectedBurstFamilyEvents(in: run.candidates).filter { candidate in
+        candidate.trainID == train.id &&
+            (candidate.startISIIndex...candidate.endISIIndex).overlaps(clusterISIRange)
+    }
+    let burst = try #require(clusterBursts.first)
+    #expect(burst.finalLabel.isBurstEventFamily)
+    #expect(burst.auditRecommendedTrack == .event)
+    #expect(burst.selectedForAuto)
+
+    // The detection comes from the structure-first tolerated-internal-tail rescue (not an
+    // incidental other path), and the audit text exposes the rescue evidence.
+    let rescueCandidate = try #require(run.candidates.first { candidate in
+        candidate.trainID == train.id &&
+            candidate.gateStatus == "structure_first_two_sided_classic_burst_i_pass_with_tolerated_internal_tail" &&
+            (candidate.startISIIndex...candidate.endISIIndex).overlaps(clusterISIRange)
+    })
+    #expect(rescueCandidate.decisionPath.contains("max_intra_isi_sec="))
+    #expect(rescueCandidate.decisionPath.contains("max_intra_excess_ratio="))
+    #expect(rescueCandidate.decisionPath.contains("max_intra_tolerated_tail=true"))
+
+    // It must NOT be classified as a state (tonic / HF tonic / HFS).
+    let clusterStates = run.candidates.filter { candidate in
+        candidate.trainID == train.id &&
+            candidate.selectedForAuto &&
+            (candidate.startISIIndex...candidate.endISIIndex).overlaps(clusterISIRange) &&
+            [ClassicAnchorLabel.tonic, .highFrequencyTonic, .highFrequencySpiking].contains(candidate.finalLabel)
+    }
+    #expect(clusterStates.isEmpty)
+
+    // The flanking large gaps (pre-gap and post-gap ISI indices) may still carry pause candidates.
+    let flankPauseISIs = [clusterStartSpike, clusterEndSpike + 1]
+    let flankPauses = run.candidates.filter { candidate in
+        candidate.trainID == train.id &&
+            candidate.finalLabel == .pause &&
+            flankPauseISIs.contains { (candidate.startISIIndex...candidate.endISIIndex).contains($0) }
+    }
+    #expect(!flankPauses.isEmpty)
+}
+
+@Test
+func toleratedInternalTailRescueRequiresStrongTwoSidedBoundaries() throws {
+    // Overcorrection guard. Two trains are identical except the post-flank gap of a compact
+    // cluster whose max internal ISI (12 ms) sits just above the adaptive compactness upper
+    // (~10.5 ms) while its bulk (intraQ90 ~9.3 ms) is compact. The cluster's ISI indices are
+    // 12...15 in both trains.
+    //   - Strong TWO-SIDED gaps (60 ms each): the tolerated-tail rescue fires → burst event.
+    //   - Strong PRE gap but WEAK post boundary (4 ms): the rescue must NOT fire → no burst,
+    //     so a max-ISI tail is never rescued without strong two-sided boundary evidence.
+    func guardTrain(strongPostGap: Bool) -> SpikeTrain {
+        var isi: [Double] = Array(repeating: 0.030, count: 10)
+        isi.append(0.060)                                   // strong pre gap
+        isi.append(contentsOf: [0.003, 0.003, 0.003, 0.012]) // compact cluster, max tail 12 ms
+        isi.append(strongPostGap ? 0.060 : 0.004)           // post boundary: strong or weak
+        isi.append(contentsOf: Array(repeating: 0.030, count: 10))
+        var timestamps = [0.0]
+        for value in isi {
+            timestamps.append((timestamps.last ?? 0) + value)
+        }
+        return SpikeTrain(name: "guard_\(strongPostGap ? "two_sided" : "one_sided")", timestampsSec: timestamps)
+    }
+
+    func run(strongPostGap: Bool) -> ClassicAnchorDetectionRun {
+        let train = guardTrain(strongPostGap: strongPostGap)
+        return ClassicAnchorDetectionPipeline.run(
+            dataset: SpikeDataset(name: "guard", sourceDescription: "unit-test", trains: [train]),
+            bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+        )
+    }
+    let toleratedTailStatus = "structure_first_two_sided_classic_burst_i_pass_with_tolerated_internal_tail"
+    func rescueUsed(_ r: ClassicAnchorDetectionRun) -> Bool {
+        r.candidates.contains { $0.gateStatus == toleratedTailStatus }
+    }
+    // The max-tail ISI (index 15) is only pulled into a burst when the rescue fires.
+    func tailIncludedInSelectedBurst(_ r: ClassicAnchorDetectionRun) -> Bool {
+        selectedBurstFamilyEvents(in: r.candidates).contains {
+            $0.startISIIndex <= 15 && $0.endISIIndex >= 15
+        }
+    }
+
+    let twoSided = run(strongPostGap: true)
+    let oneSided = run(strongPostGap: false)
+
+    // Strong two-sided boundaries: the tolerated-tail rescue fires and the tail is included.
+    #expect(rescueUsed(twoSided))
+    #expect(tailIncludedInSelectedBurst(twoSided))
+    // Weak opposite boundary: the rescue must NOT fire and the max-tail ISI must NOT be pulled
+    // into a burst (the compact core can still be its own burst, but the tail is not rescued).
+    #expect(!rescueUsed(oneSided))
+    #expect(!tailIncludedInSelectedBurst(oneSided))
+}
+
+@Test
 func sampleClassicBurstFlanksBecomeStructuralPauseEvidenceBelowClassicPauseFloor() throws {
     let sampleURL = repositoryRoot()
         .appendingPathComponent("inst/extdata/Grechishnikova_STN_2017_subset.csv")
@@ -242,6 +368,89 @@ func samplePipelineSummarizesStructuralSeedAnchorsPerTrain() throws {
     #expect(datasetSummary.seededTrainCount == 1)
     #expect(datasetSummary.burstAnchorCount == summary.burstAnchorCount)
     #expect(datasetSummary.pauseAnchorCount == summary.pauseAnchorCount)
+}
+
+@Test
+func datasetSeedAwareRerunRecordsProvenance() throws {
+    let dataset = seedAwareSyntheticDataset()
+
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let provenance = run.datasetRerunProvenance
+
+    #expect(provenance.source == "dataset_seed_aware_rerun")
+    #expect(provenance.stagePath == [
+        "dataset_seed_aggregation",
+        "dataset_bridge_expansion",
+        "train_seed_summary_refresh",
+        "final_dataset_seed_aggregation",
+        "apply_dataset_seed_summary",
+        "dataset_seed_aware_rerun"
+    ])
+    #expect(provenance.trainCount == dataset.trains.count)
+    #expect(provenance.rerunExecuted)
+    #expect(provenance.rerunTrainCount == dataset.trains.count)
+    #expect(provenance.initialDatasetSummary.trainCount == dataset.trains.count)
+    #expect(provenance.finalDatasetSummary == run.datasetStructuralSeedSummary)
+    #expect(provenance.finalDatasetSummary.source.hasPrefix("structural_dataset_seed_aggregate"))
+    #expect(provenance.datasetSummaryAppliedToResolutions == run.datasetStructuralSeedSummary.hasAnyAnchor)
+}
+
+@Test
+func datasetSeedAwareRerunIsDeterministicForSameDataset() throws {
+    let dataset = seedAwareSyntheticDataset()
+
+    let first = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let second = ClassicAnchorDetectionPipeline.run(
+        dataset: dataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+
+    #expect(first.datasetRerunProvenance == second.datasetRerunProvenance)
+    #expect(stableCandidateSignature(first) == stableCandidateSignature(second))
+}
+
+@Test
+func datasetSeedAwareRerunKeepsCleanTonicTargetBoundedWithContextTrain() throws {
+    let target = cleanTonicTrain()
+    let context = SpikeTrain(
+        name: "context_burst_seed",
+        timestampsSec: [0, 0.100, 0.106, 0.112, 0.200]
+    )
+    let isolatedDataset = SpikeDataset(
+        name: "isolated clean tonic",
+        sourceDescription: "unit-test",
+        trains: [target]
+    )
+    let contextDataset = SpikeDataset(
+        name: "contextual clean tonic",
+        sourceDescription: "unit-test",
+        trains: [context, target]
+    )
+
+    let isolated = ClassicAnchorDetectionPipeline.run(
+        dataset: isolatedDataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let withContext = ClassicAnchorDetectionPipeline.run(
+        dataset: contextDataset,
+        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    )
+    let isolatedTarget = try #require(isolated.result(for: target.id))
+    let contextTarget = try #require(withContext.result(for: target.id))
+    let isolatedSelected = selectedNonProfileBehaviorSignature(in: isolatedTarget.candidates)
+    let contextSelected = selectedNonProfileBehaviorSignature(in: contextTarget.candidates)
+
+    #expect(withContext.datasetRerunProvenance.trainCount == 2)
+    #expect(withContext.datasetRerunProvenance.rerunTrainCount == 2)
+    #expect(isolatedTarget.candidates.filter { $0.selectedForAuto && $0.finalLabel == .pause }.isEmpty)
+    #expect(contextTarget.candidates.filter { $0.selectedForAuto && $0.finalLabel == .pause }.isEmpty)
+    #expect(contextSelected == isolatedSelected)
 }
 
 @Test
@@ -437,6 +646,29 @@ private func repositoryRoot() -> URL {
     return url
 }
 
+private func seedAwareSyntheticDataset() -> SpikeDataset {
+    let first = SpikeTrain(
+        name: "seeded_fast_burst",
+        timestampsSec: [0, 0.100, 0.106, 0.112, 0.200]
+    )
+    let second = SpikeTrain(
+        name: "seeded_slower_burst",
+        timestampsSec: [0, 0.300, 0.320, 0.340, 0.360, 0.860, 1.360, 1.860]
+    )
+    return SpikeDataset(
+        name: "synthetic seed-aware rerun",
+        sourceDescription: "unit-test",
+        trains: [first, second]
+    )
+}
+
+private func cleanTonicTrain() -> SpikeTrain {
+    SpikeTrain(
+        name: "bounded_clean_tonic",
+        timestampsSec: stride(from: 0.0, through: 0.700, by: 0.050).map { $0 }
+    )
+}
+
 private func timestamps(fromISI isi: [Double]) -> [Double] {
     var timestamps = [0.0]
     timestamps.reserveCapacity(isi.count + 1)
@@ -455,4 +687,35 @@ private func selectedBurstFamilyEvents(in candidates: [ClassicAnchorCandidate]) 
                     candidate.auditRecommendedEventTrackClass == "burst"
             )
     }
+}
+
+private func stableCandidateSignature(_ run: ClassicAnchorDetectionRun) -> [String] {
+    run.candidates.map(candidateSignature).sorted()
+}
+
+private func selectedNonProfileBehaviorSignature(in candidates: [ClassicAnchorCandidate]) -> [String] {
+    candidates
+        .filter { $0.selectedForAuto && $0.finalLabel != .profile }
+        .map { candidate in
+            [
+                candidate.trainID,
+                "\(candidate.finalLabel)",
+                "\(candidate.auditRecommendedTrack)",
+                "\(candidate.startISIIndex)-\(candidate.endISIIndex)"
+            ].joined(separator: "|")
+        }
+        .sorted()
+}
+
+private func candidateSignature(_ candidate: ClassicAnchorCandidate) -> String {
+    [
+        candidate.trainID,
+        candidate.candidateLayer,
+        candidate.candidateClass,
+        "\(candidate.finalLabel)",
+        "\(candidate.auditRecommendedTrack)",
+        "\(candidate.startISIIndex)-\(candidate.endISIIndex)",
+        candidate.selectedForAuto ? "selected" : "unselected",
+        "\(candidate.selectionStatus)"
+    ].joined(separator: "|")
 }
