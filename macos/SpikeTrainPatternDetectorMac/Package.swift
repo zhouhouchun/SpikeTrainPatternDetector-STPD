@@ -31,6 +31,11 @@ let package = Package(
             path: "Tests/STPDCoreTests",
             // P6B-0: the 5x5 characterization dataset is loaded at runtime via #filePath, not compiled/bundled.
             exclude: ["Fixtures"]
+        ),
+        .testTarget(
+            name: "SpikeTrainPatternDetectorMacTests",
+            dependencies: ["SpikeTrainPatternDetectorMac", "STPDCore"],
+            path: "Tests/SpikeTrainPatternDetectorMacTests"
         )
     ]
 )

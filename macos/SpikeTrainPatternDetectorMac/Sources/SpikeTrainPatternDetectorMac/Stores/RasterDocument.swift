@@ -871,7 +871,7 @@ final class RasterDocument {
         }
     }
 
-    private func loadCSV(
+    func loadCSV(
         from url: URL,
         unit: SpikeTimeUnit,
         hasHeader: Bool,
@@ -893,23 +893,9 @@ final class RasterDocument {
                 preserveSelection: false
             )
         } catch {
-            invalidateDetectorRunForDatasetMutation()
-            dataset = nil
-            classicAnchorDetectionRun = nil
-            classicAnchorAnnotationCache = .empty
-            focusedClassicAnchorCandidateID = nil
-            classicAnchorFocusRequestID &+= 1
-            classicAnchorReviewStatuses = [:]
-            classicAnchorReviewInputs = [:]
-            manualAnnotationsByTrain = [:]
-            approvedManualAnnotationImports = []
-            detectorLastRunDate = nil
-            detectorStatusMessage = "Detector has not run."
-            selectedTrainIDs = []
-            isiSelectedTrainIDs = []
-            isiStateSpaceSelectedTrainIDs = []
-            loadedCSVURL = nil
-            statusMessage = "CSV load failed."
+            statusMessage = dataset == nil
+                ? "CSV load failed."
+                : "CSV load failed. Existing dataset preserved."
             lastErrorMessage = error.localizedDescription
         }
     }
