@@ -31,6 +31,12 @@ public struct CanonicalXLSXWorkbookInspection: Sendable {
 
     internal let sourceData: Data
     internal let inspectionBinding: UUID
+    internal let partBindings: CanonicalXLSXWorkbookPartBindings
+}
+
+internal struct CanonicalXLSXWorkbookPartBindings: Hashable, Sendable {
+    let sharedStringsPartPath: String?
+    let stylesPartPath: String?
 }
 
 public enum CanonicalXLSXInspectionLimitKind: String, Hashable, Sendable {
@@ -153,6 +159,8 @@ public enum CanonicalXLSXContentTypesIssue: String, Hashable, Sendable {
     case workbookContentTypeMismatch
     case macroEnabledWorkbookUnsupported
     case worksheetContentTypeMismatch
+    case sharedStringsContentTypeMismatch
+    case stylesContentTypeMismatch
     case relationshipsContentTypeMismatch
 }
 
@@ -172,6 +180,8 @@ public enum CanonicalXLSXRelationshipIssue: String, Hashable, Sendable {
     case macroSheetRelationshipUnsupported
     case duplicateWorksheetPart
     case unreferencedWorksheetRelationship
+    case multipleSharedStringsRelationships
+    case multipleStylesRelationships
 }
 
 public enum CanonicalXLSXWorkbookIssue: String, Hashable, Sendable {
@@ -444,6 +454,13 @@ public enum CanonicalXLSXWorkbookInspector {
             )
         }
 
+        let partBindings = try bindOptionalWorkbookParts(
+            relationships: workbookRelationships,
+            relationshipsPart: workbookRelationshipsPath,
+            contentTypes: contentTypes,
+            contentTypesPart: contentTypesPath
+        )
+
         let digest = SHA256.hash(data: sourceData).map { String(format: "%02x", $0) }.joined()
         return CanonicalXLSXWorkbookInspection(
             sourceSHA256: digest,
@@ -451,7 +468,8 @@ public enum CanonicalXLSXWorkbookInspector {
             limits: limits,
             worksheets: descriptors,
             sourceData: sourceData,
-            inspectionBinding: binding
+            inspectionBinding: binding,
+            partBindings: partBindings
         )
     }
 }
@@ -486,6 +504,8 @@ private enum OOXML {
     static let officeDocumentRelationship =
         documentRelationshipsNamespace + "/officeDocument"
     static let worksheetRelationship = documentRelationshipsNamespace + "/worksheet"
+    static let sharedStringsRelationship = documentRelationshipsNamespace + "/sharedStrings"
+    static let stylesRelationship = documentRelationshipsNamespace + "/styles"
     static let macroSheetRelationshipTypes: Set<String> = [
         "http://schemas.microsoft.com/office/2006/relationships/xlMacrosheet",
         "http://schemas.microsoft.com/office/2006/relationships/xlIntlMacrosheet",
@@ -496,6 +516,10 @@ private enum OOXML {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
     static let worksheetContentType =
         "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"
+    static let sharedStringsContentType =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"
+    static let stylesContentType =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
     static let macroWorkbookContentTypes: Set<String> = [
         "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
         "application/vnd.ms-excel.template.macroEnabled.main+xml",
@@ -1730,6 +1754,69 @@ private func validateRelationshipTargetsExist(
             target: relationship.targetPart
         )
     }
+}
+
+private func bindOptionalWorkbookParts(
+    relationships: [ParsedRelationship],
+    relationshipsPart: String,
+    contentTypes: ContentTypeCatalog,
+    contentTypesPart: String
+) throws -> CanonicalXLSXWorkbookPartBindings {
+    let sharedStrings = try uniqueOptionalRelationship(
+        ofType: OOXML.sharedStringsRelationship,
+        multipleIssue: .multipleSharedStringsRelationships,
+        in: relationships,
+        part: relationshipsPart
+    )
+    let styles = try uniqueOptionalRelationship(
+        ofType: OOXML.stylesRelationship,
+        multipleIssue: .multipleStylesRelationships,
+        in: relationships,
+        part: relationshipsPart
+    )
+
+    if let sharedStrings {
+        try requireContentType(
+            for: sharedStrings.targetPart,
+            expected: OOXML.sharedStringsContentType,
+            mismatch: .sharedStringsContentTypeMismatch,
+            catalog: contentTypes,
+            part: contentTypesPart
+        )
+    }
+    if let styles {
+        try requireContentType(
+            for: styles.targetPart,
+            expected: OOXML.stylesContentType,
+            mismatch: .stylesContentTypeMismatch,
+            catalog: contentTypes,
+            part: contentTypesPart
+        )
+    }
+
+    return CanonicalXLSXWorkbookPartBindings(
+        sharedStringsPartPath: sharedStrings?.targetPart,
+        stylesPartPath: styles?.targetPart
+    )
+}
+
+private func uniqueOptionalRelationship(
+    ofType type: String,
+    multipleIssue: CanonicalXLSXRelationshipIssue,
+    in relationships: [ParsedRelationship],
+    part: String
+) throws -> ParsedRelationship? {
+    let matches = relationships.filter { $0.type == type }
+    guard matches.count <= 1 else {
+        let duplicate = matches[1]
+        throw relationshipError(
+            part,
+            multipleIssue,
+            id: duplicate.id,
+            target: duplicate.targetPart
+        )
+    }
+    return matches.first
 }
 
 private func requireContentType(

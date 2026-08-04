@@ -84,10 +84,17 @@ private let transitionalSpreadsheetNamespace =
 private let transitionalDocumentRelationshipsNamespace =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 private let officeDocumentRelationship = transitionalDocumentRelationshipsNamespace + "/officeDocument"
+private let sharedStringsRelationship =
+    transitionalDocumentRelationshipsNamespace + "/sharedStrings"
+private let stylesRelationship = transitionalDocumentRelationshipsNamespace + "/styles"
 private let workbookContentType =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
 private let relationshipsContentType =
     "application/vnd.openxmlformats-package.relationships+xml"
+private let sharedStringsContentType =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"
+private let stylesContentType =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
 
 private func fixtureEntries(
     sheets: [FixtureSheet] = [
@@ -393,6 +400,126 @@ func inspectionCatalogsRelocatedWorksheetsWithoutChoosingOne() throws {
     #expect(inspection.worksheets.allSatisfy {
         $0.inspectionBinding == inspection.inspectionBinding
     })
+    #expect(inspection.partBindings.sharedStringsPartPath == nil)
+    #expect(inspection.partBindings.stylesPartPath == nil)
+}
+
+@Test
+func optionalWorkbookPartsAreBoundOnlyByRelationshipsAtRelocatedPaths() throws {
+    let sharedStringsPath = "pkg/metadata/strings/custom.xml"
+    let stylesPath = "formatting/styles/custom.xml"
+    let entries = fixtureEntries(
+        extraContentTypeXML: """
+        <Override PartName="/\(sharedStringsPath)" ContentType="\(sharedStringsContentType)"/>
+        <Override PartName="/\(stylesPath)" ContentType="\(stylesContentType)"/>
+        """,
+        extraWorkbookRelationshipXML: """
+        <Relationship Id="sharedStrings" Type="\(sharedStringsRelationship)" Target="../metadata/./strings/custom.xml"/>
+        <Relationship Id="styles" Type="\(stylesRelationship)" Target="/formatting/styles/custom.xml"/>
+        """
+    ) + [
+        TestArchiveEntry(sharedStringsPath, "<sst/>"),
+        TestArchiveEntry(stylesPath, "<styleSheet/>"),
+    ]
+    let inspection = try CanonicalXLSXWorkbookInspector.inspect(
+        data: makeArchive(entries),
+        limits: xlsxLimits
+    )
+
+    #expect(inspection.partBindings == CanonicalXLSXWorkbookPartBindings(
+        sharedStringsPartPath: sharedStringsPath,
+        stylesPartPath: stylesPath
+    ))
+    let parts = try inspection.extractRequiredParts([sharedStringsPath, stylesPath])
+    #expect(parts[sharedStringsPath] == Data("<sst/>".utf8))
+    #expect(parts[stylesPath] == Data("<styleSheet/>".utf8))
+}
+
+@Test
+func conventionalOptionalPartPathsAreNotInferredWithoutRelationships() throws {
+    let entries = fixtureEntries(extraContentTypeXML: """
+        <Override PartName="/xl/sharedStrings.xml" ContentType="\(sharedStringsContentType)"/>
+        <Override PartName="/xl/styles.xml" ContentType="\(stylesContentType)"/>
+        """) + [
+        TestArchiveEntry("xl/sharedStrings.xml", "<sst/>"),
+        TestArchiveEntry("xl/styles.xml", "<styleSheet/>"),
+    ]
+    let inspection = try CanonicalXLSXWorkbookInspector.inspect(
+        data: makeArchive(entries),
+        limits: xlsxLimits
+    )
+
+    #expect(inspection.partBindings.sharedStringsPartPath == nil)
+    #expect(inspection.partBindings.stylesPartPath == nil)
+}
+
+@Test(arguments: [
+    (sharedStringsRelationship, CanonicalXLSXRelationshipIssue.multipleSharedStringsRelationships),
+    (stylesRelationship, CanonicalXLSXRelationshipIssue.multipleStylesRelationships),
+])
+func duplicateOptionalPartRelationshipTypesFailClosed(
+    relationshipType: String,
+    expectedIssue: CanonicalXLSXRelationshipIssue
+) throws {
+    let entries = fixtureEntries(extraWorkbookRelationshipXML: """
+        <Relationship Id="optionalOne" Type="\(relationshipType)" Target="../optional/one.xml"/>
+        <Relationship Id="optionalTwo" Type="\(relationshipType)" Target="../optional/two.xml"/>
+        """) + [
+        TestArchiveEntry("pkg/optional/one.xml", "<part/>"),
+        TestArchiveEntry("pkg/optional/two.xml", "<part/>"),
+    ]
+
+    #expect(inspectError(try makeArchive(entries)) == .invalidRelationships(
+        part: "pkg/books/_rels/main.xml.rels",
+        issue: expectedIssue,
+        relationshipID: "optionalTwo",
+        target: "pkg/optional/two.xml"
+    ))
+}
+
+@Test(arguments: [
+    (sharedStringsRelationship, sharedStringsContentType,
+     CanonicalXLSXContentTypesIssue.sharedStringsContentTypeMismatch),
+    (stylesRelationship, stylesContentType,
+     CanonicalXLSXContentTypesIssue.stylesContentTypeMismatch),
+])
+func optionalPartContentTypesAreRequiredAndExact(
+    relationshipType: String,
+    expectedContentType: String,
+    mismatchIssue: CanonicalXLSXContentTypesIssue
+) throws {
+    let path = "pkg/optional/part.xml"
+    let relationship =
+        "<Relationship Id=\"optional\" Type=\"\(relationshipType)\" Target=\"../optional/part.xml\"/>"
+    let withoutContentType = fixtureEntries(
+        extraWorkbookRelationshipXML: relationship
+    ) + [TestArchiveEntry(path, "<part/>")]
+    #expect(inspectError(try makeArchive(withoutContentType)) == .invalidContentTypes(
+        part: "[Content_Types].xml",
+        issue: .missingPartContentType,
+        value: path
+    ))
+
+    let wrongContentType = fixtureEntries(
+        extraContentTypeXML:
+            "<Override PartName=\"/\(path)\" ContentType=\"application/xml\"/>",
+        extraWorkbookRelationshipXML: relationship
+    ) + [TestArchiveEntry(path, "<part/>")]
+    #expect(inspectError(try makeArchive(wrongContentType)) == .invalidContentTypes(
+        part: "[Content_Types].xml",
+        issue: mismatchIssue,
+        value: path
+    ))
+
+    let exactContentType = fixtureEntries(
+        extraContentTypeXML:
+            "<Override PartName=\"/\(path)\" ContentType=\"\(expectedContentType)\"/>",
+        extraWorkbookRelationshipXML: relationship
+    ) + [TestArchiveEntry(path, "<part/>")]
+    _ = try CanonicalXLSXWorkbookInspector.inspect(
+        data: makeArchive(exactContentType),
+        limits: xlsxLimits
+    )
 }
 
 @Test
