@@ -47,19 +47,23 @@ func scientificImportNormalizerPreparesValidMultiGroupDataDeterministically() th
 
 @Test
 func scientificImportNormalizerSeparatesEquivalentTextDataFromSourceProvenance() throws {
-    let cells: [[StagedCellValue]] = [[
+    let textCells: [[StagedCellValue]] = [[
         .text(rawText: "0.000001"),
         .text(rawText: "1e-6"),
+    ]]
+    let numericCells: [[StagedCellValue]] = [[
+        .spreadsheetNumber(rawLexeme: "0.000001"),
+        .spreadsheetNumber(rawLexeme: "1e-6"),
     ]]
     let csv = try normalizerStaged(
         source: .commaSeparatedValues,
         headers: ["unit"],
-        columns: cells
+        columns: textCells
     )
     let workbook = try normalizerStaged(
         source: .excelWorkbook(worksheetName: "Recording"),
         headers: ["unit"],
-        columns: cells
+        columns: numericCells
     )
     let csvPrepared = try ScientificImportNormalizer.normalize(
         resolvedPlan: normalizerSingleSpikePlan(staged: csv)
@@ -99,13 +103,69 @@ func scientificImportNormalizerTreatsOnlyStructuralBlankAsMissing() throws {
 }
 
 @Test
-func scientificImportNormalizerBlocksEverySpreadsheetNumberTimestamp() throws {
+func scientificImportNormalizerAcceptsSpreadsheetNumericSpikeAndEventWithMetadata() throws {
     let staged = try normalizerStaged(
         source: .excelWorkbook(worksheetName: "Recording"),
         headers: ["unit", "event"],
         columns: [
-            [.spreadsheetNumber(rawLexeme: "0.000001")],
-            [.spreadsheetNumber(rawLexeme: "1")],
+            [
+                .spreadsheetNumber(rawLexeme: "0.000001"),
+                .spreadsheetNumber(rawLexeme: "1e-6"),
+                .blank,
+            ],
+            [
+                .spreadsheetNumber(rawLexeme: "0.5"),
+                .text(rawText: "@condition=A"),
+                .blank,
+            ],
+        ]
+    )
+    let references = try normalizerColumns(2)
+    let group = EventScopeGroupManifestDraft(
+        semanticID: try normalizerGroupID("group"),
+        spikeTrains: [try normalizerSpike(references[0], id: "unit")],
+        eventDefinitions: [try normalizerEvent(references[1], id: "event")],
+        timeBasis: .recordingElapsed
+    )
+    let condition = try normalizerAttribute(
+        "condition",
+        type: .string,
+        role: .scientific,
+        unit: .notApplicable,
+        empty: .forbid
+    )
+    let plan = try normalizerPlan(
+        staged: staged,
+        groups: [group],
+        attributes: [condition]
+    )
+
+    let prepared = try ScientificImportNormalizer.normalize(resolvedPlan: plan)
+    let preparedGroup = prepared.data.eventScopeGroups[0]
+    #expect(preparedGroup.spikeTrains[0].timestamps.map(\.microseconds) == [1, 1])
+    #expect(preparedGroup.eventDefinitions[0].occurrences.map(\.tick.microseconds)
+        == [500_000])
+    #expect(preparedGroup.eventDefinitions[0].occurrences[0]
+        .scientificAttributes.map(\.key.canonicalText) == ["condition"])
+    #expect(prepared.provenance.resolvedPlan.source.columns[0].cells[0]
+        == .spreadsheetNumber(rawLexeme: "0.000001"))
+    #expect(prepared.provenance.resolvedPlan.source.columns[0].cells[1]
+        == .spreadsheetNumber(rawLexeme: "1e-6"))
+    #expect(prepared.provenance.resolvedPlan.source.columns[0].cells[0]
+        != prepared.provenance.resolvedPlan.source.columns[0].cells[1])
+}
+
+@Test
+func scientificImportNormalizerRejectsSpreadsheetNumberCellInCSVSource() throws {
+    let staged = try normalizerStaged(
+        source: .commaSeparatedValues,
+        headers: ["unit", "event"],
+        columns: [
+            [.spreadsheetNumber(rawLexeme: "0.000001"), .blank],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=orphan"),
+            ],
         ]
     )
     let references = try normalizerColumns(2)
@@ -119,15 +179,142 @@ func scientificImportNormalizerBlocksEverySpreadsheetNumberTimestamp() throws {
 
     let error = try #require(normalizerError(plan))
     #expect(error.issues == [
-        .spreadsheetNumberTimestampRequiresPrecisionProof(
+        .spreadsheetNumberOutsideWorkbook(
             group: 1,
             cell: try normalizerCell(column: 1, row: 1)
         ),
-        .spreadsheetNumberTimestampRequiresPrecisionProof(
+        .spreadsheetNumberOutsideWorkbook(
             group: 1,
             cell: try normalizerCell(column: 2, row: 1)
         ),
+        .eventMetadataWithoutOccurrence(
+            group: 1,
+            cell: try normalizerCell(column: 2, row: 2)
+        ),
     ])
+}
+
+@Test
+func scientificImportNormalizerLocatesNumericFailuresAndClosesEventOccurrence() throws {
+    let staged = try normalizerStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit", "event"],
+        columns: [
+            [
+                .spreadsheetNumber(rawLexeme: "bad"),
+                .spreadsheetNumber(rawLexeme: "0.0000005"),
+                .blank,
+                .blank,
+            ],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=A"),
+                .spreadsheetNumber(rawLexeme: "0.0000005"),
+                .text(rawText: "@condition=B"),
+            ],
+        ]
+    )
+    let references = try normalizerColumns(2)
+    let group = EventScopeGroupManifestDraft(
+        semanticID: try normalizerGroupID("group"),
+        spikeTrains: [try normalizerSpike(references[0], id: "unit")],
+        eventDefinitions: [try normalizerEvent(references[1], id: "event")],
+        timeBasis: .recordingElapsed
+    )
+    let condition = try normalizerAttribute(
+        "condition", type: .string, role: .scientific,
+        unit: .notApplicable, empty: .forbid
+    )
+    let plan = try normalizerPlan(
+        staged: staged,
+        groups: [group],
+        attributes: [condition]
+    )
+
+    let error = try #require(normalizerError(plan))
+    #expect(error.issues == [
+        .spreadsheetNumberTimestampDecodeFailed(
+            group: 1,
+            cell: try normalizerCell(column: 1, row: 1),
+            error: .invalidSyntax(utf8Offset: 0, issue: .unexpectedCharacter)
+        ),
+        .spreadsheetNumberTimestampDecodeFailed(
+            group: 1,
+            cell: try normalizerCell(column: 1, row: 2),
+            error: .noWholeMicrosecondRoundTrip
+        ),
+        .spreadsheetNumberTimestampDecodeFailed(
+            group: 1,
+            cell: try normalizerCell(column: 2, row: 3),
+            error: .noWholeMicrosecondRoundTrip
+        ),
+        .eventMetadataWithoutOccurrence(
+            group: 1,
+            cell: try normalizerCell(column: 2, row: 4)
+        ),
+    ])
+}
+
+@Test
+func scientificImportNormalizerUsesSpreadsheetNumericEventOriginExactly() throws {
+    let staged = try normalizerStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit", "event"],
+        columns: [
+            [
+                .spreadsheetNumber(rawLexeme: "-1"),
+                .spreadsheetNumber(rawLexeme: "0"),
+                .spreadsheetNumber(rawLexeme: "2"),
+            ],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=x"),
+                .spreadsheetNumber(rawLexeme: "-1"),
+            ],
+        ]
+    )
+    let references = try normalizerColumns(2)
+    let originCell = try normalizerCell(column: 2, row: 1)
+    let group = EventScopeGroupManifestDraft(
+        semanticID: try normalizerGroupID("group"),
+        spikeTrains: [try normalizerSpike(references[0], id: "unit")],
+        eventDefinitions: [
+            try normalizerEvent(references[1], id: "event", order: .stableAscendingSort),
+        ],
+        timeBasis: .eventRelative(
+            origin: StagedEventOccurrenceReference(timestampCell: originCell)
+        )
+    )
+    let condition = try normalizerAttribute(
+        "condition", type: .string, role: .scientific,
+        unit: .notApplicable, empty: .forbid
+    )
+    let plan = try normalizerPlan(
+        staged: staged,
+        groups: [group],
+        attributes: [condition]
+    )
+
+    let prepared = try ScientificImportNormalizer.normalize(resolvedPlan: plan)
+    let preparedGroup = prepared.data.eventScopeGroups[0]
+    #expect(preparedGroup.spikeTrains[0].timestamps.map(\.microseconds)
+        == [-2_000_000, -1_000_000, 1_000_000])
+    #expect(preparedGroup.eventDefinitions[0].occurrences.map(\.tick.microseconds)
+        == [-2_000_000, 0])
+    guard case .eventRelative(let origin) = preparedGroup.timeBasis else {
+        Issue.record("Expected event-relative prepared time basis")
+        return
+    }
+    #expect(origin.eventDefinitionID.semanticID.canonicalText == "event")
+    #expect(origin.tick == .zero)
+    #expect(origin.scientificAttributes.map(\.key.canonicalText) == ["condition"])
+    #expect(origin.scientificAttributes.map(\.value) == [
+        .string(try CanonicalStringValue(validating: "x")),
+    ])
+    #expect(prepared.provenance.eventScopeGroups[0].timeBasis == .eventRelative(
+        originCell: originCell,
+        sourceOriginTick: MicrosecondTick(microseconds: 1_000_000)
+    ))
 }
 
 @Test
@@ -1074,6 +1261,37 @@ func scientificImportNormalizerCapsDiagnosticsDeterministically() throws {
             row: ScientificImportNormalizer.maximumReportedIssueCount
         ),
         error: .empty
+    ))
+}
+
+@Test
+func scientificImportNormalizerCapsNumericDiagnosticsInSourceOrder() throws {
+    let count = ScientificImportNormalizer.maximumReportedIssueCount + 3
+    let staged = try normalizerStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        columns: [Array(
+            repeating: .spreadsheetNumber(rawLexeme: "0.0000005"),
+            count: count
+        )]
+    )
+    let plan = try normalizerSingleSpikePlan(staged: staged)
+
+    let error = try #require(normalizerError(plan))
+    #expect(error.issues.count == ScientificImportNormalizer.maximumReportedIssueCount)
+    #expect(error.additionalIssueCount == 3)
+    #expect(error.issues.first == .spreadsheetNumberTimestampDecodeFailed(
+        group: 1,
+        cell: try normalizerCell(column: 1, row: 1),
+        error: .noWholeMicrosecondRoundTrip
+    ))
+    #expect(error.issues.last == .spreadsheetNumberTimestampDecodeFailed(
+        group: 1,
+        cell: try normalizerCell(
+            column: 1,
+            row: ScientificImportNormalizer.maximumReportedIssueCount
+        ),
+        error: .noWholeMicrosecondRoundTrip
     ))
 }
 

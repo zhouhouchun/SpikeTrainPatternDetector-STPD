@@ -8,9 +8,14 @@ public enum ScientificImportAttributeValueIssue: Equatable, Sendable {
 }
 
 public enum ScientificImportNormalizationIssue: Equatable, Sendable {
-    case spreadsheetNumberTimestampRequiresPrecisionProof(
+    case spreadsheetNumberOutsideWorkbook(
         group: Int,
         cell: StagedSourceCellReference
+    )
+    case spreadsheetNumberTimestampDecodeFailed(
+        group: Int,
+        cell: StagedSourceCellReference,
+        error: SpreadsheetNumericTimestampDecodeError
     )
     case timestampParseFailed(
         group: Int,
@@ -206,13 +211,25 @@ public enum ScientificImportNormalizer {
                     switch cellValue {
                     case .blank:
                         continue
-                    case .spreadsheetNumber:
-                        issues.append(
-                            .spreadsheetNumberTimestampRequiresPrecisionProof(
-                                group: groupNumber,
-                                cell: cell
+                    case .spreadsheetNumber(let rawLexeme):
+                        guard case .excelWorkbook = plan.source.source else {
+                            issues.append(
+                                .spreadsheetNumberOutsideWorkbook(
+                                    group: groupNumber,
+                                    cell: cell
+                                )
                             )
-                        )
+                            continue
+                        }
+                        if let tick = parseSpreadsheetTimestamp(
+                            rawLexeme,
+                            unit: plan.sourceTimeUnit,
+                            group: groupNumber,
+                            cell: cell,
+                            issues: &issues
+                        ) {
+                            timestamps.append(RawTimestamp(tick: tick, sourceCell: cell))
+                        }
                     case .text(let rawText):
                         if startsWithMetadataMarker(rawText) {
                             issues.append(
@@ -257,14 +274,35 @@ public enum ScientificImportNormalizer {
                     switch cellValue {
                     case .blank:
                         openOccurrenceIndex = nil
-                    case .spreadsheetNumber:
-                        issues.append(
-                            .spreadsheetNumberTimestampRequiresPrecisionProof(
-                                group: groupNumber,
-                                cell: cell
+                    case .spreadsheetNumber(let rawLexeme):
+                        guard case .excelWorkbook = plan.source.source else {
+                            issues.append(
+                                .spreadsheetNumberOutsideWorkbook(
+                                    group: groupNumber,
+                                    cell: cell
+                                )
                             )
-                        )
-                        openOccurrenceIndex = nil
+                            openOccurrenceIndex = nil
+                            continue
+                        }
+                        if let tick = parseSpreadsheetTimestamp(
+                            rawLexeme,
+                            unit: plan.sourceTimeUnit,
+                            group: groupNumber,
+                            cell: cell,
+                            issues: &issues
+                        ) {
+                            occurrences.append(
+                                RawEventOccurrence(
+                                    sourceTick: tick,
+                                    timestampCell: cell,
+                                    metadata: []
+                                )
+                            )
+                            openOccurrenceIndex = occurrences.count - 1
+                        } else {
+                            openOccurrenceIndex = nil
+                        }
                     case .text(let rawText):
                         if startsWithMetadataMarker(rawText) {
                             guard let openOccurrenceIndex else {
@@ -330,6 +368,32 @@ public enum ScientificImportNormalizer {
             return try ExactTimestampTextCodec.decode(rawText, sourceUnit: unit)
         } catch let error as ExactTimestampParseError {
             issues.append(.timestampParseFailed(group: group, cell: cell, error: error))
+        } catch {
+            issues.append(.resolvedPlanInvariant)
+        }
+        return nil
+    }
+
+    private static func parseSpreadsheetTimestamp(
+        _ rawLexeme: String,
+        unit: SpikeTimeUnit,
+        group: Int,
+        cell: StagedSourceCellReference,
+        issues: inout IssueAccumulator
+    ) -> MicrosecondTick? {
+        do {
+            return try SpreadsheetNumericTimestampCodec.decode(
+                rawLexeme: rawLexeme,
+                sourceUnit: unit
+            )
+        } catch let error as SpreadsheetNumericTimestampDecodeError {
+            issues.append(
+                .spreadsheetNumberTimestampDecodeFailed(
+                    group: group,
+                    cell: cell,
+                    error: error
+                )
+            )
         } catch {
             issues.append(.resolvedPlanInvariant)
         }

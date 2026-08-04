@@ -500,13 +500,29 @@ public enum PreparedScientificImportValidator {
                     switch value {
                     case .blank:
                         continue
-                    case .spreadsheetNumber:
-                        issues.append(
-                            PreparedScientificImportValidationIssue(
-                                kind: .spreadsheetNumberTimestampRequiresPrecisionProof,
-                                location: location
+                    case .spreadsheetNumber(let rawLexeme):
+                        guard case .excelWorkbook = plan.source.source else {
+                            issues.append(
+                                PreparedScientificImportValidationIssue(
+                                    kind: .spreadsheetNumberOutsideWorkbook,
+                                    location: location
+                                )
                             )
-                        )
+                            continue
+                        }
+                        if let tick = replaySpreadsheetTimestamp(
+                            rawLexeme,
+                            unit: plan.sourceTimeUnit,
+                            location: location,
+                            issues: &issues
+                        ) {
+                            timestamps.append(
+                                PreparedValidationRawTimestamp(
+                                    tick: tick,
+                                    sourceCell: cell
+                                )
+                            )
+                        }
                     case .text(let rawText):
                         if replayStartsWithMetadataMarker(rawText) {
                             issues.append(
@@ -590,14 +606,34 @@ public enum PreparedScientificImportValidator {
                     switch value {
                     case .blank:
                         openOccurrenceIndex = nil
-                    case .spreadsheetNumber:
-                        issues.append(
-                            PreparedScientificImportValidationIssue(
-                                kind: .spreadsheetNumberTimestampRequiresPrecisionProof,
-                                location: location
+                    case .spreadsheetNumber(let rawLexeme):
+                        guard case .excelWorkbook = plan.source.source else {
+                            issues.append(
+                                PreparedScientificImportValidationIssue(
+                                    kind: .spreadsheetNumberOutsideWorkbook,
+                                    location: location
+                                )
                             )
-                        )
-                        openOccurrenceIndex = nil
+                            openOccurrenceIndex = nil
+                            continue
+                        }
+                        if let tick = replaySpreadsheetTimestamp(
+                            rawLexeme,
+                            unit: plan.sourceTimeUnit,
+                            location: location,
+                            issues: &issues
+                        ) {
+                            occurrences.append(
+                                PreparedValidationRawEventOccurrence(
+                                    sourceTick: tick,
+                                    timestampCell: cell,
+                                    metadata: []
+                                )
+                            )
+                            openOccurrenceIndex = occurrences.count - 1
+                        } else {
+                            openOccurrenceIndex = nil
+                        }
                     case .text(let rawText):
                         if replayStartsWithMetadataMarker(rawText) {
                             guard let openOccurrenceIndex else {
@@ -668,6 +704,35 @@ public enum PreparedScientificImportValidator {
             issues.append(
                 PreparedScientificImportValidationIssue(
                     kind: .timestampParseFailed(issue: replayTimestampIssue(error)),
+                    location: location
+                )
+            )
+        } catch {
+            issues.append(
+                PreparedScientificImportValidationIssue(
+                    kind: .independentReplayInvariant,
+                    location: location
+                )
+            )
+        }
+        return nil
+    }
+
+    private static func replaySpreadsheetTimestamp(
+        _ rawLexeme: String,
+        unit: SpikeTimeUnit,
+        location: PreparedScientificImportValidationLocation,
+        issues: inout PreparedValidationIssueAccumulator
+    ) -> MicrosecondTick? {
+        do {
+            return try SpreadsheetNumericTimestampCodec.decode(
+                rawLexeme: rawLexeme,
+                sourceUnit: unit
+            )
+        } catch let error as SpreadsheetNumericTimestampDecodeError {
+            issues.append(
+                PreparedScientificImportValidationIssue(
+                    kind: .spreadsheetNumberTimestampDecodeFailed(issue: error),
                     location: location
                 )
             )

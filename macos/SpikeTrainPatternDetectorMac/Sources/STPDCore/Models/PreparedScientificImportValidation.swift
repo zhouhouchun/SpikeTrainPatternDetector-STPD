@@ -197,7 +197,10 @@ public enum PreparedScientificImportValidationIssueKind: Hashable, Sendable {
     case duplicateEventAttributeDefinitionKey(firstDefinitionIndex: Int)
     case explicitEmptyStringAllowedForNonString(scalarType: EventAttributeScalarType)
 
-    case spreadsheetNumberTimestampRequiresPrecisionProof
+    case spreadsheetNumberOutsideWorkbook
+    case spreadsheetNumberTimestampDecodeFailed(
+        issue: SpreadsheetNumericTimestampDecodeError
+    )
     case timestampParseFailed(issue: PreparedScientificImportTimestampParseIssue)
     case eventMetadataInSpikeTrain
     case eventMetadataWithoutOccurrence

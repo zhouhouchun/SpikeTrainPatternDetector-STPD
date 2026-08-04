@@ -71,18 +71,20 @@ func preparedScientificImportValidatorAcceptsAllApprovedModeAndMultiplicityPairs
 }
 
 @Test
-func preparedScientificImportValidatorTreatsEquivalentCSVAndXLSXTextAsSameData() throws {
+func preparedScientificImportValidatorTreatsEquivalentCSVTextAndXLSXNumericAsSameData() throws {
     let headers = ["unit"]
-    let columns = [[StagedCellValue.text(rawText: "0"), .text(rawText: "0.001")]]
     let csv = try validatorStaged(
         source: .commaSeparatedValues,
         headers: headers,
-        columns: columns
+        columns: [[.text(rawText: "0"), .text(rawText: "0.001")]]
     )
     let xlsx = try validatorStaged(
         source: .excelWorkbook(worksheetName: "Sheet1"),
         headers: headers,
-        columns: columns
+        columns: [[
+            .spreadsheetNumber(rawLexeme: "-0"),
+            .spreadsheetNumber(rawLexeme: "1e-3"),
+        ]]
     )
     let csvPlan = try validatorSingleSpikePlan(staged: csv, attributes: [])
     let xlsxPlan = try validatorSingleSpikePlan(staged: xlsx, attributes: [])
@@ -93,6 +95,54 @@ func preparedScientificImportValidatorTreatsEquivalentCSVAndXLSXTextAsSameData()
     #expect(csvPrepared.provenance != xlsxPrepared.provenance)
     #expect(PreparedScientificImportValidator.validate(csvPrepared).blockingIssues.isEmpty)
     #expect(PreparedScientificImportValidator.validate(xlsxPrepared).blockingIssues.isEmpty)
+}
+
+@Test
+func preparedScientificImportValidatorAcceptsNumericEventOriginNormalizerOutput() throws {
+    let prepared = try validatorNumericEventRelativePrepared()
+
+    let report = PreparedScientificImportValidator.validate(prepared)
+
+    #expect(report.blockingIssues.isEmpty)
+    #expect(report.additionalBlockingIssueCount == 0)
+    #expect(report.warnings.isEmpty)
+    let group = prepared.data.eventScopeGroups[0]
+    #expect(group.spikeTrains[0].timestamps.map(\.microseconds)
+        == [-2_000_000, -1_000_000, 1_000_000])
+    #expect(group.eventDefinitions[0].occurrences.map(\.tick.microseconds)
+        == [-2_000_000, 0])
+}
+
+@Test
+func preparedScientificImportValidatorRejectsSpreadsheetNumberCellInCSVSource() throws {
+    let staged = try validatorStaged(
+        source: .commaSeparatedValues,
+        headers: ["unit", "event"],
+        columns: [
+            [.spreadsheetNumber(rawLexeme: "0.000001"), .blank],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=orphan"),
+            ],
+        ]
+    )
+    let plan = try validatorSpikeEventPlan(staged: staged, attributes: [])
+
+    let report = PreparedScientificImportValidator.validate(
+        validatorForgedPrepared(plan: plan)
+    )
+
+    #expect(report.blockingIssues.map(\.kind) == [
+        .spreadsheetNumberOutsideWorkbook,
+        .spreadsheetNumberOutsideWorkbook,
+        .eventMetadataWithoutOccurrence,
+    ])
+    #expect(report.blockingIssues.map { $0.location.sourceCell } == [
+        try validatorCell(column: 1, row: 1),
+        try validatorCell(column: 2, row: 1),
+        try validatorCell(column: 2, row: 2),
+    ])
+    #expect(validatorComparisonFields(report).isEmpty)
 }
 
 @Test
@@ -506,6 +556,40 @@ func preparedScientificImportValidatorCapsIssuesDeterministically() throws {
 }
 
 @Test
+func preparedScientificImportValidatorCapsNumericIssuesInSourceOrder() throws {
+    let count = PreparedScientificImportValidator.maximumReportedIssueCount + 3
+    let staged = try validatorStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        columns: [Array(
+            repeating: .spreadsheetNumber(rawLexeme: "0.0000005"),
+            count: count
+        )]
+    )
+    let plan = try validatorSingleSpikePlan(staged: staged, attributes: [])
+    let prepared = validatorForgedPrepared(plan: plan)
+
+    let first = PreparedScientificImportValidator.validate(prepared)
+    let second = PreparedScientificImportValidator.validate(prepared)
+
+    #expect(first == second)
+    #expect(first.blockingIssues.count
+        == PreparedScientificImportValidator.maximumReportedIssueCount)
+    #expect(first.additionalBlockingIssueCount == 3)
+    #expect(first.blockingIssues.first?.kind
+        == .spreadsheetNumberTimestampDecodeFailed(
+            issue: .noWholeMicrosecondRoundTrip
+        ))
+    #expect(first.blockingIssues.first?.location.sourceCell
+        == (try validatorCell(column: 1, row: 1)))
+    #expect(first.blockingIssues.last?.location.sourceCell == (try validatorCell(
+        column: 1,
+        row: PreparedScientificImportValidator.maximumReportedIssueCount
+    )))
+    #expect(validatorComparisonFields(first).isEmpty)
+}
+
+@Test
 func preparedScientificImportValidatorTreatsOnlyStructuralBlankAsMissing() throws {
     let staged = try validatorStaged(
         headers: ["unit"],
@@ -526,16 +610,23 @@ func preparedScientificImportValidatorTreatsOnlyStructuralBlankAsMissing() throw
 }
 
 @Test
-func preparedScientificImportValidatorBlocksNumericOffGridAndOutOfRangeTimestamps() throws {
+func preparedScientificImportValidatorReproducesNumericFailuresAndEventState() throws {
     let staged = try validatorStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
         headers: ["unit", "event"],
         columns: [
             [
-                .spreadsheetNumber(rawLexeme: "0.000001"),
-                .text(rawText: "0.0000005"),
-                .text(rawText: "9223372036854.775808"),
+                .spreadsheetNumber(rawLexeme: "0.0000005"),
+                .spreadsheetNumber(rawLexeme: "1e19"),
+                .spreadsheetNumber(rawLexeme: "bad"),
+                .blank,
             ],
-            [.spreadsheetNumber(rawLexeme: "1"), .blank, .blank],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=A"),
+                .spreadsheetNumber(rawLexeme: "0.0000005"),
+                .text(rawText: "@condition=B"),
+            ],
         ]
     )
     let plan = try validatorSpikeEventPlan(staged: staged, attributes: [])
@@ -545,11 +636,22 @@ func preparedScientificImportValidatorBlocksNumericOffGridAndOutOfRangeTimestamp
     )
 
     #expect(report.blockingIssues.map(\.kind) == [
-        .spreadsheetNumberTimestampRequiresPrecisionProof,
-        .timestampParseFailed(issue: .notExactlyRepresentableInMicroseconds),
-        .timestampParseFailed(issue: .outsideSignedMicrosecondRange),
-        .spreadsheetNumberTimestampRequiresPrecisionProof,
+        .spreadsheetNumberTimestampDecodeFailed(issue: .noWholeMicrosecondRoundTrip),
+        .spreadsheetNumberTimestampDecodeFailed(issue: .outsideSignedMicrosecondRange),
+        .spreadsheetNumberTimestampDecodeFailed(
+            issue: .invalidSyntax(utf8Offset: 0, issue: .unexpectedCharacter)
+        ),
+        .spreadsheetNumberTimestampDecodeFailed(issue: .noWholeMicrosecondRoundTrip),
+        .eventMetadataWithoutOccurrence,
     ])
+    #expect(report.blockingIssues.map { $0.location.sourceCell } == [
+        try validatorCell(column: 1, row: 1),
+        try validatorCell(column: 1, row: 2),
+        try validatorCell(column: 1, row: 3),
+        try validatorCell(column: 2, row: 3),
+        try validatorCell(column: 2, row: 4),
+    ])
+    #expect(validatorComparisonFields(report).isEmpty)
 }
 
 @Test
@@ -1369,6 +1471,67 @@ func preparedScientificImportValidatorComparesDataSiblingsAndGatesOccurrenceTick
 }
 
 @Test
+func preparedScientificImportValidatorCatchesNumericDataAndProvenanceTampering() throws {
+    let prepared = try validatorNumericEventRelativePrepared()
+    let group = prepared.data.eventScopeGroups[0]
+    let spike = group.spikeTrains[0]
+    var timestamps = spike.timestamps
+    timestamps[0] = MicrosecondTick(microseconds: timestamps[0].microseconds + 1)
+    let tamperedSpike = PreparedSpikeTrain(
+        semanticID: spike.semanticID,
+        timestamps: timestamps
+    )
+    let tamperedDataGroup = PreparedEventScopeGroup(
+        semanticID: group.semanticID,
+        timeBasis: group.timeBasis,
+        spikeTrains: [tamperedSpike],
+        eventDefinitions: group.eventDefinitions
+    )
+    let tamperedData = PreparedScientificImportData(
+        activityMode: prepared.data.activityMode,
+        eventScopeGroups: [tamperedDataGroup],
+        scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
+        presentationAttributeDefinitions: prepared.data.presentationAttributeDefinitions
+    )
+
+    let provenanceGroup = prepared.provenance.eventScopeGroups[0]
+    let provenanceSpike = provenanceGroup.spikeTrains[0]
+    var timestampSources = provenanceSpike.timestampSources
+    timestampSources[0][0] = try validatorCell(column: 1, row: 2)
+    let tamperedProvenanceSpike = PreparedSpikeTrainProvenance(
+        semanticID: provenanceSpike.semanticID,
+        sourceColumn: provenanceSpike.sourceColumn,
+        orderDecision: provenanceSpike.orderDecision,
+        duplicateDecision: provenanceSpike.duplicateDecision,
+        sourceOrderDescentCount: provenanceSpike.sourceOrderDescentCount,
+        timestampSources: timestampSources
+    )
+    let tamperedProvenanceGroup = PreparedEventScopeGroupProvenance(
+        semanticID: provenanceGroup.semanticID,
+        timeBasis: provenanceGroup.timeBasis,
+        spikeTrains: [tamperedProvenanceSpike],
+        eventDefinitions: provenanceGroup.eventDefinitions
+    )
+    let tamperedProvenance = ScientificImportNormalizationProvenance(
+        resolvedPlan: prepared.provenance.resolvedPlan,
+        eventScopeGroups: [tamperedProvenanceGroup]
+    )
+
+    let report = PreparedScientificImportValidator.validate(
+        validatorReplacing(
+            prepared,
+            data: tamperedData,
+            provenance: tamperedProvenance
+        )
+    )
+
+    #expect(validatorComparisonFields(report) == [
+        .dataSpikeTimestamp(position: 1),
+        .provenanceSpikeTimestampSourceCell(outputPosition: 1, sourcePosition: 1),
+    ])
+}
+
+@Test
 func preparedScientificImportValidatorGatesAttributeValueAfterKeyMismatch() throws {
     let prepared = try validatorRichPrepared()
     let group = prepared.data.eventScopeGroups[0]
@@ -1843,6 +2006,41 @@ private func validatorForgedPrepared(
             eventScopeGroups: []
         )
     )
+}
+
+private func validatorNumericEventRelativePrepared() throws -> PreparedScientificImport {
+    let staged = try validatorStaged(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit", "event"],
+        columns: [
+            [
+                .spreadsheetNumber(rawLexeme: "-1"),
+                .spreadsheetNumber(rawLexeme: "0"),
+                .spreadsheetNumber(rawLexeme: "2"),
+            ],
+            [
+                .spreadsheetNumber(rawLexeme: "1"),
+                .text(rawText: "@condition=x"),
+                .spreadsheetNumber(rawLexeme: "-1"),
+            ],
+        ]
+    )
+    let condition = try validatorAttribute(
+        "condition",
+        type: .string,
+        unit: .notApplicable
+    )
+    let plan = try validatorConfiguredSpikeEventPlan(
+        staged: staged,
+        eventOrder: .stableAscendingSort,
+        timeBasis: .eventRelative(
+            origin: StagedEventOccurrenceReference(
+                timestampCell: try validatorCell(column: 2, row: 1)
+            )
+        ),
+        attributes: [condition]
+    )
+    return try ScientificImportNormalizer.normalize(resolvedPlan: plan)
 }
 
 private func validatorRichPrepared() throws -> PreparedScientificImport {
