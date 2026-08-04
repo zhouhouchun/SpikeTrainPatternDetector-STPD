@@ -396,6 +396,45 @@ func inspectionCatalogsRelocatedWorksheetsWithoutChoosingOne() throws {
 }
 
 @Test
+func inspectionOwnsSnapshotAndReusesValidatedExtractionAfterExternalMutation() throws {
+    let original = try makeArchive(fixtureEntries(sheets: [
+        FixtureSheet(
+            name: "Recording",
+            relationshipID: "recordingSheet",
+            target: "../sheets/recording.xml"
+        ),
+    ]))
+    let mutableBytes = try #require(malloc(original.count))
+    original.copyBytes(
+        to: mutableBytes.assumingMemoryBound(to: UInt8.self),
+        count: original.count
+    )
+    let externallyOwnedBacking = NSData(
+        bytesNoCopy: mutableBytes,
+        length: original.count,
+        freeWhenDone: true
+    )
+    let externallyBacked = Data(referencing: externallyOwnedBacking)
+    let inspection = try CanonicalXLSXWorkbookInspector.inspect(
+        data: externallyBacked,
+        limits: xlsxLimits
+    )
+    let worksheet = try #require(inspection.worksheets.first)
+
+    mutableBytes.storeBytes(of: UInt8(0), as: UInt8.self)
+
+    #expect(externallyBacked != original)
+    #expect(inspection.sourceData == original)
+    #expect(inspection.sourceByteCount == original.count)
+    let expectedDigest = SHA256.hash(data: original)
+        .map { String(format: "%02x", $0) }
+        .joined()
+    #expect(inspection.sourceSHA256 == expectedDigest)
+    let parts = try inspection.extractRequiredParts([worksheet.normalizedPartPath])
+    #expect(parts[worksheet.normalizedPartPath] == Data("<worksheet/>".utf8))
+}
+
+@Test
 func equalBytesHaveEqualDigestButIndependentUnforgeableBindings() throws {
     let data = try makeArchive(fixtureEntries())
     let first = try CanonicalXLSXWorkbookInspector.inspect(data: data, limits: xlsxLimits)

@@ -262,100 +262,16 @@ public enum CanonicalXLSXWorkbookInspector {
             )
         }
 
-        let preflight = try ZIPCentralDirectoryPreflight.inspect(data: data, limits: limits)
-        let archive: Archive
-        do {
-            archive = try Archive(data: data, accessMode: .read)
-        } catch {
-            throw CanonicalXLSXWorkbookInspectionError.invalidArchive
-        }
-
-        var index: [String: IndexedArchiveEntry] = [:]
-        var rawPaths = Set<String>()
-        var canonicalPaths: [String: String] = [:]
-        var totalDeclared: UInt64 = 0
-        var iteratedCount = 0
-
-        for entry in archive {
-            iteratedCount += 1
-            guard iteratedCount <= limits.maximumZIPEntryCount else {
-                throw CanonicalXLSXWorkbookInspectionError.zipEntryLimitExceeded(
-                    maximum: limits.maximumZIPEntryCount,
-                    actual: iteratedCount
-                )
-            }
-
-            if entry.type == .symlink {
-                throw CanonicalXLSXWorkbookInspectionError.symbolicLinkEntry(path: entry.path)
-            }
-            let hasDirectorySuffix = entry.path.hasSuffix("/")
-            let isDirectory = hasDirectorySuffix || entry.type == .directory
-            let path = try normalizeArchiveEntryPath(
-                entry.path,
-                hasDirectorySuffix: hasDirectorySuffix,
-                limits: limits
-            )
-            guard rawPaths.insert(entry.path).inserted else {
-                throw CanonicalXLSXWorkbookInspectionError.duplicateArchivePath(path: entry.path)
-            }
-            let collisionKey = canonicalCollisionKey(path)
-            if let first = canonicalPaths[collisionKey] {
-                throw CanonicalXLSXWorkbookInspectionError.canonicalArchivePathCollision(
-                    first: first,
-                    second: entry.path
-                )
-            }
-            canonicalPaths[collisionKey] = entry.path
-
-            let declared = entry.uncompressedSize
-            guard declared <= UInt64(limits.maximumPartUncompressedByteCount) else {
-                throw CanonicalXLSXWorkbookInspectionError.partDeclaredByteLimitExceeded(
-                    path: entry.path,
-                    maximum: limits.maximumPartUncompressedByteCount,
-                    actual: declared
-                )
-            }
-            let (proposedTotal, overflow) = totalDeclared.addingReportingOverflow(declared)
-            guard !overflow, proposedTotal <= UInt64(limits.maximumTotalUncompressedByteCount) else {
-                throw CanonicalXLSXWorkbookInspectionError.totalDeclaredByteLimitExceeded(
-                    maximum: limits.maximumTotalUncompressedByteCount,
-                    actual: overflow ? UInt64.max : proposedTotal
-                )
-            }
-            totalDeclared = proposedTotal
-
-            if declared > 0 {
-                let compressed = entry.compressedSize
-                let (allowed, multiplicationOverflow) = compressed.multipliedReportingOverflow(
-                    by: UInt64(limits.maximumCompressionRatio)
-                )
-                if compressed == 0 || (!multiplicationOverflow && declared > allowed) {
-                    throw CanonicalXLSXWorkbookInspectionError.compressionRatioExceeded(
-                        path: entry.path,
-                        maximum: limits.maximumCompressionRatio,
-                        compressed: compressed,
-                        uncompressed: declared
-                    )
-                }
-            }
-
-            if !isDirectory {
-                index[path] = IndexedArchiveEntry(entry: entry, originalPath: entry.path)
-            }
-        }
-
-        guard iteratedCount == preflight.entryCount else {
-            throw CanonicalXLSXWorkbookInspectionError.unsupportedArchiveProfile(
-                issue: .iteratorCountMismatch,
-                detail: UInt64(iteratedCount)
-            )
-        }
-
-        var extractor = BoundedArchiveExtractor(
-            archive: archive,
-            index: index,
+        // Own the exact bytes before any ZIP or XML interpretation. This explicitly breaks an
+        // externally mutable `NSData` backing and makes inspection, digest, and later staging read
+        // the same immutable snapshot.
+        let sourceData = Data([UInt8](data))
+        let validatedArchive = try ValidatedXLSXArchive.open(
+            sourceData: sourceData,
             limits: limits
         )
+        let index = validatedArchive.index
+        var extractor = validatedArchive.makeBoundedExtractor()
 
         let contentTypesPath = "[Content_Types].xml"
         let contentTypesData = try extractor.extractRequired(path: contentTypesPath)
@@ -528,15 +444,33 @@ public enum CanonicalXLSXWorkbookInspector {
             )
         }
 
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: sourceData).map { String(format: "%02x", $0) }.joined()
         return CanonicalXLSXWorkbookInspection(
             sourceSHA256: digest,
-            sourceByteCount: data.count,
+            sourceByteCount: sourceData.count,
             limits: limits,
             worksheets: descriptors,
-            sourceData: data,
+            sourceData: sourceData,
             inspectionBinding: binding
         )
+    }
+}
+
+extension CanonicalXLSXWorkbookInspection {
+    /// Reopens only the exact inspected snapshot through the same archive safety boundary and
+    /// extracts all requested parts under one shared actual-byte budget.
+    internal func extractRequiredParts(_ paths: Set<String>) throws -> [String: Data] {
+        let validatedArchive = try ValidatedXLSXArchive.open(
+            sourceData: sourceData,
+            limits: limits
+        )
+        var extractor = validatedArchive.makeBoundedExtractor()
+        var result: [String: Data] = [:]
+        result.reserveCapacity(paths.count)
+        for path in paths.sorted() {
+            result[path] = try extractor.extractRequired(path: path)
+        }
+        return result
     }
 }
 
@@ -591,6 +525,114 @@ private enum OOXML {
 private struct IndexedArchiveEntry {
     let entry: Entry
     let originalPath: String
+}
+
+private struct ValidatedXLSXArchive {
+    let archive: Archive
+    let index: [String: IndexedArchiveEntry]
+    let limits: CanonicalXLSXInspectionLimits
+
+    static func open(
+        sourceData: Data,
+        limits: CanonicalXLSXInspectionLimits
+    ) throws -> ValidatedXLSXArchive {
+        let preflight = try ZIPCentralDirectoryPreflight.inspect(
+            data: sourceData,
+            limits: limits
+        )
+        let archive: Archive
+        do {
+            archive = try Archive(data: sourceData, accessMode: .read)
+        } catch {
+            throw CanonicalXLSXWorkbookInspectionError.invalidArchive
+        }
+
+        var index: [String: IndexedArchiveEntry] = [:]
+        var rawPaths = Set<String>()
+        var canonicalPaths: [String: String] = [:]
+        var totalDeclared: UInt64 = 0
+        var iteratedCount = 0
+
+        for entry in archive {
+            iteratedCount += 1
+            guard iteratedCount <= limits.maximumZIPEntryCount else {
+                throw CanonicalXLSXWorkbookInspectionError.zipEntryLimitExceeded(
+                    maximum: limits.maximumZIPEntryCount,
+                    actual: iteratedCount
+                )
+            }
+
+            if entry.type == .symlink {
+                throw CanonicalXLSXWorkbookInspectionError.symbolicLinkEntry(path: entry.path)
+            }
+            let hasDirectorySuffix = entry.path.hasSuffix("/")
+            let isDirectory = hasDirectorySuffix || entry.type == .directory
+            let path = try normalizeArchiveEntryPath(
+                entry.path,
+                hasDirectorySuffix: hasDirectorySuffix,
+                limits: limits
+            )
+            guard rawPaths.insert(entry.path).inserted else {
+                throw CanonicalXLSXWorkbookInspectionError.duplicateArchivePath(path: entry.path)
+            }
+            let collisionKey = canonicalCollisionKey(path)
+            if let first = canonicalPaths[collisionKey] {
+                throw CanonicalXLSXWorkbookInspectionError.canonicalArchivePathCollision(
+                    first: first,
+                    second: entry.path
+                )
+            }
+            canonicalPaths[collisionKey] = entry.path
+
+            let declared = entry.uncompressedSize
+            guard declared <= UInt64(limits.maximumPartUncompressedByteCount) else {
+                throw CanonicalXLSXWorkbookInspectionError.partDeclaredByteLimitExceeded(
+                    path: entry.path,
+                    maximum: limits.maximumPartUncompressedByteCount,
+                    actual: declared
+                )
+            }
+            let (proposedTotal, overflow) = totalDeclared.addingReportingOverflow(declared)
+            guard !overflow, proposedTotal <= UInt64(limits.maximumTotalUncompressedByteCount) else {
+                throw CanonicalXLSXWorkbookInspectionError.totalDeclaredByteLimitExceeded(
+                    maximum: limits.maximumTotalUncompressedByteCount,
+                    actual: overflow ? UInt64.max : proposedTotal
+                )
+            }
+            totalDeclared = proposedTotal
+
+            if declared > 0 {
+                let compressed = entry.compressedSize
+                let (allowed, multiplicationOverflow) = compressed.multipliedReportingOverflow(
+                    by: UInt64(limits.maximumCompressionRatio)
+                )
+                if compressed == 0 || (!multiplicationOverflow && declared > allowed) {
+                    throw CanonicalXLSXWorkbookInspectionError.compressionRatioExceeded(
+                        path: entry.path,
+                        maximum: limits.maximumCompressionRatio,
+                        compressed: compressed,
+                        uncompressed: declared
+                    )
+                }
+            }
+
+            if !isDirectory {
+                index[path] = IndexedArchiveEntry(entry: entry, originalPath: entry.path)
+            }
+        }
+
+        guard iteratedCount == preflight.entryCount else {
+            throw CanonicalXLSXWorkbookInspectionError.unsupportedArchiveProfile(
+                issue: .iteratorCountMismatch,
+                detail: UInt64(iteratedCount)
+            )
+        }
+        return ValidatedXLSXArchive(archive: archive, index: index, limits: limits)
+    }
+
+    func makeBoundedExtractor() -> BoundedArchiveExtractor {
+        BoundedArchiveExtractor(archive: archive, index: index, limits: limits)
+    }
 }
 
 private struct ZIPCentralDirectoryPreflight {
