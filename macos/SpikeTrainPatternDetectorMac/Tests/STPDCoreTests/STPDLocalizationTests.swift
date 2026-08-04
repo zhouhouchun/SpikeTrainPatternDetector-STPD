@@ -317,6 +317,32 @@ func enReturnsI18N2BTranslations() {
 }
 
 @Test
+func causalNeutralMinimumISITranslationsAreStable() {
+    let cases: [(String, String)] = [
+        ("最小有效 ISI", "Minimum valid ISI"),
+        ("低于最小有效 ISI", "Below minimum ISI"),
+        ("最小有效 ISI 单位", "Minimum valid ISI unit"),
+        ("显示最小有效 ISI 与疑似不应期阈值。", "Show minimum-valid-ISI and refractory-suspect thresholds."),
+        ("显示最小有效 ISI 与绝对不应期阈值。", "Show minimum-valid-ISI and absolute-refractory thresholds."),
+        ("低于最小有效 ISI 而排除", "Excluded below minimum ISI"),
+        ("低于最小有效 ISI 的区间", "Below-minimum ISI"),
+        ("低于最小有效 ISI 的区间详情", "Below-minimum ISI details"),
+        ("当前没有低于最小有效阈值的 ISI。", "No ISI falls below the current minimum-valid threshold."),
+    ]
+
+    for (source, expected) in cases {
+        #expect(STPDLocalization.text(source, language: .en) == expected)
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+    }
+
+    // Persisted legacy machine tokens remain outside localization and are not renamed here.
+    for machine in ["artifact", "artifact_below_floor", "artifact_threshold_sec"] {
+        #expect(STPDLocalization.text(machine, language: .en) == machine)
+        #expect(STPDLocalization.text(machine, language: .zh) == machine)
+    }
+}
+
+@Test
 func i18n2BMachineStringsStillPassThrough() {
     // Threshold / QC / export machine tokens adjacent to the new labels must remain verbatim in both modes.
     let machine = [

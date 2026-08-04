@@ -99,10 +99,10 @@ struct DataQCView: View {
 
             HStack(spacing: 24) {
                 thresholdControl(
-                    "Artifact / min valid ISI",
+                    "Minimum valid ISI",
                     value: artifactThresholdBinding,
                     unit: $document.artifactThresholdUnit,
-                    pickerLabel: "Artifact threshold unit"
+                    pickerLabel: "Minimum valid ISI unit"
                 )
 
                 thresholdControl(
@@ -184,7 +184,7 @@ struct DataQCView: View {
             SummaryTile(title: "Spikes", value: "\(dataset.totalSpikeCount)")
             SummaryTile(title: "Errors", value: "\(report.errorCount)", level: report.errorCount > 0 ? .error : .ok)
             SummaryTile(title: "Warnings", value: "\(report.warningCount)", level: report.warningCount > 0 ? .warning : .ok)
-            SummaryTile(title: "Artifact ISI", value: "\(report.artifactISICount)", level: report.artifactISICount > 0 ? .warning : .ok)
+            SummaryTile(title: "Below-minimum ISI", value: "\(report.artifactISICount)", level: report.artifactISICount > 0 ? .warning : .ok)
             SummaryTile(
                 title: report.droppedDuplicateTimestampCount > 0 ? "Duplicates merged" : "Duplicates",
                 value: report.droppedDuplicateTimestampCount > 0 ? "\(report.droppedDuplicateTimestampCount)" : "\(report.duplicateTimestampCount)",
@@ -215,7 +215,7 @@ struct DataQCView: View {
                     qualityHeader("Duration", width: 130)
                     qualityHeader("Min ISI", width: 120)
                     qualityHeader("Median ISI", width: 130)
-                    qualityHeader("Artifact", width: 74)
+                    qualityHeader("Below min", width: 74)
                     qualityHeader("Refractory", width: 92)
                     qualityHeader("Duplicates", width: 86)
                 }
@@ -255,7 +255,7 @@ struct DataQCView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 86, alignment: .leading)
-                    Text(row.warningMessage)
+                    Text(timestampQCMessage(row.warningMessage))
                         .font(.caption)
                         .foregroundStyle(row.warningLevel == .error ? Color.red : Color.primary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -319,11 +319,11 @@ struct DataQCView: View {
 
     private func artifactDetails(report: SpikeDatasetQualityReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Artifact ISI details")
+            Text("Below-minimum ISI details")
                 .font(.headline)
 
             if report.artifactDetails.isEmpty {
-                EmptyTableNote(text: "No artifact ISI below the current hard threshold.")
+                EmptyTableNote(text: "No ISI falls below the current minimum-valid threshold.")
             } else {
                 Table(report.artifactDetails) {
                     TableColumn("Train") { detail in
@@ -410,6 +410,17 @@ struct DataQCView: View {
             return "\(String(format: "%.4f", scaled)) \(suffix)"
         }
         return "\(String(format: "%.6f", scaled)) \(suffix)"
+    }
+
+    /// The persisted QC model and result schema retain their legacy `artifact_*`
+    /// machine names for compatibility. On timestamp-only UI surfaces, describe
+    /// the observable fact instead: the ISI is below the user-defined validity
+    /// floor. A short interval alone does not prove an acquisition artifact.
+    private func timestampQCMessage(_ message: String) -> String {
+        message
+            .replacingOccurrences(of: "Artifact ISI", with: "Below-minimum ISI")
+            .replacingOccurrences(of: "Artifact fraction", with: "Below-minimum ISI fraction")
+            .replacingOccurrences(of: "artifact threshold", with: "minimum-valid ISI threshold")
     }
 }
 

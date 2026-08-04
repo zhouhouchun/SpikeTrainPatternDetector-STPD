@@ -3,6 +3,12 @@ import STPDCore
 import Testing
 
 @Test
+func belowMinimumISIPresentationKeepsLegacyMachineValue() {
+    #expect(SpikeISIStatePointQC.artifact.rawValue == "artifact")
+    #expect(SpikeISIStatePointQC.artifact.title == "Below minimum ISI")
+}
+
+@Test
 func buildsISIStateSpacePointsWithQCPrecedence() throws {
     let train = SpikeTrain(
         name: "state_a",

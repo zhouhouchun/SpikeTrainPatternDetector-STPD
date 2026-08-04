@@ -13,7 +13,7 @@ public enum SpikeISIStatePointQC: String, CaseIterable, Sendable {
         case .refractory:
             return "Refractory suspect"
         case .artifact:
-            return "Artifact"
+            return "Below minimum ISI"
         case .duplicate:
             return "Duplicate timestamp"
         }

@@ -571,7 +571,7 @@ private extension STPDResultSemanticPresentation {
         STPDResultSemanticColumn(id: "auto_subtype", title: "Auto subtype", kind: .text),
         STPDResultSemanticColumn(id: "changed", title: "Changed by review", kind: .status),
         STPDResultSemanticColumn(id: "qc_class", title: "QC class", kind: .status),
-        STPDResultSemanticColumn(id: "artifact", title: "Artifact floor", kind: .status),
+        STPDResultSemanticColumn(id: "artifact", title: "Below minimum ISI", kind: .status),
         STPDResultSemanticColumn(id: "refractory", title: "Refractory suspect", kind: .status),
         STPDResultSemanticColumn(id: "review_note", title: "Review note", kind: .longText),
         STPDResultSemanticColumn(id: "isi_id", title: "ISI ID", kind: .identifier),

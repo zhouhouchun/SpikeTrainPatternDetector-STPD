@@ -143,7 +143,7 @@ struct DatasetISIHistogramView: View {
                 .toggleStyle(.checkbox)
             Toggle("QC", isOn: $showQC)
                 .toggleStyle(.checkbox)
-                .help("Show artifact and refractory-suspect thresholds.")
+                .help("Show minimum-valid-ISI and refractory-suspect thresholds.")
             Toggle("Structure bands", isOn: $showStructuralBands)
                 .toggleStyle(.checkbox)
                 .help("Show intervals inferred from the structural detector. These bands do not change histogram counts.")
@@ -209,7 +209,7 @@ struct DatasetISIHistogramView: View {
             histogramMetric("Trains", "\(summary.contributingTrainCount)/\(summary.trainRows.count)")
             histogramMetric("Bin", formatTime(summary.binWidthSec))
             histogramMetric("X max", formatTime(summary.xMaxSec))
-            histogramMetric("Artifact excluded", "\(summary.artifactExcludedCount.formatted())")
+            histogramMetric("Below minimum", "\(summary.artifactExcludedCount.formatted())")
         }
     }
 
@@ -386,7 +386,7 @@ struct DatasetISIHistogramView: View {
             tableHeader("Train", width: 280)
             tableHeader("Valid", width: 70)
             tableHeader("Visible", width: 70)
-            tableHeader("Artifact", width: 74)
+            tableHeader("Below min", width: 74)
             tableHeader("Min", width: 92)
             tableHeader("Q10", width: 92)
             tableHeader("Q25", width: 92)
@@ -660,7 +660,7 @@ private struct DatasetISIHistogramChart: View {
         drawVerticalRule(
             at: qualitySettings.artifactThresholdSec,
             color: .secondary,
-            label: "Artifact",
+            label: "Min valid ISI",
             dash: [4, 4],
             model: model,
             context: &context

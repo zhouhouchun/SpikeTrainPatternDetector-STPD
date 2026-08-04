@@ -857,7 +857,7 @@ private struct RasterPlotCanvas: View {
             } else {
                 rows.append(("Mode", "others"))
             }
-            rows.append(("Artifact", isArtifact ? "Yes" : "No"))
+            rows.append(("Below minimum ISI", isArtifact ? "Yes" : "No"))
 
             let shortISIPadding: CGFloat
             if intervalWidth < 12 {

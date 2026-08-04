@@ -478,6 +478,8 @@ func semanticPresentationPreservesCandidateAndISILabelMeaning() throws {
     #expect(
         try semanticValue(isi, rowID: "isi-a-9", columnID: "changed") == "true"
     )
+    let legacyArtifactColumn = try #require(isi.columns.first { $0.id == "artifact" })
+    #expect(legacyArtifactColumn.title == "Below minimum ISI")
 }
 
 @Test

@@ -808,7 +808,7 @@ private struct ISITimelinePlotSurface: View {
                 model: model,
                 context: &context
             ) {
-                labels.append(("artifact \(formatTime(qualitySettings.artifactThresholdSec))", ISIPlotPalette.artifactColor))
+                labels.append(("min valid ISI \(formatTime(qualitySettings.artifactThresholdSec))", ISIPlotPalette.artifactColor))
             }
 
             drawThreshold(
@@ -1707,7 +1707,7 @@ private struct ISITimelinePlotModel {
 
     private func qcLabel(for event: SpikeISIEvent) -> String {
         if event.isArtifact {
-            return "Artifact"
+            return "Below minimum ISI"
         }
         if event.isRefractorySuspect {
             return "Refractory suspect"
