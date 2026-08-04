@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import STPDCore
 import STPDTabularIO
@@ -5,13 +6,18 @@ import Testing
 
 private let supportedLimits = CanonicalCSVStagingLimits.supportedDatasetEnvelope
 
+private func sha256Hex(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
 private func limits(
     sourceBytes: Int? = nil,
     columns: Int? = nil,
     dataRows: Int? = nil,
     materializedCells: Int? = nil,
     rawFieldBytes: Int? = nil,
-    decodedFieldBytes: Int? = nil
+    decodedFieldBytes: Int? = nil,
+    totalTextBytes: Int? = nil
 ) -> CanonicalCSVStagingLimits {
     CanonicalCSVStagingLimits(
         maximumSourceByteCount: sourceBytes ?? supportedLimits.maximumSourceByteCount,
@@ -22,13 +28,15 @@ private func limits(
         maximumRawFieldUTF8ByteCount:
             rawFieldBytes ?? supportedLimits.maximumRawFieldUTF8ByteCount,
         maximumDecodedFieldUTF8ByteCount:
-            decodedFieldBytes ?? supportedLimits.maximumDecodedFieldUTF8ByteCount
+            decodedFieldBytes ?? supportedLimits.maximumDecodedFieldUTF8ByteCount,
+        maximumTotalMaterializedTextUTF8ByteCount:
+            totalTextBytes ?? supportedLimits.maximumTotalMaterializedTextUTF8ByteCount
     )
 }
 
 private func readCSV(
     _ source: String,
-    headerDecision: CanonicalCSVHeaderDecision,
+    headerDecision: CanonicalTabularHeaderDecision,
     limits: CanonicalCSVStagingLimits = supportedLimits
 ) throws -> StagedScientificImport {
     try CanonicalCSVStagingReader.read(
@@ -40,7 +48,7 @@ private func readCSV(
 
 private func readerError(
     data: Data,
-    headerDecision: CanonicalCSVHeaderDecision = .headerless,
+    headerDecision: CanonicalTabularHeaderDecision = .headerless,
     limits: CanonicalCSVStagingLimits = supportedLimits
 ) -> CanonicalCSVStagingReaderError? {
     do {
@@ -60,7 +68,7 @@ private func readerError(
 
 private func readerError(
     _ source: String,
-    headerDecision: CanonicalCSVHeaderDecision = .headerless,
+    headerDecision: CanonicalTabularHeaderDecision = .headerless,
     limits: CanonicalCSVStagingLimits = supportedLimits
 ) -> CanonicalCSVStagingReaderError? {
     readerError(
@@ -102,20 +110,66 @@ func optionalUTF8BOMDoesNotChangeStagedContent() throws {
     var withBOM = Data([0xEF, 0xBB, 0xBF])
     withBOM.append(source)
 
-    let plain = try CanonicalCSVStagingReader.read(
+    let plain = try CanonicalCSVStagingReader.readWithProvenance(
         data: source,
         headerDecision: .firstRecordIsHeader,
         limits: supportedLimits
     )
-    let bom = try CanonicalCSVStagingReader.read(
+    let bom = try CanonicalCSVStagingReader.readWithProvenance(
         data: withBOM,
         headerDecision: .firstRecordIsHeader,
         limits: supportedLimits
     )
 
-    #expect(bom == plain)
-    #expect(plain.source == .commaSeparatedValues)
-    #expect(plain.columns.map(\.header) == ["unit_a", "unit_b"])
+    #expect(bom.stagedImport == plain.stagedImport)
+    #expect(plain.stagedImport.source == .commaSeparatedValues)
+    #expect(plain.stagedImport.columns.map(\.header) == ["unit_a", "unit_b"])
+    #expect(plain.provenance.sourceData == source)
+    #expect(bom.provenance.sourceData == withBOM)
+    #expect(plain.provenance.sourceByteCount == source.count)
+    #expect(bom.provenance.sourceByteCount == withBOM.count)
+    #expect(plain.provenance.sourceSHA256 == sha256Hex(source))
+    #expect(bom.provenance.sourceSHA256 == sha256Hex(withBOM))
+    #expect(plain.provenance.sourceSHA256 != bom.provenance.sourceSHA256)
+    #expect(plain.provenance.appliedLimits == supportedLimits)
+    #expect(plain.provenance.headerDecision == .firstRecordIsHeader)
+    #expect(plain.provenance.logicalRecords[0].fields[0].location.source.oneBasedByteOffset == 1)
+    #expect(bom.provenance.logicalRecords[0].fields[0].location.source.oneBasedByteOffset == 4)
+
+    let stagedOnly = try CanonicalCSVStagingReader.read(
+        data: source,
+        headerDecision: .firstRecordIsHeader,
+        limits: supportedLimits
+    )
+    #expect(stagedOnly == plain.stagedImport)
+}
+
+@Test
+func legacyCSVHeaderDecisionAndSixArgumentLimitsInitializerRemainSourceCompatible() throws {
+    let legacyDecision: CanonicalCSVHeaderDecision = .firstRecordIsHeader
+    let sharedDecision: CanonicalTabularHeaderDecision = legacyDecision
+    let legacyLimits = CanonicalCSVStagingLimits(
+        maximumSourceByteCount: 32,
+        maximumColumnCount: 2,
+        maximumLogicalDataRowCount: 2,
+        maximumMaterializedDataCellCount: 4,
+        maximumRawFieldUTF8ByteCount: 8,
+        maximumDecodedFieldUTF8ByteCount: 8
+    )
+
+    #expect(sharedDecision == .firstRecordIsHeader)
+    #expect(
+        legacyLimits.maximumTotalMaterializedTextUTF8ByteCount
+            == CanonicalTabularWorkloadLimits.supportedDatasetEnvelope
+                .maximumTotalMaterializedTextUTF8ByteCount
+    )
+    let staged = try CanonicalCSVStagingReader.read(
+        data: Data("header\nvalue".utf8),
+        headerDecision: legacyDecision,
+        limits: legacyLimits
+    )
+    #expect(staged.columns[0].header == "header")
+    #expect(staged.columns[0].cells == [.text(rawText: "value")])
 }
 
 @Test
@@ -156,6 +210,37 @@ func quotedCommasAndDoubledQuotesAreDecodedWithoutSemanticParsing() throws {
         [.text(rawText: "@x=2")],
     ])
     #expect(staged.suggestions == .none)
+}
+
+@Test
+func provenanceRetainsRawQuotedCRLFCommaAndEscapedQuoteLexeme() throws {
+    let source = "header,other\r\n\"line 1\r\nline 2, \"\"quoted\"\"\",plain"
+    let result = try CanonicalCSVStagingReader.readWithProvenance(
+        data: Data(source.utf8),
+        headerDecision: .firstRecordIsHeader,
+        limits: supportedLimits
+    )
+    let firstColumn = try StagedSourceColumnReference(oneBasedIndex: 1)
+    let firstDataCell = try StagedSourceCellReference(
+        column: firstColumn,
+        oneBasedDataRowIndex: 1
+    )
+    let header = try #require(result.provenance.headerField(for: firstColumn))
+    let field = try #require(result.provenance.dataField(at: firstDataCell))
+
+    #expect(header.rawUTF8Lexeme == Data("header".utf8))
+    #expect(header.decodedText == "header")
+    #expect(!header.wasQuoted)
+    #expect(field.rawUTF8Lexeme == Data("\"line 1\r\nline 2, \"\"quoted\"\"\"".utf8))
+    #expect(field.decodedText == "line 1\r\nline 2, \"quoted\"")
+    #expect(field.wasQuoted)
+    #expect(field.location == fieldLocation(
+        byteOffset: 15,
+        line: 2,
+        column: 1,
+        logicalRecord: 2,
+        field: 1
+    ))
 }
 
 @Test
@@ -222,12 +307,51 @@ func structuralBlankWhitespaceAndQuotedEmptyRemainDifferent() throws {
 
 @Test
 func headerlessRaggedRowsExpandToMaximumWidthAndPadStructuralBlanks() throws {
-    let staged = try readCSV("a\nb,c\n", headerDecision: .headerless)
+    let data = Data("a\nb,c\n".utf8)
+    let result = try CanonicalCSVStagingReader.readWithProvenance(
+        data: data,
+        headerDecision: .headerless,
+        limits: supportedLimits
+    )
+    let staged = result.stagedImport
+    let firstColumn = try StagedSourceColumnReference(oneBasedIndex: 1)
+    let secondColumn = try StagedSourceColumnReference(oneBasedIndex: 2)
+    let paddedCell = try StagedSourceCellReference(
+        column: secondColumn,
+        oneBasedDataRowIndex: 1
+    )
+    let presentCell = try StagedSourceCellReference(
+        column: secondColumn,
+        oneBasedDataRowIndex: 2
+    )
 
     #expect(staged.dataRowCount == 2)
     #expect(staged.columns.count == 2)
     #expect(staged.columns[0].cells == [.text(rawText: "a"), .text(rawText: "b")])
     #expect(staged.columns[1].cells == [.blank, .text(rawText: "c")])
+    #expect(result.provenance.headerField(for: firstColumn) == nil)
+    #expect(result.provenance.dataField(at: paddedCell) == nil)
+    #expect(result.provenance.dataField(at: presentCell)?.rawUTF8Lexeme == Data("c".utf8))
+}
+
+@Test
+func provenanceLookupReturnsNilForMaximumRepresentableDataRow() throws {
+    let column = try StagedSourceColumnReference(oneBasedIndex: 1)
+    let farOutsideCell = try StagedSourceCellReference(
+        column: column,
+        oneBasedDataRowIndex: Int.max
+    )
+    for headerDecision: CanonicalTabularHeaderDecision in [
+        .firstRecordIsHeader,
+        .headerless,
+    ] {
+        let result = try CanonicalCSVStagingReader.readWithProvenance(
+            data: Data("value\n1".utf8),
+            headerDecision: headerDecision,
+            limits: supportedLimits
+        )
+        #expect(result.provenance.dataField(at: farOutsideCell) == nil)
+    }
 }
 
 @Test
@@ -340,12 +464,21 @@ func emptyAndBOMOnlySourcesAreBlocked() {
 
 @Test
 func supportedLimitsAreNamedAndExact() {
+    let shared = CanonicalTabularWorkloadLimits.supportedDatasetEnvelope
+    #expect(shared.maximumColumnCount == 512)
+    #expect(shared.maximumLogicalDataRowCount == 1_000_000)
+    #expect(shared.maximumMaterializedDataCellCount == 1_000_000)
+    #expect(shared.maximumDecodedCellUTF8ByteCount == 65_794)
+    #expect(shared.maximumTotalMaterializedTextUTF8ByteCount == 67_108_864)
+
     #expect(supportedLimits.maximumSourceByteCount == 5_242_880)
     #expect(supportedLimits.maximumColumnCount == 512)
     #expect(supportedLimits.maximumLogicalDataRowCount == 1_000_000)
     #expect(supportedLimits.maximumMaterializedDataCellCount == 1_000_000)
     #expect(supportedLimits.maximumRawFieldUTF8ByteCount == 131_590)
     #expect(supportedLimits.maximumDecodedFieldUTF8ByteCount == 65_794)
+    #expect(supportedLimits.maximumTotalMaterializedTextUTF8ByteCount == 67_108_864)
+    #expect(supportedLimits.workloadLimits == shared)
 }
 
 @Test
@@ -398,6 +531,26 @@ func invalidAndRelaxedLimitsAreRejected() {
     #expect(
         readerError("a", limits: limits(sourceBytes: 0))
             == .invalidLimit(kind: .sourceBytes, actual: 0)
+    )
+    #expect(
+        readerError("a", limits: limits(columns: 0))
+            == .invalidLimit(kind: .columns, actual: 0)
+    )
+    #expect(
+        readerError("a", limits: limits(dataRows: 0))
+            == .invalidLimit(kind: .logicalDataRows, actual: 0)
+    )
+    #expect(
+        readerError("a", limits: limits(materializedCells: 0))
+            == .invalidLimit(kind: .materializedDataCells, actual: 0)
+    )
+    #expect(
+        readerError("a", limits: limits(decodedFieldBytes: 0))
+            == .invalidLimit(kind: .decodedFieldUTF8Bytes, actual: 0)
+    )
+    #expect(
+        readerError("a", limits: limits(totalTextBytes: 0))
+            == .invalidLimit(kind: .totalMaterializedTextUTF8Bytes, actual: 0)
     )
     #expect(
         readerError(
@@ -459,6 +612,19 @@ func invalidAndRelaxedLimitsAreRejected() {
             actual: supportedLimits.maximumDecodedFieldUTF8ByteCount + 1
         )
     )
+    #expect(
+        readerError(
+            "a",
+            limits: limits(
+                totalTextBytes:
+                    supportedLimits.maximumTotalMaterializedTextUTF8ByteCount + 1
+            )
+        ) == .limitExceedsSupportedEnvelope(
+            kind: .totalMaterializedTextUTF8Bytes,
+            maximumSupported: supportedLimits.maximumTotalMaterializedTextUTF8ByteCount,
+            actual: supportedLimits.maximumTotalMaterializedTextUTF8ByteCount + 1
+        )
+    )
 }
 
 @Test
@@ -501,6 +667,116 @@ func columnRowAndRectangularizedCellLimitsAreEnforced() {
                 actual: 6,
                 location: sourceLocation(byteOffset: 7, line: 2, column: 1)
             )
+    )
+}
+
+@Test
+func sharedWorkloadShapeAndDecodedCellLimitsHaveExactAndNextValueCoverage() throws {
+    let exactLimits = limits(
+        columns: 2,
+        dataRows: 2,
+        materializedCells: 4,
+        decodedFieldBytes: 2,
+        totalTextBytes: 6
+    )
+    let exact = try readCSV(
+        "aa,b\nc,dd",
+        headerDecision: .headerless,
+        limits: exactLimits
+    )
+    #expect(exact.columns.count == 2)
+    #expect(exact.dataRowCount == 2)
+
+    #expect(
+        readerError("a,b,c", limits: limits(columns: 2))
+            == .columnLimitExceeded(
+                maximum: 2,
+                actual: 3,
+                location: fieldLocation(
+                    byteOffset: 5,
+                    line: 1,
+                    column: 5,
+                    logicalRecord: 1,
+                    field: 3
+                )
+            )
+    )
+    #expect(
+        readerError("a\nb\nc", limits: limits(dataRows: 2))
+            == .logicalDataRowLimitExceeded(
+                maximum: 2,
+                actual: 3,
+                location: sourceLocation(byteOffset: 5, line: 3, column: 1)
+            )
+    )
+    #expect(
+        readerError("a,b\nc,d", limits: limits(materializedCells: 3))
+            == .materializedDataCellLimitExceeded(
+                maximum: 3,
+                actual: 4,
+                location: sourceLocation(byteOffset: 5, line: 2, column: 1)
+            )
+    )
+    #expect(
+        readerError("abc", limits: limits(decodedFieldBytes: 2))
+            == .decodedFieldByteLimitExceeded(
+                maximum: 2,
+                actual: 3,
+                location: fieldLocation(
+                    byteOffset: 3,
+                    line: 1,
+                    column: 3,
+                    logicalRecord: 1,
+                    field: 1
+                )
+            )
+    )
+}
+
+@Test
+func totalMaterializedTextLimitCountsHeadersAndEveryActualRepeatedField() throws {
+    let headerLimits = limits(decodedFieldBytes: 2, totalTextBytes: 3)
+    let exact = try readCSV(
+        "hh\nx",
+        headerDecision: .firstRecordIsHeader,
+        limits: headerLimits
+    )
+    #expect(exact.columns[0].header == "hh")
+    #expect(exact.columns[0].cells == [.text(rawText: "x")])
+
+    #expect(
+        readerError(
+            "hh\nxx",
+            headerDecision: .firstRecordIsHeader,
+            limits: headerLimits
+        ) == .totalMaterializedTextUTF8ByteLimitExceeded(
+            maximum: 3,
+            actual: 4,
+            location: fieldLocation(
+                byteOffset: 4,
+                line: 2,
+                column: 1,
+                logicalRecord: 2,
+                field: 1
+            )
+        )
+    )
+
+    #expect(
+        readerError(
+            "x,x,x",
+            limits: limits(decodedFieldBytes: 1, totalTextBytes: 2)
+        ) == .totalMaterializedTextUTF8ByteLimitExceeded(
+            maximum: 2,
+            actual: 3,
+            location: fieldLocation(
+                byteOffset: 5,
+                line: 1,
+                column: 5,
+                logicalRecord: 1,
+                field: 3
+            )
+        )
     )
 }
 

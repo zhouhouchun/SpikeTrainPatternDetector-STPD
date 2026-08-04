@@ -1,11 +1,6 @@
+import CryptoKit
 import Foundation
 import STPDCore
-
-/// An explicit decision about whether the first logical CSV record is a header.
-public enum CanonicalCSVHeaderDecision: Hashable, Sendable {
-    case firstRecordIsHeader
-    case headerless
-}
 
 public enum CanonicalCSVStagingLimitKind: String, Hashable, Sendable {
     case sourceBytes
@@ -14,6 +9,7 @@ public enum CanonicalCSVStagingLimitKind: String, Hashable, Sendable {
     case materializedDataCells
     case rawFieldUTF8Bytes
     case decodedFieldUTF8Bytes
+    case totalMaterializedTextUTF8Bytes
 }
 
 /// Immutable engineering limits for lossless CSV staging.
@@ -24,6 +20,7 @@ public struct CanonicalCSVStagingLimits: Hashable, Sendable {
     public let maximumMaterializedDataCellCount: Int
     public let maximumRawFieldUTF8ByteCount: Int
     public let maximumDecodedFieldUTF8ByteCount: Int
+    public let maximumTotalMaterializedTextUTF8ByteCount: Int
 
     public init(
         maximumSourceByteCount: Int,
@@ -31,7 +28,10 @@ public struct CanonicalCSVStagingLimits: Hashable, Sendable {
         maximumLogicalDataRowCount: Int,
         maximumMaterializedDataCellCount: Int,
         maximumRawFieldUTF8ByteCount: Int,
-        maximumDecodedFieldUTF8ByteCount: Int
+        maximumDecodedFieldUTF8ByteCount: Int,
+        maximumTotalMaterializedTextUTF8ByteCount: Int =
+            CanonicalTabularWorkloadLimits.supportedDatasetEnvelope
+                .maximumTotalMaterializedTextUTF8ByteCount
     ) {
         self.maximumSourceByteCount = maximumSourceByteCount
         self.maximumColumnCount = maximumColumnCount
@@ -39,10 +39,25 @@ public struct CanonicalCSVStagingLimits: Hashable, Sendable {
         self.maximumMaterializedDataCellCount = maximumMaterializedDataCellCount
         self.maximumRawFieldUTF8ByteCount = maximumRawFieldUTF8ByteCount
         self.maximumDecodedFieldUTF8ByteCount = maximumDecodedFieldUTF8ByteCount
+        self.maximumTotalMaterializedTextUTF8ByteCount =
+            maximumTotalMaterializedTextUTF8ByteCount
+    }
+
+    /// The format-neutral workload projection used by this CSV transport configuration.
+    public var workloadLimits: CanonicalTabularWorkloadLimits {
+        CanonicalTabularWorkloadLimits(
+            maximumColumnCount: maximumColumnCount,
+            maximumLogicalDataRowCount: maximumLogicalDataRowCount,
+            maximumMaterializedDataCellCount: maximumMaterializedDataCellCount,
+            maximumDecodedCellUTF8ByteCount: maximumDecodedFieldUTF8ByteCount,
+            maximumTotalMaterializedTextUTF8ByteCount:
+                maximumTotalMaterializedTextUTF8ByteCount
+        )
     }
 
     /// Canonical string (65,536) + event-attribute key (256) + `@` and `=` delimiters.
-    public static let supportedMaximumDecodedFieldUTF8ByteCount = 65_536 + 256 + 2
+    public static let supportedMaximumDecodedFieldUTF8ByteCount =
+        CanonicalTabularWorkloadLimits.supportedMaximumDecodedCellUTF8ByteCount
 
     /// Worst-case RFC4180 lexeme: every decoded byte is a doubled quote, plus enclosing quotes.
     public static let supportedMaximumRawFieldUTF8ByteCount =
@@ -51,11 +66,18 @@ public struct CanonicalCSVStagingLimits: Hashable, Sendable {
     /// The supported product envelope: exactly 5 MiB with explicit shape and field caps.
     public static let supportedDatasetEnvelope = CanonicalCSVStagingLimits(
         maximumSourceByteCount: 5 * 1_024 * 1_024,
-        maximumColumnCount: 512,
-        maximumLogicalDataRowCount: 1_000_000,
-        maximumMaterializedDataCellCount: 1_000_000,
+        maximumColumnCount:
+            CanonicalTabularWorkloadLimits.supportedDatasetEnvelope.maximumColumnCount,
+        maximumLogicalDataRowCount:
+            CanonicalTabularWorkloadLimits.supportedDatasetEnvelope.maximumLogicalDataRowCount,
+        maximumMaterializedDataCellCount:
+            CanonicalTabularWorkloadLimits.supportedDatasetEnvelope
+                .maximumMaterializedDataCellCount,
         maximumRawFieldUTF8ByteCount: supportedMaximumRawFieldUTF8ByteCount,
-        maximumDecodedFieldUTF8ByteCount: supportedMaximumDecodedFieldUTF8ByteCount
+        maximumDecodedFieldUTF8ByteCount: supportedMaximumDecodedFieldUTF8ByteCount,
+        maximumTotalMaterializedTextUTF8ByteCount:
+            CanonicalTabularWorkloadLimits.supportedDatasetEnvelope
+                .maximumTotalMaterializedTextUTF8ByteCount
     )
 }
 
@@ -90,6 +112,111 @@ public struct CanonicalCSVFieldLocation: Hashable, Sendable {
         self.source = source
         self.oneBasedLogicalRecord = oneBasedLogicalRecord
         self.oneBasedField = oneBasedField
+    }
+}
+
+/// The exact source and decoded facts for one physically present RFC4180 field.
+public struct CanonicalCSVFieldProvenance: Hashable, Sendable {
+    /// The complete field lexeme, including enclosing and doubled quotes when present.
+    /// `Data` preserves byte identity even for canonically equivalent Unicode spellings.
+    public let rawUTF8Lexeme: Data
+    public let decodedText: String
+    public let wasQuoted: Bool
+    public let location: CanonicalCSVFieldLocation
+
+    internal init(
+        rawUTF8Lexeme: Data,
+        decodedText: String,
+        wasQuoted: Bool,
+        location: CanonicalCSVFieldLocation
+    ) {
+        self.rawUTF8Lexeme = rawUTF8Lexeme
+        self.decodedText = decodedText
+        self.wasQuoted = wasQuoted
+        self.location = location
+    }
+}
+
+/// Source fields grouped by their RFC4180 logical record.
+public struct CanonicalCSVLogicalRecordProvenance: Hashable, Sendable {
+    public let oneBasedLogicalRecord: Int
+    public let fields: [CanonicalCSVFieldProvenance]
+
+    internal init(
+        oneBasedLogicalRecord: Int,
+        fields: [CanonicalCSVFieldProvenance]
+    ) {
+        self.oneBasedLogicalRecord = oneBasedLogicalRecord
+        self.fields = fields
+    }
+}
+
+/// Lossless, source-only facts retained beside CSV staging output.
+public struct CanonicalCSVStagingProvenance: Hashable, Sendable {
+    public let sourceData: Data
+    public let sourceSHA256: String
+    public let sourceByteCount: Int
+    public let appliedLimits: CanonicalCSVStagingLimits
+    public let headerDecision: CanonicalTabularHeaderDecision
+    public let logicalRecords: [CanonicalCSVLogicalRecordProvenance]
+
+    internal init(
+        sourceData: Data,
+        sourceSHA256: String,
+        sourceByteCount: Int,
+        appliedLimits: CanonicalCSVStagingLimits,
+        headerDecision: CanonicalTabularHeaderDecision,
+        logicalRecords: [CanonicalCSVLogicalRecordProvenance]
+    ) {
+        self.sourceData = sourceData
+        self.sourceSHA256 = sourceSHA256
+        self.sourceByteCount = sourceByteCount
+        self.appliedLimits = appliedLimits
+        self.headerDecision = headerDecision
+        self.logicalRecords = logicalRecords
+    }
+
+    /// Returns the physical header field for a staged column, or `nil` for headerless input.
+    public func headerField(
+        for column: StagedSourceColumnReference
+    ) -> CanonicalCSVFieldProvenance? {
+        guard headerDecision == .firstRecordIsHeader,
+              let record = logicalRecords.first else { return nil }
+        let fieldOffset = column.oneBasedIndex - 1
+        guard record.fields.indices.contains(fieldOffset) else { return nil }
+        return record.fields[fieldOffset]
+    }
+
+    /// Returns the physical field behind a staged data cell. A structural blank introduced while
+    /// rectangularizing a ragged record has no physical field and therefore returns `nil`.
+    public func dataField(
+        at cell: StagedSourceCellReference
+    ) -> CanonicalCSVFieldProvenance? {
+        let headerRecordCount = headerDecision == .firstRecordIsHeader ? 1 : 0
+        let zeroBasedDataRow = cell.oneBasedDataRowIndex - 1
+        let (recordOffset, overflow) = zeroBasedDataRow.addingReportingOverflow(
+            headerRecordCount
+        )
+        guard !overflow else { return nil }
+        guard logicalRecords.indices.contains(recordOffset) else { return nil }
+        let fieldOffset = cell.column.oneBasedIndex - 1
+        let record = logicalRecords[recordOffset]
+        guard record.fields.indices.contains(fieldOffset) else { return nil }
+        return record.fields[fieldOffset]
+    }
+}
+
+/// Atomic CSV staging output with source provenance kept outside scientific identity models.
+public struct CanonicalCSVStagingResult: Hashable, Sendable {
+    public let stagedImport: StagedScientificImport
+    public let provenance: CanonicalCSVStagingProvenance
+
+    internal init(
+        stagedImport: StagedScientificImport,
+        provenance: CanonicalCSVStagingProvenance
+    ) {
+        self.stagedImport = stagedImport
+        self.provenance = provenance
     }
 }
 
@@ -140,6 +267,15 @@ public enum CanonicalCSVStagingReaderError: Error, Hashable, Sendable {
         maximum: Int,
         location: CanonicalCSVSourceLocation
     )
+    case totalMaterializedTextUTF8ByteLimitExceeded(
+        maximum: Int,
+        actual: Int,
+        location: CanonicalCSVFieldLocation
+    )
+    case totalMaterializedTextUTF8ByteCountOverflow(
+        maximum: Int,
+        location: CanonicalCSVFieldLocation
+    )
     case dataRecordWiderThanHeader(
         headerColumnCount: Int,
         actual: Int,
@@ -150,15 +286,28 @@ public enum CanonicalCSVStagingReaderError: Error, Hashable, Sendable {
 
 /// A Data-only, inactive CSV-to-staging boundary. It performs no scientific interpretation.
 public enum CanonicalCSVStagingReader {
-    /// Reads one complete source atomically. Both interpretation decisions are explicit.
+    /// Reads one complete source atomically and returns the existing staging model.
+    public static func read(
+        data: Data,
+        headerDecision: CanonicalTabularHeaderDecision,
+        limits: CanonicalCSVStagingLimits
+    ) throws -> StagedScientificImport {
+        try readWithProvenance(
+            data: data,
+            headerDecision: headerDecision,
+            limits: limits
+        ).stagedImport
+    }
+
+    /// Reads one complete source atomically while retaining lossless source provenance.
     ///
     /// Raw-field byte limits include the complete CSV field lexeme, including enclosing quotes
     /// and doubled quote escapes. Decoded-field limits apply after CSV quote decoding.
-    public static func read(
+    public static func readWithProvenance(
         data: Data,
-        headerDecision: CanonicalCSVHeaderDecision,
+        headerDecision: CanonicalTabularHeaderDecision,
         limits: CanonicalCSVStagingLimits
-    ) throws -> StagedScientificImport {
+    ) throws -> CanonicalCSVStagingResult {
         try validate(limits: limits)
         guard data.count <= limits.maximumSourceByteCount else {
             throw CanonicalCSVStagingReaderError.sourceByteLimitExceeded(
@@ -171,6 +320,9 @@ public enum CanonicalCSVStagingReader {
         }
 
         let bytes = Array(data)
+        // Own the exact bytes that were inspected instead of retaining potentially externally
+        // backed `Data`. This snapshot is the immutable source of both provenance and its digest.
+        let sourceData = Data(bytes)
         let contentStart = hasUTF8BOM(bytes) ? 3 : 0
         guard contentStart < bytes.count else {
             throw CanonicalCSVStagingReaderError.zeroColumnLogicalTable
@@ -188,12 +340,14 @@ public enum CanonicalCSVStagingReader {
         var headers: [String]?
         var columnCells: [[StagedCellValue]] = []
         var logicalDataRowCount = 0
+        var logicalRecords: [CanonicalCSVLogicalRecordProvenance] = []
         var parser = CanonicalCSVByteParser(
             bytes: bytes,
             contentStart: contentStart,
             limits: limits
         )
         try parser.parse { record in
+            logicalRecords.append(record.provenance)
             if record.oneBasedLogicalRecord == 1,
                headerDecision == .firstRecordIsHeader {
                 headers = record.fields.map(\.text)
@@ -260,6 +414,7 @@ public enum CanonicalCSVStagingReader {
         guard !columnCells.isEmpty else {
             throw CanonicalCSVStagingReaderError.zeroColumnLogicalTable
         }
+        let stagedImport: StagedScientificImport
         do {
             let stagedColumns = try columnCells.indices.map { offset in
                 StagedScientificColumn(
@@ -270,7 +425,7 @@ public enum CanonicalCSVStagingReader {
                     cells: columnCells[offset]
                 )
             }
-            return try StagedScientificImport(
+            stagedImport = try StagedScientificImport(
                 source: .commaSeparatedValues,
                 columns: stagedColumns,
                 suggestions: .none
@@ -280,6 +435,18 @@ public enum CanonicalCSVStagingReader {
         } catch is StagedScientificImportStructureError {
             throw CanonicalCSVStagingReaderError.internalInvariant
         }
+        let digest = SHA256.hash(data: sourceData).map { String(format: "%02x", $0) }.joined()
+        return CanonicalCSVStagingResult(
+            stagedImport: stagedImport,
+            provenance: CanonicalCSVStagingProvenance(
+                sourceData: sourceData,
+                sourceSHA256: digest,
+                sourceByteCount: sourceData.count,
+                appliedLimits: limits,
+                headerDecision: headerDecision,
+                logicalRecords: logicalRecords
+            )
+        )
     }
 
     private static func validate(limits: CanonicalCSVStagingLimits) throws {
@@ -310,6 +477,11 @@ public enum CanonicalCSVStagingReader {
                 .decodedFieldUTF8Bytes,
                 limits.maximumDecodedFieldUTF8ByteCount,
                 supported.maximumDecodedFieldUTF8ByteCount
+            ),
+            (
+                .totalMaterializedTextUTF8Bytes,
+                limits.maximumTotalMaterializedTextUTF8ByteCount,
+                supported.maximumTotalMaterializedTextUTF8ByteCount
             ),
         ]
         for (kind, actual, maximumSupported) in values {
@@ -423,6 +595,7 @@ public enum CanonicalCSVStagingReader {
 }
 
 private struct CanonicalCSVParsedField {
+    let rawUTF8Lexeme: Data
     let text: String
     let wasQuoted: Bool
     let location: CanonicalCSVFieldLocation
@@ -430,6 +603,15 @@ private struct CanonicalCSVParsedField {
     var stagedValue: StagedCellValue {
         if text.isEmpty, !wasQuoted { return .blank }
         return .text(rawText: text)
+    }
+
+    var provenance: CanonicalCSVFieldProvenance {
+        CanonicalCSVFieldProvenance(
+            rawUTF8Lexeme: rawUTF8Lexeme,
+            decodedText: text,
+            wasQuoted: wasQuoted,
+            location: location
+        )
     }
 }
 
@@ -439,6 +621,13 @@ private struct CanonicalCSVParsedRecord {
 
     var location: CanonicalCSVFieldLocation {
         fields[0].location
+    }
+
+    var provenance: CanonicalCSVLogicalRecordProvenance {
+        CanonicalCSVLogicalRecordProvenance(
+            oneBasedLogicalRecord: oneBasedLogicalRecord,
+            fields: fields.map(\.provenance)
+        )
     }
 }
 
@@ -461,6 +650,7 @@ private struct CanonicalCSVByteParser {
     private var recordFields: [CanonicalCSVParsedField] = []
     private var decodedFieldBytes: [UInt8] = []
     private var rawFieldByteCount = 0
+    private var totalMaterializedTextUTF8ByteCount = 0
     private var fieldWasQuoted = false
     private var fieldStartOffset: Int
     private var recordHasStarted = false
@@ -609,8 +799,28 @@ private struct CanonicalCSVByteParser {
 
     private mutating func finishField(endOffset: Int) throws {
         let location = fieldLocation(at: fieldStartOffset)
+        let (proposedTotalTextByteCount, totalTextOverflow) =
+            totalMaterializedTextUTF8ByteCount.addingReportingOverflow(
+                decodedFieldBytes.count
+            )
+        guard !totalTextOverflow else {
+            throw CanonicalCSVStagingReaderError
+                .totalMaterializedTextUTF8ByteCountOverflow(
+                    maximum: limits.maximumTotalMaterializedTextUTF8ByteCount,
+                    location: location
+                )
+        }
+        guard proposedTotalTextByteCount <= limits.maximumTotalMaterializedTextUTF8ByteCount else {
+            throw CanonicalCSVStagingReaderError.totalMaterializedTextUTF8ByteLimitExceeded(
+                maximum: limits.maximumTotalMaterializedTextUTF8ByteCount,
+                actual: proposedTotalTextByteCount,
+                location: location
+            )
+        }
+        totalMaterializedTextUTF8ByteCount = proposedTotalTextByteCount
         recordFields.append(
             CanonicalCSVParsedField(
+                rawUTF8Lexeme: Data(bytes[fieldStartOffset..<endOffset]),
                 text: String(decoding: decodedFieldBytes, as: UTF8.self),
                 wasQuoted: fieldWasQuoted,
                 location: location
