@@ -141,6 +141,12 @@ appear without a preceding spike-train column in that group. A headerless file
 can be imported only as one all-spike group; event columns require headers and
 explicit confirmation.
 
+A manifest draft is transaction-bound to the exact staged source facts the user
+reviewed: selected source or worksheet, ordered headers, raw cells, blanks,
+multiplicity, and row count. Applying that draft to different source facts is a
+blocking error. Suggestions are excluded from this binding, and the binding is
+review safety rather than scientific identity.
+
 Repeated display headers remain distinct definitions until the user assigns
 stable, unambiguous semantic IDs. A confirmed event definition remains part of
 scientific identity even when it contains no occurrence; that condition is a

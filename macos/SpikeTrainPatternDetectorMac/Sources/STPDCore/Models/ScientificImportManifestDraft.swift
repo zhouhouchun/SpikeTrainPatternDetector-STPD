@@ -148,9 +148,29 @@ public struct EventAttributeDefinitionDraft: Hashable, Sendable {
     }
 }
 
+/// Exact source facts that bind a manifest draft to the table the user actually reviewed.
+///
+/// This is a transaction-safety value, not a scientific identity. It deliberately preserves the
+/// selected source, ordered headers, raw cells, blanks, multiplicity, and row count while excluding
+/// all non-authoritative staging suggestions. Its only public construction path is a staged import.
+public struct ScientificImportDraftSourceBinding: Hashable, Sendable {
+    public let source: StagedTabularSource
+    public let columns: [StagedScientificColumn]
+    public let dataRowCount: Int
+
+    public init(stagedImport: StagedScientificImport) {
+        self.source = stagedImport.source
+        self.columns = stagedImport.columns
+        self.dataRowCount = stagedImport.dataRowCount
+    }
+}
+
 /// User decisions under construction. This type deliberately provides no default scientific
 /// choice, readiness shortcut, confirmation conversion, digest, persistence, or activation API.
 public struct ScientificImportManifestDraft: Hashable, Sendable {
+    /// Immutable review-transaction binding. A different file, worksheet, header, column order, or
+    /// raw cell value requires a new draft; suggestion-only changes do not.
+    public let sourceBinding: ScientificImportDraftSourceBinding
     public var sourceTimeUnit: SpikeTimeUnit?
     public var activityMode: ScientificDatasetActivityMode?
     /// `nil` means grouping has not been decided. An empty array is a distinct, invalid proposal
@@ -159,11 +179,13 @@ public struct ScientificImportManifestDraft: Hashable, Sendable {
     public var eventAttributeDefinitions: [EventAttributeDefinitionDraft]
 
     public init(
+        boundTo stagedImport: StagedScientificImport,
         sourceTimeUnit: SpikeTimeUnit? = nil,
         activityMode: ScientificDatasetActivityMode? = nil,
         eventScopeGroups: [EventScopeGroupManifestDraft]? = nil,
         eventAttributeDefinitions: [EventAttributeDefinitionDraft] = []
     ) {
+        self.sourceBinding = ScientificImportDraftSourceBinding(stagedImport: stagedImport)
         self.sourceTimeUnit = sourceTimeUnit
         self.activityMode = activityMode
         self.eventScopeGroups = eventScopeGroups

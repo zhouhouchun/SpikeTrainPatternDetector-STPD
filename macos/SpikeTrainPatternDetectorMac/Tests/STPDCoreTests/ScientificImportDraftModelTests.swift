@@ -2,9 +2,11 @@ import STPDCore
 import Testing
 
 @Test
-func scientificImportDraftStartsWithoutScientificDefaults() {
-    let draft = ScientificImportManifestDraft()
+func scientificImportDraftStartsWithoutScientificDefaults() throws {
+    let staged = try makeDraftStaging(columnCount: 1)
+    let draft = ScientificImportManifestDraft(boundTo: staged)
 
+    #expect(draft.sourceBinding == ScientificImportDraftSourceBinding(stagedImport: staged))
     #expect(draft.sourceTimeUnit == nil)
     #expect(draft.activityMode == nil)
     #expect(draft.eventScopeGroups == nil)
@@ -208,7 +210,7 @@ func scientificImportSuggestionsDoNotPopulateManifestDecisions() throws {
         ],
         suggestions: suggestions
     )
-    let draft = ScientificImportManifestDraft()
+    let draft = ScientificImportManifestDraft(boundTo: staged)
 
     #expect(staged.suggestions.columns[0].suggestedSemanticIDText == "stimulus")
     #expect(staged.suggestions.eventScopeGroups.count == 1)
@@ -266,7 +268,9 @@ func scientificImportManifestRepresentsTwoIndependentSpikeEventGroups() throws {
         ],
         timeBasis: .recordingElapsed
     )
+    let staged = try makeDraftStaging(columnCount: references.count)
     let draft = ScientificImportManifestDraft(
+        boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
         eventScopeGroups: [groupAlpha, groupBeta]
@@ -357,7 +361,9 @@ func scientificImportModeChangesDoNotRewriteColumnDecisions() throws {
         eventDefinitions: [],
         timeBasis: .recordingElapsed
     )
+    let staged = try makeDraftStaging(columnCount: 1)
     var draft = ScientificImportManifestDraft(
+        boundTo: staged,
         sourceTimeUnit: .milliseconds,
         activityMode: .putativeSingleUnit,
         eventScopeGroups: [group]
@@ -367,6 +373,21 @@ func scientificImportModeChangesDoNotRewriteColumnDecisions() throws {
 
     #expect(draft.eventScopeGroups?[0].spikeTrains[0].orderDecision == .stableAscendingSort)
     #expect(draft.eventScopeGroups?[0].spikeTrains[0].duplicateDecision == .collapseExact)
+}
+
+private func makeDraftStaging(columnCount: Int) throws -> StagedScientificImport {
+    let columns = try (1...columnCount).map { index in
+        StagedScientificColumn(
+            sourceColumn: try StagedSourceColumnReference(oneBasedIndex: index),
+            header: "column_\(index)",
+            cells: [.text(rawText: "source_\(index)")]
+        )
+    }
+    return try StagedScientificImport(
+        source: .commaSeparatedValues,
+        columns: columns,
+        suggestions: .none
+    )
 }
 
 private func stagedImportError(
