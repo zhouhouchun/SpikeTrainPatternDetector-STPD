@@ -30,6 +30,20 @@ private final class RecordingCharactersDelegate: BoundedXMLDelegate {
     }
 }
 
+private final class ExpandedCharacterBudgetDelegate: BoundedXMLDelegate {
+    private(set) var observed: [String] = []
+
+    override var maximumElementCharacterDataUTF8ByteCount: Int { 7 }
+
+    override func handleCharacters(_ string: String) throws {
+        observed.append(string)
+    }
+
+    override func handleCDATA(_ data: Data) throws {
+        observed.append(String(decoding: data, as: UTF8.self))
+    }
+}
+
 private func xmlLimits(maximumTextUTF8Bytes: Int) -> CanonicalXLSXInspectionLimits {
     let supported = CanonicalXLSXInspectionLimits.supportedDatasetEnvelope
     return CanonicalXLSXInspectionLimits(
@@ -132,5 +146,97 @@ func boundedXMLDelegateIsTheOnlyPartAndLimitAuthority() throws {
             part: part,
             issue: .documentTypeDeclaration
         ))
+    }
+}
+
+@Test
+func boundedXMLCharacterBudgetCanExpandWithoutExpandingMetadataBudget() throws {
+    let part = "shared-strings.xml"
+    let characterDelegate = ExpandedCharacterBudgetDelegate(
+        part: part,
+        limits: xmlLimits(maximumTextUTF8Bytes: 3)
+    )
+    try parseXML(
+        data: Data("<r>payload</r>".utf8),
+        delegate: characterDelegate
+    )
+    #expect(characterDelegate.observed == ["payload"])
+
+    let oversizedCharacterDelegate = ExpandedCharacterBudgetDelegate(
+        part: part,
+        limits: xmlLimits(maximumTextUTF8Bytes: 3)
+    )
+    do {
+        try parseXML(
+            data: Data("<r>payloadx</r>".utf8),
+            delegate: oversizedCharacterDelegate
+        )
+        Issue.record("Expected the expanded character-data budget")
+    } catch let error as CanonicalXLSXWorkbookInspectionError {
+        #expect(error == .xmlLimitExceeded(
+            part: part,
+            kind: .xmlTextUTF8Bytes,
+            maximum: 7,
+            actual: 8
+        ))
+    }
+    #expect(oversizedCharacterDelegate.observed.isEmpty)
+
+    let mixedDelegate = ExpandedCharacterBudgetDelegate(
+        part: part,
+        limits: xmlLimits(maximumTextUTF8Bytes: 3)
+    )
+    try parseXML(
+        data: Data("<r>pay<![CDATA[load]]></r>".utf8),
+        delegate: mixedDelegate
+    )
+    #expect(mixedDelegate.observed == ["pay", "load"])
+
+    let oversizedMixedDelegate = ExpandedCharacterBudgetDelegate(
+        part: part,
+        limits: xmlLimits(maximumTextUTF8Bytes: 3)
+    )
+    do {
+        try parseXML(
+            data: Data("<r>pay<![CDATA[loadx]]></r>".utf8),
+            delegate: oversizedMixedDelegate
+        )
+        Issue.record("Expected the cumulative character/CDATA budget")
+    } catch let error as CanonicalXLSXWorkbookInspectionError {
+        #expect(error == .xmlLimitExceeded(
+            part: part,
+            kind: .xmlTextUTF8Bytes,
+            maximum: 7,
+            actual: 8
+        ))
+    }
+    #expect(oversizedMixedDelegate.observed == ["pay"])
+
+    let oversizedMetadata: [(source: String, actual: Int)] = [
+        ("<root/>", 4),
+        ("<r a=\"four\"/>", 4),
+        ("<r xmlns:p=\"four\"/>", 4),
+        ("<r><!--four--></r>", 4),
+        ("<r><?long?></r>", 4),
+    ]
+    for example in oversizedMetadata {
+        let metadataDelegate = ExpandedCharacterBudgetDelegate(
+            part: part,
+            limits: xmlLimits(maximumTextUTF8Bytes: 3)
+        )
+        do {
+            try parseXML(
+                data: Data(example.source.utf8),
+                delegate: metadataDelegate
+            )
+            Issue.record("Expected the unchanged XML metadata budget")
+        } catch let error as CanonicalXLSXWorkbookInspectionError {
+            #expect(error == .xmlLimitExceeded(
+                part: part,
+                kind: .xmlTextUTF8Bytes,
+                maximum: 3,
+                actual: example.actual
+            ))
+        }
     }
 }

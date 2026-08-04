@@ -1251,6 +1251,12 @@ private final class WorkbookXMLDelegate: BoundedXMLDelegate {
 internal class BoundedXMLDelegate: NSObject, XMLParserDelegate {
     let part: String
     let limits: CanonicalXLSXInspectionLimits
+    /// Direct character data may need a larger lexical envelope than XML metadata.
+    /// Subclasses can widen this budget without widening names, namespace declarations,
+    /// attributes, comments, or processing instructions.
+    var maximumElementCharacterDataUTF8ByteCount: Int {
+        limits.maximumXMLTextUTF8ByteCount
+    }
     private(set) var failure: Error?
     private(set) var depth = 0
     private var elementCount = 0
@@ -1420,11 +1426,12 @@ internal class BoundedXMLDelegate: NSObject, XMLParserDelegate {
         guard failure == nil, !textByteCounts.isEmpty else { return }
         let (proposed, overflow) = textByteCounts[textByteCounts.count - 1]
             .addingReportingOverflow(byteCount)
-        guard !overflow, proposed <= limits.maximumXMLTextUTF8ByteCount else {
+        let maximum = maximumElementCharacterDataUTF8ByteCount
+        guard !overflow, proposed <= maximum else {
             failure = xmlLimitError(
                 part,
                 .xmlTextUTF8Bytes,
-                limits.maximumXMLTextUTF8ByteCount,
+                maximum,
                 overflow ? Int.max : proposed
             )
             parser.abortParsing()
