@@ -20,6 +20,11 @@ let package = Package(
                 .unsafeFlags(["-Xcc", "-DACCELERATE_NEW_LAPACK=1"])
             ]
         ),
+        .target(
+            name: "STPDTabularIO",
+            dependencies: ["STPDCore"],
+            path: "Sources/STPDTabularIO"
+        ),
         .executableTarget(
             name: "SpikeTrainPatternDetectorMac",
             dependencies: ["STPDCore"],
@@ -31,6 +36,11 @@ let package = Package(
             path: "Tests/STPDCoreTests",
             // P6B-0: the 5x5 characterization dataset is loaded at runtime via #filePath, not compiled/bundled.
             exclude: ["Fixtures"]
+        ),
+        .testTarget(
+            name: "STPDTabularIOTests",
+            dependencies: ["STPDTabularIO", "STPDCore"],
+            path: "Tests/STPDTabularIOTests"
         ),
         .testTarget(
             name: "SpikeTrainPatternDetectorMacTests",
