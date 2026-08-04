@@ -180,6 +180,8 @@ event_stimulus
 Parsing rules:
 
 - split an attribute at the first `=`;
+- ASCII `=` is the unescaped separator and is not allowed inside an attribute
+  key; keys remain case-sensitive Unicode NFC and are not silently trimmed;
 - an attribute before any timestamp, or after a blank, is an orphan and blocks
   import;
 - a scalar key may appear only once in one occurrence;

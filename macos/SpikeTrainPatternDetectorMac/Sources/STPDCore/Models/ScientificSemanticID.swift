@@ -58,11 +58,13 @@ public enum EventAttributeKeyError: Error, Equatable, Sendable {
     case empty
     case blank
     case containsControlCharacter
+    case containsMetadataSeparator
     case reservedUnitSuffix
 }
 
-/// A case-sensitive, NFC event-attribute key. A key ending in `.unit` is reserved for an import-time
-/// unit suggestion and cannot be installed as an independent scalar attribute.
+/// A case-sensitive, NFC event-attribute key. ASCII `=` is the unescaped metadata separator and
+/// cannot occur in a key. A key ending in `.unit` is reserved for an import-time unit suggestion
+/// and cannot be installed as an independent scalar attribute.
 public struct EventAttributeKey: Hashable, Sendable {
     /// Bounds both untrusted source text and its stored NFC form.
     public static let maximumSourceUTF8ByteCount = 256
@@ -96,6 +98,9 @@ public struct EventAttributeKey: Hashable, Sendable {
             CharacterSet.controlCharacters.contains($0)
         }) else {
             throw EventAttributeKeyError.containsControlCharacter
+        }
+        guard !canonical.contains("=") else {
+            throw EventAttributeKeyError.containsMetadataSeparator
         }
         guard !canonical.hasSuffix(".unit") else {
             throw EventAttributeKeyError.reservedUnitSuffix

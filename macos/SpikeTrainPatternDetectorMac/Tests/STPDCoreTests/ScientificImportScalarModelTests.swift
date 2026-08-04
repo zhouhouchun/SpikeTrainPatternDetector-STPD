@@ -49,9 +49,11 @@ func scientificImportScalarModelAttributeKeysReserveUnitSuggestionSuffix() throw
     #expect(eventAttributeKeyError("") == .empty)
     #expect(eventAttributeKeyError("\u{2002}\t ") == .blank)
     #expect(eventAttributeKeyError("condition\nname") == .containsControlCharacter)
+    #expect(eventAttributeKeyError("condition=drug") == .containsMetadataSeparator)
     #expect(eventAttributeKeyError("intensity.unit") == .reservedUnitSuffix)
     #expect(eventAttributeKeyError(".unit") == .reservedUnitSuffix)
     #expect(try EventAttributeKey(validating: "intensity.Unit").canonicalText == "intensity.Unit")
+    #expect(try EventAttributeKey(validating: "@condition").canonicalText == "@condition")
     #expect(try EventAttributeKey(validating: " intensity ").canonicalText == " intensity ")
 
     let composed = try EventAttributeKey(validating: "caf\u{00E9}")
