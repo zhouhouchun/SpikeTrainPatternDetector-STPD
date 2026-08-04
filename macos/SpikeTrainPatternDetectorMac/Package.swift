@@ -10,6 +10,12 @@ let package = Package(
     products: [
         .executable(name: "SpikeTrainPatternDetectorMac", targets: ["SpikeTrainPatternDetectorMac"])
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/weichsel/ZIPFoundation.git",
+            exact: "0.9.20"
+        )
+    ],
     targets: [
         .target(
             name: "STPDCore",
@@ -22,7 +28,10 @@ let package = Package(
         ),
         .target(
             name: "STPDTabularIO",
-            dependencies: ["STPDCore"],
+            dependencies: [
+                "STPDCore",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation")
+            ],
             path: "Sources/STPDTabularIO"
         ),
         .executableTarget(
@@ -39,7 +48,11 @@ let package = Package(
         ),
         .testTarget(
             name: "STPDTabularIOTests",
-            dependencies: ["STPDTabularIO", "STPDCore"],
+            dependencies: [
+                "STPDTabularIO",
+                "STPDCore",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation")
+            ],
             path: "Tests/STPDTabularIOTests"
         ),
         .testTarget(
