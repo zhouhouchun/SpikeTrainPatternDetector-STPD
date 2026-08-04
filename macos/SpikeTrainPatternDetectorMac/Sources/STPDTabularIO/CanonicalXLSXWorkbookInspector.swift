@@ -288,8 +288,6 @@ public enum CanonicalXLSXWorkbookInspector {
         let contentTypesDelegate = ContentTypesXMLDelegate(part: contentTypesPath, limits: limits)
         try parseXML(
             data: contentTypesData,
-            part: contentTypesPath,
-            limits: limits,
             delegate: contentTypesDelegate
         )
         let contentTypes = contentTypesDelegate.catalog
@@ -324,8 +322,6 @@ public enum CanonicalXLSXWorkbookInspector {
         )
         try parseXML(
             data: rootRelationshipsData,
-            part: rootRelationshipsPath,
-            limits: limits,
             delegate: rootRelationshipsDelegate
         )
         let rootRelationships = rootRelationshipsDelegate.relationships
@@ -368,8 +364,6 @@ public enum CanonicalXLSXWorkbookInspector {
         let workbookDelegate = WorkbookXMLDelegate(part: workbookPath, limits: limits)
         try parseXML(
             data: workbookData,
-            part: workbookPath,
-            limits: limits,
             delegate: workbookDelegate
         )
         let workbookSheets = workbookDelegate.sheets
@@ -381,8 +375,6 @@ public enum CanonicalXLSXWorkbookInspector {
         )
         try parseXML(
             data: workbookRelationshipsData,
-            part: workbookRelationshipsPath,
-            limits: limits,
             delegate: workbookRelationshipsDelegate
         )
         let workbookRelationships = workbookRelationshipsDelegate.relationships
@@ -1256,10 +1248,10 @@ private final class WorkbookXMLDelegate: BoundedXMLDelegate {
     }
 }
 
-private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
+internal class BoundedXMLDelegate: NSObject, XMLParserDelegate {
     let part: String
     let limits: CanonicalXLSXInspectionLimits
-    private(set) var failure: CanonicalXLSXWorkbookInspectionError?
+    private(set) var failure: Error?
     private(set) var depth = 0
     private var elementCount = 0
     private var textByteCounts: [Int] = []
@@ -1357,11 +1349,8 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
                 qualifiedName: qName,
                 attributes: attributeDict
             )
-        } catch let error as CanonicalXLSXWorkbookInspectionError {
-            failure = error
-            parser.abortParsing()
         } catch {
-            failure = .malformedXML(part: part, line: parser.lineNumber, column: parser.columnNumber)
+            failure = error
             parser.abortParsing()
         }
     }
@@ -1381,25 +1370,28 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
             )
             _ = textByteCounts.popLast()
             depth -= 1
-        } catch let error as CanonicalXLSXWorkbookInspectionError {
-            failure = error
-            parser.abortParsing()
         } catch {
-            failure = .malformedXML(part: part, line: parser.lineNumber, column: parser.columnNumber)
+            failure = error
             parser.abortParsing()
         }
     }
 
     final func parser(_ parser: XMLParser, foundCharacters string: String) {
-        recordTextByteCount(string.utf8.count, parser: parser)
+        recordTextByteCount(string.utf8.count, parser: parser) {
+            try handleCharacters(string)
+        }
     }
 
     final func parser(_ parser: XMLParser, foundIgnorableWhitespace whitespaceString: String) {
-        recordTextByteCount(whitespaceString.utf8.count, parser: parser)
+        recordTextByteCount(whitespaceString.utf8.count, parser: parser) {
+            try handleCharacters(whitespaceString)
+        }
     }
 
     final func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
-        recordTextByteCount(CDATABlock.count, parser: parser)
+        recordTextByteCount(CDATABlock.count, parser: parser) {
+            try handleCDATA(CDATABlock)
+        }
     }
 
     final func parser(_ parser: XMLParser, foundComment comment: String) {
@@ -1420,7 +1412,11 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
         )
     }
 
-    private func recordTextByteCount(_ byteCount: Int, parser: XMLParser) {
+    private func recordTextByteCount(
+        _ byteCount: Int,
+        parser: XMLParser,
+        deliver: () throws -> Void
+    ) {
         guard failure == nil, !textByteCounts.isEmpty else { return }
         let (proposed, overflow) = textByteCounts[textByteCounts.count - 1]
             .addingReportingOverflow(byteCount)
@@ -1435,6 +1431,12 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
             return
         }
         textByteCounts[textByteCounts.count - 1] = proposed
+        do {
+            try deliver()
+        } catch {
+            failure = error
+            parser.abortParsing()
+        }
     }
 
     private func failIfDetachedXMLTextExceedsLimit(_ byteCount: Int, parser: XMLParser) {
@@ -1456,7 +1458,10 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
         resolveExternalEntityName name: String,
         systemID: String?
     ) -> Data? {
-        failure = .xmlSecurityViolation(part: part, issue: .externalEntity)
+        failure = CanonicalXLSXWorkbookInspectionError.xmlSecurityViolation(
+            part: part,
+            issue: .externalEntity
+        )
         parser.abortParsing()
         return nil
     }
@@ -1473,6 +1478,12 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
         namespaceURI: String?,
         qualifiedName: String?
     ) throws {}
+
+    /// Receives element character data only after the current element's UTF-8 byte budget passes.
+    func handleCharacters(_ string: String) throws {}
+
+    /// Receives CDATA only after the current element's byte budget passes.
+    func handleCDATA(_ data: Data) throws {}
 
     func validateDocumentComplete() throws {}
 
@@ -1493,12 +1504,11 @@ private class BoundedXMLDelegate: NSObject, XMLParserDelegate {
     }
 }
 
-private func parseXML(
+internal func parseXML(
     data: Data,
-    part: String,
-    limits: CanonicalXLSXInspectionLimits,
     delegate: BoundedXMLDelegate
 ) throws {
+    let part = delegate.part
     if containsXMLMarkup(data, needle: "<!DOCTYPE") {
         throw CanonicalXLSXWorkbookInspectionError.xmlSecurityViolation(
             part: part,
