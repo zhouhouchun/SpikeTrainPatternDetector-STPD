@@ -4,11 +4,13 @@
 /// resolved plan, while raw headers, cells, blanks, multiplicity, and source order remain present.
 public struct ResolvedScientificImportSource: Hashable, Sendable {
     public let source: StagedTabularSource
+    public let sourceTransactionBinding: StagedSourceTransactionBinding?
     public let columns: [StagedScientificColumn]
     public let dataRowCount: Int
 
     internal init(stagedImport: StagedScientificImport) {
         self.source = stagedImport.source
+        self.sourceTransactionBinding = stagedImport.sourceTransactionBinding
         self.columns = stagedImport.columns
         self.dataRowCount = stagedImport.dataRowCount
     }

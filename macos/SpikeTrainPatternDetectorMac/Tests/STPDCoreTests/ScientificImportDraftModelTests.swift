@@ -15,6 +15,151 @@ func scientificImportDraftStartsWithoutScientificDefaults() throws {
 }
 
 @Test
+func sourceTransactionBindingValidatesDigestAndWorksheetSelectionExactly() throws {
+    let validDigest = String(repeating: "0a", count: 32)
+    let csv = try StagedSourceTransactionBinding(
+        sourceBytesSHA256: validDigest,
+        selection: .commaSeparatedValues
+    )
+    #expect(csv.sourceBytesSHA256 == validDigest)
+    #expect(csv.selection == .commaSeparatedValues)
+
+    for invalidDigest in [
+        String(repeating: "a", count: 63),
+        String(repeating: "a", count: 65),
+        String(repeating: "A", count: 64),
+        String(repeating: "g", count: 64),
+        " " + String(repeating: "a", count: 63),
+        String(repeating: "é", count: 32),
+    ] {
+        #expect(throws: StagedSourceTransactionBindingValidationError.invalidLowercaseSHA256) {
+            try StagedSourceTransactionBinding(
+                sourceBytesSHA256: invalidDigest,
+                selection: .commaSeparatedValues
+            )
+        }
+    }
+
+    let invalidSelections: [(
+        StagedSourceTransactionSelection,
+        StagedSourceTransactionBindingValidationError
+    )] = [
+        (
+            .excelWorksheet(
+                worksheetName: "",
+                sheetID: 1,
+                relationshipID: "rId1",
+                normalizedPartPath: "xl/sheet.xml"
+            ),
+            .emptyWorksheetName
+        ),
+        (
+            .excelWorksheet(
+                worksheetName: "Recording",
+                sheetID: 0,
+                relationshipID: "rId1",
+                normalizedPartPath: "xl/sheet.xml"
+            ),
+            .worksheetSheetIDMustBePositive
+        ),
+        (
+            .excelWorksheet(
+                worksheetName: "Recording",
+                sheetID: 1,
+                relationshipID: "",
+                normalizedPartPath: "xl/sheet.xml"
+            ),
+            .emptyWorksheetRelationshipID
+        ),
+        (
+            .excelWorksheet(
+                worksheetName: "Recording",
+                sheetID: 1,
+                relationshipID: "rId1",
+                normalizedPartPath: ""
+            ),
+            .emptyWorksheetPartPath
+        ),
+    ]
+    for (selection, expectedError) in invalidSelections {
+        #expect(throws: expectedError) {
+            try StagedSourceTransactionBinding(
+                sourceBytesSHA256: validDigest,
+                selection: selection
+            )
+        }
+    }
+}
+
+@Test
+func stagedImportSeparatesManualUnboundConstructionFromTrustedReaderBinding() throws {
+    let column = StagedScientificColumn(
+        sourceColumn: try StagedSourceColumnReference(oneBasedIndex: 1),
+        header: "unit",
+        cells: [.text(rawText: "0")]
+    )
+    let manual = try StagedScientificImport(
+        source: .commaSeparatedValues,
+        columns: [column],
+        suggestions: .none
+    )
+    #expect(manual.sourceTransactionBinding == nil)
+
+    let digest = String(repeating: "a", count: 64)
+    let csvBinding = try StagedSourceTransactionBinding(
+        sourceBytesSHA256: digest,
+        selection: .commaSeparatedValues
+    )
+    let bound = try StagedScientificImport(
+        source: .commaSeparatedValues,
+        columns: [column],
+        suggestions: .none,
+        sourceTransactionBinding: csvBinding
+    )
+    #expect(bound.sourceTransactionBinding == csvBinding)
+    #expect(bound != manual)
+    #expect(Set([bound, manual]).count == 2)
+
+    let workbookBinding = try StagedSourceTransactionBinding(
+        sourceBytesSHA256: digest,
+        selection: .excelWorksheet(
+            worksheetName: "Recording",
+            sheetID: 1,
+            relationshipID: "rId1",
+            normalizedPartPath: "xl/worksheets/sheet1.xml"
+        )
+    )
+    #expect(throws: StagedScientificImportStructureError.sourceTransactionBindingTransportMismatch) {
+        try StagedScientificImport(
+            source: .commaSeparatedValues,
+            columns: [column],
+            suggestions: .none,
+            sourceTransactionBinding: workbookBinding
+        )
+    }
+    #expect(throws: StagedScientificImportStructureError.sourceTransactionBindingTransportMismatch) {
+        try StagedScientificImport(
+            source: .excelWorkbook(worksheetName: "Recording"),
+            columns: [column],
+            suggestions: .none,
+            sourceTransactionBinding: csvBinding
+        )
+    }
+    #expect(throws: StagedScientificImportStructureError
+        .sourceTransactionBindingWorksheetNameMismatch(
+            source: "Other",
+            binding: "Recording"
+        )) {
+        try StagedScientificImport(
+            source: .excelWorkbook(worksheetName: "Other"),
+            columns: [column],
+            suggestions: .none,
+            sourceTransactionBinding: workbookBinding
+        )
+    }
+}
+
+@Test
 func scientificImportStagingPreservesRawCellDistinctionsAndDuplicateHeaders() throws {
     let first = try StagedSourceColumnReference(oneBasedIndex: 1)
     let second = try StagedSourceColumnReference(oneBasedIndex: 2)

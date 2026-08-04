@@ -140,6 +140,61 @@ func scientificImportPlanResolverRejectsDraftBoundToDifferentSourceFacts() throw
 }
 
 @Test
+func scientificImportPlanResolverBindsExactSourceSnapshotAndWorksheetSelection() throws {
+    func workbookBinding(
+        digestCharacter: Character,
+        sheetID: UInt32 = 7
+    ) throws -> StagedSourceTransactionBinding {
+        try StagedSourceTransactionBinding(
+            sourceBytesSHA256: String(repeating: digestCharacter, count: 64),
+            selection: .excelWorksheet(
+                worksheetName: "Recording",
+                sheetID: sheetID,
+                relationshipID: "recordingSheet",
+                normalizedPartPath: "pkg/sheets/recording.xml"
+            )
+        )
+    }
+
+    let base = try makeCustomStagedImport(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        rawCellTexts: ["0.001"],
+        sourceTransactionBinding: workbookBinding(digestCharacter: "a")
+    )
+    let draft = try makeSingleSpikeDraft(boundTo: base)
+    let plan = try ScientificImportPlanResolver.resolve(stagedImport: base, draft: draft)
+    #expect(plan.source.sourceTransactionBinding == base.sourceTransactionBinding)
+
+    let sameTableDifferentBytes = try makeCustomStagedImport(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        rawCellTexts: ["0.001"],
+        sourceTransactionBinding: workbookBinding(digestCharacter: "b")
+    )
+    let sameBytesDifferentSheetSelection = try makeCustomStagedImport(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        rawCellTexts: ["0.001"],
+        sourceTransactionBinding: workbookBinding(digestCharacter: "a", sheetID: 8)
+    )
+    let sameTableWithoutBinding = try makeCustomStagedImport(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        headers: ["unit"],
+        rawCellTexts: ["0.001"]
+    )
+    for mismatched in [
+        sameTableDifferentBytes,
+        sameBytesDifferentSheetSelection,
+        sameTableWithoutBinding,
+    ] {
+        #expect(resolutionIssues(stagedImport: mismatched, draft: draft) == [
+            .sourceBindingMismatch,
+        ])
+    }
+}
+
+@Test
 func scientificImportPlanResolverAcceptsTwoOrderedGroupsAndLocalIDReuse() throws {
     let staged = try makeStagedImport(columnCount: 4)
     let references = try sourceColumns(4)
@@ -737,7 +792,8 @@ private func makeCustomStagedImport(
     source: StagedTabularSource,
     headers: [String?],
     rawCellTexts: [String],
-    suggestions: StagedScientificImportSuggestions = .none
+    suggestions: StagedScientificImportSuggestions = .none,
+    sourceTransactionBinding: StagedSourceTransactionBinding? = nil
 ) throws -> StagedScientificImport {
     precondition(headers.count == rawCellTexts.count)
     let columns = try headers.indices.map { offset in
@@ -745,6 +801,14 @@ private func makeCustomStagedImport(
             sourceColumn: try StagedSourceColumnReference(oneBasedIndex: offset + 1),
             header: headers[offset],
             cells: [.text(rawText: rawCellTexts[offset])]
+        )
+    }
+    if let sourceTransactionBinding {
+        return try StagedScientificImport(
+            source: source,
+            columns: columns,
+            suggestions: suggestions,
+            sourceTransactionBinding: sourceTransactionBinding
         )
     }
     return try StagedScientificImport(

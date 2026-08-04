@@ -323,6 +323,13 @@ public enum CanonicalCSVStagingReader {
         // Own the exact bytes that were inspected instead of retaining potentially externally
         // backed `Data`. This snapshot is the immutable source of both provenance and its digest.
         let sourceData = Data(bytes)
+        let digest = SHA256.hash(data: sourceData).map { String(format: "%02x", $0) }.joined()
+        guard let sourceTransactionBinding = try? StagedSourceTransactionBinding(
+            sourceBytesSHA256: digest,
+            selection: .commaSeparatedValues
+        ) else {
+            throw CanonicalCSVStagingReaderError.internalInvariant
+        }
         let contentStart = hasUTF8BOM(bytes) ? 3 : 0
         guard contentStart < bytes.count else {
             throw CanonicalCSVStagingReaderError.zeroColumnLogicalTable
@@ -428,14 +435,14 @@ public enum CanonicalCSVStagingReader {
             stagedImport = try StagedScientificImport(
                 source: .commaSeparatedValues,
                 columns: stagedColumns,
-                suggestions: .none
+                suggestions: .none,
+                sourceTransactionBinding: sourceTransactionBinding
             )
         } catch is StagedSourceReferenceError {
             throw CanonicalCSVStagingReaderError.internalInvariant
         } catch is StagedScientificImportStructureError {
             throw CanonicalCSVStagingReaderError.internalInvariant
         }
-        let digest = SHA256.hash(data: sourceData).map { String(format: "%02x", $0) }.joined()
         return CanonicalCSVStagingResult(
             stagedImport: stagedImport,
             provenance: CanonicalCSVStagingProvenance(

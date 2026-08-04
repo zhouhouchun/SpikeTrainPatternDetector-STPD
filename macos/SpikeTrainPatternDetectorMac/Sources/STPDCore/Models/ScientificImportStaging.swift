@@ -59,6 +59,73 @@ public enum StagedTabularSource: Hashable, Sendable {
     case excelWorkbook(worksheetName: String)
 }
 
+/// Stable selection facts within one exact source snapshot. These values bind a review transaction;
+/// they are provenance and never part of canonical scientific identity.
+public enum StagedSourceTransactionSelection: Hashable, Sendable {
+    case commaSeparatedValues
+    case excelWorksheet(
+        worksheetName: String,
+        sheetID: UInt32,
+        relationshipID: String,
+        normalizedPartPath: String
+    )
+}
+
+public enum StagedSourceTransactionBindingValidationError: Error, Equatable, Sendable {
+    case invalidLowercaseSHA256
+    case emptyWorksheetName
+    case worksheetSheetIDMustBePositive
+    case emptyWorksheetRelationshipID
+    case emptyWorksheetPartPath
+}
+
+/// Exact-byte and selection binding for the source the user reviewed.
+///
+/// `sourceBytesSHA256` is intentionally not normalized. Only the canonical lowercase 64-byte ASCII
+/// representation is accepted, preventing two textual encodings of the same digest from becoming
+/// distinct transaction facts.
+public struct StagedSourceTransactionBinding: Hashable, Sendable {
+    public let sourceBytesSHA256: String
+    public let selection: StagedSourceTransactionSelection
+
+    package init(
+        sourceBytesSHA256: String,
+        selection: StagedSourceTransactionSelection
+    ) throws {
+        let digestBytes = Array(sourceBytesSHA256.utf8)
+        guard digestBytes.count == 64,
+              digestBytes.allSatisfy({ byte in
+                  (0x30...0x39).contains(byte) || (0x61...0x66).contains(byte)
+              }) else {
+            throw StagedSourceTransactionBindingValidationError.invalidLowercaseSHA256
+        }
+        switch selection {
+        case .commaSeparatedValues:
+            break
+        case .excelWorksheet(
+            let worksheetName,
+            let sheetID,
+            let relationshipID,
+            let normalizedPartPath
+        ):
+            guard !worksheetName.isEmpty else {
+                throw StagedSourceTransactionBindingValidationError.emptyWorksheetName
+            }
+            guard sheetID > 0 else {
+                throw StagedSourceTransactionBindingValidationError.worksheetSheetIDMustBePositive
+            }
+            guard !relationshipID.isEmpty else {
+                throw StagedSourceTransactionBindingValidationError.emptyWorksheetRelationshipID
+            }
+            guard !normalizedPartPath.isEmpty else {
+                throw StagedSourceTransactionBindingValidationError.emptyWorksheetPartPath
+            }
+        }
+        self.sourceBytesSHA256 = sourceBytesSHA256
+        self.selection = selection
+    }
+}
+
 /// A source cell before any scientific role, timestamp unit, or attribute type is confirmed.
 ///
 /// `.blank` is deliberately distinct from a text cell containing an empty string. Workbook numbers
@@ -156,6 +223,8 @@ public enum StagedScientificImportStructureError: Error, Equatable, Sendable {
     case noncontiguousEventScopeGroupSuggestion(group: Int, expected: Int, actual: Int)
     case duplicateEventScopeGroupSuggestionColumn(column: Int)
     case eventScopeGroupSuggestionsOutOfSourceOrder(previous: Int, actual: Int)
+    case sourceTransactionBindingTransportMismatch
+    case sourceTransactionBindingWorksheetNameMismatch(source: String, binding: String)
 }
 
 /// A bounded reader's format-neutral, lossless table output.
@@ -164,6 +233,7 @@ public enum StagedScientificImportStructureError: Error, Equatable, Sendable {
 /// timestamp unit, canonical tick, typed event attribute, scientific digest, or confirmation API.
 public struct StagedScientificImport: Hashable, Sendable {
     public let source: StagedTabularSource
+    public let sourceTransactionBinding: StagedSourceTransactionBinding?
     public let columns: [StagedScientificColumn]
     public let dataRowCount: Int
     public let suggestions: StagedScientificImportSuggestions
@@ -172,6 +242,38 @@ public struct StagedScientificImport: Hashable, Sendable {
         source: StagedTabularSource,
         columns: [StagedScientificColumn],
         suggestions: StagedScientificImportSuggestions
+    ) throws {
+        try self.init(
+            source: source,
+            columns: columns,
+            suggestions: suggestions,
+            validatedSourceTransactionBinding: nil
+        )
+    }
+
+    /// Trusted package readers use this initializer after hashing the exact owned byte snapshot.
+    /// This prevents external callers from attaching arbitrary digest text to unrelated columns;
+    /// it is transaction safety inside this package, not cryptographic authentication of callers.
+    package init(
+        source: StagedTabularSource,
+        columns: [StagedScientificColumn],
+        suggestions: StagedScientificImportSuggestions,
+        sourceTransactionBinding: StagedSourceTransactionBinding
+    ) throws {
+        try self.init(
+            source: source,
+            columns: columns,
+            suggestions: suggestions,
+            validatedSourceTransactionBinding: sourceTransactionBinding
+        )
+    }
+
+    private init(
+        source: StagedTabularSource,
+        columns: [StagedScientificColumn],
+        suggestions: StagedScientificImportSuggestions,
+        validatedSourceTransactionBinding sourceTransactionBinding:
+            StagedSourceTransactionBinding?
     ) throws {
         guard let firstColumn = columns.first else {
             throw StagedScientificImportStructureError.noColumns
@@ -248,7 +350,29 @@ public struct StagedScientificImport: Hashable, Sendable {
             previousGroupLastColumn = group.sourceColumns.last?.oneBasedIndex
         }
 
+        if let sourceTransactionBinding {
+            switch (source, sourceTransactionBinding.selection) {
+            case (.commaSeparatedValues, .commaSeparatedValues):
+                break
+            case (
+                .excelWorkbook(let sourceWorksheetName),
+                .excelWorksheet(let bindingWorksheetName, _, _, _)
+            ):
+                guard sourceWorksheetName == bindingWorksheetName else {
+                    throw StagedScientificImportStructureError
+                        .sourceTransactionBindingWorksheetNameMismatch(
+                            source: sourceWorksheetName,
+                            binding: bindingWorksheetName
+                        )
+                }
+            default:
+                throw StagedScientificImportStructureError
+                    .sourceTransactionBindingTransportMismatch
+            }
+        }
+
         self.source = source
+        self.sourceTransactionBinding = sourceTransactionBinding
         self.columns = columns
         self.dataRowCount = expectedRowCount
         self.suggestions = suggestions

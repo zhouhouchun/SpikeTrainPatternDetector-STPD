@@ -155,11 +155,13 @@ public struct EventAttributeDefinitionDraft: Hashable, Sendable {
 /// all non-authoritative staging suggestions. Its only public construction path is a staged import.
 public struct ScientificImportDraftSourceBinding: Hashable, Sendable {
     public let source: StagedTabularSource
+    public let sourceTransactionBinding: StagedSourceTransactionBinding?
     public let columns: [StagedScientificColumn]
     public let dataRowCount: Int
 
     public init(stagedImport: StagedScientificImport) {
         self.source = stagedImport.source
+        self.sourceTransactionBinding = stagedImport.sourceTransactionBinding
         self.columns = stagedImport.columns
         self.dataRowCount = stagedImport.dataRowCount
     }

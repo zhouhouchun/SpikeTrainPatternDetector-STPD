@@ -121,7 +121,11 @@ func optionalUTF8BOMDoesNotChangeStagedContent() throws {
         limits: supportedLimits
     )
 
-    #expect(bom.stagedImport == plain.stagedImport)
+    #expect(bom.stagedImport != plain.stagedImport)
+    #expect(bom.stagedImport.source == plain.stagedImport.source)
+    #expect(bom.stagedImport.columns == plain.stagedImport.columns)
+    #expect(bom.stagedImport.dataRowCount == plain.stagedImport.dataRowCount)
+    #expect(bom.stagedImport.suggestions == plain.stagedImport.suggestions)
     #expect(plain.stagedImport.source == .commaSeparatedValues)
     #expect(plain.stagedImport.columns.map(\.header) == ["unit_a", "unit_b"])
     #expect(plain.provenance.sourceData == source)
@@ -131,6 +135,18 @@ func optionalUTF8BOMDoesNotChangeStagedContent() throws {
     #expect(plain.provenance.sourceSHA256 == sha256Hex(source))
     #expect(bom.provenance.sourceSHA256 == sha256Hex(withBOM))
     #expect(plain.provenance.sourceSHA256 != bom.provenance.sourceSHA256)
+    #expect(
+        plain.stagedImport.sourceTransactionBinding?.sourceBytesSHA256
+            == plain.provenance.sourceSHA256
+    )
+    #expect(
+        bom.stagedImport.sourceTransactionBinding?.sourceBytesSHA256
+            == bom.provenance.sourceSHA256
+    )
+    #expect(
+        plain.stagedImport.sourceTransactionBinding?.selection == .commaSeparatedValues
+    )
+    #expect(plain.stagedImport.sourceTransactionBinding != bom.stagedImport.sourceTransactionBinding)
     #expect(plain.provenance.appliedLimits == supportedLimits)
     #expect(plain.provenance.headerDecision == .firstRecordIsHeader)
     #expect(plain.provenance.logicalRecords[0].fields[0].location.source.oneBasedByteOffset == 1)
@@ -142,6 +158,82 @@ func optionalUTF8BOMDoesNotChangeStagedContent() throws {
         limits: supportedLimits
     )
     #expect(stagedOnly == plain.stagedImport)
+
+    let repeated = try CanonicalCSVStagingReader.readWithProvenance(
+        data: source,
+        headerDecision: .firstRecordIsHeader,
+        limits: supportedLimits
+    )
+    #expect(repeated == plain)
+}
+
+@Test
+func exactCSVSnapshotBindingInvalidatesCrossSourceDraftWithoutChangingPreparedData() throws {
+    let source = Data("unit\n0\n0.001".utf8)
+    var withBOM = Data([0xEF, 0xBB, 0xBF])
+    withBOM.append(source)
+    let plain = try CanonicalCSVStagingReader.readWithProvenance(
+        data: source,
+        headerDecision: .firstRecordIsHeader,
+        limits: supportedLimits
+    ).stagedImport
+    let bom = try CanonicalCSVStagingReader.readWithProvenance(
+        data: withBOM,
+        headerDecision: .firstRecordIsHeader,
+        limits: supportedLimits
+    ).stagedImport
+
+    func draft(boundTo staged: StagedScientificImport) throws -> ScientificImportManifestDraft {
+        let column = try StagedSourceColumnReference(oneBasedIndex: 1)
+        let groupID = ScientificEventScopeGroupID(
+            try ScientificSemanticID(validating: "recording")
+        )
+        let trainID = ScientificSpikeTrainID(
+            try ScientificSemanticID(validating: "unit")
+        )
+        return ScientificImportManifestDraft(
+            boundTo: staged,
+            sourceTimeUnit: .seconds,
+            activityMode: .putativeSingleUnit,
+            eventScopeGroups: [
+                EventScopeGroupManifestDraft(
+                    semanticID: groupID,
+                    spikeTrains: [
+                        SpikeTrainColumnManifestDraft(
+                            sourceColumn: column,
+                            semanticID: trainID,
+                            orderDecision: .preserveSourceOrder,
+                            duplicateDecision: .preserveMultiplicity
+                        ),
+                    ],
+                    eventDefinitions: [],
+                    timeBasis: .recordingElapsed
+                ),
+            ]
+        )
+    }
+
+    let plainDraft = try draft(boundTo: plain)
+    let bomDraft = try draft(boundTo: bom)
+    let plainPlan = try ScientificImportPlanResolver.resolve(
+        stagedImport: plain,
+        draft: plainDraft
+    )
+    let bomPlan = try ScientificImportPlanResolver.resolve(stagedImport: bom, draft: bomDraft)
+    let plainPrepared = try ScientificImportNormalizer.normalize(resolvedPlan: plainPlan)
+    let bomPrepared = try ScientificImportNormalizer.normalize(resolvedPlan: bomPlan)
+
+    #expect(plainPrepared.data == bomPrepared.data)
+    #expect(plainPrepared.provenance != bomPrepared.provenance)
+    #expect(PreparedScientificImportValidator.validate(plainPrepared).blockingIssues.isEmpty)
+    #expect(PreparedScientificImportValidator.validate(bomPrepared).blockingIssues.isEmpty)
+
+    do {
+        _ = try ScientificImportPlanResolver.resolve(stagedImport: bom, draft: plainDraft)
+        Issue.record("Expected exact-source transaction mismatch")
+    } catch let error as ScientificImportPlanResolutionError {
+        #expect(error.issues == [.sourceBindingMismatch])
+    }
 }
 
 @Test

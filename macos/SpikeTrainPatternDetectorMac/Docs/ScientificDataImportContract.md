@@ -147,6 +147,15 @@ multiplicity, and row count. Applying that draft to different source facts is a
 blocking error. Suggestions are excluded from this binding, and the binding is
 review safety rather than scientific identity.
 
+Every bounded file reader binds staging to the SHA-256 of the exact owned byte
+snapshot it parsed. XLSX additionally binds the selected worksheet name,
+`sheetID`, relationship ID, and normalized part path. Therefore, a byte-different
+file or a different worksheet invalidates an earlier draft even when the visible
+table happens to be identical. Such sources may still normalize to equal
+scientific data. The byte digest and worksheet coordinates remain provenance and
+must not enter canonical scientific identity. Manually constructed, unbound
+staging is a compatibility/testing state and is not proof of a reviewed file.
+
 Repeated display headers remain distinct definitions until the user assigns
 stable, unambiguous semantic IDs. A confirmed event definition remains part of
 scientific identity even when it contains no occurrence; that condition is a

@@ -79,6 +79,50 @@ func scientificImportNormalizerSeparatesEquivalentTextDataFromSourceProvenance()
 }
 
 @Test
+func scientificImportNormalizerExcludesExactSourceSnapshotFromPreparedData() throws {
+    func csvBinding(_ character: Character) throws -> StagedSourceTransactionBinding {
+        try StagedSourceTransactionBinding(
+            sourceBytesSHA256: String(repeating: character, count: 64),
+            selection: .commaSeparatedValues
+        )
+    }
+    let cells: [[StagedCellValue]] = [[
+        .text(rawText: "0"),
+        .text(rawText: "0.001"),
+    ]]
+    let first = try normalizerStaged(
+        source: .commaSeparatedValues,
+        headers: ["unit"],
+        columns: cells,
+        sourceTransactionBinding: csvBinding("a")
+    )
+    let second = try normalizerStaged(
+        source: .commaSeparatedValues,
+        headers: ["unit"],
+        columns: cells,
+        sourceTransactionBinding: csvBinding("b")
+    )
+    let firstPrepared = try ScientificImportNormalizer.normalize(
+        resolvedPlan: normalizerSingleSpikePlan(staged: first)
+    )
+    let secondPrepared = try ScientificImportNormalizer.normalize(
+        resolvedPlan: normalizerSingleSpikePlan(staged: second)
+    )
+
+    #expect(firstPrepared.data == secondPrepared.data)
+    #expect(firstPrepared.provenance != secondPrepared.provenance)
+    #expect(firstPrepared != secondPrepared)
+    #expect(
+        firstPrepared.provenance.resolvedPlan.source.sourceTransactionBinding
+            == first.sourceTransactionBinding
+    )
+    #expect(
+        secondPrepared.provenance.resolvedPlan.source.sourceTransactionBinding
+            == second.sourceTransactionBinding
+    )
+}
+
+@Test
 func scientificImportNormalizerTreatsCSVAndXMLLineEndingsAsOneScientificString() throws {
     func prepared(
         source: StagedTabularSource,
@@ -1363,7 +1407,8 @@ private enum NormalizerFixtureError: Error {
 private func normalizerStaged(
     source: StagedTabularSource,
     headers: [String],
-    columns: [[StagedCellValue]]
+    columns: [[StagedCellValue]],
+    sourceTransactionBinding: StagedSourceTransactionBinding? = nil
 ) throws -> StagedScientificImport {
     guard headers.count == columns.count else {
         throw NormalizerFixtureError.mismatchedColumnMetadata
@@ -1378,6 +1423,14 @@ private func normalizerStaged(
                 header: headers[offset],
                 cells: columns[offset]
             )
+        )
+    }
+    if let sourceTransactionBinding {
+        return try StagedScientificImport(
+            source: source,
+            columns: stagedColumns,
+            suggestions: .none,
+            sourceTransactionBinding: sourceTransactionBinding
         )
     }
     return try StagedScientificImport(
