@@ -83,6 +83,34 @@ func scientificImportScalarModelCanonicalStringsUseNFCAndPermitExplicitEmpty() t
 }
 
 @Test
+func scientificImportScalarModelCanonicalStringsNormalizeXMLAndCSVLineEndings() throws {
+    let lineFeed = try CanonicalStringValue(validating: "line 1\nline 2\nline 3")
+    let carriageReturnLineFeed = try CanonicalStringValue(
+        validating: "line 1\r\nline 2\r\nline 3"
+    )
+    let carriageReturn = try CanonicalStringValue(validating: "line 1\rline 2\rline 3")
+
+    #expect(carriageReturnLineFeed == lineFeed)
+    #expect(carriageReturn == lineFeed)
+    #expect(carriageReturnLineFeed.canonicalText == "line 1\nline 2\nline 3")
+
+    let mixed = try CanonicalStringValue(validating: "caf\u{0065}\u{0301}\r\r\nnext")
+    #expect(mixed.canonicalText == "caf\u{00E9}\n\nnext")
+
+    // The untrusted source budget is checked before the shortening CRLF normalization.
+    let overlongSource = String(
+        repeating: "\r\n",
+        count: CanonicalStringValue.maximumSourceUTF8ByteCount / 2 + 1
+    )
+    #expect(
+        canonicalStringError(overlongSource)
+            == .sourceTooLong(
+                maximumUTF8Bytes: CanonicalStringValue.maximumSourceUTF8ByteCount
+            )
+    )
+}
+
+@Test
 func scientificImportScalarModelExactIntegersCanonicalizeWithoutMagnitudeLoss() throws {
     let cases: [(String, String, Bool, String)] = [
         ("0", "0", false, "0"),

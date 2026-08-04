@@ -51,7 +51,13 @@ public struct CanonicalStringValue: Hashable, Sendable {
                 maximumUTF8Bytes: Self.maximumSourceUTF8ByteCount
             )
         }
-        let canonical = source.precomposedStringWithCanonicalMapping
+        // XML 1.0 parsers normalize CRLF and bare CR to LF before delivering element text.
+        // Canonicalize the same way here so an equivalent CSV string and XLSX string have one
+        // scientific value. The unmodified source remains available in import provenance.
+        let lineEndingCanonical = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let canonical = lineEndingCanonical.precomposedStringWithCanonicalMapping
         guard !eventAttributeTextExceedsUTF8ByteLimit(
             canonical,
             maximum: Self.maximumCanonicalUTF8ByteCount

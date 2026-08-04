@@ -79,6 +79,67 @@ func scientificImportNormalizerSeparatesEquivalentTextDataFromSourceProvenance()
 }
 
 @Test
+func scientificImportNormalizerTreatsCSVAndXMLLineEndingsAsOneScientificString() throws {
+    func prepared(
+        source: StagedTabularSource,
+        noteLineBreak: String
+    ) throws -> PreparedScientificImport {
+        let staged = try normalizerStaged(
+            source: source,
+            headers: ["unit", "event"],
+            columns: [
+                [.blank, .blank],
+                [
+                    .text(rawText: "0"),
+                    .text(rawText: "@note=line 1\(noteLineBreak)line 2"),
+                ],
+            ]
+        )
+        let columns = try normalizerColumns(2)
+        let group = EventScopeGroupManifestDraft(
+            semanticID: try normalizerGroupID("group"),
+            spikeTrains: [try normalizerSpike(columns[0], id: "unit")],
+            eventDefinitions: [try normalizerEvent(columns[1], id: "event")],
+            timeBasis: .recordingElapsed
+        )
+        let note = try normalizerAttribute(
+            "note",
+            type: .string,
+            role: .scientific,
+            unit: .notApplicable,
+            empty: .forbid
+        )
+        return try ScientificImportNormalizer.normalize(
+            resolvedPlan: normalizerPlan(
+                staged: staged,
+                groups: [group],
+                attributes: [note]
+            )
+        )
+    }
+
+    let csv = try prepared(
+        source: .commaSeparatedValues,
+        noteLineBreak: "\r\n"
+    )
+    let workbook = try prepared(
+        source: .excelWorkbook(worksheetName: "Recording"),
+        noteLineBreak: "\n"
+    )
+
+    #expect(csv.data == workbook.data)
+    #expect(csv.provenance != workbook.provenance)
+    let occurrence = try #require(
+        csv.data.eventScopeGroups.first?.eventDefinitions.first?.occurrences.first
+    )
+    guard case .string(let note) = occurrence.scientificAttributes.first?.value else {
+        Issue.record("Expected a scientific string attribute")
+        return
+    }
+    #expect(note.canonicalText == "line 1\nline 2")
+}
+
+@Test
 func scientificImportNormalizerTreatsOnlyStructuralBlankAsMissing() throws {
     let staged = try normalizerStaged(
         source: .commaSeparatedValues,
