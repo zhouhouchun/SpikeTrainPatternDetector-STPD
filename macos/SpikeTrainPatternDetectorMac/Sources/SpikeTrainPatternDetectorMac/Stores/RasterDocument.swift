@@ -4,6 +4,45 @@ import Observation
 import STPDCore
 import UniformTypeIdentifiers
 
+/// How the currently installed dataset entered the legacy active-document surface.
+///
+/// The current preparation-only importer intentionally has no "authoritative" case: it validates
+/// a value but cannot activate it yet. Demo and legacy paths may support exploration, but neither
+/// can mint a sealed scientific result.
+enum ActiveDatasetScientificStanding: Equatable, Sendable {
+    case noDataset
+    case nonAuthoritativeDemo
+    case legacyUnreviewedImport
+
+    var permitsAuthoritativeDetectorArtifactExport: Bool { false }
+    var permitsSealedResultExport: Bool { permitsAuthoritativeDetectorArtifactExport }
+
+    var detectorResultPrefix: String {
+        switch self {
+        case .noDataset:
+            return ""
+        case .nonAuthoritativeDemo:
+            return "Demo result — non-authoritative; sealed export is locked. "
+        case .legacyUnreviewedImport:
+            return "Unreviewed legacy-import result — non-authoritative; sealed export is locked. "
+        }
+    }
+}
+
+enum ActiveDatasetScientificStandingError: Error, Equatable, LocalizedError, Sendable {
+    case canonicalConfirmationRequired
+    case authoritativeDetectorArtifactExportRequiresCanonicalConfirmation
+
+    var errorDescription: String? {
+        switch self {
+        case .canonicalConfirmationRequired:
+            return "Sealed result export requires a canonically confirmed scientific import. Demo and legacy CSV data are non-authoritative."
+        case .authoritativeDetectorArtifactExportRequiresCanonicalConfirmation:
+            return "Detector CSV export requires a canonically confirmed scientific import. Demo and legacy CSV results are exploratory and cannot be exported as scientific artifacts."
+        }
+    }
+}
+
 private struct ClassicAnchorAnnotationCache: Sendable {
     let eventAnnotations: [ClassicAnchorEventAnnotation]
     let stateAnnotations: [ClassicAnchorEventAnnotation]
@@ -53,6 +92,9 @@ final class RasterDocument {
     private static let defaultISIStateSpaceVisibleTrainCount = 1
 
     var dataset: SpikeDataset?
+    private(set) var activeDatasetScientificStanding: ActiveDatasetScientificStanding = .noDataset
+    let scientificImportCoordinator = ScientificImportCoordinator()
+    var isScientificImportSheetPresented = false
     var selectedTrainIDs: Set<String> = []
     var isiSelectedTrainIDs: Set<String> = []
     var isiStateSpaceSelectedTrainIDs: Set<String> = []
@@ -257,11 +299,21 @@ final class RasterDocument {
         classicAnchorDetectionRun != nil
     }
 
+    var canExportClassicAnchorEventsCSV: Bool {
+        activeDatasetScientificStanding.permitsAuthoritativeDetectorArtifactExport
+            && hasDetectorResults
+    }
+
     var hasHFSBurstArbitrationAuditRows: Bool {
         guard let classicAnchorDetectionRun else {
             return false
         }
         return !classicAnchorDetectionRun.hfsBurstArbitrationAuditRows.isEmpty
+    }
+
+    var canExportHFSBurstArbitrationAuditCSV: Bool {
+        activeDatasetScientificStanding.permitsAuthoritativeDetectorArtifactExport
+            && hasHFSBurstArbitrationAuditRows
     }
 
     var classicAnchorEventAnnotations: [ClassicAnchorEventAnnotation] {
@@ -314,21 +366,42 @@ final class RasterDocument {
             return
         }
 
-        loadCSV(from: url, unit: .seconds, hasHeader: true, duplicatePolicy: duplicateTimestampPolicy)
+        loadCSV(
+            from: url,
+            unit: .seconds,
+            hasHeader: true,
+            duplicatePolicy: duplicateTimestampPolicy,
+            scientificStanding: .nonAuthoritativeDemo
+        )
     }
 
-    func openCSVWithPanel() {
+    func openScientificImportWithPanel() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.commaSeparatedText, .plainText]
-        panel.message = "Choose a raw spike matrix CSV. Each column should be one spike train."
+        var supportedContentTypes: [UTType] = [.commaSeparatedText]
+        if let xlsx = UTType(filenameExtension: "xlsx") {
+            supportedContentTypes.append(xlsx)
+        }
+        panel.allowedContentTypes = supportedContentTypes
+        panel.message = "Choose a CSV or XLSX timestamp table. Source facts and scientific meaning will be confirmed separately."
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
         }
 
-        loadCSV(from: url, unit: rawImportUnit, hasHeader: rawCSVHasHeader, duplicatePolicy: duplicateTimestampPolicy)
+        isScientificImportSheetPresented = true
+        Task { await scientificImportCoordinator.beginImport(from: url) }
+    }
+
+    /// Compatibility entry point for older callers. All user-facing raw-data imports now enter the
+    /// exact-snapshot two-stage review instead of installing a legacy CSV immediately.
+    func openCSVWithPanel() {
+        openScientificImportWithPanel()
+    }
+
+    func dismissScientificImportReview() {
+        isScientificImportSheetPresented = false
     }
 
     func applyDuplicateTimestampPolicy(_ policy: DuplicateTimestampPolicy) {
@@ -352,7 +425,8 @@ final class RasterDocument {
                     unit: loadedCSVUnit,
                     hasHeader: loadedCSVHasHeader,
                     duplicatePolicy: policy,
-                    preserveSelection: true
+                    preserveSelection: true,
+                    scientificStanding: activeDatasetScientificStanding
                 )
             } catch {
                 statusMessage = "Duplicate timestamp policy change failed."
@@ -367,7 +441,8 @@ final class RasterDocument {
             unit: loadedCSVUnit,
             hasHeader: loadedCSVHasHeader,
             duplicatePolicy: policy,
-            preserveSelection: true
+            preserveSelection: true,
+            scientificStanding: activeDatasetScientificStanding
         )
     }
 
@@ -450,7 +525,8 @@ final class RasterDocument {
         let runtimeSuffix = run.performanceReport.map {
             " Runtime \(formatDetectorRuntime($0.totalWallTimeMs))."
         } ?? ""
-        detectorStatusMessage = "\(run.candidateCount) candidate(s), \(run.selectedEventCount) event, \(run.selectedGapCount) gap, and \(run.selectedStateCount) state selected.\(runtimeSuffix)"
+        detectorStatusMessage = activeDatasetScientificStanding.detectorResultPrefix
+            + "\(run.candidateCount) candidate(s), \(run.selectedEventCount) event, \(run.selectedGapCount) gap, and \(run.selectedStateCount) state selected.\(runtimeSuffix)"
         lastErrorMessage = nil
         isDetectorRunning = false
     }
@@ -660,6 +736,13 @@ final class RasterDocument {
     }
 
     func exportClassicAnchorEventsCSVWithPanel() {
+        guard activeDatasetScientificStanding.permitsAuthoritativeDetectorArtifactExport else {
+            statusMessage = "Detector CSV export blocked."
+            lastErrorMessage = ActiveDatasetScientificStandingError
+                .authoritativeDetectorArtifactExportRequiresCanonicalConfirmation
+                .localizedDescription
+            return
+        }
         guard let dataset, let classicAnchorDetectionRun else {
             statusMessage = "No detection events to export."
             lastErrorMessage = nil
@@ -701,6 +784,13 @@ final class RasterDocument {
     }
 
     func exportHFSBurstArbitrationAuditCSVWithPanel() {
+        guard activeDatasetScientificStanding.permitsAuthoritativeDetectorArtifactExport else {
+            statusMessage = "Detector audit CSV export blocked."
+            lastErrorMessage = ActiveDatasetScientificStandingError
+                .authoritativeDetectorArtifactExportRequiresCanonicalConfirmation
+                .localizedDescription
+            return
+        }
         guard let dataset, let classicAnchorDetectionRun else {
             statusMessage = "Run detection before exporting HFS-burst audit rows."
             lastErrorMessage = nil
@@ -877,6 +967,22 @@ final class RasterDocument {
         hasHeader: Bool,
         duplicatePolicy: DuplicateTimestampPolicy
     ) {
+        loadCSV(
+            from: url,
+            unit: unit,
+            hasHeader: hasHeader,
+            duplicatePolicy: duplicatePolicy,
+            scientificStanding: .legacyUnreviewedImport
+        )
+    }
+
+    private func loadCSV(
+        from url: URL,
+        unit: SpikeTimeUnit,
+        hasHeader: Bool,
+        duplicatePolicy: DuplicateTimestampPolicy,
+        scientificStanding: ActiveDatasetScientificStanding
+    ) {
         do {
             let parsed = try parseCSV(
                 from: url,
@@ -890,7 +996,8 @@ final class RasterDocument {
                 unit: unit,
                 hasHeader: hasHeader,
                 duplicatePolicy: duplicatePolicy,
-                preserveSelection: false
+                preserveSelection: false,
+                scientificStanding: scientificStanding
             )
         } catch {
             statusMessage = dataset == nil
@@ -923,7 +1030,8 @@ final class RasterDocument {
         unit: SpikeTimeUnit,
         hasHeader: Bool,
         duplicatePolicy: DuplicateTimestampPolicy,
-        preserveSelection: Bool
+        preserveSelection: Bool,
+        scientificStanding: ActiveDatasetScientificStanding
     ) {
         let previousSelection = selectedTrainIDs
         let previousISISelection = isiSelectedTrainIDs
@@ -935,6 +1043,7 @@ final class RasterDocument {
 
         invalidateDetectorRunForDatasetMutation()
         dataset = parsed
+        activeDatasetScientificStanding = scientificStanding
         // Default standard visible window = 1/5 of the longest spike-train duration,
         // and keep it stable across reviews (Center re-centres at this window instead
         // of auto-zooming per candidate). The reviewer can still change it manually.
@@ -973,7 +1082,16 @@ final class RasterDocument {
             report.warningCount > 0 ? ", \(report.warningCount) QC warning(s)" : ", QC passed"
         let droppedSuffix = report.droppedDuplicateTimestampCount > 0 ?
             ", \(report.droppedDuplicateTimestampCount) duplicate timestamp(s) collapsed" : ""
-        statusMessage = "\(parsed.trains.count) trains, \(parsed.totalSpikeCount) spikes loaded\(qualitySuffix)\(droppedSuffix)."
+        let standingPrefix = switch scientificStanding {
+        case .noDataset:
+            ""
+        case .nonAuthoritativeDemo:
+            "Demo only — non-authoritative. "
+        case .legacyUnreviewedImport:
+            "Legacy import — not scientifically confirmed. "
+        }
+        statusMessage = standingPrefix
+            + "\(parsed.trains.count) trains, \(parsed.totalSpikeCount) spikes loaded\(qualitySuffix)\(droppedSuffix)."
         lastErrorMessage = nil
     }
 

@@ -51,7 +51,8 @@ private enum ManualAnnotationImportLoadOutcome: Sendable {
 @MainActor
 extension RasterDocument {
     var canImportAuthoritativeManualAnnotations: Bool {
-        dataset != nil
+        activeDatasetScientificStanding.permitsSealedResultExport
+            && dataset != nil
             && classicAnchorDetectionRun != nil
             && !isDetectorRunning
             && !isManualAnnotationImporting
@@ -66,6 +67,12 @@ extension RasterDocument {
             lastErrorMessage =
                 ManualAnnotationAppImportError.importAlreadyInProgress
                     .localizedDescription
+            return
+        }
+        guard activeDatasetScientificStanding.permitsSealedResultExport else {
+            statusMessage = "Manual annotation import blocked."
+            lastErrorMessage = ActiveDatasetScientificStandingError
+                .canonicalConfirmationRequired.localizedDescription
             return
         }
         guard !isDetectorRunning else {

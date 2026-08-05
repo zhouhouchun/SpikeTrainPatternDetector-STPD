@@ -19,7 +19,7 @@ struct DataQCView: View {
                     ContentUnavailableView(
                         "No Dataset",
                         systemImage: "exclamationmark.shield",
-                        description: Text(document.lastErrorMessage ?? "Open a raw spike timestamp CSV or load the bundled sample.")
+                        description: Text(document.lastErrorMessage ?? "Review a CSV/XLSX timestamp table or load the bundled demo sample.")
                     )
                     .frame(maxWidth: .infinity, minHeight: 320)
                 }
@@ -65,36 +65,30 @@ struct DataQCView: View {
     private var importControls: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                GlassSegmentedControl(
-                    options: [
-                        (SpikeTimeUnit.seconds, "s"),
-                        (.milliseconds, "ms")
-                    ],
-                    selection: $document.rawImportUnit,
-                    minSegmentWidth: 42
+                Label(
+                    "CSV/XLSX source facts and scientific meaning are confirmed in separate steps.",
+                    systemImage: "checklist"
                 )
-                .frame(width: 130)
-                .help("Raw timestamp unit in the imported CSV.")
-
-                Toggle("Header row", isOn: $document.rawCSVHasHeader)
-
-                DuplicateTimestampPolicyControl(document: document)
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
                 Spacer()
 
                 Button {
-                    document.openCSVWithPanel()
+                    document.openScientificImportWithPanel()
                 } label: {
-                    Label("Open CSV", systemImage: "folder")
+                    Label("Import Data", systemImage: "folder")
                 }
                 .liquidGlassButtonStyle()
+                .help("Open the two-stage CSV/XLSX import review")
 
                 Button {
                     document.loadBundledSample()
                 } label: {
-                    Label("Load Sample", systemImage: "arrow.clockwise")
+                    Label("Load Demo Sample", systemImage: "arrow.clockwise")
                 }
                 .liquidGlassButtonStyle()
+                .help("Load the bundled non-authoritative demonstration dataset")
             }
 
             HStack(spacing: 24) {
@@ -421,70 +415,6 @@ struct DataQCView: View {
             .replacingOccurrences(of: "Artifact ISI", with: "Below-minimum ISI")
             .replacingOccurrences(of: "Artifact fraction", with: "Below-minimum ISI fraction")
             .replacingOccurrences(of: "artifact threshold", with: "minimum-valid ISI threshold")
-    }
-}
-
-private struct DuplicateTimestampPolicyControl: View {
-    @Bindable var document: RasterDocument
-    @State private var pendingPolicy: DuplicateTimestampPolicy = .errorKeep
-
-    var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Text("Duplicate timestamps")
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Picker("Duplicate timestamps", selection: pendingPolicyBinding) {
-                    ForEach(DuplicateTimestampPolicy.allCases, id: \.self) { policy in
-                        Text(policy.title).tag(policy)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 150)
-            }
-
-            Button {
-                document.applyDuplicateTimestampPolicy(pendingPolicy)
-                syncPendingPolicy()
-            } label: {
-                Label("Apply", systemImage: "checkmark.circle")
-            }
-            .liquidGlassButtonStyle(prominent: true)
-            .disabled(!hasPendingPolicy)
-            .help("Apply the selected duplicate timestamp policy to the current dataset.")
-        }
-        .onAppear {
-            syncPendingPolicy()
-        }
-        .onChange(of: document.appliedDuplicateTimestampPolicy) { _, _ in
-            syncPendingPolicy()
-        }
-        .onChange(of: document.statusMessage) { _, _ in
-            syncPendingPolicy()
-        }
-    }
-
-    private var pendingPolicyBinding: Binding<DuplicateTimestampPolicy> {
-        Binding(
-            get: { pendingPolicy },
-            set: { pendingPolicy = $0 }
-        )
-    }
-
-    private var hasPendingPolicy: Bool {
-        guard document.dataset != nil else {
-            return false
-        }
-        return pendingPolicy != appliedPolicy
-    }
-
-    private var appliedPolicy: DuplicateTimestampPolicy {
-        document.appliedDuplicateTimestampPolicy ?? document.duplicateTimestampPolicy
-    }
-
-    private func syncPendingPolicy() {
-        pendingPolicy = appliedPolicy
     }
 }
 

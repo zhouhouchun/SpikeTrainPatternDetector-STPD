@@ -184,6 +184,70 @@ struct RasterDocumentImportTransactionTests {
         }
     }
 
+    @Test("Legacy CSV may be explored but cannot mint a sealed scientific result")
+    func legacyCSVRemainsNonAuthoritative() async throws {
+        try await withTemporaryDirectory { directory in
+            let sourceURL = directory.appendingPathComponent("legacy.csv")
+            try Self.activeCSV.write(to: sourceURL, atomically: true, encoding: .utf8)
+            let document = RasterDocument()
+
+            document.loadCSV(
+                from: sourceURL,
+                unit: .seconds,
+                hasHeader: true,
+                duplicatePolicy: .errorKeep
+            )
+            #expect(document.activeDatasetScientificStanding == .legacyUnreviewedImport)
+            #expect(document.statusMessage.contains("not scientifically confirmed"))
+
+            document.runAdaptiveClassicAnchorDetection()
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while document.isDetectorRunning, clock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+
+            _ = try #require(document.classicAnchorDetectionRun)
+            #expect(document.detectorStatusMessage.contains("non-authoritative"))
+            #expect(!document.canExportCurrentResultPackage)
+            #expect(!document.canExportClassicAnchorEventsCSV)
+            #expect(!document.canExportHFSBurstArbitrationAuditCSV)
+            do {
+                _ = try document.currentResultPackageInput()
+                Issue.record("Expected sealed result construction to require canonical confirmation")
+            } catch let error as ActiveDatasetScientificStandingError {
+                #expect(error == .canonicalConfirmationRequired)
+            }
+            do {
+                _ = try document.currentResultPackageExportSeed()
+                Issue.record("Expected the low-level export seed to require canonical confirmation")
+            } catch let error as ActiveDatasetScientificStandingError {
+                #expect(error == .canonicalConfirmationRequired)
+            }
+
+            document.exportClassicAnchorEventsCSVWithPanel()
+            #expect(document.statusMessage == "Detector CSV export blocked.")
+            #expect(document.lastErrorMessage?.contains("exploratory") == true)
+
+            document.exportHFSBurstArbitrationAuditCSVWithPanel()
+            #expect(document.statusMessage == "Detector audit CSV export blocked.")
+            #expect(document.lastErrorMessage?.contains("exploratory") == true)
+        }
+    }
+
+    @Test("Bundled sample is installed only with explicit demo standing")
+    func bundledSampleHasDemoStanding() throws {
+        let document = RasterDocument()
+
+        document.loadBundledSample()
+
+        _ = try #require(document.dataset)
+        #expect(document.activeDatasetScientificStanding == .nonAuthoritativeDemo)
+        #expect(document.statusMessage.contains("Demo only — non-authoritative"))
+        #expect(!document.canExportCurrentResultPackage)
+        #expect(!document.canImportAuthoritativeManualAnnotations)
+    }
+
     private func populateActiveState(in document: RasterDocument) async throws {
         document.runAdaptiveClassicAnchorDetection()
         let clock = ContinuousClock()

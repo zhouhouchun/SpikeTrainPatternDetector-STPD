@@ -146,6 +146,8 @@ struct StructuralCandidatesView: View {
                     header
                         .id(StructuralCandidatesScrollTarget.top)
 
+                    ScientificStandingBanner(document: document)
+
                     if document.dataset == nil {
                         ContentUnavailableView(
                             "No Dataset",
@@ -221,6 +223,7 @@ struct StructuralCandidatesView: View {
             }
             .liquidGlassButtonStyle()
             .disabled(!document.hasDetectorResults)
+            .help("Import review statuses for the current exploratory or confirmed run")
 
             Button {
                 document.exportClassicAnchorEventsCSVWithPanel()
@@ -228,7 +231,12 @@ struct StructuralCandidatesView: View {
                 Label("导出 CSV", systemImage: "square.and.arrow.down")
             }
             .liquidGlassButtonStyle()
-            .disabled(!document.hasDetectorResults)
+            .disabled(!document.canExportClassicAnchorEventsCSV)
+            .help(
+                document.canExportClassicAnchorEventsCSV
+                    ? "Export canonically confirmed detector events"
+                    : "Locked for demo and legacy-import detector results"
+            )
 
             Button {
                 document.runAdaptiveClassicAnchorDetection()

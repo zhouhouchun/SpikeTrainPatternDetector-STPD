@@ -38,6 +38,15 @@ struct ContentView: View {
             // A verified result package finished loading — surface it on the Events / Output page.
             selectedSection = .eventsOutput
         }
+        .sheet(
+            isPresented: $document.isScientificImportSheetPresented,
+            onDismiss: { document.scientificImportCoordinator.cancel() }
+        ) {
+            ScientificImportSheet(
+                coordinator: document.scientificImportCoordinator,
+                onClose: { document.dismissScientificImportReview() }
+            )
+        }
         .toolbar {
             ToolbarItem {
                 Button {
@@ -63,12 +72,13 @@ struct ContentView: View {
 
             ToolbarItemGroup {
                 Button {
-                    document.openCSVWithPanel()
+                    document.openScientificImportWithPanel()
                 } label: {
-                    Label("Open CSV", systemImage: "folder")
+                    Label("Import CSV or XLSX", systemImage: "folder")
                 }
                 .labelStyle(.iconOnly)
                 .liquidGlassToolbarButtonStyle()
+                .help("Review a CSV or XLSX source before any scientific interpretation")
 
                 Button {
                     document.importManualAnnotationsWithPanel()
@@ -103,8 +113,12 @@ struct ContentView: View {
                 }
                 .labelStyle(.iconOnly)
                 .liquidGlassToolbarButtonStyle()
-                .disabled(!document.hasDetectorResults)
-                .help("Export structural candidate events as CSV")
+                .disabled(!document.canExportClassicAnchorEventsCSV)
+                .help(
+                    document.canExportClassicAnchorEventsCSV
+                        ? "Export structural candidate events as CSV"
+                        : "Locked for demo and legacy-import detector results"
+                )
 
                 Button {
                     document.exportHFSBurstArbitrationAuditCSVWithPanel()
@@ -113,8 +127,12 @@ struct ContentView: View {
                 }
                 .labelStyle(.iconOnly)
                 .liquidGlassToolbarButtonStyle()
-                .disabled(!document.hasHFSBurstArbitrationAuditRows)
-                .help("Export diagnostic HFS versus burst arbitration evidence")
+                .disabled(!document.canExportHFSBurstArbitrationAuditCSV)
+                .help(
+                    document.canExportHFSBurstArbitrationAuditCSV
+                        ? "Export diagnostic HFS versus burst arbitration evidence"
+                        : "Locked for demo and legacy-import detector results"
+                )
 
                 Button {
                     document.importClassicAnchorReviewStatusesWithPanel()

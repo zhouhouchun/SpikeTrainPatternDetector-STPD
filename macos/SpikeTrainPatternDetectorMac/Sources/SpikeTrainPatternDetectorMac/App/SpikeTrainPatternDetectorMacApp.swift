@@ -40,9 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         false
     }
 
-    @objc private func openCSV() {
+    @objc private func openScientificData() {
         showMainWindow()
-        document.openCSVWithPanel()
+        document.openScientificImportWithPanel()
     }
 
     @objc private func loadSample() {
@@ -170,8 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let fileMenu = NSMenu(title: "File")
         fileMenuItem.submenu = fileMenu
         fileMenu.addItem(
-            withTitle: "Open CSV...",
-            action: #selector(openCSV),
+            withTitle: "Import CSV or XLSX...",
+            action: #selector(openScientificData),
             keyEquivalent: "o"
         ).target = self
         fileMenu.addItem(
@@ -186,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ).target = self
         fileMenu.addItem(.separator())
         fileMenu.addItem(
-            withTitle: "Load Sample",
+            withTitle: "Load Demo Sample",
             action: #selector(loadSample),
             keyEquivalent: "r"
         ).target = self

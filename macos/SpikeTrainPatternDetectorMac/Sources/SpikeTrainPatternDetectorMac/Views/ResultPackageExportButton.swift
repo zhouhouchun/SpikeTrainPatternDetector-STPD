@@ -21,6 +21,10 @@ struct ResultPackageExportButton: View {
             document.isResultPackageExporting
                 || !document.canExportCurrentResultPackage
         )
-        .help("Export the normalized provenance-bound result tables for the current detector and review snapshot")
+        .help(
+            document.activeDatasetScientificStanding.permitsSealedResultExport
+                ? "Export the normalized provenance-bound result tables for the current detector and review snapshot"
+                : "Locked: demo and legacy imports are exploratory until canonical scientific confirmation is implemented and completed"
+        )
     }
 }

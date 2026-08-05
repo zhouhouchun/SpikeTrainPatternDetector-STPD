@@ -10,6 +10,7 @@ struct DetectorParametersView: View {
                 header
 
                 if let dataset = document.dataset {
+                    ScientificStandingBanner(document: document)
                     detectorControls(dataset: dataset)
                     eventPatternControls
                     statePatternControls

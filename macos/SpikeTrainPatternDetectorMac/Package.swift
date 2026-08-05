@@ -36,7 +36,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "SpikeTrainPatternDetectorMac",
-            dependencies: ["STPDCore"],
+            dependencies: ["STPDCore", "STPDTabularIO"],
             path: "Sources/SpikeTrainPatternDetectorMac"
         ),
         .testTarget(
@@ -57,7 +57,12 @@ let package = Package(
         ),
         .testTarget(
             name: "SpikeTrainPatternDetectorMacTests",
-            dependencies: ["SpikeTrainPatternDetectorMac", "STPDCore"],
+            dependencies: [
+                "SpikeTrainPatternDetectorMac",
+                "STPDCore",
+                "STPDTabularIO",
+                .product(name: "ZIPFoundation", package: "ZIPFoundation")
+            ],
             path: "Tests/SpikeTrainPatternDetectorMacTests"
         )
     ]

@@ -7,7 +7,8 @@ extension RasterDocument {
     /// Cheap UI readiness check. The export action still performs the complete, fail-closed
     /// geometry, settings, authority, and table validation.
     var canExportCurrentResultPackage: Bool {
-        guard !isManualAnnotationImporting,
+        guard activeDatasetScientificStanding.permitsSealedResultExport,
+              !isManualAnnotationImporting,
               !isDetectorRunning,
               !isResultPackageExporting,
               dataset != nil,
@@ -57,7 +58,10 @@ extension RasterDocument {
     /// Core is the sole projection authority. The app supplies user-authored evidence, then Core
     /// deterministically recomputes and validates final events, ISI labels, and causal links.
     func currentResultPackageInput() throws -> STPDResultPackageInput {
-        try currentResultPackageExportSeed().snapshot()
+        guard activeDatasetScientificStanding.permitsSealedResultExport else {
+            throw ActiveDatasetScientificStandingError.canonicalConfirmationRequired
+        }
+        return try currentResultPackageExportSeed().snapshot()
     }
 
     func currentResultPackage() throws -> STPDResultPackage {
@@ -65,6 +69,12 @@ extension RasterDocument {
     }
 
     func exportResultPackageWithPanel() {
+        guard activeDatasetScientificStanding.permitsSealedResultExport else {
+            statusMessage = "Result-package export blocked."
+            lastErrorMessage = ActiveDatasetScientificStandingError
+                .canonicalConfirmationRequired.localizedDescription
+            return
+        }
         guard !isResultPackageExporting,
               !isManualAnnotationImporting,
               !isDetectorRunning,
@@ -176,6 +186,9 @@ extension RasterDocument {
         approvedManualAnnotationImportsOverride:
             [ManualAnnotationCSVApprovedBatch]? = nil
     ) throws -> ResultPackageExportSeed {
+        guard activeDatasetScientificStanding.permitsSealedResultExport else {
+            throw ActiveDatasetScientificStandingError.canonicalConfirmationRequired
+        }
         guard let dataset, let run = classicAnchorDetectionRun else {
             throw STPDResultPackageError.invalidInput(
                 "run detection before exporting a result package"

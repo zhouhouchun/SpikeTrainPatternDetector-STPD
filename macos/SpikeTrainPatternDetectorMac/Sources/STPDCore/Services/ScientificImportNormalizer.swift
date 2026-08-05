@@ -198,55 +198,20 @@ public enum ScientificImportNormalizer {
                     issues.append(.resolvedPlanInvariant)
                     continue
                 }
-                var timestamps: [RawTimestamp] = []
-                timestamps.reserveCapacity(column.cells.count)
-                for (rowOffset, cellValue) in column.cells.enumerated() {
-                    guard let cell = sourceCell(
-                        column: spikePlan.sourceColumn,
-                        oneBasedRow: rowOffset + 1
-                    ) else {
-                        issues.append(.resolvedPlanInvariant)
-                        continue
-                    }
-                    switch cellValue {
-                    case .blank:
-                        continue
-                    case .spreadsheetNumber(let rawLexeme):
-                        guard case .excelWorkbook = plan.source.source else {
-                            issues.append(
-                                .spreadsheetNumberOutsideWorkbook(
-                                    group: groupNumber,
-                                    cell: cell
-                                )
-                            )
-                            continue
-                        }
-                        if let tick = parseSpreadsheetTimestamp(
-                            rawLexeme,
-                            unit: plan.sourceTimeUnit,
+                let scan = ScientificImportSourceScanner.scanSpikeColumn(
+                    column,
+                    source: plan.source.source,
+                    sourceTimeUnit: plan.sourceTimeUnit,
+                    onIssue: { sourceIssue in
+                        appendSourceScanIssue(
+                            sourceIssue,
                             group: groupNumber,
-                            cell: cell,
-                            issues: &issues
-                        ) {
-                            timestamps.append(RawTimestamp(tick: tick, sourceCell: cell))
-                        }
-                    case .text(let rawText):
-                        if startsWithMetadataMarker(rawText) {
-                            issues.append(
-                                .eventMetadataInSpikeTrain(group: groupNumber, cell: cell)
-                            )
-                            continue
-                        }
-                        if let tick = parseTimestamp(
-                            rawText,
-                            unit: plan.sourceTimeUnit,
-                            group: groupNumber,
-                            cell: cell,
-                            issues: &issues
-                        ) {
-                            timestamps.append(RawTimestamp(tick: tick, sourceCell: cell))
-                        }
+                            to: &issues
+                        )
                     }
+                )
+                let timestamps = scan.timestamps.map {
+                    RawTimestamp(tick: $0.tick, sourceCell: $0.sourceCell)
                 }
                 spikeColumns.append(RawSpikeColumn(plan: spikePlan, timestamps: timestamps))
             }
@@ -259,88 +224,39 @@ public enum ScientificImportNormalizer {
                     issues.append(.resolvedPlanInvariant)
                     continue
                 }
-                var occurrences: [RawEventOccurrence] = []
-                var openOccurrenceIndex: Int?
-                occurrences.reserveCapacity(column.cells.count)
-
-                for (rowOffset, cellValue) in column.cells.enumerated() {
-                    guard let cell = sourceCell(
-                        column: eventPlan.sourceColumn,
-                        oneBasedRow: rowOffset + 1
-                    ) else {
-                        issues.append(.resolvedPlanInvariant)
-                        continue
-                    }
-                    switch cellValue {
-                    case .blank:
-                        openOccurrenceIndex = nil
-                    case .spreadsheetNumber(let rawLexeme):
-                        guard case .excelWorkbook = plan.source.source else {
-                            issues.append(
-                                .spreadsheetNumberOutsideWorkbook(
-                                    group: groupNumber,
-                                    cell: cell
-                                )
-                            )
-                            openOccurrenceIndex = nil
-                            continue
-                        }
-                        if let tick = parseSpreadsheetTimestamp(
-                            rawLexeme,
-                            unit: plan.sourceTimeUnit,
+                let scan = ScientificImportSourceScanner.scanEventColumn(
+                    column,
+                    source: plan.source.source,
+                    sourceTimeUnit: plan.sourceTimeUnit,
+                    onIssue: { sourceIssue in
+                        appendSourceScanIssue(
+                            sourceIssue,
                             group: groupNumber,
-                            cell: cell,
-                            issues: &issues
-                        ) {
-                            occurrences.append(
-                                RawEventOccurrence(
-                                    sourceTick: tick,
-                                    timestampCell: cell,
-                                    metadata: []
-                                )
-                            )
-                            openOccurrenceIndex = occurrences.count - 1
-                        } else {
-                            openOccurrenceIndex = nil
-                        }
-                    case .text(let rawText):
-                        if startsWithMetadataMarker(rawText) {
-                            guard let openOccurrenceIndex else {
-                                issues.append(
-                                    .eventMetadataWithoutOccurrence(
-                                        group: groupNumber,
-                                        cell: cell
-                                    )
-                                )
-                                continue
-                            }
-                            if let metadata = parseMetadata(
-                                rawText,
-                                group: groupNumber,
-                                cell: cell,
-                                issues: &issues
-                            ) {
-                                occurrences[openOccurrenceIndex].metadata.append(metadata)
-                            }
-                        } else if let tick = parseTimestamp(
-                            rawText,
-                            unit: plan.sourceTimeUnit,
-                            group: groupNumber,
-                            cell: cell,
-                            issues: &issues
-                        ) {
-                            occurrences.append(
-                                RawEventOccurrence(
-                                    sourceTick: tick,
-                                    timestampCell: cell,
-                                    metadata: []
-                                )
-                            )
-                            openOccurrenceIndex = occurrences.count - 1
-                        } else {
-                            openOccurrenceIndex = nil
-                        }
+                            to: &issues
+                        )
                     }
+                )
+                let occurrences = scan.occurrences.map { occurrence in
+                    RawEventOccurrence(
+                        sourceTick: occurrence.sourceTick,
+                        timestampCell: occurrence.timestampCell,
+                        metadata: occurrence.metadata.map { metadata in
+                            switch metadata {
+                            case .attribute(let key, let rawValue, let sourceCell):
+                                return .attribute(
+                                    key: key,
+                                    rawValue: rawValue,
+                                    sourceCell: sourceCell
+                                )
+                            case .unitSuggestion(let key, let rawValue, let sourceCell):
+                                return .unitSuggestion(
+                                    key: key,
+                                    rawValue: rawValue,
+                                    sourceCell: sourceCell
+                                )
+                            }
+                        }
+                    )
                 }
                 eventColumns.append(RawEventColumn(plan: eventPlan, occurrences: occurrences))
             }
@@ -357,36 +273,15 @@ public enum ScientificImportNormalizer {
         return groups
     }
 
-    private static func parseTimestamp(
-        _ rawText: String,
-        unit: SpikeTimeUnit,
+    private static func appendSourceScanIssue(
+        _ sourceIssue: ScientificImportSourceScanIssue,
         group: Int,
-        cell: StagedSourceCellReference,
-        issues: inout IssueAccumulator
-    ) -> MicrosecondTick? {
-        do {
-            return try ExactTimestampTextCodec.decode(rawText, sourceUnit: unit)
-        } catch let error as ExactTimestampParseError {
-            issues.append(.timestampParseFailed(group: group, cell: cell, error: error))
-        } catch {
-            issues.append(.resolvedPlanInvariant)
-        }
-        return nil
-    }
-
-    private static func parseSpreadsheetTimestamp(
-        _ rawLexeme: String,
-        unit: SpikeTimeUnit,
-        group: Int,
-        cell: StagedSourceCellReference,
-        issues: inout IssueAccumulator
-    ) -> MicrosecondTick? {
-        do {
-            return try SpreadsheetNumericTimestampCodec.decode(
-                rawLexeme: rawLexeme,
-                sourceUnit: unit
-            )
-        } catch let error as SpreadsheetNumericTimestampDecodeError {
+        to issues: inout IssueAccumulator
+    ) {
+        switch sourceIssue {
+        case .spreadsheetNumberOutsideWorkbook(let cell):
+            issues.append(.spreadsheetNumberOutsideWorkbook(group: group, cell: cell))
+        case .spreadsheetNumberTimestampDecodeFailed(let cell, let error):
             issues.append(
                 .spreadsheetNumberTimestampDecodeFailed(
                     group: group,
@@ -394,46 +289,19 @@ public enum ScientificImportNormalizer {
                     error: error
                 )
             )
-        } catch {
-            issues.append(.resolvedPlanInvariant)
-        }
-        return nil
-    }
-
-    private static func parseMetadata(
-        _ rawText: String,
-        group: Int,
-        cell: StagedSourceCellReference,
-        issues: inout IssueAccumulator
-    ) -> RawMetadata? {
-        let payload = rawText.dropFirst()
-        guard let equalsIndex = payload.firstIndex(of: "=") else {
+        case .timestampParseFailed(let cell, let error):
+            issues.append(.timestampParseFailed(group: group, cell: cell, error: error))
+        case .eventMetadataInSpikeTrain(let cell):
+            issues.append(.eventMetadataInSpikeTrain(group: group, cell: cell))
+        case .eventMetadataWithoutOccurrence(let cell):
+            issues.append(.eventMetadataWithoutOccurrence(group: group, cell: cell))
+        case .eventMetadataMissingEquals(let cell):
             issues.append(.eventMetadataMissingEquals(group: group, cell: cell))
-            return nil
-        }
-
-        let rawKey = String(payload[..<equalsIndex])
-        let rawValue = String(payload[payload.index(after: equalsIndex)...])
-        let unitSuffix = ".unit"
-        let isUnitSuggestion = rawKey.hasSuffix(unitSuffix)
-        let keyText = isUnitSuggestion
-            ? String(rawKey.dropLast(unitSuffix.count))
-            : rawKey
-
-        do {
-            let key = try EventAttributeKey(validating: keyText)
-            if isUnitSuggestion {
-                return .unitSuggestion(key: key, rawValue: rawValue, sourceCell: cell)
-            }
-            return .attribute(key: key, rawValue: rawValue, sourceCell: cell)
-        } catch let error as EventAttributeKeyError {
-            issues.append(
-                .invalidEventAttributeKey(group: group, cell: cell, error: error)
-            )
-        } catch {
+        case .invalidEventAttributeKey(let cell, let error):
+            issues.append(.invalidEventAttributeKey(group: group, cell: cell, error: error))
+        case .internalInvariant:
             issues.append(.resolvedPlanInvariant)
         }
-        return nil
     }
 
     private static func typeEventAttributes(
@@ -1248,24 +1116,6 @@ public enum ScientificImportNormalizer {
         let column = source.columns[offset]
         guard column.sourceColumn == reference else { return nil }
         return column
-    }
-
-    private static func sourceCell(
-        column: StagedSourceColumnReference,
-        oneBasedRow: Int
-    ) -> StagedSourceCellReference? {
-        do {
-            return try StagedSourceCellReference(
-                column: column,
-                oneBasedDataRowIndex: oneBasedRow
-            )
-        } catch {
-            return nil
-        }
-    }
-
-    private static func startsWithMetadataMarker(_ text: String) -> Bool {
-        text.utf8.first == 0x40
     }
 
     private static func keyIsOrderedBefore(
