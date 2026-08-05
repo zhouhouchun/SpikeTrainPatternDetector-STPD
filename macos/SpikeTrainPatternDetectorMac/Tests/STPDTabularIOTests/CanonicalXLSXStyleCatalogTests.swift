@@ -422,6 +422,150 @@ func xlsxStyleSemanticXMLStructureFailsClosed() throws {
 }
 
 @Test
+func xlsxStyleAllowsOnlyTheKnownTerminalPresentationExtensions() throws {
+    let catalog = try parseStyles(
+        """
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+        <extLst>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+               uri="{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}">
+            <x14:slicerStyles defaultSlicerStyle="SlicerStyleLight1"/>
+          </ext>
+          <ext xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+               uri="{9260A510-F301-46a8-8635-F512D64BE5F5}">
+            <x15:timelineStyles defaultTimelineStyle="TimeSlicerStyleLight1"/>
+          </ext>
+        </extLst>
+        """
+    )
+    #expect(catalog.cellFormats == [
+        CanonicalXLSXCellFormat(numberFormatID: 0, disposition: .provenNonDate),
+    ])
+
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "{00000000-0000-0000-0000-000000000000}",
+        body: """
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+        <extLst><ext uri="{00000000-0000-0000-0000-000000000000}"/></extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x14:unknown",
+        body: """
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+        <extLst>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+               uri="{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"><x14:unknown/></ext>
+        </extLst>
+        """
+    )
+    expectStyleIssue(
+        .invalidSectionOrder,
+        value: "cellXfs",
+        body: """
+        <extLst>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+               uri="{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}">
+            <x14:slicerStyles defaultSlicerStyle="SlicerStyleLight1"/>
+          </ext>
+        </extLst>
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+        """
+    )
+}
+
+@Test
+func xlsxStyleRejectsMalformedOrSemanticPresentationExtensions() {
+    let cellFormats = "<cellXfs count=\"1\"><xf numFmtId=\"0\"/></cellXfs>"
+    let slicerURI = "{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"
+    let timelineURI = "{9260A510-F301-46a8-8635-F512D64BE5F5}"
+
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "ext",
+        body: cellFormats + "<extLst><ext uri=\"\(slicerURI)\"/></extLst>"
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x14:slicerStyles",
+        body: cellFormats + """
+        <extLst><ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+        uri="\(slicerURI)"><x14:slicerStyles/></ext></extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x14:child",
+        body: cellFormats + """
+        <extLst><ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+        uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="S"><x14:child/>
+        </x14:slicerStyles></ext></extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x15:timelineStyles",
+        body: cellFormats + """
+        <extLst><ext xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+        uri="\(slicerURI)"><x15:timelineStyles defaultTimelineStyle="T"/></ext></extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: slicerURI,
+        body: cellFormats + """
+        <extLst>
+          <ext xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+          uri="\(timelineURI)"><x15:timelineStyles defaultTimelineStyle="T"/></ext>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+          uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="S"/></ext>
+        </extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: slicerURI,
+        body: cellFormats + """
+        <extLst>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+          uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="S"/></ext>
+          <ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+          uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="S"/></ext>
+        </extLst>
+        """
+    )
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x14:slicerStyles",
+        body: cellFormats + """
+        <extLst><ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+        uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="S" extra="x"/></ext></extLst>
+        """
+    )
+}
+
+@Test
+func xlsxPresentationStyleNameUsesTheSchemaUnicodeScalarBoundary() throws {
+    let slicerURI = "{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"
+    func document(styleName: String) -> String {
+        """
+        <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+        <extLst><ext xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+        uri="\(slicerURI)"><x14:slicerStyles defaultSlicerStyle="\(styleName)"/></ext></extLst>
+        """
+    }
+
+    _ = try parseStyles(document(styleName: String(repeating: "\u{1F9E0}", count: 255)))
+    expectStyleIssue(
+        .unsupportedExtensionList,
+        value: "x14:slicerStyles",
+        body: document(styleName: String(repeating: "\u{1F9E0}", count: 256))
+    )
+}
+
+@Test
 func xlsxStyleFormatCode16IsRejectedRegardlessOfPrefixOrStandardFallback() {
     expectStyleIssue(
         .formatCode16Unsupported,

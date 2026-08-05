@@ -127,6 +127,55 @@ private let spreadsheetNamespace =
     "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 private let markupCompatibilityNamespace =
     "http://schemas.openxmlformats.org/markup-compatibility/2006"
+private let slicerStylesNamespace =
+    "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+private let timelineStylesNamespace =
+    "http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"
+
+private enum AllowedPresentationStyleExtension: Int {
+    case slicerStyles
+    case timelineStyles
+
+    var uri: String {
+        switch self {
+        case .slicerStyles:
+            return "{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"
+        case .timelineStyles:
+            return "{9260A510-F301-46a8-8635-F512D64BE5F5}"
+        }
+    }
+
+    var elementName: String {
+        switch self {
+        case .slicerStyles: return "slicerStyles"
+        case .timelineStyles: return "timelineStyles"
+        }
+    }
+
+    var namespace: String {
+        switch self {
+        case .slicerStyles: return slicerStylesNamespace
+        case .timelineStyles: return timelineStylesNamespace
+        }
+    }
+
+    var allowedAttribute: String {
+        switch self {
+        case .slicerStyles: return "defaultSlicerStyle"
+        case .timelineStyles: return "defaultTimelineStyle"
+        }
+    }
+
+    init?(uri: String) {
+        if uri == AllowedPresentationStyleExtension.slicerStyles.uri {
+            self = .slicerStyles
+        } else if uri == AllowedPresentationStyleExtension.timelineStyles.uri {
+            self = .timelineStyles
+        } else {
+            return nil
+        }
+    }
+}
 
 private let knownNonDateNumberFormatIDs: Set<UInt16> = {
     var result = Set<UInt16>()
@@ -208,6 +257,11 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
     private var insideXF = false
     private var seenXFChildren = Set<String>()
     private var lastXFChildOrder = -1
+    private var insidePresentationExtensionList = false
+    private var activePresentationExtension: AllowedPresentationStyleExtension?
+    private var activePresentationExtensionSawPayload = false
+    private var seenPresentationExtensions = Set<Int>()
+    private var lastPresentationExtensionOrder = -1
 
     override func handleStart(
         elementName: String,
@@ -218,7 +272,7 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
         if attributes.keys.contains(where: { attributeLocalName($0) == "formatCode16" }) {
             throw styleError(.formatCode16Unsupported, elementName)
         }
-        if elementName == "extLst" {
+        if elementName == "extLst", depth != 2 {
             throw styleError(.unsupportedExtensionList, elementName)
         }
 
@@ -243,11 +297,37 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
                 throw styleError(.invalidSectionOrder, elementName)
             }
             lastTopLevelOrder = order
+            if elementName == "extLst" {
+                guard attributes.isEmpty else {
+                    throw styleError(
+                        .unsupportedExtensionList,
+                        attributes.keys.sorted().first
+                    )
+                }
+                insidePresentationExtensionList = true
+                return
+            }
             guard let section = StyleSection(rawValue: elementName) else { return }
             try validateSectionAttributes(attributes, section: section)
             activeSection = section
 
         case 3:
+            if insidePresentationExtensionList {
+                guard elementName == "ext", namespaceURI == spreadsheetNamespace,
+                      attributes.count == 1, let uri = attributes["uri"],
+                      let extensionKind = AllowedPresentationStyleExtension(uri: uri),
+                      seenPresentationExtensions.insert(extensionKind.rawValue).inserted,
+                      extensionKind.rawValue > lastPresentationExtensionOrder else {
+                    throw styleError(
+                        .unsupportedExtensionList,
+                        attributes["uri"] ?? qualifiedName ?? elementName
+                    )
+                }
+                lastPresentationExtensionOrder = extensionKind.rawValue
+                activePresentationExtension = extensionKind
+                activePresentationExtensionSawPayload = false
+                return
+            }
             guard let activeSection else { return }
             guard namespaceURI == spreadsheetNamespace else {
                 throw styleError(.invalidElementStructure, qualifiedName ?? elementName)
@@ -269,6 +349,24 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
             }
 
         case 4:
+            if let extensionKind = activePresentationExtension {
+                guard !activePresentationExtensionSawPayload,
+                      elementName == extensionKind.elementName,
+                      namespaceURI == extensionKind.namespace,
+                      attributes.keys.allSatisfy({ $0 == extensionKind.allowedAttribute }),
+                      let styleName = attributes[extensionKind.allowedAttribute],
+                      !styleName.isEmpty,
+                      // XML Schema length facets count Unicode code points, not Swift graphemes
+                      // or UTF-8 storage bytes. Freeze that metric at this compatibility edge.
+                      styleName.unicodeScalars.count <= 255 else {
+                    throw styleError(
+                        .unsupportedExtensionList,
+                        qualifiedName ?? elementName
+                    )
+                }
+                activePresentationExtensionSawPayload = true
+                return
+            }
             guard let activeSection else { return }
             guard activeSection != .numberFormats,
                   insideXF,
@@ -296,6 +394,12 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
             }
 
         default:
+            if insidePresentationExtensionList {
+                throw styleError(
+                    .unsupportedExtensionList,
+                    qualifiedName ?? elementName
+                )
+            }
             if activeSection != nil {
                 throw styleError(.invalidElementStructure, qualifiedName ?? elementName)
             }
@@ -312,9 +416,26 @@ private final class StylesXMLDelegate: BoundedXMLDelegate {
             seenXFChildren.removeAll(keepingCapacity: true)
             lastXFChildOrder = -1
         }
+        if depth == 3, elementName == "ext", namespaceURI == spreadsheetNamespace,
+           insidePresentationExtensionList {
+            guard activePresentationExtension != nil,
+                  activePresentationExtensionSawPayload else {
+                throw styleError(.unsupportedExtensionList, elementName)
+            }
+            activePresentationExtension = nil
+            activePresentationExtensionSawPayload = false
+        }
         if depth == 2, namespaceURI == spreadsheetNamespace,
            activeSection?.rawValue == elementName {
             activeSection = nil
+        }
+        if depth == 2, elementName == "extLst", namespaceURI == spreadsheetNamespace {
+            guard insidePresentationExtensionList,
+                  activePresentationExtension == nil,
+                  !seenPresentationExtensions.isEmpty else {
+                throw styleError(.unsupportedExtensionList, elementName)
+            }
+            insidePresentationExtensionList = false
         }
     }
 
