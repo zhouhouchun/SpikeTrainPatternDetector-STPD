@@ -37,6 +37,29 @@ private func requireCanonicalProjection(
 }
 
 @Test
+func spreadsheetNumericStoredLexemeValidationDoesNotRequireAUnitOrTickGrid() throws {
+    for raw in [
+        "0", "+1.25", "-2.5E-3", ".5", "1.",
+        "0.0000005", // finite but not on the whole-microsecond grid
+        "1e19", // finite but outside the signed-microsecond range
+    ] {
+        try SpreadsheetNumericTimestampCodec.validateStoredNumberLexeme(raw)
+    }
+    #expect(throws: SpreadsheetNumericTimestampDecodeError.invalidSyntax(
+        utf8Offset: 0,
+        issue: .unexpectedCharacter
+    )) {
+        try SpreadsheetNumericTimestampCodec.validateStoredNumberLexeme(" 1")
+    }
+    #expect(throws: SpreadsheetNumericTimestampDecodeError.storedBinary64IsNotFinite) {
+        try SpreadsheetNumericTimestampCodec.validateStoredNumberLexeme("1e999")
+    }
+    #expect(throws: SpreadsheetNumericTimestampDecodeError.empty) {
+        try SpreadsheetNumericTimestampCodec.validateStoredNumberLexeme("")
+    }
+}
+
+@Test
 func spreadsheetNumericOneMicrosecondEquivalenceAcrossUnitsAndSigns() throws {
     #expect(try SpreadsheetNumericTimestampCodec.decode(
         rawLexeme: "0.000001",

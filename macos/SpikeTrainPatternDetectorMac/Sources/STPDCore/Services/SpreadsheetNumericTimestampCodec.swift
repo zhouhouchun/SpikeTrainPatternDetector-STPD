@@ -53,20 +53,19 @@ public enum SpreadsheetNumericTimestampCodec {
 
     private static let signedRankMask: UInt64 = 1 << 63
 
+    /// Proves only that an OOXML number has the accepted grammar and reconstructs a finite
+    /// binary64. Unit selection and unique whole-microsecond inversion remain separate decisions.
+    public static func validateStoredNumberLexeme(_ rawLexeme: String) throws {
+        _ = try validatedStoredValue(rawLexeme)
+    }
+
     /// Accepted ASCII grammar:
     /// `sign? (digits ("." digits?)? | "." digits) (("e" | "E") sign? digits)?`
     public static func decode(
         rawLexeme: String,
         sourceUnit: SpikeTimeUnit
     ) throws -> MicrosecondTick {
-        try validateGrammar(rawLexeme)
-
-        guard let storedValue = Double(rawLexeme) else {
-            throw SpreadsheetNumericTimestampDecodeError.binary64ReconstructionInvariant
-        }
-        guard storedValue.isFinite else {
-            throw SpreadsheetNumericTimestampDecodeError.storedBinary64IsNotFinite
-        }
+        let storedValue = try validatedStoredValue(rawLexeme)
 
         let minimumProjection = try canonicalProjection(
             MicrosecondTick(microseconds: .min),
@@ -138,6 +137,17 @@ public enum SpreadsheetNumericTimestampCodec {
         // equality at the candidate plus inequality at each in-domain adjacent tick proves global
         // uniqueness.
         return candidate
+    }
+
+    private static func validatedStoredValue(_ rawLexeme: String) throws -> Double {
+        try validateGrammar(rawLexeme)
+        guard let storedValue = Double(rawLexeme) else {
+            throw SpreadsheetNumericTimestampDecodeError.binary64ReconstructionInvariant
+        }
+        guard storedValue.isFinite else {
+            throw SpreadsheetNumericTimestampDecodeError.storedBinary64IsNotFinite
+        }
+        return storedValue
     }
 
     private static func validateGrammar(_ rawLexeme: String) throws {
