@@ -48,9 +48,15 @@ struct ValidatedScientificImportPreparation: Sendable {
     let manifestDraft: ScientificImportManifestDraft
     let preparedImport: PreparedScientificImport
     let validationReport: PreparedScientificImportValidationReport
-    /// A validated canonical scientific value held only for comparison and later identity work.
-    /// It grants no permission to replace the active dataset, run detectors, or export results.
-    let shadowCanonicalImport: ShadowCanonicalScientificImport
+    /// The sealed validated import paired with its shadow projection. Confirmation consumes this so
+    /// the validated import, shadow projection, source binding, and fingerprint cannot be detached
+    /// or mismatched. It grants no permission to replace the active dataset, run detectors, or
+    /// export results.
+    let confirmable: ConfirmableScientificImport
+
+    /// The validated canonical scientific value, projected from `confirmable` to avoid a second
+    /// mutable source of truth.
+    var shadowCanonicalImport: ShadowCanonicalScientificImport { confirmable.shadow }
 }
 
 private enum ScientificImportCoordinatorInternalError: Error, LocalizedError {
@@ -96,6 +102,9 @@ final class ScientificImportCoordinator {
     private(set) var manifestDraft: ScientificImportManifestDraft?
     private(set) var preparedImport: PreparedScientificImport?
     private(set) var validatedPreparation: ValidatedScientificImportPreparation?
+    /// An immutable, in-memory, source-bound confirmation record, retained only after the explicit
+    /// `confirmScientificImport()` action. It is not an authority receipt and installs nothing.
+    private(set) var confirmedImport: ConfirmedScientificImportManifest?
     private(set) var reviewOutcome: ScientificImportReviewOutcome?
     private(set) var preflightReport: ScientificImportPreflightReport?
     private(set) var preflightFormIssues: [ScientificImportManifestFormIssue] = []
@@ -221,6 +230,7 @@ final class ScientificImportCoordinator {
         }
 
         generation &+= 1
+        retireConfirmation()
         let requestGeneration = generation
         phase = .stagingSource
         failureMessage = nil
@@ -308,6 +318,7 @@ final class ScientificImportCoordinator {
         manifestDraft = draft
         preparedImport = nil
         validatedPreparation = nil
+        confirmedImport = nil
         reviewOutcome = nil
         failureMessage = nil
         phase = .validatingScientificMeaning
@@ -318,7 +329,7 @@ final class ScientificImportCoordinator {
             case prepared(
                 PreparedScientificImport,
                 PreparedScientificImportValidationReport,
-                ShadowCanonicalScientificImport
+                ConfirmableScientificImport
             )
             case validationRejected(
                 PreparedScientificImport,
@@ -345,11 +356,12 @@ final class ScientificImportCoordinator {
                 switch PreparedScientificImportValidator.validateForCanonicalProjection(prepared) {
                 case .accepted(let validated):
                     do {
-                        let shadow = try CanonicalScientificImportProjector.project(validated)
+                        let confirmable = try CanonicalScientificImportProjector
+                            .projectConfirmable(validated)
                         return PipelineResult.prepared(
                             prepared,
                             validated.validationReport,
-                            shadow
+                            confirmable
                         )
                     } catch let error as CanonicalScientificImportProjectionError {
                         return PipelineResult.projectionFailure(
@@ -391,7 +403,7 @@ final class ScientificImportCoordinator {
             reviewOutcome = .validation(report)
             validatedPreparation = nil
             phase = .reviewingScientificMeaning
-        case .prepared(let prepared, let report, let shadow):
+        case .prepared(let prepared, let report, let confirmable):
             preparedImport = prepared
             reviewOutcome = .validation(report)
             validatedPreparation = ValidatedScientificImportPreparation(
@@ -400,7 +412,7 @@ final class ScientificImportCoordinator {
                 manifestDraft: draft,
                 preparedImport: prepared,
                 validationReport: report,
-                shadowCanonicalImport: shadow
+                confirmable: confirmable
             )
             phase = .validatedPreparation
         case .projectionFailure(let prepared, let report, let error):
@@ -419,6 +431,28 @@ final class ScientificImportCoordinator {
             phase = .failed
             failureMessage = "An internal error prevented construction of the shadow canonical dataset."
         }
+    }
+
+    /// Confirmation plumbing reserved for a future user gesture — this slice wires no production UI
+    /// control. Invoking it confirms the current clean validated preparation, retaining an immutable
+    /// in-memory confirmation record for the exact reviewed transaction. A clean validation never
+    /// auto-confirms; confirmation only happens through this explicit call. It reuses the fingerprint
+    /// already produced during validation, creates no active dataset and no authority, installs no
+    /// `SpikeDataset`, and does not mutate the active document, detector runs, reviews, caches,
+    /// exports, or the filesystem.
+    func confirmScientificImport() {
+        guard phase == .validatedPreparation,
+              let validated = validatedPreparation,
+              !validated.validationReport.hasBlockingIssues else {
+            return
+        }
+        confirmedImport = ScientificImportConfirmationBuilder.confirm(validated.confirmable)
+    }
+
+    /// A deny-only, fail-closed analysis-readiness assessment for the current confirmation, or `nil`
+    /// when nothing is confirmed. It is informational and never grants authority.
+    var analysisReadiness: ScientificAnalysisReadinessAssessment? {
+        confirmedImport.map(ScientificAnalysisReadinessEvaluator.assess)
     }
 
     /// Discovers source facts for the user's current explicit column/group proposal. The Core
@@ -461,6 +495,7 @@ final class ScientificImportCoordinator {
         }
 
         generation &+= 1
+        retireConfirmation()
         let requestGeneration = generation
         preflightReport = nil
         preflightFormIssues = []
@@ -533,8 +568,17 @@ final class ScientificImportCoordinator {
         manifestDraft = nil
         preparedImport = nil
         validatedPreparation = nil
+        confirmedImport = nil
         reviewOutcome = nil
         preflightReport = nil
         preflightFormIssues = []
+    }
+
+    /// Retires any confirmation the instant a new source-bound or validation-generation operation
+    /// begins, before its asynchronous work runs. Generation-changing methods that route through
+    /// `clearPreparedReview`, `clearTransaction`, or `invalidateBoundReview` already clear it; this
+    /// is the direct path for `bindSourceFacts` and `refreshPreflight`, which do not.
+    private func retireConfirmation() {
+        confirmedImport = nil
     }
 }

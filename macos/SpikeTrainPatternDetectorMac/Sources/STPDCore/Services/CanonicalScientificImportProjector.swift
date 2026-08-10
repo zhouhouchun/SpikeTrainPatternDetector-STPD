@@ -7,6 +7,27 @@ public enum CanonicalScientificImportProjectionError: Error, Equatable, Sendable
     case invalidRegistryPartition(CanonicalRegistryPartitionError)
 }
 
+/// A sealed pairing of the non-forgeable validated import and the shadow canonical projection it
+/// produced. Both describe the same validated transaction by construction, so a caller cannot
+/// combine an unrelated validated import with an unrelated fingerprint. Its initializer is
+/// file-private and colocated with `projectConfirmable`, the only mint site, so no other source
+/// file — inside or outside the module — can pair a validated import with an unrelated shadow.
+///
+/// It is deliberately not `Hashable`/`Equatable`: whole-value hashing would traverse the shadow
+/// dataset's spike-timestamp arrays.
+public struct ConfirmableScientificImport: Sendable {
+    public let validatedImport: CanonicalProjectionValidatedImport
+    public let shadow: ShadowCanonicalScientificImport
+
+    fileprivate init(
+        validatedImport: CanonicalProjectionValidatedImport,
+        shadow: ShadowCanonicalScientificImport
+    ) {
+        self.validatedImport = validatedImport
+        self.shadow = shadow
+    }
+}
+
 /// A canonical scientific value retained strictly for shadow comparison and later identity work.
 /// Possession of this value grants no detector, result-package, review, or export authority.
 public struct ShadowCanonicalScientificImport: Hashable, Sendable {
@@ -72,6 +93,18 @@ public enum CanonicalScientificImportProjector {
             dataset: dataset,
             fingerprint: fingerprint,
             sourceTransactionBinding: sourceTransactionBinding
+        )
+    }
+
+    /// Projects and seals the validated import with its shadow so a later confirmation cannot detach
+    /// or mismatch them. This reuses the single fingerprint pass performed by `project` and adds no
+    /// further spike-timestamp-proportional work.
+    public static func projectConfirmable(
+        _ validated: CanonicalProjectionValidatedImport
+    ) throws -> ConfirmableScientificImport {
+        ConfirmableScientificImport(
+            validatedImport: validated,
+            shadow: try project(validated)
         )
     }
 

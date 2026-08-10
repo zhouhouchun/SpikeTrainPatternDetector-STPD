@@ -365,6 +365,44 @@ names include `canonical_dataset_digest`,
 `canonical_microsecond_event_scope_result`. Historical ordinal identifiers may
 be recognized only inside a read-only compatibility adapter.
 
+## Confirmation record and analysis readiness
+
+An explicit coordinator confirmation action — plumbing reserved for a future user gesture; this
+slice wires no production UI control — produces an immutable, in-memory
+`ConfirmedScientificImportManifest`. Validation never auto-confirms; the confirmation exists only
+after the explicit action, and it creates no active dataset and no authority. The record binds the
+exact validated source transaction, the
+resolved user decisions (activity mode, dataset-global spike-train identities, EventScopeGroup
+definitions and membership, group time bases and event-relative origins, event and attribute
+definitions, source time unit, timestamp ordering decisions, requested duplicate policies, and
+Presentation decisions) and the existing `CanonicalScientificDatasetFingerprint`. It records an
+explicit temporal scope of `event_scope_only / recording_segment_and_trial_not_represented`.
+
+The confirmation record is **not** an authority receipt. It confirms only what source and user
+decisions were reviewed and which canonical fingerprint resulted. It does not confirm that the
+analysis contract is complete and exposes no positive permission (no `authority`, `permitsDetection`,
+or `permitsExport`). Scientific identity remains solely the canonical fingerprint — the confirmation
+record adds no second scientific dataset digest, and its source binding and provenance never change
+canonical scientific identity when the resulting canonical scientific data are equivalent. This slice
+is in-memory only; persistence is explicitly recorded as unavailable rather than pretended.
+
+Construction is atomic and non-forgeable: a confirmation is built only from the sealed pairing of the
+non-forgeable validated import and its shadow projection, reusing the fingerprint already produced for
+that transaction. Confirmation is an explicit action — a clean validation never becomes a confirmation
+on its own — and reruns no independent validation, restaging, renormalization, or spike-proportional
+hashing pass. `collapseExact` remains only a requested future run-derived analysis-view policy and
+never removes timestamps from canonical raw data.
+
+A separate `ScientificAnalysisReadinessAssessment` reports stable functional blocking reasons. It is
+deny-only and fail-closed: it never grants readiness, only enumerates blockers, and any blocker means
+the import remains shadow-only. For the current model it always reports that confirmed-manifest
+persistence, the run contract, the detector-consumer closure, and the authoritative-export closure are
+unavailable, and that RecordingSegment and Trial are not represented. For `intentional_multi_unit` and
+`unknown_or_uncertain` it additionally reports that authoritative biological pattern detection is not
+defined for that activity mode — a `not_evaluated` state, never zero, absent, negative, or "no pattern
+detected". Even putative-single-unit data remains shadow-only because the remaining contracts are
+incomplete.
+
 ## Transactional import and compatibility boundary
 
 Import is a transaction:

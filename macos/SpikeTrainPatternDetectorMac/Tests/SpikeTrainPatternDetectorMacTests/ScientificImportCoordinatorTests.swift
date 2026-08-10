@@ -266,6 +266,175 @@ struct ScientificImportCoordinatorTests {
         }
     }
 
+    @Test("A clean validation does not auto-confirm; explicit confirmation stays shadow-only")
+    func explicitConfirmationRetainsShadowOnlyRecord() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+
+            // A clean validation is not a confirmation.
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+            let shadowBefore = try #require(coordinator.shadowCanonicalImport)
+
+            coordinator.confirmScientificImport()
+
+            let confirmed = try #require(coordinator.confirmedImport)
+            #expect(confirmed.canonicalFingerprint == shadowBefore.fingerprint)
+            #expect(confirmed.temporalScope == .eventScopeOnly)
+            #expect(confirmed.persistence == .unavailableInMemoryOnly)
+
+            // Deny-only readiness: blocked, and reports RecordingSegment/Trial not represented.
+            let readiness = try #require(coordinator.analysisReadiness)
+            #expect(readiness.isAnalysisBlocked)
+            #expect(readiness.blockers.contains(.recordingSegmentNotRepresented))
+            #expect(readiness.blockers.contains(.trialContractNotRepresented))
+
+            // Confirmation mutates nothing else: still a shadow-only validated preparation.
+            #expect(coordinator.phase == .validatedPreparation)
+            #expect(coordinator.shadowCanonicalImport?.fingerprint == shadowBefore.fingerprint)
+            #expect(coordinator.preparedImport != nil)
+            #expect(coordinator.validatedPreparation != nil)
+        }
+    }
+
+    @Test("Confirmation is a no-op without a clean validated preparation")
+    func confirmationIsNoOpWithoutValidatedPreparation() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+
+            coordinator.confirmScientificImport()
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
+    @Test("Editing the manifest immediately clears any confirmation")
+    func manifestEditClearsConfirmation() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport)
+
+            var edited = try #require(coordinator.manifestForm)
+            edited.activityMode = .unknownOrUncertain
+            coordinator.manifestForm = edited
+
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
+    @Test("Replacing the source immediately clears any confirmation")
+    func sourceReplacementClearsConfirmation() async throws {
+        try await withTemporaryDirectory { directory in
+            let firstURL = directory.appendingPathComponent("first.csv")
+            let replacementURL = directory.appendingPathComponent("replacement.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: firstURL)
+            try Data("unit_B\n2.000000\n2.500000\n".utf8).write(to: replacementURL)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: firstURL)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport)
+
+            await coordinator.beginImport(from: replacementURL)
+
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
+    @Test("A preflight that discovers no new keys still clears any confirmation")
+    func preflightWithNoNewKeysClearsConfirmation() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport)
+
+            // A spike-only import discovers no event keys, so the manifest form gains no attribute
+            // (the form-edit path never fires); the confirmation must still be retired the moment
+            // the preflight generation begins.
+            let attributeCountBefore = coordinator.manifestForm?.attributes.count
+            await coordinator.refreshPreflight()
+
+            #expect(coordinator.manifestForm?.attributes.count == attributeCountBefore)
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
+    @Test("Rebinding source facts clears the confirmation")
+    func sourceRebindClearsConfirmation() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport)
+
+            // `retireConfirmation()` runs at the top of `bindSourceFacts`, before its async staging.
+            await coordinator.bindSourceFacts()
+
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
+    @Test("Cancel clears any confirmation")
+    func cancelClearsConfirmation() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport)
+
+            coordinator.cancel()
+
+            #expect(coordinator.confirmedImport == nil)
+            #expect(coordinator.analysisReadiness == nil)
+        }
+    }
+
     @Test("Core preflight discovers event keys without assigning scientific defaults")
     func preflightAddsUnresolvedEventKeys() async throws {
         try await withTemporaryDirectory { directory in
@@ -385,8 +554,8 @@ struct ScientificImportCoordinatorTests {
         }
     }
 
-    @Test("Successful validated preparation still never mutates the active document")
-    func successfulPreparationPreservesActiveDocument() async throws {
+    @Test("Validation and explicit confirmation never mutate the active document")
+    func successfulPreparationAndConfirmationPreserveActiveDocument() async throws {
         try await withTemporaryDirectory { directory in
             let activeURL = directory.appendingPathComponent("active.csv")
             try Data(
@@ -441,9 +610,14 @@ struct ScientificImportCoordinatorTests {
             configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
             await coordinator.validateScientificReview()
 
+            // Explicitly confirm; the isolation assertions below then cover post-confirmation state.
+            coordinator.confirmScientificImport()
+
             #expect(coordinator.phase == .validatedPreparation)
             _ = try #require(coordinator.validatedPreparation)
             _ = try #require(coordinator.shadowCanonicalImport)
+            _ = try #require(coordinator.confirmedImport)
+            #expect(coordinator.analysisReadiness?.isAnalysisBlocked == true)
             #expect(document.dataset == activeDataset)
             #expect(document.activeDatasetScientificStanding == activeStanding)
             #expect(document.classicAnchorDetectionRun?.runIdentity.runID == activeRunID)
