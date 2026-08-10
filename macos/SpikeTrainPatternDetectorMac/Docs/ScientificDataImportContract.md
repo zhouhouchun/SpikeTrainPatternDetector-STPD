@@ -163,8 +163,11 @@ warning, and the empty definition cannot be selected as a time origin.
 
 An event type is a reusable semantic category. An event definition is the
 confirmed event column in one group. An event occurrence is one timestamp plus
-its attached attributes. None of these constructs a trial; trial semantics
-require a future explicit contract.
+its attached attributes. None of these constructs a Trial or RecordingSegment.
+Those boundaries must be explicit scientific entities; they are never inferred
+from rows, event occurrences, source order, or group membership. Until the
+canonical import model represents them explicitly, its projection remains
+shadow-only and cannot activate detection or authoritative export.
 
 ## Event occurrences and structured attributes
 
@@ -243,17 +246,19 @@ definition explicitly enables **Allow Empty String**; the value then means
 
 ## Ordering, duplicate timestamps, and timestamp QC
 
-Raw multiplicity is always retained in provenance.
+Raw multiplicity is always retained in both canonical raw data and provenance.
 
 - Input order is preserved in provenance. A non-monotonic timestamp column is
   never silently sorted: the user must either approve an audited stable sort or
   cancel and repair the source. Scientific identity uses the resulting final
   canonical sequence, not the operation history.
-- Putative single-unit duplicates are unresolved until the user makes an
-  explicit, audited choice. Unresolved duplicates block authoritative results.
-  Exact duplicate collapse is allowed only as a non-default normalization.
-- Multi-unit and unknown inputs preserve multiplicity. Any future merge policy
-  must be explicit and cannot borrow single-unit assumptions.
+- Putative single-unit duplicates require an explicit, audited analysis-view
+  policy. A requested exact-duplicate collapse is virtual and run-derived: it
+  never removes a timestamp from canonical raw data or changes canonical
+  dataset identity. The original duplicate count remains visible in audit.
+- Multi-unit and unknown inputs preserve multiplicity in every current view.
+  Any future merge policy must be explicit and cannot borrow single-unit
+  assumptions.
 - Event occurrences at the same canonical tick may be distinct only when their
   confirmed Scientific attributes differ. Same tick plus identical Scientific
   attributes is ambiguous multiplicity and cannot serve as a unique origin.
@@ -282,6 +287,12 @@ failure.
 
 ## Canonical identity and provenance
 
+The first canonical implementation is deliberately a shadow projection. It may
+be constructed only from a source-bound prepared import that passes the
+independent replay validator. It contains exact scientific values for later
+identity work, but it does not yet create a canonical digest, authority receipt,
+legacy `SpikeDataset` adapter, detector input, result package, or export.
+
 Scientific identity is derived from the confirmed semantic manifest and
 canonical data, including:
 
@@ -290,7 +301,7 @@ canonical data, including:
 - activity mode and confirmed scientific settings;
 - each group's confirmed time basis and selected origin occurrence semantics;
 - exact final canonical spike and event ticks and retained canonical
-  multiplicity;
+  multiplicity, including every exact duplicate timestamp;
 - event occurrences and their association with definitions;
 - typed canonical Scientific attribute values and their confirmed units.
 
@@ -300,8 +311,8 @@ display names require explicit disambiguation before confirmation.
 The following remain provenance and do not by themselves change scientific
 identity: CSV versus XLSX, source filename and bytes, sheet/cell/row address,
 raw lexeme, source time unit, display time unit, UI batch-selection gestures,
-Presentation attributes, original order and multiplicity, source origin offset,
-and sort/collapse/rebase operation history. Raw input and every normalization
+Presentation attributes, original source order, source origin offset, and
+sort/virtual-collapse/rebase operation history. Raw input and every normalization
 decision must remain inspectable. A normalization that changes the final
 canonical object changes identity through that object, not through the gesture
 or history record itself.

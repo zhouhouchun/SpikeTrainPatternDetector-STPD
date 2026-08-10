@@ -1,3 +1,26 @@
+/// A prepared import that independently replayed without a blocking issue.
+///
+/// The initializer is file-private so downstream projection code can require this proof without
+/// accepting a caller-asserted Boolean or an unrelated validation report. This is still only a
+/// canonical-projection prerequisite; it grants no detector, export, or biological authority.
+public struct CanonicalProjectionValidatedImport: Hashable, Sendable {
+    public let preparedImport: PreparedScientificImport
+    public let validationReport: PreparedScientificImportValidationReport
+
+    fileprivate init(
+        preparedImport: PreparedScientificImport,
+        validationReport: PreparedScientificImportValidationReport
+    ) {
+        self.preparedImport = preparedImport
+        self.validationReport = validationReport
+    }
+}
+
+public enum CanonicalProjectionValidationOutcome: Hashable, Sendable {
+    case accepted(CanonicalProjectionValidatedImport)
+    case rejected(PreparedScientificImportValidationReport)
+}
+
 /// Independent defensive validation for a prepared scientific import.
 ///
 /// This checkpoint validates the embedded source/plan structure; independently replays lexical
@@ -84,6 +107,21 @@ public enum PreparedScientificImportValidator {
             warnings: &warnings
         )
         return makeReport(issues: comparisonIssues, warnings: warnings)
+    }
+
+    /// Independently validates and, only for a clean replay, issues the unforgeable input required
+    /// by the shadow canonical projector. The validation runs exactly once.
+    public static func validateForCanonicalProjection(
+        _ prepared: PreparedScientificImport
+    ) -> CanonicalProjectionValidationOutcome {
+        let report = validate(prepared)
+        guard !report.hasBlockingIssues else { return .rejected(report) }
+        return .accepted(
+            CanonicalProjectionValidatedImport(
+                preparedImport: prepared,
+                validationReport: report
+            )
+        )
     }
 
     private static func makeReport(
@@ -1385,30 +1423,25 @@ public enum PreparedScientificImportValidator {
                     )
                 }
 
-                let finalTimestamps: [MicrosecondTick]
-                let timestampSources: [[StagedSourceCellReference]]
-                switch spikeColumn.plan.duplicateDecision {
-                case .preserveMultiplicity:
-                    finalTimestamps = ordered.map(\.tick)
-                    timestampSources = ordered.map { [$0.sourceCell] }
-                case .collapseExact:
-                    if plan.activityMode != .putativeSingleUnit {
-                        issues.append(
-                            PreparedScientificImportValidationIssue(
-                                kind: .independentReplayInvariant,
-                                location: PreparedScientificImportValidationLocation(
-                                    groupIndex: group.groupIndex,
-                                    groupID: group.plan.semanticID,
-                                    spikeTrainID: spikeColumn.plan.semanticID,
-                                    sourceColumn: spikeColumn.plan.sourceColumn
-                                )
+                if spikeColumn.plan.duplicateDecision == .collapseExact,
+                   plan.activityMode != .putativeSingleUnit {
+                    issues.append(
+                        PreparedScientificImportValidationIssue(
+                            kind: .independentReplayInvariant,
+                            location: PreparedScientificImportValidationLocation(
+                                groupIndex: group.groupIndex,
+                                groupID: group.plan.semanticID,
+                                spikeTrainID: spikeColumn.plan.semanticID,
+                                sourceColumn: spikeColumn.plan.sourceColumn
                             )
                         )
-                    }
-                    let collapsed = replayCollapseExactTimestamps(ordered)
-                    finalTimestamps = collapsed.map(\.tick)
-                    timestampSources = collapsed.map(\.sourceCells)
+                    )
                 }
+
+                // Replay the canonical-raw contract independently: duplicate decisions never
+                // alter the prepared tick sequence or its one-to-one source trace.
+                let finalTimestamps = ordered.map(\.tick)
+                let timestampSources = ordered.map { [$0.sourceCell] }
 
                 spikePairs.append(
                     PreparedValidationExpectedSpikePair(
@@ -2771,27 +2804,6 @@ public enum PreparedScientificImportValidator {
         return lhs.timestampCell.oneBasedDataRowIndex < rhs.timestampCell.oneBasedDataRowIndex
     }
 
-    private static func replayCollapseExactTimestamps(
-        _ timestamps: [PreparedValidationCoordinateTimestamp]
-    ) -> [PreparedValidationCollapsedTimestamp] {
-        var collapsed: [PreparedValidationCollapsedTimestamp] = []
-        collapsed.reserveCapacity(timestamps.count)
-        for timestamp in timestamps {
-            if let lastIndex = collapsed.indices.last,
-               collapsed[lastIndex].tick == timestamp.tick {
-                collapsed[lastIndex].sourceCells.append(timestamp.sourceCell)
-            } else {
-                collapsed.append(
-                    PreparedValidationCollapsedTimestamp(
-                        tick: timestamp.tick,
-                        sourceCells: [timestamp.sourceCell]
-                    )
-                )
-            }
-        }
-        return collapsed
-    }
-
     private static func replayTextIsOrderedBefore(_ lhs: String, _ rhs: String) -> Bool {
         lhs.utf8.lexicographicallyPrecedes(rhs.utf8)
     }
@@ -3172,11 +3184,6 @@ private struct PreparedValidationDescent {
     let count: Int
     let firstPreviousCell: StagedSourceCellReference
     let firstCurrentCell: StagedSourceCellReference
-}
-
-private struct PreparedValidationCollapsedTimestamp {
-    let tick: MicrosecondTick
-    var sourceCells: [StagedSourceCellReference]
 }
 
 private struct PreparedValidationExpectedEventAttribute: Hashable {

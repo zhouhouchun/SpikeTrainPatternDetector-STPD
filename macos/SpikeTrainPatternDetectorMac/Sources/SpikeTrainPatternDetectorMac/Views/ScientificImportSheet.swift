@@ -611,7 +611,7 @@ struct ScientificImportSheet: View {
                                 ExactDuplicateDecision.preserveMultiplicity as ExactDuplicateDecision?
                             )
                             if coordinator.manifestForm?.activityMode == .putativeSingleUnit {
-                                Text("Collapse exact (explicit remediation)").tag(
+                                Text("Virtual collapse in SU analysis").tag(
                                     ExactDuplicateDecision.collapseExact as ExactDuplicateDecision?
                                 )
                             }
@@ -1007,9 +1007,9 @@ struct ScientificImportSheet: View {
     private var duplicateDecisionHelp: String {
         switch coordinator.manifestForm?.activityMode {
         case .putativeSingleUnit:
-            "Choose explicitly whether exact duplicate timestamps retain multiplicity or are collapsed as an audited remediation."
+            "Canonical raw data always retains every duplicate timestamp. Choose whether a later putative-single-unit analysis view may virtually collapse exact duplicates; source and canonical multiplicity are never erased."
         case .intentionalMultiUnit, .unknownOrUncertain:
-            "Preserve multiplicity is the only supported preparation policy. Destructive merging for multi-unit or uncertain data is deferred to a future explicit contract."
+            "Canonical raw data preserves multiplicity. Multi-unit and uncertain data cannot borrow the putative-single-unit virtual-collapse policy."
         case .none:
             "Choose the activity mode before confirming how exact duplicate timestamps are represented."
         }
@@ -1025,7 +1025,7 @@ struct ScientificImportSheet: View {
         case .preflightingSourceFacts: "Scanning exact timestamps and event metadata with the Core grammar…"
         case .validatingScientificMeaning: "Running exact normalization and independent validation…"
         case .validatedPreparation: "Prepared value validated; authority and active data remain locked."
-        case .failed: "The source could not be opened; the active dataset was not changed."
+        case .failed: "The import could not be completed; the active dataset was not changed."
         }
     }
 

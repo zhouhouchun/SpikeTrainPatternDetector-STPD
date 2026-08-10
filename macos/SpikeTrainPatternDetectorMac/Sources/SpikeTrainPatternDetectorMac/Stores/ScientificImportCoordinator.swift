@@ -48,6 +48,9 @@ struct ValidatedScientificImportPreparation: Sendable {
     let manifestDraft: ScientificImportManifestDraft
     let preparedImport: PreparedScientificImport
     let validationReport: PreparedScientificImportValidationReport
+    /// A validated canonical scientific value held only for comparison and later identity work.
+    /// It grants no permission to replace the active dataset, run detectors, or export results.
+    let shadowCanonicalImport: ShadowCanonicalScientificImport
 }
 
 private enum ScientificImportCoordinatorInternalError: Error, LocalizedError {
@@ -68,8 +71,9 @@ private enum ScientificImportCoordinatorInternalError: Error, LocalizedError {
 ///
 /// Stage A reads one bounded byte snapshot, requires explicit worksheet/header decisions, and
 /// binds an immutable staging result. Stage B starts with a wholly unresolved manifest form.
-/// No method in this type installs a `SpikeDataset`, grants analysis authority, or launches a
-/// detector. A later canonical projection/authority slice must provide that separate boundary.
+/// A clean review may retain a validated canonical value for shadow comparison, but no method in
+/// this type installs a `SpikeDataset`, creates canonical identity, grants analysis authority, or
+/// launches a detector. Later identity and authority work must provide those separate boundaries.
 @MainActor
 @Observable
 final class ScientificImportCoordinator {
@@ -109,6 +113,12 @@ final class ScientificImportCoordinator {
 
     var stagedImport: StagedScientificImport? {
         transportStaging?.stagedImport
+    }
+
+    /// The canonical scientific value remains transaction-bound and shadow-only. Keeping this as
+    /// a projection of `validatedPreparation` avoids a second mutable source of truth.
+    var shadowCanonicalImport: ShadowCanonicalScientificImport? {
+        validatedPreparation?.shadowCanonicalImport
     }
 
     var canBindSourceFacts: Bool {
@@ -263,9 +273,9 @@ final class ScientificImportCoordinator {
         }
     }
 
-    /// Runs the complete pre-authority checking chain. A clean result remains only a validated
-    /// preparation: it does not confirm a manifest, project canonical identity, replace active
-    /// data, or grant detector/export authority.
+    /// Runs the complete pre-authority checking chain. A clean result also constructs a shadow
+    /// canonical scientific value, but does not derive a canonical digest or authority receipt,
+    /// replace active data, launch a detector, or grant result/export authority.
     func validateScientificReview() async {
         guard let source,
               let transportStaging,
@@ -294,6 +304,7 @@ final class ScientificImportCoordinator {
         let requestGeneration = generation
         manifestDraft = draft
         preparedImport = nil
+        validatedPreparation = nil
         reviewOutcome = nil
         failureMessage = nil
         phase = .validatingScientificMeaning
@@ -301,7 +312,24 @@ final class ScientificImportCoordinator {
         enum PipelineResult: Sendable {
             case planIssues([ScientificImportPlanIssue])
             case normalizationIssues([ScientificImportNormalizationIssue], additionalCount: Int)
-            case prepared(PreparedScientificImport, PreparedScientificImportValidationReport)
+            case prepared(
+                PreparedScientificImport,
+                PreparedScientificImportValidationReport,
+                ShadowCanonicalScientificImport
+            )
+            case validationRejected(
+                PreparedScientificImport,
+                PreparedScientificImportValidationReport
+            )
+            case projectionFailure(
+                PreparedScientificImport,
+                PreparedScientificImportValidationReport,
+                CanonicalScientificImportProjectionError
+            )
+            case unexpectedProjectionFailure(
+                PreparedScientificImport,
+                PreparedScientificImportValidationReport
+            )
         }
 
         let result = await Task.detached(priority: .userInitiated) {
@@ -311,8 +339,30 @@ final class ScientificImportCoordinator {
                     draft: draft
                 )
                 let prepared = try ScientificImportNormalizer.normalize(resolvedPlan: plan)
-                let report = PreparedScientificImportValidator.validate(prepared)
-                return PipelineResult.prepared(prepared, report)
+                switch PreparedScientificImportValidator.validateForCanonicalProjection(prepared) {
+                case .accepted(let validated):
+                    do {
+                        let shadow = try CanonicalScientificImportProjector.project(validated)
+                        return PipelineResult.prepared(
+                            prepared,
+                            validated.validationReport,
+                            shadow
+                        )
+                    } catch let error as CanonicalScientificImportProjectionError {
+                        return PipelineResult.projectionFailure(
+                            prepared,
+                            validated.validationReport,
+                            error
+                        )
+                    } catch {
+                        return PipelineResult.unexpectedProjectionFailure(
+                            prepared,
+                            validated.validationReport
+                        )
+                    }
+                case .rejected(let report):
+                    return PipelineResult.validationRejected(prepared, report)
+                }
             } catch let error as ScientificImportPlanResolutionError {
                 return PipelineResult.planIssues(error.issues)
             } catch let error as ScientificImportNormalizationError {
@@ -333,22 +383,38 @@ final class ScientificImportCoordinator {
         case .normalizationIssues(let issues, let additionalCount):
             reviewOutcome = .normalizationIssues(issues, additionalCount: additionalCount)
             phase = .reviewingScientificMeaning
-        case .prepared(let prepared, let report):
+        case .validationRejected(let prepared, let report):
             preparedImport = prepared
             reviewOutcome = .validation(report)
-            if report.hasBlockingIssues {
-                validatedPreparation = nil
-                phase = .reviewingScientificMeaning
-            } else {
-                validatedPreparation = ValidatedScientificImportPreparation(
-                    source: source,
-                    transportStaging: transportStaging,
-                    manifestDraft: draft,
-                    preparedImport: prepared,
-                    validationReport: report
-                )
-                phase = .validatedPreparation
-            }
+            validatedPreparation = nil
+            phase = .reviewingScientificMeaning
+        case .prepared(let prepared, let report, let shadow):
+            preparedImport = prepared
+            reviewOutcome = .validation(report)
+            validatedPreparation = ValidatedScientificImportPreparation(
+                source: source,
+                transportStaging: transportStaging,
+                manifestDraft: draft,
+                preparedImport: prepared,
+                validationReport: report,
+                shadowCanonicalImport: shadow
+            )
+            phase = .validatedPreparation
+        case .projectionFailure(let prepared, let report, let error):
+            preparedImport = prepared
+            validatedPreparation = nil
+            reviewOutcome = .validation(report)
+            phase = .failed
+            failureMessage = Self.userMessage(
+                for: error,
+                operation: "construct the shadow canonical dataset"
+            )
+        case .unexpectedProjectionFailure(let prepared, let report):
+            preparedImport = prepared
+            validatedPreparation = nil
+            reviewOutcome = .validation(report)
+            phase = .failed
+            failureMessage = "An internal error prevented construction of the shadow canonical dataset."
         }
     }
 

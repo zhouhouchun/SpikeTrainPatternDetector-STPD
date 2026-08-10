@@ -342,9 +342,14 @@ func preparedScientificImportValidatorAllowsCollapseOnlyForPutativeSingleUnits()
         mode: .putativeSingleUnit,
         groups: [group]
     )
-    let singleUnitReport = PreparedScientificImportValidator.validate(
-        try ScientificImportNormalizer.normalize(resolvedPlan: singleUnitPlan)
+    let singleUnitPrepared = try ScientificImportNormalizer.normalize(
+        resolvedPlan: singleUnitPlan
     )
+    #expect(singleUnitPrepared.data.eventScopeGroups[0].spikeTrains[0]
+        .timestamps.map(\.microseconds) == [0, 0])
+    #expect(singleUnitPrepared.provenance.eventScopeGroups[0].spikeTrains[0]
+        .timestampSources.count == 2)
+    let singleUnitReport = PreparedScientificImportValidator.validate(singleUnitPrepared)
     #expect(singleUnitReport.blockingIssues.isEmpty)
 }
 
@@ -1256,6 +1261,8 @@ func preparedScientificImportValidatorReplaysStableTiesAndBothDuplicatePolicies(
         let report = PreparedScientificImportValidator.validate(
             prepared
         )
+        #expect(prepared.data.eventScopeGroups[0].spikeTrains[0]
+            .timestamps.map(\.microseconds) == [1_000_000, 1_000_000, 2_000_000])
         #expect(report.blockingIssues.isEmpty)
     }
 }

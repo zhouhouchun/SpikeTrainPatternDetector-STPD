@@ -1267,7 +1267,7 @@ func scientificImportNormalizerStableSortsEventsWithoutCollapsingEqualTicks() th
 }
 
 @Test
-func scientificImportNormalizerAppliesDuplicatePolicyWithoutLosingSourceTrace() throws {
+func scientificImportNormalizerRetainsCanonicalRawMultiplicityAndRecordsAnalysisPolicy() throws {
     let staged = try normalizerStaged(
         source: .commaSeparatedValues,
         headers: ["unit"],
@@ -1282,17 +1282,17 @@ func scientificImportNormalizerAppliesDuplicatePolicyWithoutLosingSourceTrace() 
         order: .stableAscendingSort,
         duplicates: .collapseExact
     )
-    let collapsed = try ScientificImportNormalizer.normalize(resolvedPlan: collapsePlan)
-    let collapsedTrain = collapsed.data.eventScopeGroups[0].spikeTrains[0]
-    let collapsedTrace = collapsed.provenance.eventScopeGroups[0].spikeTrains[0]
-    #expect(collapsedTrain.timestamps.map(\.microseconds) == [1_000_000, 1_000_001])
-    #expect(collapsedTrace.timestampSources == [
-        [
-            try normalizerCell(column: 1, row: 1),
-            try normalizerCell(column: 1, row: 2),
-        ],
+    let collapseRequested = try ScientificImportNormalizer.normalize(resolvedPlan: collapsePlan)
+    let retainedTrain = collapseRequested.data.eventScopeGroups[0].spikeTrains[0]
+    let retainedTrace = collapseRequested.provenance.eventScopeGroups[0].spikeTrains[0]
+    #expect(retainedTrain.timestamps.map(\.microseconds)
+        == [1_000_000, 1_000_000, 1_000_001])
+    #expect(retainedTrace.timestampSources == [
+        [try normalizerCell(column: 1, row: 1)],
+        [try normalizerCell(column: 1, row: 2)],
         [try normalizerCell(column: 1, row: 3)],
     ])
+    #expect(retainedTrace.duplicateDecision == .collapseExact)
 
     for mode in [
         ScientificDatasetActivityMode.intentionalMultiUnit,

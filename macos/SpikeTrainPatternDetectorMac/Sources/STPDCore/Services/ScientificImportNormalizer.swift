@@ -830,26 +830,23 @@ public enum ScientificImportNormalizer {
                     ordered = spikeColumn.timestamps.sorted(by: timestampIsOrderedBefore)
                 }
 
-                let timestamps: [MicrosecondTick]
-                let timestampSources: [[StagedSourceCellReference]]
-                switch spikeColumn.plan.duplicateDecision {
-                case .preserveMultiplicity:
-                    timestamps = ordered.map(\.tick)
-                    timestampSources = ordered.map { [$0.sourceCell] }
-                case .collapseExact:
-                    if plan.activityMode != .putativeSingleUnit {
-                        issues.append(
-                            .duplicateCollapseNotAllowed(
-                                activityMode: plan.activityMode,
-                                group: group.groupNumber,
-                                column: spikeColumn.plan.sourceColumn
-                            )
+                if spikeColumn.plan.duplicateDecision == .collapseExact,
+                   plan.activityMode != .putativeSingleUnit {
+                    issues.append(
+                        .duplicateCollapseNotAllowed(
+                            activityMode: plan.activityMode,
+                            group: group.groupNumber,
+                            column: spikeColumn.plan.sourceColumn
                         )
-                    }
-                    let collapsed = collapseExactTimestamps(ordered)
-                    timestamps = collapsed.map(\.tick)
-                    timestampSources = collapsed.map(\.sourceCells)
+                    )
                 }
+
+                // Exact duplicate handling is an analysis-view policy, never a canonical-raw
+                // normalization. Preparation therefore retains one tick and one source cell per
+                // spike even when a putative-single-unit manifest requests a future virtual
+                // collapse. The requested policy remains provenance for the later run contract.
+                let timestamps = ordered.map(\.tick)
+                let timestampSources = ordered.map { [$0.sourceCell] }
 
                 spikePairs.append(
                     PreparedSpikePair(
@@ -1070,27 +1067,6 @@ public enum ScientificImportNormalizer {
         )
     }
 
-    private static func collapseExactTimestamps(
-        _ timestamps: [RebasedTimestamp]
-    ) -> [CollapsedTimestamp] {
-        var collapsed: [CollapsedTimestamp] = []
-        collapsed.reserveCapacity(timestamps.count)
-        for timestamp in timestamps {
-            if let lastIndex = collapsed.indices.last,
-               collapsed[lastIndex].tick == timestamp.tick {
-                collapsed[lastIndex].sourceCells.append(timestamp.sourceCell)
-            } else {
-                collapsed.append(
-                    CollapsedTimestamp(
-                        tick: timestamp.tick,
-                        sourceCells: [timestamp.sourceCell]
-                    )
-                )
-            }
-        }
-        return collapsed
-    }
-
     private static func timestampIsOrderedBefore(
         _ lhs: RebasedTimestamp,
         _ rhs: RebasedTimestamp
@@ -1288,11 +1264,6 @@ private struct DescentSummary {
     let count: Int
     let firstPreviousCell: StagedSourceCellReference
     let firstCurrentCell: StagedSourceCellReference
-}
-
-private struct CollapsedTimestamp {
-    let tick: MicrosecondTick
-    var sourceCells: [StagedSourceCellReference]
 }
 
 private struct PreparedSpikePair {

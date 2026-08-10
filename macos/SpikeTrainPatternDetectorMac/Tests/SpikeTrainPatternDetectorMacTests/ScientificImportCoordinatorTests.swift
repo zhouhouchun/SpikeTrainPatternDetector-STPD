@@ -162,6 +162,12 @@ struct ScientificImportCoordinatorTests {
                 == ScientificImportDraftSourceBinding(stagedImport: validatedStagedImport))
             #expect(validated.preparedImport == coordinator.preparedImport)
             #expect(!validated.validationReport.hasBlockingIssues)
+            #expect(coordinator.shadowCanonicalImport == validated.shadowCanonicalImport)
+            #expect(validated.shadowCanonicalImport.sourceTransactionBinding
+                == validatedStagedImport.sourceTransactionBinding)
+            #expect(validated.shadowCanonicalImport.dataset.eventScopeGroups[0]
+                .spikeTrains[0].rawTimestamps.map(\.microseconds)
+                == [1_000_000, 1_250_000])
             guard case .csv(let csvStaging) = validated.transportStaging else {
                 Issue.record("Expected CSV transport provenance")
                 return
@@ -173,6 +179,86 @@ struct ScientificImportCoordinatorTests {
                 return
             }
             #expect(!report.hasBlockingIssues)
+        }
+    }
+
+    @Test("Single-unit virtual collapse never removes canonical raw duplicate spikes")
+    func virtualCollapsePreservesShadowRawMultiplicity() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("duplicates.csv")
+            try Data("unit_A\n1.000000\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(
+                in: coordinator,
+                mode: .putativeSingleUnit,
+                duplicateDecision: .collapseExact
+            )
+
+            await coordinator.validateScientificReview()
+
+            #expect(coordinator.phase == .validatedPreparation)
+            let prepared = try #require(coordinator.preparedImport)
+            let shadow = try #require(coordinator.shadowCanonicalImport)
+            #expect(prepared.data.eventScopeGroups[0].spikeTrains[0]
+                .timestamps.map(\.microseconds) == [1_000_000, 1_000_000, 1_250_000])
+            #expect(shadow.dataset.eventScopeGroups[0].spikeTrains[0]
+                .rawTimestamps.map(\.microseconds) == [1_000_000, 1_000_000, 1_250_000])
+            #expect(prepared.provenance.eventScopeGroups[0].spikeTrains[0]
+                .duplicateDecision == .collapseExact)
+        }
+    }
+
+    @Test("Editing the manifest invalidates the complete shadow transaction")
+    func manifestEditClearsShadowCanonicalImport() async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            _ = try #require(coordinator.shadowCanonicalImport)
+
+            var edited = try #require(coordinator.manifestForm)
+            edited.activityMode = .unknownOrUncertain
+            coordinator.manifestForm = edited
+
+            #expect(coordinator.phase == .reviewingScientificMeaning)
+            #expect(coordinator.preparedImport == nil)
+            #expect(coordinator.validatedPreparation == nil)
+            #expect(coordinator.shadowCanonicalImport == nil)
+        }
+    }
+
+    @Test("Starting a replacement source transaction immediately retires the old shadow")
+    func sourceReplacementClearsShadowCanonicalImport() async throws {
+        try await withTemporaryDirectory { directory in
+            let firstURL = directory.appendingPathComponent("first.csv")
+            let replacementURL = directory.appendingPathComponent("replacement.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: firstURL)
+            try Data("unit_B\n2.000000\n2.500000\n".utf8).write(to: replacementURL)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: firstURL)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            _ = try #require(coordinator.shadowCanonicalImport)
+            let firstSourceDigest = try #require(coordinator.source?.sourceSHA256)
+
+            await coordinator.beginImport(from: replacementURL)
+
+            #expect(coordinator.phase == .awaitingSourceDecisions)
+            #expect(coordinator.source?.sourceSHA256 != firstSourceDigest)
+            #expect(coordinator.preparedImport == nil)
+            #expect(coordinator.validatedPreparation == nil)
+            #expect(coordinator.shadowCanonicalImport == nil)
+            #expect(coordinator.reviewOutcome == nil)
         }
     }
 
@@ -299,7 +385,20 @@ struct ScientificImportCoordinatorTests {
     func successfulPreparationPreservesActiveDocument() async throws {
         try await withTemporaryDirectory { directory in
             let activeURL = directory.appendingPathComponent("active.csv")
-            try Data("active_unit\n1.0\n2.0\n".utf8).write(to: activeURL)
+            try Data(
+                """
+                fast_train,slower_train
+                0.000,0.000
+                0.100,0.300
+                0.106,0.320
+                0.112,0.340
+                0.200,0.360
+                ,0.860
+                ,1.360
+                ,1.860
+
+                """.utf8
+            ).write(to: activeURL)
             let candidateURL = directory.appendingPathComponent("candidate.csv")
             try Data("candidate_unit\n3.000000\n3.250000\n".utf8).write(to: candidateURL)
 
@@ -312,8 +411,24 @@ struct ScientificImportCoordinatorTests {
             )
             let activeDataset = try #require(document.dataset)
             let activeStanding = document.activeDatasetScientificStanding
+            document.runAdaptiveClassicAnchorDetection()
+            try await waitForDetector(in: document)
+            let activeRun = try #require(document.classicAnchorDetectionRun)
+            let activeRunID = activeRun.runIdentity.runID
+            let activeCandidateIDs = activeRun.candidates.map(\.id)
+            let activeEventAnnotationIDs = document.classicAnchorEventAnnotations.map(\.candidateID)
+            let activeStateAnnotationIDs = document.classicAnchorStateAnnotations.map(\.candidateID)
+            let activeDetectorDate = document.detectorLastRunDate
+            let activeDetectorStatus = document.detectorStatusMessage
             document.classicAnchorReviewStatuses = ["preserved": .needsReview]
             document.statusMessage = "Active document remains installed"
+            document.loadedResultPackageURL = directory.appendingPathComponent("preserved.stpdresult")
+            document.resultPackageReadbackErrorMessage = "Preserved readback state"
+            document.resultPackageLoadCompletionID = 42
+            document.isResultPackageExporting = true
+            let directoryEntriesBefore = try FileManager.default.contentsOfDirectory(
+                atPath: directory.path
+            ).sorted()
 
             let coordinator = document.scientificImportCoordinator
             await coordinator.beginImport(from: candidateURL)
@@ -324,16 +439,42 @@ struct ScientificImportCoordinatorTests {
 
             #expect(coordinator.phase == .validatedPreparation)
             _ = try #require(coordinator.validatedPreparation)
+            _ = try #require(coordinator.shadowCanonicalImport)
             #expect(document.dataset == activeDataset)
             #expect(document.activeDatasetScientificStanding == activeStanding)
+            #expect(document.classicAnchorDetectionRun?.runIdentity.runID == activeRunID)
+            #expect(document.classicAnchorDetectionRun?.candidates.map(\.id) == activeCandidateIDs)
+            #expect(document.classicAnchorEventAnnotations.map(\.candidateID)
+                == activeEventAnnotationIDs)
+            #expect(document.classicAnchorStateAnnotations.map(\.candidateID)
+                == activeStateAnnotationIDs)
+            #expect(document.detectorLastRunDate == activeDetectorDate)
+            #expect(document.detectorStatusMessage == activeDetectorStatus)
             #expect(document.classicAnchorReviewStatuses == ["preserved": .needsReview])
             #expect(document.statusMessage == "Active document remains installed")
+            #expect(document.loadedResultPackageURL
+                == directory.appendingPathComponent("preserved.stpdresult"))
+            #expect(document.resultPackageReadbackErrorMessage == "Preserved readback state")
+            #expect(document.resultPackageLoadCompletionID == 42)
+            #expect(document.isResultPackageExporting)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+                == directoryEntriesBefore)
         }
+    }
+
+    private func waitForDetector(in document: RasterDocument) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(10))
+        while document.isDetectorRunning, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!document.isDetectorRunning)
     }
 
     private func configureOneSpikeTrain(
         in coordinator: ScientificImportCoordinator,
-        mode: ScientificDatasetActivityMode
+        mode: ScientificDatasetActivityMode,
+        duplicateDecision: ExactDuplicateDecision = .preserveMultiplicity
     ) {
         guard var form = coordinator.manifestForm else {
             Issue.record("Expected a manifest form")
@@ -346,7 +487,7 @@ struct ScientificImportCoordinatorTests {
         form.columns[0].role = .spikeTrain
         form.columns[0].semanticIDText = "unit_A"
         form.columns[0].orderDecision = .preserveSourceOrder
-        form.columns[0].duplicateDecision = .preserveMultiplicity
+        form.columns[0].duplicateDecision = duplicateDecision
         coordinator.manifestForm = form
     }
 

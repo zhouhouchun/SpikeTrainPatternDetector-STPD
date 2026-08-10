@@ -80,6 +80,10 @@ public struct PreparedEventOrigin: Hashable, Sendable {
 
 public struct PreparedSpikeTrain: Hashable, Sendable {
     public let semanticID: ScientificSpikeTrainID
+    /// Final ordered canonical-grid ticks with exact source multiplicity retained.
+    ///
+    /// A requested putative-single-unit duplicate collapse is deliberately not applied here; it
+    /// belongs to a later run-derived analysis view and remains recorded in provenance only.
     public let timestamps: [MicrosecondTick]
 
     internal init(
@@ -182,8 +186,8 @@ public struct PreparedSpikeTrainProvenance: Hashable, Sendable {
     public let orderDecision: TimestampOrderDecision
     public let duplicateDecision: ExactDuplicateDecision
     public let sourceOrderDescentCount: Int
-    /// One nonempty source-cell list per output timestamp. Multiple cells mean an explicit exact
-    /// duplicate collapse; cells remain in source-row order.
+    /// One singleton source-cell list per prepared raw timestamp. Exact duplicates remain separate
+    /// entries; `duplicateDecision` records only the requested future analysis-view policy.
     public let timestampSources: [[StagedSourceCellReference]]
 
     internal init(
