@@ -289,7 +289,7 @@ func preparedScientificImportValidatorChecksGroupLocalIDsAndExactOrderedPartitio
     )
 
     #expect(report.blockingIssues.map(\.kind) == [
-        .duplicateSpikeTrainSemanticID(firstColumn: columns[1]),
+        .duplicateSpikeTrainSemanticID(firstGroupIndex: 1, firstColumn: columns[1]),
         .duplicateEventDefinitionSemanticID(firstColumn: columns[3]),
         .duplicateGroupSemanticID(firstGroupIndex: 1),
         .groupHasNoSpikeTrains,
@@ -301,6 +301,192 @@ func preparedScientificImportValidatorChecksGroupLocalIDsAndExactOrderedPartitio
     #expect(report.blockingIssues[0].location.groupIndex == 1)
     #expect(report.blockingIssues[2].location.groupIndex == 2)
     #expect(report.blockingIssues[2].location.groupID == groupID)
+}
+
+@Test
+func preparedScientificImportValidatorRejectsCrossGroupSpikeTrainIDInResolvedPlan() throws {
+    // Case 1: the duplicate ID is already present in the embedded resolved plan. The dataset-global
+    // map in validateStructure(plan:) reports both the first and duplicate group/column.
+    let staged = try validatorStaged(
+        headers: ["unit_one", "unit_two"],
+        columns: [[.text(rawText: "0")], [.text(rawText: "0")]]
+    )
+    let sharedID = try validatorSpikeID("unit")
+    let firstColumn = try validatorColumn(1)
+    let duplicateColumn = try validatorColumn(2)
+    let plan = validatorPlan(
+        staged: staged,
+        groups: [
+            ResolvedEventScopeGroupPlan(
+                semanticID: try validatorGroupID("group_one"),
+                spikeTrains: [
+                    ResolvedSpikeTrainColumnPlan(
+                        sourceColumn: firstColumn,
+                        semanticID: sharedID,
+                        orderDecision: .preserveSourceOrder,
+                        duplicateDecision: .preserveMultiplicity
+                    ),
+                ],
+                eventDefinitions: [],
+                timeBasis: .recordingElapsed
+            ),
+            ResolvedEventScopeGroupPlan(
+                semanticID: try validatorGroupID("group_two"),
+                spikeTrains: [
+                    ResolvedSpikeTrainColumnPlan(
+                        sourceColumn: duplicateColumn,
+                        semanticID: sharedID,
+                        orderDecision: .preserveSourceOrder,
+                        duplicateDecision: .preserveMultiplicity
+                    ),
+                ],
+                eventDefinitions: [],
+                timeBasis: .recordingElapsed
+            ),
+        ]
+    )
+
+    let report = PreparedScientificImportValidator.validate(validatorForgedPrepared(plan: plan))
+
+    #expect(report.blockingIssues.map(\.kind)
+        == [.duplicateSpikeTrainSemanticID(firstGroupIndex: 1, firstColumn: firstColumn)])
+    #expect(report.blockingIssues[0].location.groupIndex == 2)
+    #expect(report.blockingIssues[0].location.sourceColumn == duplicateColumn)
+    #expect(report.blockingIssues[0].location.spikeTrainID == sharedID)
+}
+
+@Test
+func preparedScientificImportValidatorRejectsForgedCrossGroupSpikeTrainIDInPreparedData() throws {
+    // Case 2: the resolved plan is clean (distinct IDs) but the prepared data was tampered to reuse
+    // an ID across groups. The independent prepared.data pass catches it as defense in depth.
+    let staged = try validatorStaged(
+        headers: ["unit_one", "unit_two"],
+        columns: [[.text(rawText: "0")], [.text(rawText: "0")]]
+    )
+    let cleanPlan = validatorPlan(
+        staged: staged,
+        groups: [
+            ResolvedEventScopeGroupPlan(
+                semanticID: try validatorGroupID("group_a"),
+                spikeTrains: [
+                    ResolvedSpikeTrainColumnPlan(
+                        sourceColumn: try validatorColumn(1),
+                        semanticID: try validatorSpikeID("unit_a"),
+                        orderDecision: .preserveSourceOrder,
+                        duplicateDecision: .preserveMultiplicity
+                    ),
+                ],
+                eventDefinitions: [],
+                timeBasis: .recordingElapsed
+            ),
+            ResolvedEventScopeGroupPlan(
+                semanticID: try validatorGroupID("group_b"),
+                spikeTrains: [
+                    ResolvedSpikeTrainColumnPlan(
+                        sourceColumn: try validatorColumn(2),
+                        semanticID: try validatorSpikeID("unit_b"),
+                        orderDecision: .preserveSourceOrder,
+                        duplicateDecision: .preserveMultiplicity
+                    ),
+                ],
+                eventDefinitions: [],
+                timeBasis: .recordingElapsed
+            ),
+        ]
+    )
+    let sharedID = try validatorSpikeID("unit")
+    let tamperedData = PreparedScientificImportData(
+        activityMode: .putativeSingleUnit,
+        eventScopeGroups: [
+            PreparedEventScopeGroup(
+                semanticID: try validatorGroupID("group_a"),
+                timeBasis: .recordingElapsed,
+                spikeTrains: [PreparedSpikeTrain(semanticID: sharedID, timestamps: [.zero])],
+                eventDefinitions: []
+            ),
+            PreparedEventScopeGroup(
+                semanticID: try validatorGroupID("group_b"),
+                timeBasis: .recordingElapsed,
+                spikeTrains: [PreparedSpikeTrain(semanticID: sharedID, timestamps: [.zero])],
+                eventDefinitions: []
+            ),
+        ],
+        scientificAttributeDefinitions: [],
+        presentationAttributeDefinitions: []
+    )
+    let forged = PreparedScientificImport(
+        data: tamperedData,
+        provenance: ScientificImportNormalizationProvenance(
+            resolvedPlan: cleanPlan,
+            eventScopeGroups: []
+        )
+    )
+
+    let report = PreparedScientificImportValidator.validate(forged)
+
+    #expect(report.blockingIssues.map(\.kind)
+        == [.duplicateGlobalSpikeTrainSemanticID(firstGroupIndex: 1)])
+    #expect(report.blockingIssues[0].location.groupIndex == 2)
+    #expect(report.blockingIssues[0].location.spikeTrainID == sharedID)
+}
+
+@Test
+func preparedScientificImportValidatorRejectsForgedSameGroupDuplicateSpikeTrainID() throws {
+    // The resolved plan is clean (one group, one spike), but the prepared data was tampered to
+    // repeat one global ID inside a single group. The phase-2 prepared-data pass rejects it.
+    let staged = try validatorStaged(
+        headers: ["unit_one"],
+        columns: [[.text(rawText: "0")]]
+    )
+    let cleanPlan = validatorPlan(
+        staged: staged,
+        groups: [
+            ResolvedEventScopeGroupPlan(
+                semanticID: try validatorGroupID("group_a"),
+                spikeTrains: [
+                    ResolvedSpikeTrainColumnPlan(
+                        sourceColumn: try validatorColumn(1),
+                        semanticID: try validatorSpikeID("unit_a"),
+                        orderDecision: .preserveSourceOrder,
+                        duplicateDecision: .preserveMultiplicity
+                    ),
+                ],
+                eventDefinitions: [],
+                timeBasis: .recordingElapsed
+            ),
+        ]
+    )
+    let sharedID = try validatorSpikeID("unit")
+    let tamperedData = PreparedScientificImportData(
+        activityMode: .putativeSingleUnit,
+        eventScopeGroups: [
+            PreparedEventScopeGroup(
+                semanticID: try validatorGroupID("group_a"),
+                timeBasis: .recordingElapsed,
+                spikeTrains: [
+                    PreparedSpikeTrain(semanticID: sharedID, timestamps: [.zero]),
+                    PreparedSpikeTrain(semanticID: sharedID, timestamps: [.zero]),
+                ],
+                eventDefinitions: []
+            ),
+        ],
+        scientificAttributeDefinitions: [],
+        presentationAttributeDefinitions: []
+    )
+    let forged = PreparedScientificImport(
+        data: tamperedData,
+        provenance: ScientificImportNormalizationProvenance(
+            resolvedPlan: cleanPlan,
+            eventScopeGroups: []
+        )
+    )
+
+    let report = PreparedScientificImportValidator.validate(forged)
+
+    #expect(report.blockingIssues.map(\.kind)
+        == [.duplicateGlobalSpikeTrainSemanticID(firstGroupIndex: 1)])
+    #expect(report.blockingIssues[0].location.groupIndex == 1)
+    #expect(report.blockingIssues[0].location.spikeTrainID == sharedID)
 }
 
 @Test

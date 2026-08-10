@@ -289,15 +289,30 @@ failure.
 
 The first canonical implementation is deliberately a shadow projection. It may
 be constructed only from a source-bound prepared import that passes the
-independent replay validator. It contains exact scientific values for later
-identity work, but it does not yet create a canonical digest, authority receipt,
-legacy `SpikeDataset` adapter, detector input, result package, or export.
+independent replay validator. On success, validation constructs a deterministic,
+in-memory, shadow-only `CanonicalScientificDatasetFingerprint`: a content digest
+of the confirmed scientific dataset under the schema contract
+`canonical_microsecond_event_scope_dataset`. That fingerprint is **not** an
+authority receipt — it does not confirm or activate a dataset, is not a persisted
+manifest identity, and grants no detector, review, result-package, or export
+authority. This slice still creates no legacy `SpikeDataset` adapter, detector
+input, result package, export, active-dataset standing, or source-bound manifest
+digest.
+
+Spike-train identity is dataset-global. The canonical dataset owns a single
+ordered spike-train registry keyed by `ScientificSpikeTrainID`, and each
+EventScopeGroup references its members by that identity rather than redefining
+them. Under the current strict partition, every spike train belongs to exactly
+one group: the reference union equals the registry and every registry entry is
+referenced exactly once. `EventScopeGroup` expresses Unit/Event applicability
+only; it is not a Unit namespace. `RecordingSegment` and `Trial` are not
+represented by this schema contract.
 
 Scientific identity is derived from the confirmed semantic manifest and
 canonical data, including:
 
-- stable semantic IDs and membership for groups, spike trains, and event
-  definitions;
+- stable semantic IDs and membership for groups, the global spike-train
+  registry, and event definitions;
 - activity mode and confirmed scientific settings;
 - each group's confirmed time basis and selected origin occurrence semantics;
 - exact final canonical spike and event ticks and retained canonical
@@ -305,8 +320,19 @@ canonical data, including:
 - event occurrences and their association with definitions;
 - typed canonical Scientific attribute values and their confirmed units.
 
-Digest ordering follows stable semantic IDs, not source column order. Duplicate
-display names require explicit disambiguation before confirmation.
+The schema contract digest binds the exact byte codec — SHA-256, both domain
+strings, the primitive encoding rules, every field tag and token, the traversal
+order, the canonical-ordering rules (UTF-8 semantic-ID ordering; occurrence
+ordering by tick then Scientific attributes; attribute-key ordering with a
+scalar-type tie-break of string < integer < exact_decimal < boolean; string,
+integer, and exact-decimal payloads as canonical text and Boolean payloads as one
+byte; the not-applicable/dimensionless/specified unit branches; canonical
+event-relative origin at tick zero with a unique group-local matching occurrence;
+and retained exact duplicate event-occurrence multiplicity), and these structural
+facts. Any codec or canonical-ordering change requires a schema-contract update;
+fixed schema and byte-transcript goldens enforce that coordination. Digest
+ordering follows stable semantic IDs, not source column order. Duplicate display
+names require explicit disambiguation before confirmation.
 
 The following remain provenance and do not by themselves change scientific
 identity: CSV versus XLSX, source filename and bytes, sheet/cell/row address,

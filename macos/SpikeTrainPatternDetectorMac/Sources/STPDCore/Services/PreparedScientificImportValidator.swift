@@ -36,14 +36,22 @@ public enum PreparedScientificImportValidator {
         _ prepared: PreparedScientificImport
     ) -> PreparedScientificImportValidationReport {
         let plan = prepared.provenance.resolvedPlan
-        var structuralIssues = PreparedValidationIssueAccumulator()
 
-        validateStructure(
-            plan: plan,
-            issues: &structuralIssues
-        )
-        if structuralIssues.totalCount > 0 {
-            return makeReport(issues: structuralIssues)
+        // Phase 1: validate the embedded resolved plan. An invalid plan is never replayed as valid.
+        var planIssues = PreparedValidationIssueAccumulator()
+        validateStructure(plan: plan, issues: &planIssues)
+        if planIssues.totalCount > 0 {
+            return makeReport(issues: planIssues)
+        }
+
+        // Phase 2: independently validate prepared-data global spike-train IDs. Reaching this phase
+        // means the plan is clean, so any repeated global ID in the data — including a forged
+        // duplicate inside one group — is a data-vs-plan divergence caught here without duplicating
+        // the plan-level diagnostics.
+        var globalIDIssues = PreparedValidationIssueAccumulator()
+        validateGlobalSpikeTrainIdentity(data: prepared.data, issues: &globalIDIssues)
+        if globalIDIssues.totalCount > 0 {
+            return makeReport(issues: globalIDIssues)
         }
 
         var lexicalIssues = PreparedValidationIssueAccumulator()
@@ -136,6 +144,39 @@ public enum PreparedScientificImportValidator {
         )
     }
 
+    /// Independently enforces dataset-global spike-train identity on the prepared data itself,
+    /// without trusting the plan resolver's own uniqueness bookkeeping. This phase 2 pass runs only
+    /// after the plan validated cleanly, so it rejects ANY repeated global `ScientificSpikeTrainID`
+    /// — whether across groups or forged as a duplicate inside a single group — as a data-vs-plan
+    /// divergence.
+    private static func validateGlobalSpikeTrainIdentity(
+        data: PreparedScientificImportData,
+        issues: inout PreparedValidationIssueAccumulator
+    ) {
+        var firstGroupByID: [ScientificSpikeTrainID: Int] = [:]
+        for (groupOffset, group) in data.eventScopeGroups.enumerated() {
+            let groupIndex = groupOffset + 1
+            for train in group.spikeTrains {
+                guard let firstGroupIndex = firstGroupByID[train.semanticID] else {
+                    firstGroupByID[train.semanticID] = groupIndex
+                    continue
+                }
+                issues.append(
+                    PreparedScientificImportValidationIssue(
+                        kind: .duplicateGlobalSpikeTrainSemanticID(
+                            firstGroupIndex: firstGroupIndex
+                        ),
+                        location: PreparedScientificImportValidationLocation(
+                            groupIndex: groupIndex,
+                            groupID: group.semanticID,
+                            spikeTrainID: train.semanticID
+                        )
+                    )
+                )
+            }
+        }
+    }
+
     private static func validateStructure(
         plan: ResolvedScientificImportPlan,
         issues: inout PreparedValidationIssueAccumulator
@@ -153,6 +194,10 @@ public enum PreparedScientificImportValidator {
         }
 
         var firstGroupIndexByID: [ScientificEventScopeGroupID: Int] = [:]
+        // Spike-train identity is dataset-global: first occurrences are tracked across all groups
+        // rather than reset per group, and both the first and duplicate group/column are reported.
+        var firstSpikeTrainByID:
+            [ScientificSpikeTrainID: (groupIndex: Int, column: StagedSourceColumnReference)] = [:]
         var partition: [PreparedPlanPartitionEntry] = []
         partition.reserveCapacity(
             groups.reduce(into: 0) { count, group in
@@ -187,7 +232,6 @@ public enum PreparedScientificImportValidator {
                 )
             }
 
-            var firstSpikeColumnByID: [ScientificSpikeTrainID: StagedSourceColumnReference] = [:]
             for spike in group.spikeTrains {
                 let location = PreparedScientificImportValidationLocation(
                     groupIndex: groupIndex,
@@ -195,15 +239,18 @@ public enum PreparedScientificImportValidator {
                     spikeTrainID: spike.semanticID,
                     sourceColumn: spike.sourceColumn
                 )
-                if let firstColumn = firstSpikeColumnByID[spike.semanticID] {
+                if let first = firstSpikeTrainByID[spike.semanticID] {
                     issues.append(
                         PreparedScientificImportValidationIssue(
-                            kind: .duplicateSpikeTrainSemanticID(firstColumn: firstColumn),
+                            kind: .duplicateSpikeTrainSemanticID(
+                                firstGroupIndex: first.groupIndex,
+                                firstColumn: first.column
+                            ),
                             location: location
                         )
                     )
                 } else {
-                    firstSpikeColumnByID[spike.semanticID] = spike.sourceColumn
+                    firstSpikeTrainByID[spike.semanticID] = (groupIndex, spike.sourceColumn)
                 }
 
                 if plan.activityMode != .putativeSingleUnit,

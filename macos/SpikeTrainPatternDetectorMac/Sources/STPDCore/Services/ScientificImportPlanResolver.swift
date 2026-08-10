@@ -27,6 +27,15 @@ public enum ScientificImportPlanIssue: Hashable, Sendable {
         firstColumn: Int,
         duplicateColumn: Int
     )
+    /// A `ScientificSpikeTrainID` is unique across the whole dataset, not merely within one group.
+    /// The same identity appeared in two different EventScopeGroups.
+    case duplicateSpikeTrainSemanticIDAcrossGroups(
+        semanticID: ScientificSpikeTrainID,
+        firstGroup: Int,
+        firstColumn: Int,
+        duplicateGroup: Int,
+        duplicateColumn: Int
+    )
     case duplicateCollapseNotAllowed(
         activityMode: ScientificDatasetActivityMode,
         group: Int,
@@ -112,6 +121,9 @@ public enum ScientificImportPlanResolver {
         var resolvedGroups: [ResolvedEventScopeGroupPlan] = []
         var flattenedSourceColumns: [Int] = []
         var firstGroupByID: [ScientificEventScopeGroupID: Int] = [:]
+        // Spike-train identity is dataset-global, so first occurrences are tracked across all
+        // groups rather than reset per group.
+        var firstSpikeTrainByID: [ScientificSpikeTrainID: (group: Int, column: Int)] = [:]
 
         if let groupDrafts, !groupDrafts.isEmpty {
             resolvedGroups.reserveCapacity(groupDrafts.count)
@@ -172,7 +184,6 @@ public enum ScientificImportPlanResolver {
                 }
 
                 var resolvedSpikeTrains: [ResolvedSpikeTrainColumnPlan] = []
-                var firstSpikeColumnByID: [ScientificSpikeTrainID: Int] = [:]
                 resolvedSpikeTrains.reserveCapacity(groupDraft.spikeTrains.count)
                 for spikeDraft in groupDraft.spikeTrains {
                     let column = spikeDraft.sourceColumn.oneBasedIndex
@@ -185,17 +196,29 @@ public enum ScientificImportPlanResolver {
                     )
 
                     if let semanticID = spikeDraft.semanticID {
-                        if let firstColumn = firstSpikeColumnByID[semanticID] {
-                            issues.append(
-                                .duplicateSpikeTrainSemanticID(
-                                    group: groupNumber,
-                                    semanticID: semanticID,
-                                    firstColumn: firstColumn,
-                                    duplicateColumn: column
+                        if let first = firstSpikeTrainByID[semanticID] {
+                            if first.group == groupNumber {
+                                issues.append(
+                                    .duplicateSpikeTrainSemanticID(
+                                        group: groupNumber,
+                                        semanticID: semanticID,
+                                        firstColumn: first.column,
+                                        duplicateColumn: column
+                                    )
                                 )
-                            )
+                            } else {
+                                issues.append(
+                                    .duplicateSpikeTrainSemanticIDAcrossGroups(
+                                        semanticID: semanticID,
+                                        firstGroup: first.group,
+                                        firstColumn: first.column,
+                                        duplicateGroup: groupNumber,
+                                        duplicateColumn: column
+                                    )
+                                )
+                            }
                         } else {
-                            firstSpikeColumnByID[semanticID] = column
+                            firstSpikeTrainByID[semanticID] = (group: groupNumber, column: column)
                         }
                     } else {
                         issues.append(

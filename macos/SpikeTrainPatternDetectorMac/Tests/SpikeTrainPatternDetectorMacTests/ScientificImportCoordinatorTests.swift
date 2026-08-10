@@ -165,9 +165,13 @@ struct ScientificImportCoordinatorTests {
             #expect(coordinator.shadowCanonicalImport == validated.shadowCanonicalImport)
             #expect(validated.shadowCanonicalImport.sourceTransactionBinding
                 == validatedStagedImport.sourceTransactionBinding)
-            #expect(validated.shadowCanonicalImport.dataset.eventScopeGroups[0]
-                .spikeTrains[0].rawTimestamps.map(\.microseconds)
+            #expect(validated.shadowCanonicalImport.dataset.spikeTrains[0]
+                .rawTimestamps.map(\.microseconds)
                 == [1_000_000, 1_250_000])
+            // The shadow carries a non-authoritative fingerprint bound to this canonical shape.
+            #expect(validated.shadowCanonicalImport.fingerprint.schemaContractID
+                == "canonical_microsecond_event_scope_dataset")
+            #expect(validated.shadowCanonicalImport.fingerprint.datasetDigest.count == 64)
             guard case .csv(let csvStaging) = validated.transportStaging else {
                 Issue.record("Expected CSV transport provenance")
                 return
@@ -204,7 +208,7 @@ struct ScientificImportCoordinatorTests {
             let shadow = try #require(coordinator.shadowCanonicalImport)
             #expect(prepared.data.eventScopeGroups[0].spikeTrains[0]
                 .timestamps.map(\.microseconds) == [1_000_000, 1_000_000, 1_250_000])
-            #expect(shadow.dataset.eventScopeGroups[0].spikeTrains[0]
+            #expect(shadow.dataset.spikeTrains[0]
                 .rawTimestamps.map(\.microseconds) == [1_000_000, 1_000_000, 1_250_000])
             #expect(prepared.provenance.eventScopeGroups[0].spikeTrains[0]
                 .duplicateDecision == .collapseExact)

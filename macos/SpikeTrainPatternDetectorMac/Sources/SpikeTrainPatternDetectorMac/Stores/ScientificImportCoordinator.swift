@@ -72,7 +72,8 @@ private enum ScientificImportCoordinatorInternalError: Error, LocalizedError {
 /// Stage A reads one bounded byte snapshot, requires explicit worksheet/header decisions, and
 /// binds an immutable staging result. Stage B starts with a wholly unresolved manifest form.
 /// A clean review may retain a validated canonical value for shadow comparison, but no method in
-/// this type installs a `SpikeDataset`, creates canonical identity, grants analysis authority, or
+/// this type installs a `SpikeDataset`, creates authoritative or persisted canonical identity,
+/// grants analysis authority, or
 /// launches a detector. Later identity and authority work must provide those separate boundaries.
 @MainActor
 @Observable
@@ -273,9 +274,11 @@ final class ScientificImportCoordinator {
         }
     }
 
-    /// Runs the complete pre-authority checking chain. A clean result also constructs a shadow
-    /// canonical scientific value, but does not derive a canonical digest or authority receipt,
-    /// replace active data, launch a detector, or grant result/export authority.
+    /// Runs the complete pre-authority checking chain. A clean result constructs a deterministic,
+    /// in-memory, shadow-only canonical dataset fingerprint (a content digest of the confirmed
+    /// scientific dataset). That fingerprint is not an authority receipt: it does not confirm or
+    /// activate a dataset, is not a persisted manifest identity, does not replace active data or
+    /// launch a detector, and grants no detector, review, result-package, or export authority.
     func validateScientificReview() async {
         guard let source,
               let transportStaging,

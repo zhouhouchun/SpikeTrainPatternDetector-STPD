@@ -180,7 +180,17 @@ public enum PreparedScientificImportValidationIssueKind: Hashable, Sendable {
     /// `firstGroupIndex` is one-based.
     case duplicateGroupSemanticID(firstGroupIndex: Int)
     case groupHasNoSpikeTrains
-    case duplicateSpikeTrainSemanticID(firstColumn: StagedSourceColumnReference)
+    /// A `ScientificSpikeTrainID` recurs in the resolved plan. Identity is dataset-global, so this
+    /// fires within or across groups; the issue location carries the duplicate group/column and
+    /// `firstGroupIndex`/`firstColumn` carry the first occurrence. `firstGroupIndex` is one-based.
+    case duplicateSpikeTrainSemanticID(
+        firstGroupIndex: Int,
+        firstColumn: StagedSourceColumnReference
+    )
+    /// A `ScientificSpikeTrainID` is repeated in the prepared data — within one EventScopeGroup or
+    /// across groups. This is the independent `prepared.data` defense-in-depth pass, which rejects
+    /// any repeated global ID. `firstGroupIndex` is one-based.
+    case duplicateGlobalSpikeTrainSemanticID(firstGroupIndex: Int)
     case duplicateEventDefinitionSemanticID(firstColumn: StagedSourceColumnReference)
     case duplicateCollapseNotAllowed(activityMode: ScientificDatasetActivityMode)
 

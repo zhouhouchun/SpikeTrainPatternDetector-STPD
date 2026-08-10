@@ -195,16 +195,17 @@ func scientificImportPlanResolverBindsExactSourceSnapshotAndWorksheetSelection()
 }
 
 @Test
-func scientificImportPlanResolverAcceptsTwoOrderedGroupsAndLocalIDReuse() throws {
+func scientificImportPlanResolverAcceptsTwoOrderedGroupsWithGroupLocalEventDefinitionIDs() throws {
     let staged = try makeStagedImport(columnCount: 4)
     let references = try sourceColumns(4)
-    let sharedTrainID = try resolvedTrainID("local_unit")
+    let alphaTrainID = try resolvedTrainID("alpha_unit")
+    let betaTrainID = try resolvedTrainID("beta_unit")
     let sharedDefinitionID = try resolvedEventDefinitionID("local_event")
     let sharedEventTypeID = try resolvedEventTypeID("stimulus")
     let groups = [
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("group_alpha"),
-            spikeTrains: [completeSpike(references[0], semanticID: sharedTrainID)],
+            spikeTrains: [completeSpike(references[0], semanticID: alphaTrainID)],
             eventDefinitions: [
                 completeEvent(
                     references[1],
@@ -216,7 +217,7 @@ func scientificImportPlanResolverAcceptsTwoOrderedGroupsAndLocalIDReuse() throws
         ),
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("group_beta"),
-            spikeTrains: [completeSpike(references[2], semanticID: sharedTrainID)],
+            spikeTrains: [completeSpike(references[2], semanticID: betaTrainID)],
             eventDefinitions: [
                 completeEvent(
                     references[3],
@@ -240,8 +241,12 @@ func scientificImportPlanResolverAcceptsTwoOrderedGroupsAndLocalIDReuse() throws
     #expect(plan.eventScopeGroups.flatMap { group in
         group.spikeTrains.map(\.sourceColumn) + group.eventDefinitions.map(\.sourceColumn)
     } == references)
-    #expect(plan.eventScopeGroups[0].spikeTrains[0].semanticID == sharedTrainID)
-    #expect(plan.eventScopeGroups[1].spikeTrains[0].semanticID == sharedTrainID)
+    // Spike-train identity is dataset-global, so the two groups use distinct spike-train ids.
+    #expect(plan.eventScopeGroups[0].spikeTrains[0].semanticID == alphaTrainID)
+    #expect(plan.eventScopeGroups[1].spikeTrains[0].semanticID == betaTrainID)
+    // Event-definition identity remains group-local, so the same id recurs across both groups.
+    #expect(plan.eventScopeGroups[0].eventDefinitions[0].semanticID == sharedDefinitionID)
+    #expect(plan.eventScopeGroups[1].eventDefinitions[0].semanticID == sharedDefinitionID)
     #expect(plan.eventScopeGroups[0].eventDefinitions[0].eventTypeID == sharedEventTypeID)
     #expect(plan.eventScopeGroups[1].eventDefinitions[0].eventTypeID == sharedEventTypeID)
 }
@@ -391,13 +396,13 @@ func scientificImportPlanResolverEnforcesHeaderlessStructureAndTimeBasis() throw
     let twoGroups = [
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("first"),
-            spikeTrains: [try completeSpike(references[0], idText: "local")],
+            spikeTrains: [try completeSpike(references[0], idText: "local_first")],
             eventDefinitions: [],
             timeBasis: .recordingElapsed
         ),
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("second"),
-            spikeTrains: [try completeSpike(references[1], idText: "local")],
+            spikeTrains: [try completeSpike(references[1], idText: "local_second")],
             eventDefinitions: [],
             timeBasis: .recordingElapsed
         ),
@@ -484,7 +489,7 @@ func scientificImportPlanResolverRejectsAnOriginFromAnotherGroup() throws {
     let groups = [
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("first"),
-            spikeTrains: [try completeSpike(references[0], idText: "unit")],
+            spikeTrains: [try completeSpike(references[0], idText: "unit_first")],
             eventDefinitions: [
                 try completeEvent(references[1], idText: "event", typeText: "stimulus"),
             ],
@@ -494,7 +499,7 @@ func scientificImportPlanResolverRejectsAnOriginFromAnotherGroup() throws {
         ),
         EventScopeGroupManifestDraft(
             semanticID: try resolvedGroupID("second"),
-            spikeTrains: [try completeSpike(references[2], idText: "unit")],
+            spikeTrains: [try completeSpike(references[2], idText: "unit_second")],
             eventDefinitions: [
                 try completeEvent(references[3], idText: "event", typeText: "stimulus"),
             ],
@@ -513,7 +518,7 @@ func scientificImportPlanResolverRejectsAnOriginFromAnotherGroup() throws {
 }
 
 @Test
-func scientificImportPlanResolverUsesGlobalGroupAndGroupLocalColumnIDUniqueness() throws {
+func scientificImportPlanResolverUsesGlobalGroupAndSpikeTrainIDUniqueness() throws {
     let staged = try makeStagedImport(columnCount: 6)
     let references = try sourceColumns(6)
     let repeatedGroupID = try resolvedGroupID("group")
@@ -575,6 +580,48 @@ func scientificImportPlanResolverUsesGlobalGroupAndGroupLocalColumnIDUniqueness(
             semanticID: repeatedGroupID,
             firstGroup: 1,
             duplicateGroup: 2
+        ),
+        // Spike-train identity is dataset-global: the same "unit" reused in group 2 is rejected.
+        .duplicateSpikeTrainSemanticIDAcrossGroups(
+            semanticID: repeatedTrainID,
+            firstGroup: 1,
+            firstColumn: 1,
+            duplicateGroup: 2,
+            duplicateColumn: 5
+        ),
+    ])
+}
+
+@Test
+func scientificImportPlanResolverRejectsSpikeTrainIDReusedAcrossDistinctGroups() throws {
+    let staged = try makeStagedImport(columnCount: 2)
+    let references = try sourceColumns(2)
+    let sharedTrainID = try resolvedTrainID("unit")
+    let groups = [
+        EventScopeGroupManifestDraft(
+            semanticID: try resolvedGroupID("group_one"),
+            spikeTrains: [completeSpike(references[0], semanticID: sharedTrainID)],
+            eventDefinitions: [],
+            timeBasis: .recordingElapsed
+        ),
+        EventScopeGroupManifestDraft(
+            semanticID: try resolvedGroupID("group_two"),
+            spikeTrains: [completeSpike(references[1], semanticID: sharedTrainID)],
+            eventDefinitions: [],
+            timeBasis: .recordingElapsed
+        ),
+    ]
+
+    #expect(resolutionIssues(
+        stagedImport: staged,
+        draft: completeRoot(stagedImport: staged, groups: groups)
+    ) == [
+        .duplicateSpikeTrainSemanticIDAcrossGroups(
+            semanticID: sharedTrainID,
+            firstGroup: 1,
+            firstColumn: 1,
+            duplicateGroup: 2,
+            duplicateColumn: 2
         ),
     ])
 }

@@ -1,24 +1,35 @@
 public enum CanonicalScientificImportProjectionError: Error, Equatable, Sendable {
     case missingSourceTransactionBinding
+    /// The assembled dataset-global spike-train registry and its group references are not a strict,
+    /// fully-referenced, canonically ordered one-group-per-train partition, so no fingerprint may be
+    /// produced for it. (Complete scientific validity is established upstream by the independent
+    /// validator that produces `CanonicalProjectionValidatedImport`.)
+    case invalidRegistryPartition(CanonicalRegistryPartitionError)
 }
 
 /// A canonical scientific value retained strictly for shadow comparison and later identity work.
 /// Possession of this value grants no detector, result-package, review, or export authority.
 public struct ShadowCanonicalScientificImport: Hashable, Sendable {
     public let dataset: CanonicalScientificDataset
+    /// A deterministic, non-authoritative content fingerprint of `dataset`.
+    public let fingerprint: CanonicalScientificDatasetFingerprint
     public let sourceTransactionBinding: StagedSourceTransactionBinding
 
     internal init(
         dataset: CanonicalScientificDataset,
+        fingerprint: CanonicalScientificDatasetFingerprint,
         sourceTransactionBinding: StagedSourceTransactionBinding
     ) {
         self.dataset = dataset
+        self.fingerprint = fingerprint
         self.sourceTransactionBinding = sourceTransactionBinding
     }
 }
 
-/// Projects only independently replay-validated scientific content. Presentation and source-layout
-/// facts are excluded from the dataset; the exact source transaction binding is retained beside it.
+/// Projects only independently replay-validated scientific content into a dataset-global canonical
+/// model and its non-authoritative fingerprint. Presentation and source-layout facts are excluded
+/// from the dataset; the exact source transaction binding is retained beside it but never enters the
+/// canonical digest.
 public enum CanonicalScientificImportProjector {
     public static func project(
         _ validated: CanonicalProjectionValidatedImport
@@ -29,6 +40,7 @@ public enum CanonicalScientificImportProjector {
             throw CanonicalScientificImportProjectionError.missingSourceTransactionBinding
         }
 
+        let registry = projectGlobalSpikeTrainRegistry(prepared.data.eventScopeGroups)
         let groups = prepared.data.eventScopeGroups
             .map(projectGroup)
             .sorted {
@@ -42,28 +54,50 @@ public enum CanonicalScientificImportProjector {
                 $0.key.canonicalText.utf8.lexicographicallyPrecedes($1.key.canonicalText.utf8)
             }
 
+        let dataset = CanonicalScientificDataset(
+            activityMode: prepared.data.activityMode,
+            spikeTrains: registry,
+            eventScopeGroups: groups,
+            scientificAttributeDefinitions: definitions
+        )
+
+        let fingerprint: CanonicalScientificDatasetFingerprint
+        do {
+            fingerprint = try CanonicalScientificDatasetFingerprinter.fingerprint(dataset)
+        } catch let error as CanonicalRegistryPartitionError {
+            throw CanonicalScientificImportProjectionError.invalidRegistryPartition(error)
+        }
+
         return ShadowCanonicalScientificImport(
-            dataset: CanonicalScientificDataset(
-                activityMode: prepared.data.activityMode,
-                eventScopeGroups: groups,
-                scientificAttributeDefinitions: definitions
-            ),
+            dataset: dataset,
+            fingerprint: fingerprint,
             sourceTransactionBinding: sourceTransactionBinding
         )
     }
 
-    private static func projectGroup(_ group: PreparedEventScopeGroup) -> CanonicalEventScopeGroup {
-        let spikeTrains = group.spikeTrains
-            .map { train in
-                CanonicalSpikeTrain(
-                    semanticID: train.semanticID,
-                    rawTimestamps: train.timestamps
-                )
-            }
+    /// Builds each canonical spike train and orders the dataset-global registry by canonical
+    /// semantic ID. Any duplicate or unreferenced entry is rejected by the fingerprinter's
+    /// registry/partition check before a digest is produced.
+    private static func projectGlobalSpikeTrainRegistry(
+        _ groups: [PreparedEventScopeGroup]
+    ) -> [CanonicalSpikeTrain] {
+        groups
+            .flatMap(\.spikeTrains)
+            .map { CanonicalSpikeTrain(semanticID: $0.semanticID, rawTimestamps: $0.timestamps) }
             .sorted {
                 semanticText($0.semanticID).utf8.lexicographicallyPrecedes(
                     semanticText($1.semanticID).utf8
                 )
+            }
+    }
+
+    private static func projectGroup(
+        _ group: PreparedEventScopeGroup
+    ) -> CanonicalEventScopeGroup {
+        let references = group.spikeTrains
+            .map(\.semanticID)
+            .sorted {
+                semanticText($0).utf8.lexicographicallyPrecedes(semanticText($1).utf8)
             }
         let eventDefinitions = group.eventDefinitions
             .map(projectEventDefinition)
@@ -90,7 +124,7 @@ public enum CanonicalScientificImportProjector {
         return CanonicalEventScopeGroup(
             semanticID: group.semanticID,
             timeBasis: timeBasis,
-            spikeTrains: spikeTrains,
+            spikeTrainReferences: references,
             eventDefinitions: eventDefinitions
         )
     }

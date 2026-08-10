@@ -78,8 +78,10 @@ func canonicalProjectorPreservesRawDuplicatesAndStripsPresentation() throws {
     let validated = try projectorValidated(prepared)
 
     let shadow = try CanonicalScientificImportProjector.project(validated)
-    let train = shadow.dataset.eventScopeGroups[0].spikeTrains[0]
+    let train = shadow.dataset.spikeTrains[0]
     #expect(train.rawTimestamps.map(\.microseconds) == [1_000_000, 1_000_000, 2_000_000])
+    #expect(shadow.dataset.eventScopeGroups[0].spikeTrainReferences
+        .map(\.semanticID.canonicalText) == ["unit"])
     #expect(shadow.dataset.scientificAttributeDefinitions.map(\.key.canonicalText)
         == ["z_scientific"])
 
@@ -133,14 +135,19 @@ func canonicalProjectorOrdersCollectionsByConfirmedSemanticID() throws {
     let validated = try projectorValidated(prepared)
 
     let dataset = try CanonicalScientificImportProjector.project(validated).dataset
+    // The spike-train registry is dataset-global and globally ordered across all groups.
+    #expect(dataset.spikeTrains.map {
+        $0.semanticID.semanticID.canonicalText
+    } == ["a_train", "m_train", "z_train"])
     #expect(dataset.eventScopeGroups.map {
         $0.semanticID.semanticID.canonicalText
     } == ["a_group", "z_group"])
 
+    let aGroup = dataset.eventScopeGroups[0]
+    #expect(aGroup.spikeTrainReferences.map(\.semanticID.canonicalText) == ["m_train"])
+
     let zGroup = dataset.eventScopeGroups[1]
-    #expect(zGroup.spikeTrains.map {
-        $0.semanticID.semanticID.canonicalText
-    } == ["a_train", "z_train"])
+    #expect(zGroup.spikeTrainReferences.map(\.semanticID.canonicalText) == ["a_train", "z_train"])
     #expect(zGroup.eventDefinitions.map {
         $0.semanticID.semanticID.canonicalText
     } == ["a_event", "z_event"])
@@ -185,7 +192,8 @@ func canonicalProjectorExcludesVirtualDuplicatePolicyFromCanonicalRaw() throws {
 
     #expect(preserved.dataset == virtualCollapseRequested.dataset)
     #expect(preserved == virtualCollapseRequested)
-    #expect(preserved.dataset.eventScopeGroups[0].spikeTrains[0]
+    #expect(preserved.fingerprint == virtualCollapseRequested.fingerprint)
+    #expect(preserved.dataset.spikeTrains[0]
         .rawTimestamps.map(\.microseconds) == [1_000_000, 1_000_000, 2_000_000])
 }
 
@@ -235,6 +243,9 @@ func canonicalProjectorMakesCSVSecondsAndXLSXMillisecondsScientificallyEquivalen
     let workbookShadow = try project(workbook, unit: .milliseconds)
 
     #expect(csvShadow.dataset == workbookShadow.dataset)
+    // Equivalent CSV-seconds and XLSX-milliseconds imports share one canonical fingerprint even
+    // though their source transaction bindings differ.
+    #expect(csvShadow.fingerprint == workbookShadow.fingerprint)
     #expect(csvShadow.sourceTransactionBinding != workbookShadow.sourceTransactionBinding)
     #expect(csvShadow != workbookShadow)
 }
@@ -334,12 +345,14 @@ func canonicalProjectorPreservesExplicitEventRelativeNegativeTimeBasis() throws 
         ]
     )
     let prepared = try ScientificImportNormalizer.normalize(resolvedPlan: plan)
-    let group = try CanonicalScientificImportProjector.project(
+    let dataset = try CanonicalScientificImportProjector.project(
         projectorValidated(prepared)
-    ).dataset.eventScopeGroups[0]
+    ).dataset
+    let group = dataset.eventScopeGroups[0]
 
-    #expect(group.spikeTrains[0].rawTimestamps.map(\.microseconds)
+    #expect(dataset.spikeTrains[0].rawTimestamps.map(\.microseconds)
         == [-1_000_000, 1_000_000])
+    #expect(group.spikeTrainReferences.map(\.semanticID.canonicalText) == ["unit"])
     guard case .eventRelative(let origin) = group.timeBasis else {
         Issue.record("Expected the explicitly confirmed event-relative time basis")
         return
