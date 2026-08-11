@@ -504,6 +504,10 @@ private func projectorPlan(
         boundTo: staged,
         sourceTimeUnit: sourceTimeUnit,
         activityMode: activityMode,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: groups,
         eventAttributeDefinitions: attributes
     )

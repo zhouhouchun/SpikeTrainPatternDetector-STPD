@@ -232,6 +232,10 @@ func scientificImportPlanResolverAcceptsTwoOrderedGroupsWithGroupLocalEventDefin
         boundTo: staged,
         sourceTimeUnit: .milliseconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: groups
     )
 
@@ -270,6 +274,10 @@ func scientificImportPlanResolverCollectsMissingDecisionsInStableOrder() throws 
     let expected: [ScientificImportPlanIssue] = [
         .missingSourceTimeUnit,
         .missingActivityMode,
+        .missingRecordingSegmentID,
+        .missingRecordingRegime,
+        .missingImportedExcerptCoverage,
+        .missingObservationBoundsAvailability,
         .missingGroupSemanticID(group: 1),
         .missingEventRelativeOrigin(group: 1),
         .missingSpikeTrainSemanticID(group: 1, column: 1),
@@ -294,12 +302,20 @@ func scientificImportPlanResolverSeparatesMissingAndEmptyGroupDecisions() throws
         boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: nil
     )
     let empty = ScientificImportManifestDraft(
         boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: []
     )
 
@@ -749,6 +765,10 @@ func scientificImportPlanResolverRequiresAndPreservesAllAttributeDecisions() thr
         boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: [rootGroup],
         eventAttributeDefinitions: definitions
     )
@@ -802,6 +822,10 @@ func scientificImportPlanResolverRejectsDuplicateAttributeKeysAndNonStringEmptyP
         boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: [try makeSingleSpikeGroup()],
         eventAttributeDefinitions: definitions
     )
@@ -878,6 +902,10 @@ private func completeRoot(
         boundTo: stagedImport,
         sourceTimeUnit: .seconds,
         activityMode: mode,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: groups
     )
 }

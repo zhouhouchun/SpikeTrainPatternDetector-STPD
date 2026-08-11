@@ -64,6 +64,7 @@ struct ScientificImportAttributeDecisionForm: Identifiable, Sendable {
 enum ScientificImportManifestFormIssue: Error, Equatable, Sendable {
     case sourceBindingChanged
     case sourceColumnsChanged
+    case invalidRecordingSegmentID(error: ScientificSemanticIDError)
     case missingGroupBoundary(column: Int)
     case missingColumnRole(column: Int)
     case groupStartsWithEvent(column: Int)
@@ -92,6 +93,14 @@ struct ScientificImportManifestForm: Sendable {
     let sourceBinding: ScientificImportDraftSourceBinding
     var sourceTimeUnit: SpikeTimeUnit?
     var activityMode: ScientificDatasetActivityMode?
+    /// The single dataset-global RecordingSegment decisions. All start unresolved (blank text /
+    /// nil / unconfirmed); none is silently defaulted.
+    var recordingSegmentIDText: String = ""
+    var recordingRegime: ScientificRecordingRegime?
+    var importedExcerptCoverage: ImportedExcerptCoverage?
+    /// The user must explicitly confirm that exact acquisition bounds are unknown/unavailable; until
+    /// then bounds remain unresolved. `false` is the unconfirmed state, never a hidden default.
+    var observationBoundsConfirmedUnavailable: Bool = false
     var columns: [ScientificImportColumnDecisionForm]
     var attributes: [ScientificImportAttributeDecisionForm] = []
 
@@ -102,6 +111,11 @@ struct ScientificImportManifestForm: Sendable {
         columns = stagedImport.columns.enumerated().map { offset, column in
             ScientificImportColumnDecisionForm(column: column, isFirst: offset == 0)
         }
+    }
+
+    /// The confirmed bounds availability, or `nil` until the user explicitly confirms.
+    var confirmedObservationBounds: ObservationBoundsAvailability? {
+        observationBoundsConfirmedUnavailable ? .unknownOrUnavailable : nil
     }
 
     mutating func addAttribute(keyText: String = "") {
@@ -277,6 +291,27 @@ struct ScientificImportManifestForm: Sendable {
         finishCurrentGroup()
 
         let attributeDrafts = makeAttributeDrafts(issues: &issues)
+
+        // The exact entered text is validated with no whitespace trimming: an empty field stays
+        // unresolved (the resolver later reports it missing), while any nonempty text is validated
+        // verbatim so a nonblank invalid value produces a precise `.invalidRecordingSegmentID`
+        // diagnostic instead of being silently dropped or rewritten.
+        let recordingSegmentID: ScientificRecordingSegmentID?
+        if recordingSegmentIDText.isEmpty {
+            recordingSegmentID = nil
+        } else {
+            do {
+                recordingSegmentID = ScientificRecordingSegmentID(
+                    try ScientificSemanticID(validating: recordingSegmentIDText)
+                )
+            } catch let error as ScientificSemanticIDError {
+                issues.append(.invalidRecordingSegmentID(error: error))
+                recordingSegmentID = nil
+            } catch {
+                recordingSegmentID = nil
+            }
+        }
+
         guard issues.isEmpty else {
             throw ScientificImportManifestFormBuildError(issues: issues)
         }
@@ -285,6 +320,10 @@ struct ScientificImportManifestForm: Sendable {
             boundTo: stagedImport,
             sourceTimeUnit: sourceTimeUnit,
             activityMode: activityMode,
+            recordingSegmentID: recordingSegmentID,
+            recordingRegime: recordingRegime,
+            importedExcerptCoverage: importedExcerptCoverage,
+            observationBoundsAvailability: confirmedObservationBounds,
             eventScopeGroups: groupDrafts,
             eventAttributeDefinitions: attributeDrafts
         )

@@ -258,6 +258,10 @@ private func preflightCompleteDraft(
         boundTo: staged,
         sourceTimeUnit: .seconds,
         activityMode: .putativeSingleUnit,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: [
             EventScopeGroupManifestDraft(
                 semanticID: groupID,

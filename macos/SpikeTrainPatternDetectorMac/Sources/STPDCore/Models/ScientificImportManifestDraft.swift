@@ -37,6 +37,66 @@ public enum ScientificDatasetActivityMode: String, CaseIterable, Hashable, Senda
     case unknownOrUncertain = "unknown_or_uncertain"
 }
 
+/// The explicit user-confirmed identity of the single dataset-global `RecordingSegment` that owns
+/// the whole import batch. Its semantic ID enters scientific identity. It never carries numeric
+/// bounds and is never inferred from timestamps, rows, cells, events, groups, or source order.
+public struct ScientificRecordingSegmentID: Hashable, Sendable {
+    public let semanticID: ScientificSemanticID
+
+    public init(_ semanticID: ScientificSemanticID) {
+        self.semanticID = semanticID
+    }
+}
+
+/// The confirmed recording regime of the segment. A contiguous excerpt from a continuous recording
+/// is `continuous_untrialed`; concatenated or explicitly trial-bounded material is never silently
+/// called continuous. Trials are not created by this slice.
+public enum ScientificRecordingRegime: String, CaseIterable, Hashable, Sendable {
+    case continuousUntrialed = "continuous_untrialed"
+    case trialized = "trialized"
+    case unknownOrUncertain = "unknown_or_uncertain"
+}
+
+/// Whether every included spike-train data stream was continuously observable/valid throughout the
+/// same imported excerpt. `all` does not require any train to fire at the edges, does not require a
+/// nonempty train, and does not prove single-unit isolation. `not_all`/`unknown` are distinct audit
+/// facts and grant no positive temporal-readiness or claim-eligibility permission.
+public enum ImportedExcerptCoverage: String, CaseIterable, Hashable, Sendable {
+    case allSpikeTrainsFullImportedExcerpt = "all_spike_trains_full_imported_excerpt"
+    case notAllSpikeTrainsFullImportedExcerpt = "not_all_spike_trains_full_imported_excerpt"
+    case unknownOrUncertain = "unknown_or_uncertain"
+}
+
+/// Availability of exact acquisition start/end bounds. Only `unknown_or_unavailable` is supported in
+/// this slice, and it must still be explicitly confirmed — it is never a hidden default. Unavailable
+/// bounds are never represented as zero or as the timestamp extrema.
+public enum ObservationBoundsAvailability: String, CaseIterable, Hashable, Sendable {
+    case unknownOrUnavailable = "unknown_or_unavailable"
+}
+
+/// Exactly one dataset-global RecordingSegment, non-optional after resolution. It structurally owns
+/// the complete dataset (all spike trains and EventScopeGroups) without any redundant membership
+/// array. Shared membership does not override group-local time-basis/origin incompatibility, adds no
+/// numeric bounds, and creates no Trial entity.
+public struct ConfirmedRecordingSegment: Hashable, Sendable {
+    public let semanticID: ScientificRecordingSegmentID
+    public let regime: ScientificRecordingRegime
+    public let importedExcerptCoverage: ImportedExcerptCoverage
+    public let observationBounds: ObservationBoundsAvailability
+
+    public init(
+        semanticID: ScientificRecordingSegmentID,
+        regime: ScientificRecordingRegime,
+        importedExcerptCoverage: ImportedExcerptCoverage,
+        observationBounds: ObservationBoundsAvailability
+    ) {
+        self.semanticID = semanticID
+        self.regime = regime
+        self.importedExcerptCoverage = importedExcerptCoverage
+        self.observationBounds = observationBounds
+    }
+}
+
 public enum TimestampOrderDecision: String, CaseIterable, Hashable, Sendable {
     case preserveSourceOrder = "preserve_source_order"
     case stableAscendingSort = "stable_ascending_sort"
@@ -175,6 +235,13 @@ public struct ScientificImportManifestDraft: Hashable, Sendable {
     public let sourceBinding: ScientificImportDraftSourceBinding
     public var sourceTimeUnit: SpikeTimeUnit?
     public var activityMode: ScientificDatasetActivityMode?
+    /// The four dataset-global RecordingSegment decisions. Each starts `nil` (unresolved); the
+    /// resolver fails closed until all four are explicitly confirmed. `nil` is the unresolved state,
+    /// never a silent default scientific choice.
+    public var recordingSegmentID: ScientificRecordingSegmentID?
+    public var recordingRegime: ScientificRecordingRegime?
+    public var importedExcerptCoverage: ImportedExcerptCoverage?
+    public var observationBoundsAvailability: ObservationBoundsAvailability?
     /// `nil` means grouping has not been decided. An empty array is a distinct, invalid proposal
     /// that the later validator can diagnose without silently replacing it.
     public var eventScopeGroups: [EventScopeGroupManifestDraft]?
@@ -184,12 +251,20 @@ public struct ScientificImportManifestDraft: Hashable, Sendable {
         boundTo stagedImport: StagedScientificImport,
         sourceTimeUnit: SpikeTimeUnit? = nil,
         activityMode: ScientificDatasetActivityMode? = nil,
+        recordingSegmentID: ScientificRecordingSegmentID? = nil,
+        recordingRegime: ScientificRecordingRegime? = nil,
+        importedExcerptCoverage: ImportedExcerptCoverage? = nil,
+        observationBoundsAvailability: ObservationBoundsAvailability? = nil,
         eventScopeGroups: [EventScopeGroupManifestDraft]? = nil,
         eventAttributeDefinitions: [EventAttributeDefinitionDraft] = []
     ) {
         self.sourceBinding = ScientificImportDraftSourceBinding(stagedImport: stagedImport)
         self.sourceTimeUnit = sourceTimeUnit
         self.activityMode = activityMode
+        self.recordingSegmentID = recordingSegmentID
+        self.recordingRegime = recordingRegime
+        self.importedExcerptCoverage = importedExcerptCoverage
+        self.observationBoundsAvailability = observationBoundsAvailability
         self.eventScopeGroups = eventScopeGroups
         self.eventAttributeDefinitions = eventAttributeDefinitions
     }

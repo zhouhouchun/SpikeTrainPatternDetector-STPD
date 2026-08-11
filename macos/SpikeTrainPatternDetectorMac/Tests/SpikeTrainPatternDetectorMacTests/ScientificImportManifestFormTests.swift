@@ -14,6 +14,11 @@ struct ScientificImportManifestFormTests {
 
         #expect(form.sourceTimeUnit == nil)
         #expect(form.activityMode == nil)
+        // The four recording-segment fields begin blank / nil / nil / false — never silently defaulted.
+        #expect(form.recordingSegmentIDText == "")
+        #expect(form.recordingRegime == nil)
+        #expect(form.importedExcerptCoverage == nil)
+        #expect(form.observationBoundsConfirmedUnavailable == false)
         #expect(form.columns.count == 2)
         #expect(form.columns[0].startsNewGroup == true)
         #expect(form.columns[1].startsNewGroup == nil)
@@ -34,6 +39,10 @@ struct ScientificImportManifestFormTests {
         var form = ScientificImportManifestForm(stagedImport: staged)
         form.sourceTimeUnit = .seconds
         form.activityMode = .putativeSingleUnit
+        form.recordingSegmentIDText = "segment_1"
+        form.recordingRegime = .continuousUntrialed
+        form.importedExcerptCoverage = .allSpikeTrainsFullImportedExcerpt
+        form.observationBoundsConfirmedUnavailable = true
 
         configureGroupStart(&form.columns[0], id: "group_1")
         configureSpike(&form.columns[0], id: "unit_A")
@@ -60,6 +69,52 @@ struct ScientificImportManifestFormTests {
         #expect(plan.eventScopeGroups[0].eventDefinitions.map(\.sourceColumn.oneBasedIndex) == [3, 4])
         #expect(plan.eventScopeGroups[1].spikeTrains.map(\.sourceColumn.oneBasedIndex) == [5, 6])
         #expect(plan.eventScopeGroups[1].eventDefinitions.map(\.sourceColumn.oneBasedIndex) == [7])
+    }
+
+    @Test("An empty recording segment ID stays unresolved and builds without a diagnostic")
+    func emptyRecordingSegmentIDStaysUnresolved() throws {
+        let (base, staged) = try makeValidSingleGroupForm()
+        var form = base
+        form.recordingSegmentIDText = ""
+
+        let draft = try form.makeManifestDraft(boundTo: staged)
+
+        // Blank is not an error at the form layer; the resolver fails closed on the missing ID later.
+        #expect(draft.recordingSegmentID == nil)
+    }
+
+    @Test("A valid recording segment ID with surrounding spaces is validated verbatim, never trimmed")
+    func recordingSegmentIDPreservesSurroundingSpaces() throws {
+        let (base, staged) = try makeValidSingleGroupForm()
+        var form = base
+        form.recordingSegmentIDText = " padded_segment "
+
+        let draft = try form.makeManifestDraft(boundTo: staged)
+
+        // No silent whitespace rewriting: the exact entered text becomes the canonical identity.
+        #expect(draft.recordingSegmentID?.semanticID.canonicalText == " padded_segment ")
+    }
+
+    @Test("A nonblank invalid recording segment ID is rejected with a precise diagnostic")
+    func invalidRecordingSegmentIDIsDiagnosed() throws {
+        let overlong = String(repeating: "x", count: 257)
+        let cases: [(String, ScientificSemanticIDError)] = [
+            ("   ", .blank),                            // whitespace-only: nonblank text, invalid ID
+            ("unit\u{0}A", .containsControlCharacter),  // embedded control character
+            (overlong, .sourceTooLong(maximumUTF8Bytes: 256)),
+        ]
+        for (text, expected) in cases {
+            let (base, staged) = try makeValidSingleGroupForm()
+            var form = base
+            form.recordingSegmentIDText = text
+            do {
+                _ = try form.makeManifestDraft(boundTo: staged)
+                Issue.record("Expected invalid segment ID \(text.debugDescription) to block the draft")
+            } catch let error as ScientificImportManifestFormBuildError {
+                // The exact single issue proves no other decision was disturbed and no silent rewrite.
+                #expect(error.issues == [.invalidRecordingSegmentID(error: expected)])
+            }
+        }
     }
 
     @Test("Every boundary after the first column requires an explicit decision")
@@ -236,6 +291,25 @@ struct ScientificImportManifestFormTests {
         } catch let error as ScientificImportManifestFormBuildError {
             #expect(error.issues == [.missingSpecifiedUnit(definition: 1)])
         }
+    }
+
+    /// A fully valid one-group form (one spike + one event) whose only remaining variable is the
+    /// recording segment ID text, so that a build failure isolates the segment-ID diagnostic.
+    private func makeValidSingleGroupForm() throws
+        -> (ScientificImportManifestForm, StagedScientificImport) {
+        let staged = try makeStagedImport(headers: ["unit_A", "event_stimulus"])
+        var form = ScientificImportManifestForm(stagedImport: staged)
+        form.sourceTimeUnit = .seconds
+        form.activityMode = .putativeSingleUnit
+        form.recordingSegmentIDText = "segment_1"
+        form.recordingRegime = .continuousUntrialed
+        form.importedExcerptCoverage = .allSpikeTrainsFullImportedExcerpt
+        form.observationBoundsConfirmedUnavailable = true
+        configureGroupStart(&form.columns[0], id: "group_1")
+        configureSpike(&form.columns[0], id: "unit_A")
+        form.columns[1].startsNewGroup = false
+        configureEvent(&form.columns[1], id: "stimulus", type: "stimulus")
+        return (form, staged)
     }
 
     private func makeStagedImport(

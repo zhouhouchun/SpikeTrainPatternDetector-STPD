@@ -102,6 +102,10 @@ public enum PreparedScientificImportUnitSymbolIssue: Hashable, Sendable {
 /// diagnostics. They are diagnostic coordinates, not Swift array indices.
 public enum PreparedScientificImportComparisonField: Hashable, Sendable {
     case dataActivityMode
+    case dataRecordingSegmentID
+    case dataRecordingRegime
+    case dataImportedExcerptCoverage
+    case dataObservationBoundsAvailability
     case dataScientificAttributeDefinitionCount
     case dataScientificAttributeDefinitionKey(position: Int)
     case dataScientificAttributeDefinitionScalarType(position: Int)

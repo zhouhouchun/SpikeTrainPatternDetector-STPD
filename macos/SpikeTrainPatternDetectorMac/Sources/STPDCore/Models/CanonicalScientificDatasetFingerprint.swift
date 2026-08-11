@@ -12,7 +12,8 @@ import CryptoKit
 /// domain-separation strings, the primitive encoding rules, every `FieldTag`, every token and
 /// enum-to-token mapping, the canonical traversal order, the canonical-ordering rules, and the
 /// structural facts (dataset-global spike-train identity, the current strict one-group-per-train
-/// partition, preserved duplicate multiplicity, and the absence of `RecordingSegment`/`Trial`).
+/// partition, preserved duplicate multiplicity, exactly one dataset-global `RecordingSegment`, and
+/// the absence of `Trial` entities and numeric segment bounds).
 /// Any codec or canonical-ordering change requires a schema-contract update; fixed schema and
 /// byte-transcript goldens enforce that coordination.
 public struct CanonicalScientificDatasetFingerprint: Hashable, Sendable {
@@ -71,7 +72,8 @@ public enum CanonicalRegistryPartitionError: Error, Equatable, Sendable {
 /// existing ordering is trusted rather than re-sorted.
 internal enum CanonicalScientificDatasetFingerprinter {
     /// A functional (non-ordinal) schema contract identifier naming the supported canonical shape.
-    internal static let schemaContractID = "canonical_microsecond_event_scope_dataset"
+    internal static let schemaContractID =
+        "canonical_microsecond_single_recording_segment_event_scope_dataset"
 
     /// The digest of the machine-auditable schema-contract transcript. Deterministic and stable.
     internal static func schemaContractDigest() -> String {
@@ -174,6 +176,18 @@ internal enum CanonicalScientificDatasetFingerprinter {
 
         sink.feedField(FieldTag.activityMode)
         sink.feedToken(Token.activityMode(dataset.activityMode))
+
+        // Exactly one dataset-global RecordingSegment. Its four confirmed fields are scientific
+        // identity and are fed here, right after the dataset-global activity mode.
+        let segment = dataset.recordingSegment
+        sink.feedField(FieldTag.recordingSegmentID)
+        sink.feedToken(segment.semanticID.semanticID.canonicalText)
+        sink.feedField(FieldTag.recordingRegime)
+        sink.feedToken(Token.recordingRegime(segment.regime))
+        sink.feedField(FieldTag.importedExcerptCoverage)
+        sink.feedToken(Token.importedExcerptCoverage(segment.importedExcerptCoverage))
+        sink.feedField(FieldTag.observationBounds)
+        sink.feedToken(Token.observationBounds(segment.observationBounds))
 
         sink.feedField(FieldTag.spikeTrainRegistry)
         sink.feedCount(dataset.spikeTrains.count)
@@ -364,6 +378,10 @@ internal enum CanonicalScientificDatasetFingerprinter {
         ("schema_contract_id", FieldTag.schemaContractID),
         ("schema_contract_digest", FieldTag.schemaContractDigest),
         ("activity_mode", FieldTag.activityMode),
+        ("recording_segment_id", FieldTag.recordingSegmentID),
+        ("recording_regime", FieldTag.recordingRegime),
+        ("imported_excerpt_coverage", FieldTag.importedExcerptCoverage),
+        ("observation_bounds", FieldTag.observationBounds),
         ("spike_train_registry", FieldTag.spikeTrainRegistry),
         ("spike_train_id", FieldTag.spikeTrainID),
         ("spike_timestamps", FieldTag.spikeTimestamps),
@@ -398,6 +416,17 @@ internal enum CanonicalScientificDatasetFingerprinter {
         ("activity_mode.putative_single_unit", Token.activityMode(.putativeSingleUnit)),
         ("activity_mode.intentional_multi_unit", Token.activityMode(.intentionalMultiUnit)),
         ("activity_mode.unknown_or_uncertain", Token.activityMode(.unknownOrUncertain)),
+        ("recording_regime.continuous_untrialed", Token.recordingRegime(.continuousUntrialed)),
+        ("recording_regime.trialized", Token.recordingRegime(.trialized)),
+        ("recording_regime.unknown_or_uncertain", Token.recordingRegime(.unknownOrUncertain)),
+        ("imported_excerpt_coverage.all_spike_trains_full_imported_excerpt",
+         Token.importedExcerptCoverage(.allSpikeTrainsFullImportedExcerpt)),
+        ("imported_excerpt_coverage.not_all_spike_trains_full_imported_excerpt",
+         Token.importedExcerptCoverage(.notAllSpikeTrainsFullImportedExcerpt)),
+        ("imported_excerpt_coverage.unknown_or_uncertain",
+         Token.importedExcerptCoverage(.unknownOrUncertain)),
+        ("observation_bounds.unknown_or_unavailable",
+         Token.observationBounds(.unknownOrUnavailable)),
         ("scalar.string", Token.scalarType(.string)),
         ("scalar.integer", Token.scalarType(.integer)),
         ("scalar.exact_decimal", Token.scalarType(.exactDecimal)),
@@ -417,6 +446,8 @@ internal enum CanonicalScientificDatasetFingerprinter {
         "schema_contract_id",
         "schema_contract_digest",
         "activity_mode",
+        "recording_segment{recording_segment_id;recording_regime;imported_excerpt_coverage;"
+            + "observation_bounds}",
         "spike_train_registry[count]{spike_train_id;spike_timestamps[count]{int64_tick}}",
         "event_scope_groups[count]{group_id;time_basis(recording_elapsed|event_relative"
             + "{origin_event_definition_id;origin_tick;origin_attributes});"
@@ -441,8 +472,14 @@ internal enum CanonicalScientificDatasetFingerprinter {
         "attribute_value_tie_break_scalar_type_order=string<integer<exact_decimal<boolean",
         "attribute_value_payload=string|integer|exact_decimal_use_canonical_text;boolean=one_byte",
         "unit_branch=not_applicable|dimensionless|specified_with_symbol_token",
-        "recording_segment=not_represented",
-        "trial=not_represented",
+        "recording_segment=exactly_one_dataset_global",
+        "recording_segment_id=explicit_user_confirmed",
+        "recording_segment_owns=all_spike_trains_and_event_scope_groups",
+        "recording_regime=continuous_untrialed|trialized|unknown_or_uncertain",
+        "imported_excerpt_coverage=all|not_all|unknown_or_uncertain",
+        "observation_bounds=unknown_or_unavailable;no_numeric_bounds",
+        "trial=no_trial_entities",
+        "group_local_clock_origin_incompatibility=unchanged_by_shared_segment_membership",
         "excludes=source_provenance;presentation;duplicate_analysis_policy;detector_settings",
     ]
 }
@@ -530,6 +567,10 @@ private enum FieldTag {
     static let schemaContractID: UInt8 = 0x02
     static let schemaContractDigest: UInt8 = 0x03
     static let activityMode: UInt8 = 0x10
+    static let recordingSegmentID: UInt8 = 0x11
+    static let recordingRegime: UInt8 = 0x12
+    static let importedExcerptCoverage: UInt8 = 0x13
+    static let observationBounds: UInt8 = 0x14
     static let spikeTrainRegistry: UInt8 = 0x20
     static let spikeTrainID: UInt8 = 0x21
     static let spikeTimestamps: UInt8 = 0x22
@@ -564,6 +605,31 @@ private enum Token {
         case .putativeSingleUnit: return "activity_mode.putative_single_unit"
         case .intentionalMultiUnit: return "activity_mode.intentional_multi_unit"
         case .unknownOrUncertain: return "activity_mode.unknown_or_uncertain"
+        }
+    }
+
+    static func recordingRegime(_ regime: ScientificRecordingRegime) -> String {
+        switch regime {
+        case .continuousUntrialed: return "recording_regime.continuous_untrialed"
+        case .trialized: return "recording_regime.trialized"
+        case .unknownOrUncertain: return "recording_regime.unknown_or_uncertain"
+        }
+    }
+
+    static func importedExcerptCoverage(_ coverage: ImportedExcerptCoverage) -> String {
+        switch coverage {
+        case .allSpikeTrainsFullImportedExcerpt:
+            return "imported_excerpt_coverage.all_spike_trains_full_imported_excerpt"
+        case .notAllSpikeTrainsFullImportedExcerpt:
+            return "imported_excerpt_coverage.not_all_spike_trains_full_imported_excerpt"
+        case .unknownOrUncertain:
+            return "imported_excerpt_coverage.unknown_or_uncertain"
+        }
+    }
+
+    static func observationBounds(_ bounds: ObservationBoundsAvailability) -> String {
+        switch bounds {
+        case .unknownOrUnavailable: return "observation_bounds.unknown_or_unavailable"
         }
     }
 

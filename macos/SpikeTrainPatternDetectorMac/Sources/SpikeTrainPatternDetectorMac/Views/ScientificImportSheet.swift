@@ -195,9 +195,55 @@ struct ScientificImportSheet: View {
                     .padding(.vertical, 6)
                 }
 
+                recordingSegmentGroupBox
+
                 authorityNotice
             }
             .padding(24)
+        }
+    }
+
+    private var recordingSegmentGroupBox: some View {
+        GroupBox("Recording segment for this file") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("This whole import is one recording segment. All spike trains and event groups belong to it. Sharing one segment does not make groups with different clocks or origins comparable.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                TextField("Recording segment ID", text: recordingSegmentIDBinding, prompt: Text("Enter and confirm a stable segment identifier"))
+                    .frame(maxWidth: 360, alignment: .leading)
+                Text("A stable, identity-bearing identifier for this recording segment. It enters the dataset's scientific identity and is never silently defaulted, trimmed, or generated; a nonblank value that is not a valid identifier is rejected rather than rewritten.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Recording regime", selection: recordingRegimeBinding) {
+                    Text("Unresolved").tag(nil as ScientificRecordingRegime?)
+                    Text("Continuous, no trials").tag(ScientificRecordingRegime.continuousUntrialed as ScientificRecordingRegime?)
+                    Text("Trial-based").tag(ScientificRecordingRegime.trialized as ScientificRecordingRegime?)
+                    Text("Unknown or uncertain").tag(ScientificRecordingRegime.unknownOrUncertain as ScientificRecordingRegime?)
+                }
+                .frame(maxWidth: 420, alignment: .leading)
+
+                Picker("Spike-train coverage of the excerpt", selection: importedExcerptCoverageBinding) {
+                    Text("Unresolved").tag(nil as ImportedExcerptCoverage?)
+                    Text("All included spike-train streams were continuously observable and valid throughout the imported excerpt").tag(ImportedExcerptCoverage.allSpikeTrainsFullImportedExcerpt as ImportedExcerptCoverage?)
+                    Text("At least one included spike-train stream was not continuously observable or valid throughout the imported excerpt").tag(ImportedExcerptCoverage.notAllSpikeTrainsFullImportedExcerpt as ImportedExcerptCoverage?)
+                    Text("Unknown or uncertain").tag(ImportedExcerptCoverage.unknownOrUncertain as ImportedExcerptCoverage?)
+                }
+                .frame(maxWidth: 480, alignment: .leading)
+                Text("Full coverage means each included spike-train stream was continuously observable and valid across the entire excerpt. It does not require a spike at the leading or trailing edge, a nonempty stream, or any proof of single-unit isolation.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("I confirm the exact recording start and end are unknown / unavailable", isOn: observationBoundsConfirmedBinding)
+                    .frame(maxWidth: 480, alignment: .leading)
+
+                Text("Repeated stimulus or reward events do not create trials. Continuous data may be a clipped excerpt of a longer recording. Because exact start and end are unknown, the importer cannot report authoritative recording-wide firing rate, state occupancy, leading/trailing-edge pauses, or claims that a state reached the acquisition boundary.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
         }
     }
 
@@ -1066,6 +1112,34 @@ struct ScientificImportSheet: View {
         Binding(
             get: { coordinator.manifestForm?.activityMode },
             set: { value in mutateForm { $0.selectActivityMode(value) } }
+        )
+    }
+
+    private var recordingSegmentIDBinding: Binding<String> {
+        Binding(
+            get: { coordinator.manifestForm?.recordingSegmentIDText ?? "" },
+            set: { value in mutateForm { $0.recordingSegmentIDText = value } }
+        )
+    }
+
+    private var recordingRegimeBinding: Binding<ScientificRecordingRegime?> {
+        Binding(
+            get: { coordinator.manifestForm?.recordingRegime },
+            set: { value in mutateForm { $0.recordingRegime = value } }
+        )
+    }
+
+    private var importedExcerptCoverageBinding: Binding<ImportedExcerptCoverage?> {
+        Binding(
+            get: { coordinator.manifestForm?.importedExcerptCoverage },
+            set: { value in mutateForm { $0.importedExcerptCoverage = value } }
+        )
+    }
+
+    private var observationBoundsConfirmedBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.manifestForm?.observationBoundsConfirmedUnavailable ?? false },
+            set: { value in mutateForm { $0.observationBoundsConfirmedUnavailable = value } }
         )
     }
 

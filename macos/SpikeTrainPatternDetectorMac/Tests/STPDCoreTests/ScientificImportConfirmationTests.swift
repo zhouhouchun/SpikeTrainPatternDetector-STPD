@@ -18,6 +18,7 @@ func scientificImportConfirmationCannotBeBuiltFromRejectedPreparation() throws {
     let sharedID = ScientificSpikeTrainID(try ScientificSemanticID(validating: "unit"))
     let tampered = PreparedScientificImport(
         data: PreparedScientificImportData(
+            recordingSegment: standardConfirmedRecordingSegment(),
             activityMode: .putativeSingleUnit,
             eventScopeGroups: [
                 PreparedEventScopeGroup(
@@ -57,7 +58,7 @@ func scientificImportConfirmationIsDeterministicForSameValidatedTransaction() th
     #expect(first.temporalScope == second.temporalScope)
     #expect(first.persistence == second.persistence)
     #expect(first.activityMode == second.activityMode)
-    #expect(first.temporalScope == .eventScopeOnly)
+    #expect(first.temporalScope == .singleRecordingSegmentBoundsUnavailable)
     #expect(first.persistence == .unavailableInMemoryOnly)
     #expect(first.activityMode == .putativeSingleUnit)
 }
@@ -128,9 +129,9 @@ func scientificImportConfirmationRetainsSortAndDuplicatePolicyWhileRawMultiplici
 }
 
 @Test
-func scientificImportConfirmationReportsEventScopeOnlyAndInMemoryPersistence() throws {
+func scientificImportConfirmationReportsSingleRecordingSegmentAndInMemoryPersistence() throws {
     let manifest = try confManifest()
-    #expect(manifest.temporalScope == .eventScopeOnly)
+    #expect(manifest.temporalScope == .singleRecordingSegmentBoundsUnavailable)
     #expect(manifest.persistence == .unavailableInMemoryOnly)
 }
 
@@ -148,22 +149,22 @@ func scientificImportConfirmationReusesExistingFingerprintValue() throws {
 // MARK: - Analysis readiness (deny-only, fail-closed)
 
 @Test
-func scientificAnalysisReadinessReportsSegmentAndTrialNotRepresented() throws {
+func scientificAnalysisReadinessReportsObservationBoundsUnavailable() throws {
     let assessment = ScientificAnalysisReadinessEvaluator.assess(try confManifest())
-    #expect(assessment.blockers.contains(.recordingSegmentNotRepresented))
-    #expect(assessment.blockers.contains(.trialContractNotRepresented))
+    #expect(assessment.blockers.contains(.observationBoundsUnavailable))
 }
 
 @Test
-func scientificAnalysisReadinessPutativeSingleUnitRemainsShadowOnly() throws {
+func scientificAnalysisReadinessPutativeSingleUnitContinuousRemainsShadowOnly() throws {
+    // Putative single-unit + continuous_untrialed + all-coverage + in-memory: the minimal blocker
+    // set. continuous_untrialed adds no Trial blocker; all-coverage adds no coverage blocker.
     let assessment = ScientificAnalysisReadinessEvaluator.assess(
         try confManifest(activityMode: .putativeSingleUnit)
     )
     #expect(assessment.isAnalysisBlocked)
     #expect(assessment.blockers == [
         .confirmedManifestPersistenceUnavailable,
-        .recordingSegmentNotRepresented,
-        .trialContractNotRepresented,
+        .observationBoundsUnavailable,
         .runContractUnavailable,
         .detectorConsumerClosureUnavailable,
         .authoritativeExportClosureUnavailable,
@@ -297,6 +298,10 @@ private func confPlan(
         boundTo: staged,
         sourceTimeUnit: sourceTimeUnit,
         activityMode: activityMode,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: groups,
         eventAttributeDefinitions: attributes
     )

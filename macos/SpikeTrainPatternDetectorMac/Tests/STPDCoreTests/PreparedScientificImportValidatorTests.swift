@@ -396,6 +396,7 @@ func preparedScientificImportValidatorRejectsForgedCrossGroupSpikeTrainIDInPrepa
     )
     let sharedID = try validatorSpikeID("unit")
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: .putativeSingleUnit,
         eventScopeGroups: [
             PreparedEventScopeGroup(
@@ -458,6 +459,7 @@ func preparedScientificImportValidatorRejectsForgedSameGroupDuplicateSpikeTrainI
     )
     let sharedID = try validatorSpikeID("unit")
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: .putativeSingleUnit,
         eventScopeGroups: [
             PreparedEventScopeGroup(
@@ -1534,6 +1536,7 @@ func preparedScientificImportValidatorFindsDatasetFieldsAndGatesGroupIdentity() 
         emptyStringPolicy: firstDefinition.emptyStringPolicy
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: .intentionalMultiUnit,
         eventScopeGroups: [tamperedGroup],
         scientificAttributeDefinitions: [tamperedFirstDefinition]
@@ -1559,6 +1562,7 @@ func preparedScientificImportValidatorFindsDatasetFieldsAndGatesGroupIdentity() 
 func preparedScientificImportValidatorGatesDataAndProvenanceGroupCountsIndependently() throws {
     let prepared = try validatorRichPrepared()
     let emptyData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -1641,6 +1645,7 @@ func preparedScientificImportValidatorComparesDataSiblingsAndGatesOccurrenceTick
         eventDefinitions: [tamperedDefinition]
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [tamperedGroup],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -1681,6 +1686,7 @@ func preparedScientificImportValidatorCatchesNumericDataAndProvenanceTampering()
         eventDefinitions: group.eventDefinitions
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [tamperedDataGroup],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -1753,6 +1759,7 @@ func preparedScientificImportValidatorGatesAttributeValueAfterKeyMismatch() thro
         eventDefinitions: [tamperedDefinition]
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [tamperedGroup],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -1787,6 +1794,7 @@ func preparedScientificImportValidatorDetectsDataAndProvenanceOriginTampering() 
         eventDefinitions: dataGroup.eventDefinitions
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [tamperedDataGroup],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -1966,6 +1974,7 @@ func preparedScientificImportValidatorCapsEmptyDefinitionWarningsAndIsPure() thr
     #expect(first.warnings.last?.location.sourceColumn == lastRetainedEventColumn)
 
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: .intentionalMultiUnit,
         eventScopeGroups: prepared.data.eventScopeGroups,
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -2022,6 +2031,7 @@ func preparedScientificImportValidatorCapsComparisonIssuesDeterministically() th
         eventDefinitions: originalGroup.eventDefinitions
     )
     let tamperedData = PreparedScientificImportData(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: prepared.data.activityMode,
         eventScopeGroups: [tamperedGroup],
         scientificAttributeDefinitions: prepared.data.scientificAttributeDefinitions,
@@ -2080,10 +2090,12 @@ private func validatorPlan(
     unit: SpikeTimeUnit = .seconds,
     mode: ScientificDatasetActivityMode = .putativeSingleUnit,
     groups: [ResolvedEventScopeGroupPlan],
-    attributes: [ResolvedEventAttributeDefinitionPlan] = []
+    attributes: [ResolvedEventAttributeDefinitionPlan] = [],
+    recordingSegment: ConfirmedRecordingSegment = standardConfirmedRecordingSegment()
 ) -> ResolvedScientificImportPlan {
     ResolvedScientificImportPlan(
         source: ResolvedScientificImportSource(stagedImport: staged),
+        recordingSegment: recordingSegment,
         sourceTimeUnit: unit,
         activityMode: mode,
         eventScopeGroups: groups,
@@ -2185,10 +2197,12 @@ private func validatorAttribute(
 }
 
 private func validatorForgedPrepared(
-    plan: ResolvedScientificImportPlan
+    plan: ResolvedScientificImportPlan,
+    recordingSegment: ConfirmedRecordingSegment? = nil
 ) -> PreparedScientificImport {
     PreparedScientificImport(
         data: PreparedScientificImportData(
+            recordingSegment: recordingSegment ?? plan.recordingSegment,
             activityMode: plan.activityMode,
             eventScopeGroups: [],
             scientificAttributeDefinitions: [],

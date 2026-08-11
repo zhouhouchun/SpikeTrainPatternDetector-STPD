@@ -989,6 +989,7 @@ public enum ScientificImportNormalizer {
         }
         return PreparedScientificImport(
             data: PreparedScientificImportData(
+                recordingSegment: plan.recordingSegment,
                 activityMode: plan.activityMode,
                 eventScopeGroups: groupPairs.map(\.data),
                 scientificAttributeDefinitions: orderedDefinitions.filter {

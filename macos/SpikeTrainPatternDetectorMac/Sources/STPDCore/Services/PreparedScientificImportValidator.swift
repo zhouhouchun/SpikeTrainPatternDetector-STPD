@@ -1658,6 +1658,7 @@ public enum PreparedScientificImportValidator {
         }
         return PreparedValidationExpectedImport(
             data: PreparedValidationExpectedImportData(
+                recordingSegment: plan.recordingSegment,
                 activityMode: plan.activityMode,
                 groups: groupPairs.map(\.data),
                 scientificAttributeDefinitions: orderedDefinitions.filter {
@@ -1684,6 +1685,22 @@ public enum PreparedScientificImportValidator {
                 location: .dataset,
                 issues: &issues
             )
+        }
+        // The dataset-global RecordingSegment is reconstructed from the sealed plan; each field is
+        // compared independently so any prepared-data tampering surfaces as a specific mismatch.
+        let expectedSegment = expected.data.recordingSegment
+        let actualSegment = actual.data.recordingSegment
+        if actualSegment.semanticID != expectedSegment.semanticID {
+            appendComparisonMismatch(.dataRecordingSegmentID, location: .dataset, issues: &issues)
+        }
+        if actualSegment.regime != expectedSegment.regime {
+            appendComparisonMismatch(.dataRecordingRegime, location: .dataset, issues: &issues)
+        }
+        if actualSegment.importedExcerptCoverage != expectedSegment.importedExcerptCoverage {
+            appendComparisonMismatch(.dataImportedExcerptCoverage, location: .dataset, issues: &issues)
+        }
+        if actualSegment.observationBounds != expectedSegment.observationBounds {
+            appendComparisonMismatch(.dataObservationBoundsAvailability, location: .dataset, issues: &issues)
         }
         compareAttributeDefinitions(
             expected: expected.data.scientificAttributeDefinitions,
@@ -3275,6 +3292,7 @@ private struct PreparedValidationExpectedGroupData {
 }
 
 private struct PreparedValidationExpectedImportData {
+    let recordingSegment: ConfirmedRecordingSegment
     let activityMode: ScientificDatasetActivityMode
     let groups: [PreparedValidationExpectedGroupData]
     let scientificAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan]

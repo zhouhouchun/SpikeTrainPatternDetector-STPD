@@ -3,8 +3,21 @@
 /// "ready" or "permitted" member.
 public enum ScientificAnalysisReadinessBlocker: Hashable, Sendable {
     case confirmedManifestPersistenceUnavailable
-    case recordingSegmentNotRepresented
-    case trialContractNotRepresented
+    /// Exact acquisition bounds are unknown/unavailable, so no recording-wide rate, occupancy, or
+    /// edge-Pause claim is authoritative. This censors complete recording-relative or
+    /// boundary-censored episode-duration claims — not a candidate episode's internally supported
+    /// duration measured wholly within the imported data.
+    case observationBoundsUnavailable
+    /// `trialized` regime: Trial entities/contract are not represented by this slice.
+    case trialEntitiesNotRepresented
+    /// Regime `unknown_or_uncertain`: the Trial contract is unavailable.
+    case trialContractUnavailable
+    /// Regime `unknown_or_uncertain`: the recording regime itself is unknown/uncertain.
+    case recordingRegimeUnknownOrUncertain
+    /// Coverage `not_all_spike_trains_full_imported_excerpt`: partial imported-excerpt coverage.
+    case partialImportedExcerptCoverage
+    /// Coverage `unknown_or_uncertain`.
+    case importedExcerptCoverageUnknownOrUncertain
     case runContractUnavailable
     case detectorConsumerClosureUnavailable
     case authoritativeExportClosureUnavailable
@@ -55,12 +68,34 @@ public enum ScientificAnalysisReadinessEvaluator {
         _ manifest: ConfirmedScientificImportManifest
     ) -> ScientificAnalysisReadinessAssessment {
         var additional: [ScientificAnalysisReadinessBlocker] = []
+        let segment = manifest.recordingSegment
 
-        // The current model is event-scope only.
-        switch manifest.temporalScope {
-        case .eventScopeOnly:
-            additional.append(.recordingSegmentNotRepresented)
-            additional.append(.trialContractNotRepresented)
+        // Exact acquisition bounds are unknown/unavailable (the only supported state this slice).
+        switch segment.observationBounds {
+        case .unknownOrUnavailable:
+            additional.append(.observationBoundsUnavailable)
+        }
+
+        // Recording regime → Trial matrix. `continuous_untrialed` makes Trial explicitly not
+        // applicable, so no Trial blocker is reported for it.
+        switch segment.regime {
+        case .continuousUntrialed:
+            break
+        case .trialized:
+            additional.append(.trialEntitiesNotRepresented)
+        case .unknownOrUncertain:
+            additional.append(.recordingRegimeUnknownOrUncertain)
+            additional.append(.trialContractUnavailable)
+        }
+
+        // Imported-excerpt coverage matrix. `all` adds no blocker but grants no positive permission.
+        switch segment.importedExcerptCoverage {
+        case .allSpikeTrainsFullImportedExcerpt:
+            break
+        case .notAllSpikeTrainsFullImportedExcerpt:
+            additional.append(.partialImportedExcerptCoverage)
+        case .unknownOrUncertain:
+            additional.append(.importedExcerptCoverageUnknownOrUncertain)
         }
 
         // The remaining downstream contracts do not exist in this slice.

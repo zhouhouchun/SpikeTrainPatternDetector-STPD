@@ -195,6 +195,10 @@ func exactCSVSnapshotBindingInvalidatesCrossSourceDraftWithoutChangingPreparedDa
             boundTo: staged,
             sourceTimeUnit: .seconds,
             activityMode: .putativeSingleUnit,
+            recordingSegmentID: ScientificRecordingSegmentID(try ScientificSemanticID(validating: "segment_a")),
+            recordingRegime: .continuousUntrialed,
+            importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+            observationBoundsAvailability: .unknownOrUnavailable,
             eventScopeGroups: [
                 EventScopeGroupManifestDraft(
                     semanticID: groupID,

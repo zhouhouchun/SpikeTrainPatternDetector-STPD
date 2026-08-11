@@ -163,10 +163,14 @@ warning, and the empty definition cannot be selected as a time origin.
 
 An event type is a reusable semantic category. An event definition is the
 confirmed event column in one group. An event occurrence is one timestamp plus
-its attached attributes. None of these constructs a Trial or RecordingSegment.
-Those boundaries must be explicit scientific entities; they are never inferred
-from rows, event occurrences, source order, or group membership. Until the
-canonical import model represents them explicitly, its projection remains
+its attached attributes. None of these constructs a temporal scope: event
+definitions and occurrences never create a RecordingSegment or a Trial. The
+manifest separately and explicitly confirms exactly one dataset-global
+RecordingSegment, so that segment is already represented. This slice still
+creates no Trial entities: Trial is explicitly not applicable for
+`continuous_untrialed`, while `trialized` and `unknown_or_uncertain` remain
+blocked by the missing Trial contract. Temporal scopes are never inferred from
+rows, events, source order, or group membership. The projection remains
 shadow-only and cannot activate detection or authoritative export.
 
 ## Event occurrences and structured attributes
@@ -292,7 +296,7 @@ be constructed only from a source-bound prepared import that passes the
 independent replay validator. On success, validation constructs a deterministic,
 in-memory, shadow-only `CanonicalScientificDatasetFingerprint`: a content digest
 of the confirmed scientific dataset under the schema contract
-`canonical_microsecond_event_scope_dataset`. That fingerprint is **not** an
+`canonical_microsecond_single_recording_segment_event_scope_dataset`. That fingerprint is **not** an
 authority receipt — it does not confirm or activate a dataset, is not a persisted
 manifest identity, and grants no detector, review, result-package, or export
 authority. This slice still creates no legacy `SpikeDataset` adapter, detector
@@ -305,14 +309,17 @@ EventScopeGroup references its members by that identity rather than redefining
 them. Under the current strict partition, every spike train belongs to exactly
 one group: the reference union equals the registry and every registry entry is
 referenced exactly once. `EventScopeGroup` expresses Unit/Event applicability
-only; it is not a Unit namespace. `RecordingSegment` and `Trial` are not
-represented by this schema contract.
+only; it is not a Unit namespace. Exactly one dataset-global `RecordingSegment` is
+represented; `Trial` entities and numeric segment bounds are not.
 
 Scientific identity is derived from the confirmed semantic manifest and
 canonical data, including:
 
 - stable semantic IDs and membership for groups, the global spike-train
   registry, and event definitions;
+- the single dataset-global RecordingSegment: its explicitly confirmed semantic
+  ID, recording regime, imported-excerpt coverage, and observation-bounds
+  availability;
 - activity mode and confirmed scientific settings;
 - each group's confirmed time basis and selected origin occurrence semantics;
 - exact final canonical spike and event ticks and retained canonical
@@ -365,6 +372,44 @@ names include `canonical_dataset_digest`,
 `canonical_microsecond_event_scope_result`. Historical ordinal identifiers may
 be recognized only inside a read-only compatibility adapter.
 
+## Recording segment (single dataset-global temporal scope)
+
+One import batch represents exactly one dataset-global `RecordingSegment`. All spike trains and
+EventScopeGroups belong to that one segment; the canonical dataset carries a single non-optional
+`ConfirmedRecordingSegment` and no redundant membership array. Shared segment membership does **not**
+override group-local time-basis/origin incompatibility — without an explicit clock transform,
+cross-group ISIs, synchronization, population binning, timestamp concatenation, and absolute-time
+overlays remain prohibited.
+
+The segment carries four explicitly user-confirmed fields, all unresolved until confirmed (never
+silently defaulted):
+
+- an explicit **segment semantic ID** (enters scientific identity; a suggestion is never silently
+  accepted);
+- **recording regime**: `continuous_untrialed`, `trialized`, or `unknown_or_uncertain`. A contiguous
+  excerpt of a continuous recording is `continuous_untrialed`; concatenated or explicitly
+  trial-bounded material is never silently called continuous;
+- **imported-excerpt coverage**: `all_spike_trains_full_imported_excerpt` (every included spike-train
+  stream was continuously observable/valid throughout the same imported excerpt — this does not
+  require any train to fire at the edges, does not require a nonempty train, and does not prove
+  single-unit isolation), `not_all_spike_trains_full_imported_excerpt`, or `unknown_or_uncertain`;
+- **observation-bounds availability**: `unknown_or_unavailable` (the only supported value in this
+  slice, but still explicitly confirmed).
+
+This slice creates no Trial entities and no numeric segment bounds. Recording bounds are never
+inferred from first/last spikes, min/max timestamps, rows, empty cells, ordinary event occurrences,
+EventScopeGroups, or source order. Repeated stimulus/reward/event occurrences never create a Trial.
+Because exact acquisition start/end are unknown, first/last-spike exterior time stays censored: the
+app produces no authoritative recording-wide firing rate, state occupancy, leading/trailing-edge
+Pause, complete recording-relative episode duration, or claim that a state reached the acquisition
+boundary. This censors complete recording-relative or boundary-censored episode-duration claims, not
+a candidate episode's internally supported duration measured wholly within the imported data.
+Unavailable bounds are never represented as zero or as the timestamp extrema. Existing
+negative-timestamp rules are unchanged: `recording_elapsed` remains non-negative, `event_relative`
+still requires the explicitly selected same-group origin, and the segment grants no new negative-time
+permission. The four fields are scientific identity and enter the canonical byte codec under the
+schema contract `canonical_microsecond_single_recording_segment_event_scope_dataset`.
+
 ## Confirmation record and analysis readiness
 
 An explicit coordinator confirmation action — plumbing reserved for a future user gesture; this
@@ -375,8 +420,10 @@ exact validated source transaction, the
 resolved user decisions (activity mode, dataset-global spike-train identities, EventScopeGroup
 definitions and membership, group time bases and event-relative origins, event and attribute
 definitions, source time unit, timestamp ordering decisions, requested duplicate policies, and
-Presentation decisions) and the existing `CanonicalScientificDatasetFingerprint`. It records an
-explicit temporal scope of `event_scope_only / recording_segment_and_trial_not_represented`.
+Presentation decisions), the confirmed dataset-global RecordingSegment (reached through the sealed
+validated import, never copied into a second truth), and the existing
+`CanonicalScientificDatasetFingerprint`. It records an explicit temporal scope of one dataset-global
+recording segment with unavailable acquisition bounds and no Trial entities.
 
 The confirmation record is **not** an authority receipt. It confirms only what source and user
 decisions were reviewed and which canonical fingerprint resulted. It does not confirm that the
@@ -395,13 +442,19 @@ never removes timestamps from canonical raw data.
 
 A separate `ScientificAnalysisReadinessAssessment` reports stable functional blocking reasons. It is
 deny-only and fail-closed: it never grants readiness, only enumerates blockers, and any blocker means
-the import remains shadow-only. For the current model it always reports that confirmed-manifest
-persistence, the run contract, the detector-consumer closure, and the authoritative-export closure are
-unavailable, and that RecordingSegment and Trial are not represented. For `intentional_multi_unit` and
-`unknown_or_uncertain` it additionally reports that authoritative biological pattern detection is not
-defined for that activity mode — a `not_evaluated` state, never zero, absent, negative, or "no pattern
-detected". Even putative-single-unit data remains shadow-only because the remaining contracts are
-incomplete.
+the import remains shadow-only. For the current model it always reports that observation bounds are
+unavailable and that confirmed-manifest persistence, the run contract, the detector-consumer closure,
+and the authoritative-export closure are unavailable. It never reports the recording segment as
+unrepresented, because exactly one dataset-global segment is now confirmed. Regime adds Trial blockers by matrix: `continuous_untrialed` makes
+Trial explicitly not applicable (no Trial blocker); `trialized` reports Trial entities not
+represented; `unknown_or_uncertain` reports the regime unknown/uncertain and the Trial contract
+unavailable. Coverage `not_all_spike_trains_full_imported_excerpt` reports partial coverage,
+`unknown_or_uncertain` reports coverage unknown/uncertain, and `all_spike_trains_full_imported_excerpt`
+adds no coverage blocker but grants no positive permission. For `intentional_multi_unit` and
+`unknown_or_uncertain` activity modes it additionally reports that authoritative biological pattern
+detection is not defined for that mode — a `not_evaluated` state, never zero, absent, negative, or "no
+pattern detected". Even a putative-single-unit, all-coverage, continuous import remains shadow-only
+because the remaining contracts are incomplete.
 
 ## Transactional import and compatibility boundary
 

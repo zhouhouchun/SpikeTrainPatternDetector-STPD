@@ -5,13 +5,13 @@ import CryptoKit
 
 // MARK: - Golden values (captured from the fixed machine transcript)
 
-private let goldenSchemaContractDigest = "77d84671359ce1276c0a48951ca3cdf574392fd7c35a714d82bf814c326cf605"
-private let goldenRichDatasetDigest = "172a04e8b81feae854e2ed11fb72f9cb1cbded8ff22b9ee6a53c1b595908d7bc"
-private let goldenRichByteCount = 750
-private let goldenBoundaryDigest = "00f3db9c25886c9cab36afbcc2c35edd695b59011f65a83ac212a6804b5db1a6"
-private let goldenOracleDatasetDigest = "470d71f8840289647f098666657c1d7a703212617aa5ebe572f67286c63660b9"
-private let goldenOracleByteCount = 517
-private let goldenOracleTranscriptHex = "0000000000000021737470642e63616e6f6e6963616c5f736369656e74696669635f6461746173657402000000000000002963616e6f6e6963616c5f6d6963726f7365636f6e645f6576656e745f73636f70655f646174617365740300000000000000403737643834363731333539636531323736633061343839353163613363646635373433393266643763333561373134643832626638313463333236636636303510000000000000002261637469766974795f6d6f64652e70757461746976655f73696e676c655f756e697420000000000000000121000000000000000175220000000000000002000000000000000100000000000000013000000000000000013100000000000000016732000000000000001c74696d655f62617369732e7265636f7264696e675f656c617073656436000000000000000137000000000000000175380000000000000001390000000000000001653a0000000000000004747970653b00000000000000013c00000000000000023d00000000000000014100000000000000016b42000000000000000e7363616c61722e626f6f6c65616e43015000000000000000015100000000000000016b52000000000000000e7363616c61722e626f6f6c65616e530000000000000012756e69742e64696d656e73696f6e6c657373550000000000000013656d7074795f737472696e672e666f72626964"
+private let goldenSchemaContractDigest = "5a05506200c39c598ab3d90d4fcb06c04622a5d9b1513fca35d79cd2f34c3ec4"
+private let goldenRichDatasetDigest = "9ad54fab1dee6d9508af3fce23f439f13cc8ad0e405c193dea2f895784268940"
+private let goldenRichByteCount = 962
+private let goldenBoundaryDigest = "eb7e92d6861095b537e553d44ee3642d5e5bcfbf9b93e20881b49b8a7be03116"
+private let goldenOracleDatasetDigest = "e6b73f5921db98d468cd02860ad6c9fba9e47eae434501b52a25f6a4d59864d2"
+private let goldenOracleByteCount = 729
+private let goldenOracleTranscriptHex = "0000000000000021737470642e63616e6f6e6963616c5f736369656e74696669635f6461746173657402000000000000004263616e6f6e6963616c5f6d6963726f7365636f6e645f73696e676c655f7265636f7264696e675f7365676d656e745f6576656e745f73636f70655f646174617365740300000000000000403561303535303632303063333963353938616233643930643466636230366330343632326135643962313531336663613335643739636432663334633365633410000000000000002261637469766974795f6d6f64652e70757461746976655f73696e676c655f756e69741100000000000000097365676d656e745f611200000000000000257265636f7264696e675f726567696d652e636f6e74696e756f75735f756e747269616c6564130000000000000040696d706f727465645f657863657270745f636f7665726167652e616c6c5f7370696b655f747261696e735f66756c6c5f696d706f727465645f657863657270741400000000000000296f62736572766174696f6e5f626f756e64732e756e6b6e6f776e5f6f725f756e617661696c61626c6520000000000000000121000000000000000175220000000000000002000000000000000100000000000000013000000000000000013100000000000000016732000000000000001c74696d655f62617369732e7265636f7264696e675f656c617073656436000000000000000137000000000000000175380000000000000001390000000000000001653a0000000000000004747970653b00000000000000013c00000000000000023d00000000000000014100000000000000016b42000000000000000e7363616c61722e626f6f6c65616e43015000000000000000015100000000000000016b52000000000000000e7363616c61722e626f6f6c65616e530000000000000012756e69742e64696d656e73696f6e6c657373550000000000000013656d7074795f737472696e672e666f72626964"
 
 // MARK: - Schema contract binds the real codec
 
@@ -19,7 +19,7 @@ private let goldenOracleTranscriptHex = "0000000000000021737470642e63616e6f6e696
 func canonicalFingerprintExposesFunctionalSchemaContract() {
     #expect(
         CanonicalScientificDatasetFingerprinter.schemaContractID
-            == "canonical_microsecond_event_scope_dataset"
+            == "canonical_microsecond_single_recording_segment_event_scope_dataset"
     )
     #expect(CanonicalScientificDatasetFingerprinter.schemaContractDigest().count == 64)
     #expect(
@@ -75,7 +75,7 @@ func canonicalFingerprintMatchesFixedGoldenDataset() throws {
     let second = try CanonicalScientificDatasetFingerprinter.fingerprint(dataset)
 
     #expect(first == second)
-    #expect(first.schemaContractID == "canonical_microsecond_event_scope_dataset")
+    #expect(first.schemaContractID == "canonical_microsecond_single_recording_segment_event_scope_dataset")
     #expect(first.schemaContractDigest == goldenSchemaContractDigest)
     #expect(first.datasetDigest == goldenRichDatasetDigest)
     #expect(first.datasetDigest.count == 64)
@@ -91,6 +91,7 @@ func canonicalFingerprintRejectsInvalidRegistryPartitions() throws {
     #expect(throws: CanonicalRegistryPartitionError.self) {
         _ = try CanonicalScientificDatasetFingerprinter.fingerprint(
             CanonicalScientificDataset(
+                recordingSegment: standardConfirmedRecordingSegment(),
                 activityMode: .putativeSingleUnit,
                 spikeTrains: [try train("unit", ticks: [1])],
                 eventScopeGroups: [],
@@ -102,6 +103,7 @@ func canonicalFingerprintRejectsInvalidRegistryPartitions() throws {
     #expect(throws: CanonicalRegistryPartitionError.self) {
         _ = try CanonicalScientificDatasetFingerprinter.fingerprint(
             CanonicalScientificDataset(
+                recordingSegment: standardConfirmedRecordingSegment(),
                 activityMode: .putativeSingleUnit,
                 spikeTrains: [try train("unit", ticks: [1])],
                 eventScopeGroups: [try group("group", references: ["ghost"])],
@@ -113,6 +115,7 @@ func canonicalFingerprintRejectsInvalidRegistryPartitions() throws {
     #expect(throws: CanonicalRegistryPartitionError.self) {
         _ = try CanonicalScientificDatasetFingerprinter.fingerprint(
             CanonicalScientificDataset(
+                recordingSegment: standardConfirmedRecordingSegment(),
                 activityMode: .putativeSingleUnit,
                 spikeTrains: [],
                 eventScopeGroups: [try group("group", references: [])],
@@ -124,6 +127,7 @@ func canonicalFingerprintRejectsInvalidRegistryPartitions() throws {
     #expect(throws: CanonicalRegistryPartitionError.self) {
         _ = try CanonicalScientificDatasetFingerprinter.fingerprint(
             CanonicalScientificDataset(
+                recordingSegment: standardConfirmedRecordingSegment(),
                 activityMode: .putativeSingleUnit,
                 spikeTrains: [try train("unit", ticks: [1])],
                 eventScopeGroups: [
@@ -427,6 +431,7 @@ private func oneGroupDataset(
     }
     let references = trains.map(\.id).sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
     return CanonicalScientificDataset(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: activityMode,
         spikeTrains: registry,
         eventScopeGroups: [try group("group", references: references, eventDefinitions: eventDefinitions)],
@@ -445,6 +450,7 @@ private func eventRelativeBoundaryDataset(ticks: [Int64]) throws -> CanonicalSci
 /// A small, valid fixture for the byte-transcript oracle (recording-elapsed).
 private func oracleDataset() throws -> CanonicalScientificDataset {
     CanonicalScientificDataset(
+        recordingSegment: standardConfirmedRecordingSegment(),
         activityMode: .putativeSingleUnit,
         spikeTrains: [try train("u", ticks: [1, 1])],
         eventScopeGroups: [
@@ -528,6 +534,7 @@ private struct Scenario {
         }
 
         return CanonicalScientificDataset(
+            recordingSegment: standardConfirmedRecordingSegment(),
             activityMode: activityMode,
             spikeTrains: [try train(unitID, ticks: spikeTicks)],
             eventScopeGroups: [

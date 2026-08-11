@@ -106,6 +106,8 @@ public struct ResolvedEventAttributeDefinitionPlan: Hashable, Sendable {
 /// explicit choices are complete; it does not claim that timestamp or attribute grammar is valid.
 public struct ResolvedScientificImportPlan: Hashable, Sendable {
     public let source: ResolvedScientificImportSource
+    /// The single dataset-global RecordingSegment that structurally owns the whole plan.
+    public let recordingSegment: ConfirmedRecordingSegment
     public let sourceTimeUnit: SpikeTimeUnit
     public let activityMode: ScientificDatasetActivityMode
     public let eventScopeGroups: [ResolvedEventScopeGroupPlan]
@@ -113,12 +115,14 @@ public struct ResolvedScientificImportPlan: Hashable, Sendable {
 
     internal init(
         source: ResolvedScientificImportSource,
+        recordingSegment: ConfirmedRecordingSegment,
         sourceTimeUnit: SpikeTimeUnit,
         activityMode: ScientificDatasetActivityMode,
         eventScopeGroups: [ResolvedEventScopeGroupPlan],
         eventAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan]
     ) {
         self.source = source
+        self.recordingSegment = recordingSegment
         self.sourceTimeUnit = sourceTimeUnit
         self.activityMode = activityMode
         self.eventScopeGroups = eventScopeGroups

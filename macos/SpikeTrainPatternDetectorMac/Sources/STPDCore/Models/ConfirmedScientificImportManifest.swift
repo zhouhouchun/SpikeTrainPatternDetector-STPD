@@ -1,8 +1,10 @@
-/// The temporal scope a confirmed canonical model represents. The current model is event-scope
-/// only: `RecordingSegment` and `Trial` are not represented.
+/// The temporal scope a confirmed canonical model represents. The current model has exactly one
+/// dataset-global `RecordingSegment` with no numeric acquisition bounds and no `Trial` entities.
 public enum ConfirmedImportTemporalScope: Hashable, Sendable {
-    /// `event_scope_only / recording_segment_and_trial_not_represented`.
-    case eventScopeOnly
+    /// One dataset-global recording segment; exact acquisition bounds are unknown/unavailable and no
+    /// Trial entities exist. The segment's confirmed fields live in the canonical dataset (reached
+    /// via `ConfirmedScientificImportManifest.recordingSegment`), never duplicated here.
+    case singleRecordingSegmentBoundsUnavailable
 }
 
 /// Whether a confirmation record has been persisted. This slice is in-memory only; persistence is
@@ -71,7 +73,7 @@ public struct ConfirmedScientificImportManifest: Sendable {
             validatedImport: confirmable.validatedImport,
             canonicalFingerprint: confirmable.shadow.fingerprint,
             sourceTransactionBinding: confirmable.shadow.sourceTransactionBinding,
-            temporalScope: .eventScopeOnly,
+            temporalScope: .singleRecordingSegmentBoundsUnavailable,
             persistence: .unavailableInMemoryOnly
         )
     }
@@ -79,6 +81,12 @@ public struct ConfirmedScientificImportManifest: Sendable {
     /// The confirmed activity mode.
     public var activityMode: ScientificDatasetActivityMode {
         validatedImport.preparedImport.data.activityMode
+    }
+
+    /// The single dataset-global RecordingSegment, reached through the sealed validated import so it
+    /// is never copied into a second potentially mismatched truth.
+    public var recordingSegment: ConfirmedRecordingSegment {
+        validatedImport.preparedImport.data.recordingSegment
     }
 
     /// The confirmed source time unit (retained as a decision; canonical time is integer microseconds).

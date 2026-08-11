@@ -1,6 +1,8 @@
 /// A format-neutral, pre-analysis scientific dataset projected from an independently validated
 /// import. This model deliberately contains no source locations, presentation attributes, detector
-/// settings, result authority, or inferred RecordingSegment/Trial structure.
+/// settings, or result authority. It carries exactly one dataset-global, user-confirmed
+/// `RecordingSegment` — never inferred from spikes, timestamps, rows, or order — and no `Trial`
+/// entities or numeric segment bounds.
 ///
 /// Spike-train identity is dataset-global: every `CanonicalSpikeTrain` is defined once in the
 /// ordered `spikeTrains` registry, and each `CanonicalEventScopeGroup` refers to its members by
@@ -8,6 +10,10 @@
 /// not a Unit namespace, so a spike-train identity is unique across the whole dataset rather than
 /// only within one group.
 public struct CanonicalScientificDataset: Hashable, Sendable {
+    /// The single dataset-global RecordingSegment that structurally owns the whole dataset (all
+    /// spike trains and EventScopeGroups). It carries no numeric bounds and no Trial entity, and
+    /// shared membership never overrides group-local time-basis/origin incompatibility.
+    public let recordingSegment: ConfirmedRecordingSegment
     public let activityMode: ScientificDatasetActivityMode
     /// The dataset-global spike-train registry, ordered by canonical semantic ID. Each entry is a
     /// distinct global spike-train entity; `ScientificSpikeTrainID` is unique across this array.
@@ -16,11 +22,13 @@ public struct CanonicalScientificDataset: Hashable, Sendable {
     public let scientificAttributeDefinitions: [CanonicalEventAttributeDefinition]
 
     internal init(
+        recordingSegment: ConfirmedRecordingSegment,
         activityMode: ScientificDatasetActivityMode,
         spikeTrains: [CanonicalSpikeTrain],
         eventScopeGroups: [CanonicalEventScopeGroup],
         scientificAttributeDefinitions: [CanonicalEventAttributeDefinition]
     ) {
+        self.recordingSegment = recordingSegment
         self.activityMode = activityMode
         self.spikeTrains = spikeTrains
         self.eventScopeGroups = eventScopeGroups

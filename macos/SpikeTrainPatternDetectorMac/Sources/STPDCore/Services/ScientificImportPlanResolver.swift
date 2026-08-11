@@ -2,6 +2,10 @@ public enum ScientificImportPlanIssue: Hashable, Sendable {
     case sourceBindingMismatch
     case missingSourceTimeUnit
     case missingActivityMode
+    case missingRecordingSegmentID
+    case missingRecordingRegime
+    case missingImportedExcerptCoverage
+    case missingObservationBoundsAvailability
     case missingEventScopeGroups
     case emptyEventScopeGroups
 
@@ -109,6 +113,24 @@ public enum ScientificImportPlanResolver {
         let activityMode = draft.activityMode
         if activityMode == nil {
             issues.append(.missingActivityMode)
+        }
+
+        // The four dataset-global RecordingSegment decisions must all be explicitly confirmed.
+        let recordingSegmentID = draft.recordingSegmentID
+        if recordingSegmentID == nil {
+            issues.append(.missingRecordingSegmentID)
+        }
+        let recordingRegime = draft.recordingRegime
+        if recordingRegime == nil {
+            issues.append(.missingRecordingRegime)
+        }
+        let importedExcerptCoverage = draft.importedExcerptCoverage
+        if importedExcerptCoverage == nil {
+            issues.append(.missingImportedExcerptCoverage)
+        }
+        let observationBounds = draft.observationBoundsAvailability
+        if observationBounds == nil {
+            issues.append(.missingObservationBoundsAvailability)
         }
 
         let groupDrafts = draft.eventScopeGroups
@@ -413,6 +435,10 @@ public enum ScientificImportPlanResolver {
 
         guard let sourceTimeUnit,
               let activityMode,
+              let recordingSegmentID,
+              let recordingRegime,
+              let importedExcerptCoverage,
+              let observationBounds,
               let groupDrafts,
               resolvedGroups.count == groupDrafts.count,
               resolvedAttributeDefinitions.count == draft.eventAttributeDefinitions.count else {
@@ -421,6 +447,12 @@ public enum ScientificImportPlanResolver {
 
         return ResolvedScientificImportPlan(
             source: ResolvedScientificImportSource(stagedImport: stagedImport),
+            recordingSegment: ConfirmedRecordingSegment(
+                semanticID: recordingSegmentID,
+                regime: recordingRegime,
+                importedExcerptCoverage: importedExcerptCoverage,
+                observationBounds: observationBounds
+            ),
             sourceTimeUnit: sourceTimeUnit,
             activityMode: activityMode,
             eventScopeGroups: resolvedGroups,

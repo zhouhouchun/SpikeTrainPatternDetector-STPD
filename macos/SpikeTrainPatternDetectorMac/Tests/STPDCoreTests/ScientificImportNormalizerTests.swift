@@ -1323,6 +1323,7 @@ func scientificImportNormalizerDefensivelyRejectsForgedNonSingleUnitCollapsePlan
     )
     let forgedPlan = ResolvedScientificImportPlan(
         source: singleUnitPlan.source,
+        recordingSegment: singleUnitPlan.recordingSegment,
         sourceTimeUnit: singleUnitPlan.sourceTimeUnit,
         activityMode: .intentionalMultiUnit,
         eventScopeGroups: singleUnitPlan.eventScopeGroups,
@@ -1451,6 +1452,10 @@ private func normalizerPlan(
         boundTo: staged,
         sourceTimeUnit: unit,
         activityMode: mode,
+        recordingSegmentID: testSegmentID(),
+        recordingRegime: .continuousUntrialed,
+        importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+        observationBoundsAvailability: .unknownOrUnavailable,
         eventScopeGroups: groups,
         eventAttributeDefinitions: attributes
     )

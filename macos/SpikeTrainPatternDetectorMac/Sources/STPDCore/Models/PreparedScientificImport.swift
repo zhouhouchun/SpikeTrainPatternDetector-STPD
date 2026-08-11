@@ -19,17 +19,21 @@ public struct PreparedScientificImport: Hashable, Sendable {
 /// Parsed values separated from their source locations. This is deliberately not an identity
 /// projection because it includes presentation-only attributes.
 public struct PreparedScientificImportData: Hashable, Sendable {
+    /// The single dataset-global RecordingSegment that structurally owns the whole prepared dataset.
+    public let recordingSegment: ConfirmedRecordingSegment
     public let activityMode: ScientificDatasetActivityMode
     public let eventScopeGroups: [PreparedEventScopeGroup]
     public let scientificAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan]
     public let presentationAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan]
 
     internal init(
+        recordingSegment: ConfirmedRecordingSegment,
         activityMode: ScientificDatasetActivityMode,
         eventScopeGroups: [PreparedEventScopeGroup],
         scientificAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan],
         presentationAttributeDefinitions: [ResolvedEventAttributeDefinitionPlan]
     ) {
+        self.recordingSegment = recordingSegment
         self.activityMode = activityMode
         self.eventScopeGroups = eventScopeGroups
         self.scientificAttributeDefinitions = scientificAttributeDefinitions

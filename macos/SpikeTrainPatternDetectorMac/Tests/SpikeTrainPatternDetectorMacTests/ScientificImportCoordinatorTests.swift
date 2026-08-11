@@ -5,6 +5,14 @@ import STPDTabularIO
 import Testing
 import ZIPFoundation
 
+/// One named recording-segment field edit, used to parameterize the invalidation test across every
+/// segment control (ID, regime, coverage, bounds confirmation).
+struct SegmentFieldEdit: Sendable, CustomTestStringConvertible {
+    let label: String
+    let apply: @Sendable (inout ScientificImportManifestForm) -> Void
+    var testDescription: String { label }
+}
+
 @Suite("Scientific import coordinator", .serialized)
 @MainActor
 struct ScientificImportCoordinatorTests {
@@ -170,7 +178,7 @@ struct ScientificImportCoordinatorTests {
                 == [1_000_000, 1_250_000])
             // The shadow carries a non-authoritative fingerprint bound to this canonical shape.
             #expect(validated.shadowCanonicalImport.fingerprint.schemaContractID
-                == "canonical_microsecond_event_scope_dataset")
+                == "canonical_microsecond_single_recording_segment_event_scope_dataset")
             #expect(validated.shadowCanonicalImport.fingerprint.datasetDigest.count == 64)
             guard case .csv(let csvStaging) = validated.transportStaging else {
                 Issue.record("Expected CSV transport provenance")
@@ -287,14 +295,13 @@ struct ScientificImportCoordinatorTests {
 
             let confirmed = try #require(coordinator.confirmedImport)
             #expect(confirmed.canonicalFingerprint == shadowBefore.fingerprint)
-            #expect(confirmed.temporalScope == .eventScopeOnly)
+            #expect(confirmed.temporalScope == .singleRecordingSegmentBoundsUnavailable)
             #expect(confirmed.persistence == .unavailableInMemoryOnly)
 
-            // Deny-only readiness: blocked, and reports RecordingSegment/Trial not represented.
+            // Deny-only readiness: blocked, and reports observation bounds unavailable.
             let readiness = try #require(coordinator.analysisReadiness)
             #expect(readiness.isAnalysisBlocked)
-            #expect(readiness.blockers.contains(.recordingSegmentNotRepresented))
-            #expect(readiness.blockers.contains(.trialContractNotRepresented))
+            #expect(readiness.blockers.contains(.observationBoundsUnavailable))
 
             // Confirmation mutates nothing else: still a shadow-only validated preparation.
             #expect(coordinator.phase == .validatedPreparation)
@@ -649,6 +656,42 @@ struct ScientificImportCoordinatorTests {
         #expect(!document.isDetectorRunning)
     }
 
+    @Test(
+        "Editing any recording-segment field immediately clears validated + confirmed state",
+        arguments: [
+            SegmentFieldEdit(label: "recording segment ID") { $0.recordingSegmentIDText = "segment_2" },
+            SegmentFieldEdit(label: "recording regime") { $0.recordingRegime = .trialized },
+            SegmentFieldEdit(label: "imported-excerpt coverage") {
+                $0.importedExcerptCoverage = .notAllSpikeTrainsFullImportedExcerpt
+            },
+            SegmentFieldEdit(label: "bounds confirmation") { $0.observationBoundsConfirmedUnavailable = false },
+        ]
+    )
+    func segmentEditClearsValidatedAndConfirmed(edit: SegmentFieldEdit) async throws {
+        try await withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("source.csv")
+            try Data("unit_A\n1.000000\n1.250000\n".utf8).write(to: url)
+            let coordinator = ScientificImportCoordinator()
+            await coordinator.beginImport(from: url)
+            coordinator.selectHeaderDecision(.firstRecordIsHeader)
+            await coordinator.bindSourceFacts()
+            configureOneSpikeTrain(in: coordinator, mode: .putativeSingleUnit)
+            await coordinator.validateScientificReview()
+            coordinator.confirmScientificImport()
+            _ = try #require(coordinator.confirmedImport, "confirmed before editing \(edit.label)")
+
+            // Any segment-field edit reassigns the form, tripping the didSet invalidation authority.
+            var form = try #require(coordinator.manifestForm)
+            edit.apply(&form)
+            coordinator.manifestForm = form
+
+            #expect(coordinator.validatedPreparation == nil, "validated cleared after editing \(edit.label)")
+            #expect(coordinator.confirmedImport == nil, "confirmed cleared after editing \(edit.label)")
+            #expect(coordinator.analysisReadiness == nil, "readiness cleared after editing \(edit.label)")
+            #expect(coordinator.phase == .reviewingScientificMeaning, "phase reset after editing \(edit.label)")
+        }
+    }
+
     private func configureOneSpikeTrain(
         in coordinator: ScientificImportCoordinator,
         mode: ScientificDatasetActivityMode,
@@ -660,6 +703,10 @@ struct ScientificImportCoordinatorTests {
         }
         form.sourceTimeUnit = .seconds
         form.activityMode = mode
+        form.recordingSegmentIDText = "segment_1"
+        form.recordingRegime = .continuousUntrialed
+        form.importedExcerptCoverage = .allSpikeTrainsFullImportedExcerpt
+        form.observationBoundsConfirmedUnavailable = true
         form.columns[0].groupSemanticIDText = "group_1"
         form.columns[0].groupTimeBasis = .recordingElapsed
         form.columns[0].role = .spikeTrain

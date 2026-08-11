@@ -76,6 +76,7 @@ public enum CanonicalScientificImportProjector {
             }
 
         let dataset = CanonicalScientificDataset(
+            recordingSegment: prepared.data.recordingSegment,
             activityMode: prepared.data.activityMode,
             spikeTrains: registry,
             eventScopeGroups: groups,
