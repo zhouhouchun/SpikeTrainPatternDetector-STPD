@@ -64,7 +64,8 @@ public extension ManualAnnotationLabel {
     /// containment; broad/slow labels keep the overlap fallback.
     var geometryResolutionPolicy: ManualAnnotationGeometryResolutionPolicy {
         switch self {
-        case .burst, .longBurst, .notBurst, .highFrequencyTonic, .highFrequencySpiking:
+        case .burst, .highFrequencyBurst, .longBurst, .notBurst,
+             .highFrequencyTonic, .highFrequencySpiking:
             return .fullyContainedISIOnly
         case .tonic, .pause, .other:
             return .containedThenOverlapFallback

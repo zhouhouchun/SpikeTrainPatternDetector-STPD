@@ -8,6 +8,23 @@ public enum ManualAnnotationPolarity: String, Codable, Hashable, Sendable {
     case negative
 }
 
+/// Biological/output channel for a positive manual pattern label. State and event are independent:
+/// the same ISI may carry one label on each channel (for example HFS state + embedded HFB event).
+/// `other` is an explicit reviewer disposition, not a state or event family.
+public enum ManualAnnotationSemanticTrack: String, Codable, CaseIterable, Hashable, Sendable {
+    case state
+    case event
+    case other
+
+    public var displayName: String {
+        switch self {
+        case .state: return "State"
+        case .event: return "Event"
+        case .other: return "Other"
+        }
+    }
+}
+
 /// Provenance for the human identity attached to a manual scientific decision.
 ///
 /// `unknown` is retained for backward-compatible decoding/import, but result-package export rejects
@@ -19,17 +36,18 @@ public enum ManualAnnotationIdentitySource: String, Codable, Hashable, Sendable 
     case unknown
 }
 
-/// The manual annotation vocabulary the reviewer can author. The positive labels mirror the R/Shiny
-/// `pattern_manual` set exactly; the single negative label mirrors R's `pattern_manual_negative`
-/// product value `not_burst`.
+/// The manual annotation vocabulary the reviewer can author. The shared labels retain the R/Shiny
+/// meanings; the Mac workbench also keeps HFB distinct from Burst so event structure is not lost.
+/// The single negative label mirrors R's `pattern_manual_negative` product value `not_burst`.
 ///
-/// Extension seam: future Mac-only positive subtypes (e.g. `irregular_tonic`, `hf_burst`) and future
+/// Extension seam: future Mac-only positive subtypes (e.g. `irregular_tonic`) and future
 /// veto labels (e.g. `not_tonic`) can be added here without breaking the JSON/CSV schema. Only the
 /// labels in `consumedVetoLabels` are treated as active vetoes by the projector, so adding a new case
 /// is inert until the projector is taught to consume it.
 public enum ManualAnnotationLabel: String, Codable, Hashable, Sendable, CaseIterable {
     // Positive labels (R `pattern_manual`-compatible).
     case burst
+    case highFrequencyBurst = "high_frequency_burst"
     case longBurst = "long_burst"
     case tonic
     case highFrequencyTonic = "high_frequency_tonic"
@@ -58,6 +76,7 @@ public enum ManualAnnotationLabel: String, Codable, Hashable, Sendable, CaseIter
     public var displayName: String {
         switch self {
         case .burst: return "Burst"
+        case .highFrequencyBurst: return "HF burst"
         case .longBurst: return "Long burst"
         case .tonic: return "Tonic"
         case .highFrequencyTonic: return "HF tonic"
@@ -70,13 +89,12 @@ public enum ManualAnnotationLabel: String, Codable, Hashable, Sendable, CaseIter
 
     /// Map an auto detector label to the manual POSITIVE label a reviewer would author for it.
     /// Returns nil for non-event labels (`profile`/`reject`) — the caller decides the fallback.
-    /// `highFrequencyBurst` and `possibleBurst` map to `burst` (there is no Mac-only `hfBurst`
-    /// manual label in Phase 1A, and accepting a possible burst as a manual burst mirrors R).
+    /// HFB remains distinct; `possibleBurst` maps to Burst only when a reviewer accepts that proposal.
     public init?(autoLabel: ClassicAnchorLabel) {
         switch autoLabel {
         case .burst: self = .burst
         case .longBurst: self = .longBurst
-        case .highFrequencyBurst: self = .burst
+        case .highFrequencyBurst: self = .highFrequencyBurst
         case .possibleBurst: self = .burst
         case .tonic: self = .tonic
         case .highFrequencyTonic: self = .highFrequencyTonic
@@ -84,6 +102,41 @@ public enum ManualAnnotationLabel: String, Codable, Hashable, Sendable, CaseIter
         case .pause: self = .pause
         case .profile, .reject: return nil
         }
+    }
+
+    /// Stable output channel for this label. `notBurst` is an event-family veto and never becomes a
+    /// positive event value because `finalPatternString` is nil.
+    public var semanticTrack: ManualAnnotationSemanticTrack {
+        switch self {
+        case .tonic, .highFrequencyTonic, .highFrequencySpiking:
+            return .state
+        case .burst, .highFrequencyBurst, .longBurst, .pause, .notBurst:
+            return .event
+        case .other:
+            return .other
+        }
+    }
+
+    /// Minimum number of contiguous source spikes required when a reviewer authors this positive
+    /// pattern manually. This is an authoring guard, not a detector threshold and it never alters
+    /// imported or previously stored annotations.
+    public var minimumManualAuthoringSpikeCount: Int {
+        switch self {
+        case .highFrequencySpiking:
+            return 5
+        case .burst, .highFrequencyBurst, .longBurst, .tonic, .highFrequencyTonic:
+            return 3
+        case .pause, .other, .notBurst:
+            return 1
+        }
+    }
+
+    /// Positive labels offered by the manual workbench for one channel. Vetoes are intentionally
+    /// excluded from the mode picker because they are review evidence, not a final biological mode.
+    public static func positiveLabels(
+        for track: ManualAnnotationSemanticTrack
+    ) -> [ManualAnnotationLabel] {
+        allCases.filter { $0.polarity == .positive && $0.semanticTrack == track }
     }
 }
 

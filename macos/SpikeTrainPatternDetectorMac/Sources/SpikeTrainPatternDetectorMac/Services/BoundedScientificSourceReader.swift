@@ -26,6 +26,23 @@ struct BoundedScientificSource: Equatable, Sendable {
     }
 }
 
+struct BoundedNEXSource: Equatable, Sendable {
+    let snapshot: Data
+    let displayName: String
+    let byteCount: Int
+    let sourceSHA256: String
+
+    fileprivate init(snapshot: Data, displayName: String) {
+        let ownedSnapshot = Data(snapshot)
+        self.snapshot = ownedSnapshot
+        self.displayName = displayName
+        self.byteCount = ownedSnapshot.count
+        self.sourceSHA256 = SHA256.hash(data: ownedSnapshot)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+}
+
 enum BoundedScientificSourceReaderError: Error, Equatable, Sendable, LocalizedError {
     case notFileURL
     case unsupportedFileExtension
@@ -68,30 +85,23 @@ enum BoundedScientificSourceReader {
         let format = try format(for: url)
         try validateRegularFile(at: url)
 
-        let handle: FileHandle
-        do {
-            handle = try FileHandle(forReadingFrom: url)
-        } catch {
-            throw BoundedScientificSourceReaderError.cannotOpenFile
-        }
-        defer { try? handle.close() }
-
-        // Validate the object that was actually opened, not only the path inspected
-        // above. This closes the path-replacement race before any bytes are accepted.
-        var fileStatus = stat()
-        guard Darwin.fstat(handle.fileDescriptor, &fileStatus) == 0 else {
-            throw BoundedScientificSourceReaderError.cannotInspectFile
-        }
-        guard (fileStatus.st_mode & S_IFMT) == S_IFREG else {
-            throw BoundedScientificSourceReaderError.notRegularFile
-        }
-
-        let snapshot = try readBoundedSnapshot(from: handle)
+        let snapshot = try snapshot(of: url)
         return BoundedScientificSource(
             format: format,
             snapshot: snapshot,
             displayName: url.lastPathComponent
         )
+    }
+
+    static func readNEX(from url: URL) throws -> BoundedNEXSource {
+        guard url.isFileURL else {
+            throw BoundedScientificSourceReaderError.notFileURL
+        }
+        guard url.pathExtension.lowercased() == "nex" else {
+            throw BoundedScientificSourceReaderError.unsupportedFileExtension
+        }
+        let snapshot = try snapshot(of: url)
+        return BoundedNEXSource(snapshot: snapshot, displayName: url.lastPathComponent)
     }
 
     private static func format(for url: URL) throws -> ScientificSourceFormat {
@@ -116,6 +126,28 @@ enum BoundedScientificSourceReader {
         guard resourceValues.isRegularFile == true else {
             throw BoundedScientificSourceReaderError.notRegularFile
         }
+    }
+
+    private static func snapshot(of url: URL) throws -> Data {
+        try validateRegularFile(at: url)
+
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: url)
+        } catch {
+            throw BoundedScientificSourceReaderError.cannotOpenFile
+        }
+        defer { try? handle.close() }
+
+        // Validate the object actually opened, not only the path inspected above.
+        var fileStatus = stat()
+        guard Darwin.fstat(handle.fileDescriptor, &fileStatus) == 0 else {
+            throw BoundedScientificSourceReaderError.cannotInspectFile
+        }
+        guard (fileStatus.st_mode & S_IFMT) == S_IFREG else {
+            throw BoundedScientificSourceReaderError.notRegularFile
+        }
+        return try readBoundedSnapshot(from: handle)
     }
 
     private static func readBoundedSnapshot(from handle: FileHandle) throws -> Data {

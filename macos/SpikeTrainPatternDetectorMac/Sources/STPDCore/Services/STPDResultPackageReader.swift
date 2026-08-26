@@ -99,6 +99,236 @@ public enum STPDResultPackageReader {
         )
     }
 
+    /// Reads the detector-independent canonical complete-manual-review package. The filesystem,
+    /// byte limits, symlink rejection, strict RFC 4180 parser, and canonical-byte checks are shared
+    /// with detector package readback; no detector run is reconstructed or implied.
+    public static func readCanonicalManualResult(
+        packageAt url: URL,
+        limits: STPDResultPackageReadLimits = .standard
+    ) throws -> CanonicalManualResultPackageReadResult {
+        let rootPath = url.path
+        let dirFD = open(rootPath, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard dirFD >= 0 else {
+            if errno == ENOTDIR {
+                throw STPDResultPackageReaderError.packageRootNotADirectory(path: rootPath)
+            }
+            throw STPDResultPackageReaderError.packageRootUnreadable(path: rootPath)
+        }
+        defer { close(dirFD) }
+        var totalBytes = 0
+        let manifestBytes = try readRegularFile(
+            dirFD: dirFD,
+            name: CanonicalManualResultPackageBuilder.manifestFileName,
+            maximumBytes: limits.maximumManifestBytes,
+            maximumTotalBytes: limits.maximumTotalBytes,
+            totalBytes: &totalBytes
+        )
+        let manifest: CanonicalManualResultPackageManifest
+        do {
+            manifest = try JSONDecoder().decode(
+                CanonicalManualResultPackageManifest.self,
+                from: manifestBytes
+            )
+        } catch {
+            throw STPDResultPackageReaderError.manifestUndecodable(
+                reason: shortDecodingReason(error)
+            )
+        }
+        guard try manifest.encodedData() == manifestBytes else {
+            throw STPDResultPackageReaderError.manifestNotCanonical
+        }
+        guard manifest.schemaContractID
+                == CanonicalManualResultPackageBuilder.schemaContractID,
+              manifest.schemaContractDigest
+                == CanonicalManualResultPackageBuilder.schemaContractDigest,
+              manifest.sourceMode
+                == CanonicalManualResultPackageBuilder.sourceMode else {
+            throw STPDResultPackageReaderError.unsupportedSchemaVersion(
+                manifest.schemaContractID
+            )
+        }
+        guard manifest.files.count == 1,
+              let file = manifest.files.first,
+              file.fileName
+                == CanonicalManualResultPackageBuilder.isiLabelsFileName else {
+            throw STPDResultPackageReaderError.tableSetMismatch(
+                missing: [CanonicalManualResultPackageBuilder.isiLabelsFileName],
+                unexpected: manifest.files.map(\.fileName)
+            )
+        }
+        try requireLegalCanonicalFileName(file.fileName)
+        let allowed = Set([
+            CanonicalManualResultPackageBuilder.manifestFileName,
+            CanonicalManualResultPackageBuilder.isiLabelsFileName,
+        ])
+        let entries = try directoryEntries(dirFD: dirFD, allowedEntries: allowed)
+        guard entries == allowed else {
+            throw STPDResultPackageReaderError.tableSetMismatch(
+                missing: allowed.subtracting(entries).sorted(),
+                unexpected: entries.subtracting(allowed).sorted()
+            )
+        }
+        let bytes = try readRegularFile(
+            dirFD: dirFD,
+            name: file.fileName,
+            maximumBytes: limits.maximumTableBytes,
+            maximumTotalBytes: limits.maximumTotalBytes,
+            totalBytes: &totalBytes
+        )
+        guard file.byteCount == bytes.count else {
+            throw STPDResultPackageReaderError.manifestContractMismatch(
+                table: file.fileName,
+                field: "byte_count"
+            )
+        }
+        guard isCanonicalSHA256Hex(file.sha256) else {
+            throw STPDResultPackageReaderError.nonCanonicalDigest(table: file.fileName)
+        }
+        guard STPDStableIdentifier.digest(bytes) == file.sha256 else {
+            throw STPDResultPackageReaderError.digestMismatch(table: file.fileName)
+        }
+        let parsed: ParsedCSV
+        do {
+            parsed = try parseStrictCSV(
+                bytes,
+                rowBudget: CSVResourceBudget(
+                    maximum: includingHeader(limits.maximumRowsPerTable),
+                    resource: "rows per table",
+                    reportedLimit: limits.maximumRowsPerTable
+                ),
+                maximumColumns: limits.maximumColumnsPerTable,
+                maximumFieldUnicodeScalars: limits.maximumFieldUnicodeScalars,
+                cellBudget: CSVResourceBudget(
+                    maximum: limits.maximumCellsPerTable,
+                    resource: "cells per table",
+                    reportedLimit: limits.maximumCellsPerTable
+                ),
+                decodedUTF8Budget: CSVResourceBudget(
+                    maximum: limits.maximumTotalDecodedUTF8Bytes,
+                    resource: "decoded UTF-8 bytes",
+                    reportedLimit: limits.maximumTotalDecodedUTF8Bytes
+                )
+            )
+        } catch let error as CSVParseFailure {
+            if error.invalidUTF8 {
+                throw STPDResultPackageReaderError.invalidUTF8(table: file.fileName)
+            }
+            throw STPDResultPackageReaderError.malformedCSV(
+                table: file.fileName,
+                reason: error.reason
+            )
+        }
+        guard parsed.header
+                == CanonicalManualResultPackageBuilder.isiLabelsHeaders else {
+            throw STPDResultPackageReaderError.headerMismatch(table: file.fileName)
+        }
+        guard parsed.rows.count == file.rowCount else {
+            throw STPDResultPackageReaderError.rowCountMismatch(
+                table: file.fileName,
+                declared: file.rowCount,
+                actual: parsed.rows.count
+            )
+        }
+        guard STPDRFC4180.data(
+            headers: CanonicalManualResultPackageBuilder.isiLabelsHeaders,
+            rows: parsed.rows
+        ) == bytes else {
+            throw STPDResultPackageReaderError.nonCanonicalCSV(table: file.fileName)
+        }
+
+        func invalid(_ reason: String) -> STPDResultPackageReaderError {
+            .tableStructureInvalid(table: file.fileName, reason: reason)
+        }
+        func validLabel(
+            _ rawValue: String,
+            track: ManualAnnotationSemanticTrack
+        ) -> Bool {
+            guard !rawValue.isEmpty else { return true }
+            guard let label = ManualAnnotationLabel(rawValue: rawValue) else {
+                return false
+            }
+            return label.polarity == .positive && label.semanticTrack == track
+        }
+        var rows: [CanonicalManualResultPackageReadRow] = []
+        rows.reserveCapacity(parsed.rows.count)
+        var lastTrain = ""
+        var lastIndex = 0
+        var lastRight: Int64?
+        var seen = Set<String>()
+        for values in parsed.rows {
+            guard values.count
+                    == CanonicalManualResultPackageBuilder.isiLabelsHeaders.count else {
+                throw invalid("row width does not match the manual ISI contract")
+            }
+            guard values[0] == manifest.canonicalSchemaContractID,
+                  values[1] == manifest.canonicalSchemaContractDigest,
+                  values[2] == manifest.canonicalDatasetDigest,
+                  values[3] == manifest.confirmedImportRecordDigest,
+                  values[4] == manifest.manualDecisionDigest,
+                  values[13] == manifest.reviewer,
+                  values[14] == manifest.confirmedAtUnixSeconds,
+                  values[15] == "sealed_complete_manual_review" else {
+                throw invalid("row identity or review evidence disagrees with manifest")
+            }
+            let trainID = values[5]
+            guard !trainID.isEmpty,
+                  let isiIndex = Int(values[6]), String(isiIndex) == values[6],
+                  let left = Int64(values[7]), String(left) == values[7],
+                  let right = Int64(values[8]), String(right) == values[8],
+                  let interval = Int64(values[9]), String(interval) == values[9],
+                  isiIndex > 0 else {
+                throw invalid("row contains a non-canonical integer or blank train ID")
+            }
+            let (expectedInterval, overflow) = right.subtractingReportingOverflow(left)
+            guard !overflow, interval == expectedInterval else {
+                throw invalid("ISI interval disagrees with exact timestamp subtraction")
+            }
+            let state = values[10]
+            let event = values[11]
+            let other = values[12]
+            guard validLabel(state, track: .state),
+                  validLabel(event, track: .event),
+                  validLabel(other, track: .other),
+                  !(other.isEmpty == false && (!state.isEmpty || !event.isEmpty)),
+                  !state.isEmpty || !event.isEmpty || !other.isEmpty else {
+                throw invalid("row labels violate track or complete-review rules")
+            }
+            let key = "\(trainID)\u{1}\(isiIndex)"
+            guard seen.insert(key).inserted else {
+                throw invalid("duplicate train/ISI key")
+            }
+            if trainID == lastTrain {
+                guard isiIndex == lastIndex + 1,
+                      lastRight == left else {
+                    throw invalid("train rows are not contiguous exact ISI geometry")
+                }
+            } else {
+                guard lastTrain.isEmpty
+                        || lastTrain.utf8.lexicographicallyPrecedes(trainID.utf8),
+                      isiIndex == 1 else {
+                    throw invalid("train order or first ISI index is not canonical")
+                }
+                lastTrain = trainID
+            }
+            lastIndex = isiIndex
+            lastRight = right
+            rows.append(CanonicalManualResultPackageReadRow(
+                trainID: trainID,
+                isiIndex: isiIndex,
+                leftTimestampMicroseconds: left,
+                rightTimestampMicroseconds: right,
+                intervalMicroseconds: interval,
+                statePattern: state,
+                eventPattern: event,
+                otherPattern: other
+            ))
+        }
+        return CanonicalManualResultPackageReadResult(
+            manifest: manifest,
+            rows: rows
+        )
+    }
+
     /// Source-compatible entry point retained for callers compiled against the B3 reader API.
     ///
     /// Descriptor-relative I/O is intentionally authoritative; the supplied `FileManager` is not used

@@ -6196,6 +6196,37 @@ func resultPackageManualOnlyProjectionUsesManualSourceMode() throws {
 }
 
 @Test
+func resultPackageManualHighFrequencyBurstUsesEventSemanticTrack() throws {
+    let fixture = resultPackageFixture()
+    let train = fixture.dataset.trains[0]
+    let annotation = ManualAnnotation(
+        id: UUID(uuidString: "d1100000-0000-0000-0000-000000000001")!,
+        trainID: train.id,
+        label: .highFrequencyBurst,
+        startSec: train.timestampsSec[1],
+        endSec: train.timestampsSec[3],
+        annotator: "Result Package Test Reviewer",
+        annotatorIdentitySource: .userProvided,
+        createdAt: Date(timeIntervalSince1970: 10),
+        updatedAt: Date(timeIntervalSince1970: 20)
+    )
+    let input = try STPDResultPackageInput.snapshot(
+        dataset: fixture.dataset,
+        run: fixture.run,
+        manualAnnotations: [annotation]
+    )
+    let package = try STPDResultPackageBuilder.build(input)
+    let events = try #require(package.table(.eventsFinal))
+    let matchingRow = try #require(events.rows.first { row in
+        guard let labelIndex = events.headers.firstIndex(of: "final_label") else { return false }
+        return row[labelIndex] == ManualAnnotationLabel.highFrequencyBurst.rawValue
+    })
+    let semanticTrackIndex = try #require(events.headers.firstIndex(of: "semantic_track"))
+
+    #expect(matchingRow[semanticTrackIndex] == ClassicAnchorSemanticTrack.event.rawValue)
+}
+
+@Test
 func resultPackagePositiveAnnotationOwnsOverlapWithInactiveNegativeVeto() throws {
     let fixture = resultPackageFixture()
     let automatic = STPDResultPackageInput.automatic(

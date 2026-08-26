@@ -103,6 +103,24 @@ struct BoundedScientificSourceReaderTests {
         }
     }
 
+    @Test("NEX has an explicit bounded snapshot path without entering CSV or XLSX staging")
+    func nexSnapshotIsAcceptedByItsDedicatedReader() throws {
+        try withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("recording.NEX")
+            let original = Data(repeating: 0x2A, count: 544)
+            try original.write(to: url)
+
+            let source = try BoundedScientificSourceReader.readNEX(from: url)
+
+            #expect(source.displayName == "recording.NEX")
+            #expect(source.snapshot == original)
+            #expect(source.byteCount == 544)
+            #expect(throws: BoundedScientificSourceReaderError.unsupportedFileExtension) {
+                try BoundedScientificSourceReader.read(from: url)
+            }
+        }
+    }
+
     private func withTemporaryDirectory<T>(_ body: (URL) throws -> T) throws -> T {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BoundedScientificSourceReaderTests")

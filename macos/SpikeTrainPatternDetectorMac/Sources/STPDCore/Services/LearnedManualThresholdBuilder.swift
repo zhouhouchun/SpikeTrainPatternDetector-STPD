@@ -208,7 +208,9 @@ public enum LearnedManualThresholdBuilder {
                     skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .missingQuantile))
                 }
 
-            case ManualAnnotationLabel.burst.rawValue, ManualAnnotationLabel.longBurst.rawValue:
+            case ManualAnnotationLabel.burst.rawValue,
+                 ManualAnnotationLabel.highFrequencyBurst.rawValue,
+                 ManualAnnotationLabel.longBurst.rawValue:
                 // Burst is learned from the combined `burst_family` row; the individual rows are redundant.
                 skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .supersededByBurstFamily))
 

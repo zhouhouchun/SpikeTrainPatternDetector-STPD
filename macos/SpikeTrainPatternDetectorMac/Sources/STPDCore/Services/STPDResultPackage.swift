@@ -3672,6 +3672,7 @@ private extension STPDResultPackageBuilder {
     static func manualSemanticTrack(for finalPattern: String) -> String {
         switch finalPattern {
         case ManualAnnotationLabel.burst.rawValue,
+             ManualAnnotationLabel.highFrequencyBurst.rawValue,
              ManualAnnotationLabel.longBurst.rawValue:
             return ClassicAnchorSemanticTrack.event.rawValue
         case ManualAnnotationLabel.pause.rawValue:

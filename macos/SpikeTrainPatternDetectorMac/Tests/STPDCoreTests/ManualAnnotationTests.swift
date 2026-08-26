@@ -1191,8 +1191,8 @@ func manualLabelMapsFromAutoLabel() {
     #expect(ManualAnnotationLabel(autoLabel: .highFrequencyTonic) == .highFrequencyTonic)
     #expect(ManualAnnotationLabel(autoLabel: .highFrequencySpiking) == .highFrequencySpiking)
     #expect(ManualAnnotationLabel(autoLabel: .pause) == .pause)
-    // Burst-family subtypes fold to the positive burst manual label.
-    #expect(ManualAnnotationLabel(autoLabel: .highFrequencyBurst) == .burst)
+    // HFB remains independently reviewable; uncertain possible-burst still folds to Burst.
+    #expect(ManualAnnotationLabel(autoLabel: .highFrequencyBurst) == .highFrequencyBurst)
     #expect(ManualAnnotationLabel(autoLabel: .possibleBurst) == .burst)
     // Non-event labels do not map (caller chooses a fallback / disables the action).
     #expect(ManualAnnotationLabel(autoLabel: .profile) == nil)

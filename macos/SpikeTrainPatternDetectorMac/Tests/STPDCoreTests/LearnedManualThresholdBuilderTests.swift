@@ -52,6 +52,22 @@ func burstLabelsProduceSoftBurstThresholds() {
     #expect(proposal.contributions.contains { $0.field == "bridge_upper_sec" && $0.statistic == "q95" })
 }
 
+@Test
+func highFrequencyBurstIndividualRowIsSupersededByBurstFamily() {
+    let proposal = LearnedManualThresholdBuilder.build(
+        from: summary([
+            calibRow(label: burstFamily, isFamily: true, q90: 0.012, q95: 0.016),
+            calibRow(label: ManualAnnotationLabel.highFrequencyBurst.rawValue, q90: 0.011, q95: 0.015),
+        ])
+    )
+
+    #expect(proposal.profile.burst.seedUpperISI.valueSec == 0.012)
+    #expect(proposal.skipped.contains {
+        $0.sourceLabel == ManualAnnotationLabel.highFrequencyBurst.rawValue
+            && $0.reason == .supersededByBurstFamily
+    })
+}
+
 // MARK: - 2. Tonic labels produce a soft tonic range (isiLower=q10, isiUpper=q90).
 
 @Test

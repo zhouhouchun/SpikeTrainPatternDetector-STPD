@@ -279,8 +279,10 @@ public enum ManualAnnotationCalibrationSummarizer {
 
         var rows: [ManualAnnotationCalibrationLabelSummary] = []
 
-        // Burst family (combine .burst + .longBurst positives) first, if present.
-        let burstFamilyLabels: [ManualAnnotationLabel] = [.burst, .longBurst]
+        // Burst family (including the independently reviewable HFB event) first, if present.
+        let burstFamilyLabels: [ManualAnnotationLabel] = [
+            .burst, .highFrequencyBurst, .longBurst
+        ]
         if burstFamilyLabels.contains(where: { byLabel[$0] != nil }) {
             var combined = Accumulator()
             for label in burstFamilyLabels {
@@ -352,12 +354,13 @@ public enum ManualAnnotationCalibrationSummarizer {
     // MARK: - Helpers
 
     private static let positiveLabelOrder: [ManualAnnotationLabel] = [
-        .burst, .longBurst, .tonic, .highFrequencyTonic, .highFrequencySpiking, .pause, .other
+        .burst, .highFrequencyBurst, .longBurst, .tonic,
+        .highFrequencyTonic, .highFrequencySpiking, .pause, .other
     ]
 
     private static func minUsableCount(for label: ManualAnnotationLabel) -> Int {
         switch label {
-        case .burst, .longBurst: return 3
+        case .burst, .highFrequencyBurst, .longBurst: return 3
         case .highFrequencyTonic: return 4
         case .highFrequencySpiking: return 8
         case .tonic: return 4
@@ -368,7 +371,7 @@ public enum ManualAnnotationCalibrationSummarizer {
 
     private static func recommendation(for label: ManualAnnotationLabel) -> String {
         switch label {
-        case .burst, .longBurst:
+        case .burst, .highFrequencyBurst, .longBurst:
             return "Preview: seed/profile upper ≈ q90, bridge/profile upper ≈ q95, dense-core ref ≈ q40 (ms). Not applied to the detector."
         case .highFrequencyTonic:
             return "Preview: lower ≈ q10, upper ≈ q90 (ms). Not applied to the detector."

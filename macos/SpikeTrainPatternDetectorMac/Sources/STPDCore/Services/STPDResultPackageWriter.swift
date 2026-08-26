@@ -336,6 +336,32 @@ public enum STPDResultPackageWriter {
         )
     }
 
+    /// Publishes a detector-independent, canonical complete-manual-review package through the same
+    /// descriptor-relative, no-replace, synchronized directory writer as detector result packages.
+    public static func writeCanonicalManualResult(
+        _ package: CanonicalManualResultPackage,
+        to destinationURL: URL,
+        parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy =
+            .privateCurrentUserOnly
+    ) throws {
+        try CanonicalManualResultPackageBuilder.validate(package)
+        try write(
+            files: [
+                (
+                    CanonicalManualResultPackageBuilder.isiLabelsFileName,
+                    package.isiLabelsCSV
+                ),
+                (
+                    CanonicalManualResultPackageBuilder.manifestFileName,
+                    try package.manifest.encodedData()
+                ),
+            ],
+            to: destinationURL,
+            parentDirectoryPolicy: parentDirectoryPolicy,
+            checkpoint: { _ in }
+        )
+    }
+
     /// Source-compatible entry point retained for callers compiled against the B2 writer API.
     ///
     /// Descriptor-relative I/O is intentionally authoritative; the supplied `FileManager` is not used
@@ -371,6 +397,29 @@ public enum STPDResultPackageWriter {
 
     private static func write(
         _ package: STPDResultPackage,
+        to destinationURL: URL,
+        parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy,
+        checkpoint: (Checkpoint) throws -> Void
+    ) throws {
+        var files: [(String, Data)] = []
+        files.reserveCapacity(STPDResultTable.allCases.count + 1)
+        for table in STPDResultTable.allCases {
+            guard let data = package.tables[table] else {
+                throw STPDResultPackageError.missingTable(table.rawValue)
+            }
+            files.append((table.rawValue, data.csvData))
+        }
+        files.append((STPDResultSchema.manifestFileName, try package.manifest.encodedData()))
+        try write(
+            files: files,
+            to: destinationURL,
+            parentDirectoryPolicy: parentDirectoryPolicy,
+            checkpoint: checkpoint
+        )
+    }
+
+    private static func write(
+        files: [(name: String, data: Data)],
         to destinationURL: URL,
         parentDirectoryPolicy: STPDResultPackageParentDirectoryPolicy,
         checkpoint: (Checkpoint) throws -> Void
@@ -472,23 +521,14 @@ public enum STPDResultPackageWriter {
         var stagedNames: [String] = []
 
         do {
-            for table in STPDResultTable.allCases {
-                guard let data = package.tables[table] else {
-                    throw STPDResultPackageError.missingTable(table.rawValue)
-                }
+            for file in files {
                 try writeNewRegularFile(
-                    data.csvData,
-                    name: table.rawValue,
+                    file.data,
+                    name: file.name,
                     directoryFD: payloadFD,
                     stagedNames: &stagedNames
                 )
             }
-            try writeNewRegularFile(
-                package.manifest.encodedData(),
-                name: STPDResultSchema.manifestFileName,
-                directoryFD: payloadFD,
-                stagedNames: &stagedNames
-            )
             try syncDescriptor(
                 payloadFD,
                 path: parent.appendingPathComponent(workspaceName)
