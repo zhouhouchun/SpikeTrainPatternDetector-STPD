@@ -4,7 +4,7 @@ import Testing
 
 @Test
 func phase1a3aResolverMergesOnlySelectedIrregularTonicFragments() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let settings = phase1a3aSettings()
     var left = phase1a3aCandidate(
         train: train,
@@ -41,7 +41,9 @@ func phase1a3aResolverMergesOnlySelectedIrregularTonicFragments() throws {
             $0.startISIIndex == 1 &&
             $0.endISIIndex == 57
     })
-    #expect(merged.stateTonicSubtype == "irregular")
+    // The supplied fragments are irregular proposals, but the resolver must subtype the merged
+    // candidate from the actual revalidated support. This stable authority fixture is classic.
+    #expect(merged.stateTonicSubtype == "classic")
     #expect(merged.decisionPath.contains("irregular_tonic_micro_gap_merge=true"))
     #expect(merged.decisionPath.contains("merge_fragment_authority=caller_authorized_fragment_ids"))
     #expect(merged.decisionPath.contains("merged_span_qc_complete=true"))
@@ -62,7 +64,11 @@ func phase1a3aResolverMergesOnlySelectedIrregularTonicFragments() throws {
         #expect(auditFragment.startISIIndex == fragment.startISIIndex)
         #expect(auditFragment.endISIIndex == fragment.endISIIndex)
         #expect(auditFragment.stateTonicSubtype == fragment.stateTonicSubtype)
-        #expect(auditFragment.cv2 == fragment.cv2)
+        let values = (fragment.startISIIndex...fragment.endISIIndex).compactMap {
+            train.isiSec[$0]
+        }
+        #expect(abs((auditFragment.cv2 ?? .infinity) -
+            (STPDStatistics.coefficientOfVariation2(values) ?? -.infinity)) < 1e-12)
     }
 
     let rerun = MultiTrackPhase1BResolver.resolve(
@@ -78,7 +84,11 @@ func phase1a3aResolverMergesOnlySelectedIrregularTonicFragments() throws {
             "not_selected__consumed_by_irregular_tonic_micro_gap_merge")
         #expect(auditFragment.stateContinuityAuthorityFrozen)
         #expect(auditFragment.decisionPath.contains("state_continuity_consumed=true"))
-        #expect(auditFragment.cv2 == fragment.cv2)
+        let values = (fragment.startISIIndex...fragment.endISIIndex).compactMap {
+            train.isiSec[$0]
+        }
+        #expect(abs((auditFragment.cv2 ?? .infinity) -
+            (STPDStatistics.coefficientOfVariation2(values) ?? -.infinity)) < 1e-12)
     }
 }
 
@@ -399,7 +409,7 @@ func phase1a3aInvalidManualTonicHardGateFailsClosed() {
 }
 
 @Test
-func phase1a3aSelectedPauseAndBurstRemainHardMergeBoundaries() {
+func phase1a3aSelectedHardPausesAndBurstRemainHardMergeBoundaries() {
     let train = phase1a3aMergeTrain(gapISISec: 0.045)
     let settings = phase1a3aSettings()
     let fragments = phase1a3aFragments(train: train)
@@ -425,6 +435,17 @@ func phase1a3aSelectedPauseAndBurstRemainHardMergeBoundaries() {
         subtype: nil,
         selected: true
     )
+    let contextualPause = phase1a3aCandidate(
+        train: train,
+        id: "selected-contextual-pause",
+        label: .pause,
+        start: 29,
+        end: 29,
+        priority: 1_500,
+        subtype: nil,
+        selected: true,
+        pauseBoundaryRole: .contextualPause
+    )
 
     let pauseBlocked = StatePatternDetector.mergeIrregularTonicMicroGaps(
         train: train,
@@ -442,11 +463,21 @@ func phase1a3aSelectedPauseAndBurstRemainHardMergeBoundaries() {
         settings: settings,
         authorizedFragmentIDs: authorized
     )
+    let contextualPauseBlocked = StatePatternDetector.mergeIrregularTonicMicroGaps(
+        train: train,
+        candidates: fragments + [contextualPause],
+        selectedEvents: [],
+        selectedGaps: [contextualPause],
+        settings: settings,
+        authorizedFragmentIDs: authorized
+    )
 
     #expect(!pauseBlocked.contains { $0.startISIIndex == 1 && $0.endISIIndex == 57 })
     #expect(!burstBlocked.contains { $0.startISIIndex == 1 && $0.endISIIndex == 57 })
+    #expect(!contextualPauseBlocked.contains { $0.startISIIndex == 1 && $0.endISIIndex == 57 })
     #expect(pauseBlocked.contains { $0.id == pause.id })
     #expect(burstBlocked.contains { $0.id == burst.id })
+    #expect(contextualPauseBlocked.contains { $0.id == contextualPause.id })
 }
 
 @Test
@@ -987,7 +1018,7 @@ func phase1a3aGeneratedMergeIsTerminalAcrossLaterContinuityPasses() throws {
 
 @Test
 func phase1a3aUnselectedHFSProposalDoesNotBlockAuthorizedMerge() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let fragments = phase1a3aFragments(train: train)
     let hfsProposal = phase1a3aCandidate(
         train: train,
@@ -1020,7 +1051,7 @@ func phase1a3aUnselectedHFSProposalDoesNotBlockAuthorizedMerge() throws {
 
 @Test
 func phase1a3aResolverDoesNotRepromoteWeightedSelectionLoser() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let left = phase1a3aCandidate(
         train: train,
         id: "selected-irregular-left",
@@ -1074,7 +1105,7 @@ func phase1a3aResolverDoesNotRepromoteWeightedSelectionLoser() throws {
 
 @Test
 func phase1a3aResolverQualifiesDuplicateCandidateIDsByTrain() throws {
-    let targetTrain = phase1a3aMergeTrain(gapISISec: 0.045)
+    let targetTrain = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let otherTrain = phase1a3aTrain(
         isi: Array(repeating: 0.040, count: 57),
         name: "phase1a3a-other-train"
@@ -1152,7 +1183,7 @@ func phase1a3aResolverQualifiesDuplicateCandidateIDsByTrain() throws {
 
 @Test
 func phase1a3aFinalArbitrationKeepsPriorStateLosersFrozenAfterMerge() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let fragments = phase1a3aFragments(train: train)
     let leftAlternative = phase1a3aCandidate(
         train: train,
@@ -1198,7 +1229,7 @@ func phase1a3aFinalArbitrationKeepsPriorStateLosersFrozenAfterMerge() throws {
 
 @Test
 func phase1a3aResolverSecondPassCannotRepromoteFrozenStateLosers() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let fragments = phase1a3aFragments(train: train)
     let alternatives = [
         phase1a3aCandidate(
@@ -1252,7 +1283,7 @@ func phase1a3aResolverSecondPassCannotRepromoteFrozenStateLosers() throws {
 
 @Test
 func phase1a3aForgedMergeProvenanceDoesNotGrantSelectionAuthority() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let fragments = phase1a3aFragments(train: train)
     let stale = phase1a3aCandidate(
         train: train,
@@ -1291,7 +1322,7 @@ func phase1a3aForgedMergeProvenanceDoesNotGrantSelectionAuthority() throws {
 
 @Test
 func phase1a3aGeneratedIdentityCollisionReplacesStaleCandidateWithoutTrap() throws {
-    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let train = phase1a3aAuthorityValidMergeTrain(gapISISec: 0.041)
     let fragments = phase1a3aFragments(train: train)
     let generatedID = "\(train.id)-irregular-tonic-micro-merge-1-57"
     let stale = phase1a3aCandidate(
@@ -1429,6 +1460,16 @@ private func phase1a3aMergeTrain(gapISISec: Double) -> SpikeTrain {
         55.0, 42.9, 22.0, 24.1, 33.2, 55.0, 37.6, 33.6, 22.2, 29.5, 30.5, 22.0, 22.8, 46.5
     ]
     return phase1a3aTrain(isi: leftMs.map { $0 / 1000 } + [gapISISec] + rightMs.map { $0 / 1000 })
+}
+
+/// Resolver-level tests exercise frozen selection authority in addition to the low-level merge
+/// transform. Their fixture must therefore satisfy the approved automatic state-support contract;
+/// the intentionally broad 22–55 ms stress fixture above remains reserved for direct merge-gate tests.
+private func phase1a3aAuthorityValidMergeTrain(gapISISec: Double) -> SpikeTrain {
+    let stableCycle = [0.039, 0.040, 0.041]
+    let left = (0..<28).map { stableCycle[$0 % stableCycle.count] }
+    let right = (0..<28).map { stableCycle[($0 + 1) % stableCycle.count] }
+    return phase1a3aTrain(isi: left + [gapISISec] + right)
 }
 
 private func phase1a3aTrain(

@@ -323,8 +323,11 @@ func relativeHFSDiscontiguousSupportIsIdentityBearingAndPackageValidated() throw
         let index = try #require(features.headers.firstIndex(of: column))
         return featureRow[index]
     }
-    #expect(try value("state_direct_support_spans") == "[\"2:17:\",\"19:34:\"]")
-    #expect(try value("state_interruption_spans") == "[\"18:18:\"]")
+    // The HFS authority resolver now constructs these spans explicitly. HFS is not one of the
+    // generic `ISIPatternFamily` hints, so `unknown` is intentionally identity-bearing rather
+    // than silently collapsing back to a nil family hint during package serialization.
+    #expect(try value("state_direct_support_spans") == "[\"2:17:unknown\",\"19:34:unknown\"]")
+    #expect(try value("state_interruption_spans") == "[\"18:18:unknown\"]")
     #expect(try value("state_direct_support_isi_count") == "32")
     #expect(try value("state_direct_support_adjacent_pair_count") == "30")
 }

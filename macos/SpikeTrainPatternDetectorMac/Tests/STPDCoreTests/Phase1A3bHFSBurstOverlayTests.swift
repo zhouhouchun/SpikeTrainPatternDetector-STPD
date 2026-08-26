@@ -57,7 +57,7 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
         )
     }
 
-    func testPhase1A3bBriefContextualAndUnspecifiedPausesDoNotSplitHFS() {
+    func testPhase1A3bOnlyBriefAndUnspecifiedPausesPreserveHFSOccupancy() {
         let train = makeTrain(
             intervals: intervals(
                 count: 60,
@@ -75,7 +75,6 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
         )
         let roles: [(String, PauseBoundaryRole?)] = [
             ("brief", .briefStateInterruption),
-            ("contextual", .contextualPause),
             ("unspecified", nil),
         ]
 
@@ -108,6 +107,46 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
                 name
             )
         }
+    }
+
+    func testPhase1A3bMaterializedContextualPauseSplitsHFS() {
+        let train = makeTrain(
+            intervals: intervals(
+                count: 60,
+                base: 0.01,
+                replacing: [(30...30, 0.08)]
+            )
+        )
+        let hfs = makeCandidate(
+            id: "hfs-parent",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 60,
+            priority: 1_040,
+            q50: 0.01
+        )
+        let contextualPause = makeCandidate(
+            id: "contextual-pause",
+            label: .pause,
+            start: 30,
+            end: 30,
+            priority: 900,
+            selected: true,
+            q50: 0.08,
+            pauseBoundaryRole: .contextualPause
+        )
+
+        let fragments = StateEventCompatibilityResolver.splitStateCandidates(
+            train: train,
+            candidates: [hfs, contextualPause],
+            selectedEvents: [],
+            selectedGaps: [contextualPause],
+            settings: hfsSettings
+        )
+
+        XCTAssertEqual(fragments.map(\.startISIIndex), [1, 31])
+        XCTAssertEqual(fragments.map(\.endISIIndex), [29, 60])
+        XCTAssertTrue(fragments.allSatisfy { $0.finalLabel == .highFrequencySpiking })
     }
 
     func testPhase1A3bBurstAloneDoesNotGenerateHFSFragmentsWithoutTonicEvidence() {
@@ -1080,7 +1119,7 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
         pauseBoundaryRole: PauseBoundaryRole? = nil
     ) -> ClassicAnchorCandidate {
         let nISI = max(1, end - start + 1)
-        return ClassicAnchorCandidate(
+        var candidate = ClassicAnchorCandidate(
             id: id,
             trainID: trainID,
             trainName: trainID,
@@ -1128,5 +1167,10 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             refractorySuspectAction: nil,
             pauseBoundaryRole: pauseBoundaryRole
         )
+        if label == .burst {
+            candidate.burstSeedRunStartISI = start
+            candidate.burstSeedRunEndISI = end
+        }
+        return candidate
     }
 }

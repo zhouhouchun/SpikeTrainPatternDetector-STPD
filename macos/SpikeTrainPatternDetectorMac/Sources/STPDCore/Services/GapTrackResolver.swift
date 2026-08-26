@@ -149,6 +149,9 @@ public enum GapTrackResolver {
         if isFormalStructuralFlankPause(candidate) {
             rank += 80
         }
+        if isContextualInterburstPause(candidate) {
+            rank += 100
+        }
         if isMonotonicCompletion(candidate) {
             rank += 40
         }
@@ -161,6 +164,9 @@ public enum GapTrackResolver {
         }
         if isFormalStructuralFlankPause(candidate) {
             return "selected_by_gap_track_structural_flank_pause"
+        }
+        if isContextualInterburstPause(candidate) {
+            return "selected_by_gap_track_contextual_interburst_pause"
         }
         return "selected_by_gap_track_pause_evidence"
     }
@@ -179,6 +185,13 @@ public enum GapTrackResolver {
         return text.contains("pause_monotonic_completion") ||
             text.contains("pause_floor_completion") ||
             text.contains("monotonic_pause_completion")
+    }
+
+    private static func isContextualInterburstPause(
+        _ candidate: ClassicAnchorCandidate
+    ) -> Bool {
+        candidate.candidateLayer == "contextual_interburst_pause" &&
+            candidate.pauseBoundaryRole == .contextualPause
     }
 
     private static func overlapCount(
