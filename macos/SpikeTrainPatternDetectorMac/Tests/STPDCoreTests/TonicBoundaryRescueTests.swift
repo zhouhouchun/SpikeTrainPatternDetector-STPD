@@ -23,17 +23,23 @@ func tonicBoundaryRescueIncludesStableLeftNeighbors() throws {
         $0.selectedForAuto &&
             $0.finalLabel == .tonic &&
             $0.startISIIndex <= 1 &&
-            $0.endISIIndex >= 10
+            $0.endISIIndex >= 9
     })
 
     #expect(rescued.startISIIndex == 1)
-    #expect(rescued.endISIIndex == 10)
-    // TSW-INTEGRATION: the stable left neighbors are now captured DIRECTLY by the first-stage expandable
-    // sliding window (one maximal [1...10] structural window), rather than requiring the boundary-rescue
-    // post-pass to add them back — exactly the fragmentation the sliding window removes. Provenance reflects
-    // the structural window instead of `tonic_boundary_rescue=true` / `rescued_left_isi=2`.
-    #expect(rescued.decisionPath.contains("tonic_structural_window"))
-    #expect(rescued.decisionPath.contains("expanded_window"))
+    #expect(rescued.endISIIndex == 9)
+    // TSW first captures the maximal [1...10] structural window. ISI 10 is a valid edge deviation
+    // without bilateral core recovery; the authoritative state-support pass trims it, revalidates
+    // [1...9], and retains the original proposal as an audit-only parent.
+    let auditParent = try #require(candidates.first {
+        $0.id == "\(train.id)-tonic-state-1" &&
+            $0.finalLabel == .reject &&
+            $0.decisionPath.contains("state_support_edge_deviation_trimmed")
+    })
+    #expect(auditParent.decisionPath.contains("tonic_structural_window"))
+    #expect(auditParent.decisionPath.contains("expanded_window"))
+    #expect(rescued.decisionPath.contains("state_track_split_fragment"))
+    #expect(rescued.decisionPath.contains("state_support_edge_trim=true"))
     #expect(rescued.cv.map { $0 <= 0.30 + 1e-12 } ?? false)
     #expect(rescued.cv2.map { $0 <= 0.30 + 1e-12 } ?? false)
     #expect(rescued.lv.map { $0 <= 0.35 + 1e-12 } ?? false)

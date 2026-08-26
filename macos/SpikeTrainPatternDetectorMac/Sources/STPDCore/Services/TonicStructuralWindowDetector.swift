@@ -1,15 +1,16 @@
 import Foundation
 
-// MARK: - TSW-1 — first-stage tonic STRUCTURAL window detector (pure, UNWIRED)
+// MARK: - TSW-1 — first-stage tonic STRUCTURAL window detector
 //
 // Discovers tonic structure directly from a train's QC-filtered SEQUENTIAL ISI series. It is the missing
 // UPSTREAM producer of structural candidates: it consumes NO final labels and does NOT start from a
 // global/adaptive tonic ISI band. A distribution-derived burst prior is used ONLY as a POST-window
 // contamination VETO (never as a starting membership band).
 //
-// TSW-1 provides the pure building blocks only — the per-window regularity GATE (short-window compactness
-// vs long-window CV/CV2/LV), an adjacent-ratio helper, and the burst-contamination GUARD — plus the
-// candidate/output model. The stride-1 seed scan, merge, and boundary-refine emission come in TSW-2/3.
+// TSW-1 provides pure building blocks — the per-window structural evidence tier (short-window compactness
+// plus long-window CV/CV2/LV reporting), an adjacent-ratio helper, and the burst-contamination GUARD — plus
+// the candidate/output model. The stride-1 seed scan, merge, and boundary-refine emission come in TSW-2/3;
+// production consumes those windows before the final state-support authority pass.
 //
 // Metric parity: all CV/CV2/LV come from `ISISpanMetrics` / `STPDStatistics` (never hand-rolled). Scale
 // freedom: every gate is a ratio or a config-supplied floor; there are NO fixed absolute-ms literals in
@@ -83,8 +84,13 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
     /// Per-step / short-window local guard: the maximum allowed adjacent ISI ratio (scale-free). Defaults
     /// to the compactness high ratio so the local and whole-window guards agree.
     public var adjacentRatioMax: Double
-    /// Minimum valid ISIs at which the gate switches from compactness to CV/CV2/LV.
+    /// Minimum valid ISIs at which the reported evidence switches from compactness to CV/CV2/LV.
     public var longWindowMinISI: Int
+    /// When true, long-window CV/CV2/LV are retained as descriptive regularity evidence but no individual
+    /// metric can veto a structural proposal. Production enables this because the authoritative decision is
+    /// made later by the shared maximum-consensus core/deviation contract after event topology is frozen.
+    /// The reusable low-level helper defaults to strict behavior for backwards-compatible independent use.
+    public var longWindowMetricsAreDescriptiveOnly: Bool
     /// TSW-2A: ratio a classic-tonic window's median must clear above a TRUSTED burst boundary (mirrors
     /// StatePatternDetector's burstSeedUpper*1.25). Dimensionless / scale-free.
     public var classicTonicBurstFloorRatio: Double
@@ -103,12 +109,12 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
     /// This is what stops a fast-dominated train's low q25 from confirming fast regular windows as classic.
     public var classicTonicMinRefractoryMultiple: Double
     /// Optional shared state-support policy. When present, its core/deviation accounting is emitted as
-    /// audit evidence for every evaluated tonic window. The historical compactness/CV path remains
-    /// authoritative unless `enforcesStateSupportEligibility` is explicitly enabled by a calibrated run.
+    /// evidence for every evaluated tonic window. The caller explicitly chooses whether the policy is
+    /// descriptive or authoritative through `enforcesStateSupportEligibility`.
     public var stateSupportSettings: StateSupportClassifierSettings?
     /// When true, a window that fails the shared core/deviation support policy cannot become an automatic
-    /// tonic candidate. It defaults to false while the policy is calibrated against real recordings, so
-    /// callers can inspect the evidence without silently changing labels.
+    /// tonic candidate. It defaults to false for the reusable low-level helper. Production applies the
+    /// approved authoritative contract later, after event/gap topology is frozen and interruptions are known.
     public var enforcesStateSupportEligibility: Bool
 
     public init(
@@ -117,6 +123,7 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
         refractoryFloorMultiplier: Double = 3.0,
         adjacentRatioMax: Double? = nil,
         longWindowMinISI: Int = 5,
+        longWindowMetricsAreDescriptiveOnly: Bool = false,
         classicTonicBurstFloorRatio: Double = 1.25,
         tonicReviewBufferRatio: Double = 1.25,
         minBurstSupportCountForValley: Int = 2,
@@ -130,6 +137,7 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
         self.refractoryFloorMultiplier = refractoryFloorMultiplier
         self.adjacentRatioMax = adjacentRatioMax ?? thresholds.tonicLocalRatioHigh
         self.longWindowMinISI = longWindowMinISI
+        self.longWindowMetricsAreDescriptiveOnly = longWindowMetricsAreDescriptiveOnly
         self.classicTonicBurstFloorRatio = classicTonicBurstFloorRatio
         self.tonicReviewBufferRatio = tonicReviewBufferRatio
         self.minBurstSupportCountForValley = minBurstSupportCountForValley
@@ -257,10 +265,11 @@ public enum TonicStructuralWindowDetector {
         return (fallback, "refractory_x\(config.refractoryFloorMultiplier)")
     }
 
-    /// Per-window regularity gate. Short windows (< `longWindowMinISI` valid ISIs) use median range-ratio
-    /// compactness; longer windows use CV/CV2/LV from `ISISpanMetrics`. Both tiers also apply the local
-    /// adjacent-ratio cap. Returns pass/fail, the per-metric signals, the first failing reason, and which
-    /// tier was used.
+    /// Per-window structural gate. Short windows (< `longWindowMinISI` valid ISIs) use median range-ratio
+    /// compactness. Longer windows always report CV/CV2/LV from `ISISpanMetrics`; the caller chooses whether
+    /// those metrics are strict low-level gates or descriptive proposal evidence. Both tiers also apply the
+    /// local adjacent-ratio cap. Returns pass/fail, the per-metric signals, the first failing reason, and
+    /// which tier was used.
     public static func regularityGate(
         metrics: ISISpanMetrics, config: TonicStructuralWindowConfig
     ) -> (passed: Bool, signals: [EvidenceSignal], failReason: TonicWindowBoundaryReason?, usedLongMetrics: Bool) {
@@ -284,6 +293,11 @@ public enum TonicStructuralWindowDetector {
             )
             let eligible = support.isEligibleForAutomaticTonic(settings: supportSettings)
             signals += [
+                EvidenceSignal(
+                    key: "tonic_state_support_policy_enforced", status: .pass, role: .audit,
+                    observedValue: config.enforcesStateSupportEligibility ? 1 : 0,
+                    message: config.enforcesStateSupportEligibility ? "authoritative" : "descriptive"
+                ),
                 EvidenceSignal(
                     key: "tonic_state_support_n_support", status: .pass, role: .audit,
                     observedValue: Double(support.nSupport),
@@ -315,16 +329,24 @@ public enum TonicStructuralWindowDetector {
         if long {
             let cv = metrics.cv ?? .infinity
             signals.append(EvidenceSignal(key: "tonic_cv", status: cv <= t.tonicCVMax ? .pass : .fail,
-                                          role: .regularity, observedValue: metrics.cv, requiredValue: t.tonicCVMax))
-            if cv > t.tonicCVMax { return (false, signals, .cvExceeded, true) }
+                                          role: config.longWindowMetricsAreDescriptiveOnly ? .audit : .regularity,
+                                          observedValue: metrics.cv, requiredValue: t.tonicCVMax,
+                                          message: config.longWindowMetricsAreDescriptiveOnly ? "descriptive; not an individual veto" : "strict low-level gate"))
             let cv2 = metrics.cv2 ?? .infinity
             signals.append(EvidenceSignal(key: "tonic_cv2", status: cv2 <= t.tonicCV2Max ? .pass : .fail,
-                                          role: .regularity, observedValue: metrics.cv2, requiredValue: t.tonicCV2Max))
-            if cv2 > t.tonicCV2Max { return (false, signals, .cv2Exceeded, true) }
+                                          role: config.longWindowMetricsAreDescriptiveOnly ? .audit : .regularity,
+                                          observedValue: metrics.cv2, requiredValue: t.tonicCV2Max,
+                                          message: config.longWindowMetricsAreDescriptiveOnly ? "descriptive; not an individual veto" : "strict low-level gate"))
             let lv = metrics.lv ?? .infinity
             signals.append(EvidenceSignal(key: "tonic_lv", status: lv <= t.tonicLVMax ? .pass : .fail,
-                                          role: .regularity, observedValue: metrics.lv, requiredValue: t.tonicLVMax))
-            if lv > t.tonicLVMax { return (false, signals, .lvExceeded, true) }
+                                          role: config.longWindowMetricsAreDescriptiveOnly ? .audit : .regularity,
+                                          observedValue: metrics.lv, requiredValue: t.tonicLVMax,
+                                          message: config.longWindowMetricsAreDescriptiveOnly ? "descriptive; not an individual veto" : "strict low-level gate"))
+            if !config.longWindowMetricsAreDescriptiveOnly {
+                if cv > t.tonicCVMax { return (false, signals, .cvExceeded, true) }
+                if cv2 > t.tonicCV2Max { return (false, signals, .cv2Exceeded, true) }
+                if lv > t.tonicLVMax { return (false, signals, .lvExceeded, true) }
+            }
         } else {
             let low = median * t.tonicLocalRatioLow
             let high = median * t.tonicLocalRatioHigh
@@ -455,7 +477,7 @@ public enum TonicStructuralWindowDetector {
     }
 
     /// Evaluate one span of a real train end-to-end: compute `ISISpanMetrics` (QC-filtered, parity with
-    /// the D3/D4 layers), apply the regularity gate then the burst guard, then TSW-2A family/magnitude
+    /// the D3/D4 layers), apply the structural evidence policy then the burst guard, then TSW-2A family/magnitude
     /// routing; return an accepted candidate (with its route) or a rejection with its boundary reason.
     public static func evaluateWindow(
         train: SpikeTrain, span: ISISpan, source: TonicWindowSource = .seed,
@@ -499,7 +521,7 @@ public enum TonicStructuralWindowDetector {
     // MARK: TSW-2 — sequence-level scan
 
     /// Stride-1 sequence scan: slides a minimum seed window (`max(2, tonicMinSpikes - 1)` ISIs) across the
-    /// train's valid ISI slots (indices `1...`), evaluates each seed with the TSW-1 gate + burst guard,
+    /// train's valid ISI slots (indices `1...`), evaluates each seed with the TSW-1 policy + burst guard,
     /// merges overlapping/contiguous PASSING seeds only when the full merged span re-validates, emits
     /// MAXIMAL DISJOINT candidates, and records right-edge boundary provenance. It reads the raw QC ISI
     /// series directly — NOT a global/adaptive tonic band. Deterministic: the result is sorted by
@@ -520,7 +542,7 @@ public enum TonicStructuralWindowDetector {
         let floor = Swift.max(0, config.thresholds.minimumValidISISec)
 
         // A span is a valid tonic window only when every ISI in it is QC-valid AND it clears the TSW-1
-        // regularity gate + burst guard.
+        // structural evidence policy + burst guard.
         func accepts(_ start: Int, _ end: Int) -> Bool {
             guard spanHasOnlyValidISIs(train, start, end, floor: floor) else { return false }
             let span = ISISpan(trainID: train.id, startISIIndex: start, endISIIndex: end, familyHint: .tonic)

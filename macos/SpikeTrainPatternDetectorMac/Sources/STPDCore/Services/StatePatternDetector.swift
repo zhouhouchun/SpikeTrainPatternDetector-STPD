@@ -23,9 +23,10 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     public var tonicCVMax: Double
     public var tonicCV2Max: Double
     public var tonicLVMax: Double
-    /// Relaxed regularity bands for the irregular-tonic subtype (only used after classic
-    /// regularity fails and tonic-family structural eligibility passes). Classic tonic
-    /// defaults are unchanged; these are strictly wider and are explicit/auditable.
+    /// Descriptive regularity bands for the irregular-tonic subtype. They characterize a
+    /// structurally eligible proposal after the classic band fails; neither the classic nor
+    /// irregular CV/CV2/LV band has automatic-label authority. Final authority belongs to the
+    /// downstream maximum-consensus core/deviation contract after event topology is frozen.
     public var irregularTonicCVMax: Double
     public var irregularTonicCV2Max: Double
     public var irregularTonicLVMax: Double
@@ -594,9 +595,13 @@ public enum StatePatternDetector {
             return start <= gapUpper && end >= gapLower
         }
         if selectedGaps.contains(where: {
-            $0.finalLabel == .pause &&
-                $0.pauseBoundaryRole == .canonicalPauseAnchor &&
-                overlapsGap($0)
+            guard $0.finalLabel == .pause, overlapsGap($0) else { return false }
+            switch $0.pauseBoundaryRole {
+            case .canonicalPauseAnchor, .contextualPause:
+                return true
+            case .briefStateInterruption, nil:
+                return false
+            }
         }) {
             return true
         }
@@ -752,7 +757,6 @@ public enum StatePatternDetector {
             (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
             (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
             (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
-        guard classicRegularityPass || irregularRegularityPass else { return nil }
         let subtype = classicRegularityPass ? "classic" : "irregular"
 
         let regularityScore = mean([
@@ -799,6 +803,7 @@ public enum StatePatternDetector {
                 "merged_gap_fraction=\(format(mergedGapFraction))",
                 "classic_regularity_pass=\(classicRegularityPass)",
                 "irregular_regularity_pass=\(irregularRegularityPass)",
+                "regularity_metrics_authority=descriptive_only",
                 "tonic_family_structural_eligibility_pass=\(structuralEligibilityPass)"
             ]
         )
@@ -2233,14 +2238,21 @@ public enum StatePatternDetector {
                 metrics.cv2.map { 1 / (1 + $0) },
                 metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
-            // HF tonic uses a separate magnitude/packet guard, but it is still a state and should expose
-            // the same core/deviation evidence as ordinary tonic. This is audit-only until the shared
-            // policy is calibrated for the fast range; no HF-tonic label changes in this slice.
-            let stateSupportAudit = stateSupportAuditTokens(
+            let regularityAudit = [
+                "regularity_metrics_authority=descriptive_only",
+                "cv_threshold_pass=\(cvPass)",
+                "cv2_threshold_pass=\(cv2Pass)",
+                "lv_threshold_pass=\(lvPass)"
+            ]
+            // Candidate generation remains parallel and evidence-preserving. The shared support contract
+            // becomes authoritative only after selected event/gap interruptions have been removed in Phase 1B.
+            let stateSupport = stateSupportEvidence(
                 values: metrics.values,
-                minimumValidISISec: settings.minValidISISec
+                minimumValidISISec: settings.minValidISISec,
+                enforced: false
             )
-            if !q90Pass || !lowTailPass || !burstSeedFractionPass || !burstCoreVetoPass || !fastPacketPass || !cvPass || !cv2Pass || !lvPass || !classicBoundaryPass {
+            if !q90Pass || !lowTailPass || !burstSeedFractionPass || !burstCoreVetoPass || !fastPacketPass
+                || !classicBoundaryPass {
                 var rejectReasons: [String] = []
                 if !q90Pass {
                     rejectReasons.append("reject_hf_tonic_q90_above_band")
@@ -2257,22 +2269,13 @@ public enum StatePatternDetector {
                 if !fastPacketPass {
                     rejectReasons.append("reject_hf_tonic_fast_packet_core_occupancy")
                 }
-                if !cvPass {
-                    rejectReasons.append("reject_hf_tonic_cv_unstable")
-                }
-                if !cv2Pass {
-                    rejectReasons.append("reject_hf_tonic_cv2_unstable")
-                }
-                if !lvPass {
-                    rejectReasons.append("reject_hf_tonic_lv_unstable")
-                }
                 if !classicBoundaryPass {
                     rejectReasons.append("reject_hf_tonic_has_classic_burst_boundary")
                 }
                 let rejectDecisionPath = stateDecisionPath(
                     base: "reject_high_frequency_tonic_state_candidate",
                     metrics: metrics,
-                    extra: rejectReasons + relativeProvenance + stateSupportAudit + [
+                    extra: rejectReasons + relativeProvenance + stateSupport.tokens + regularityAudit + [
                         "low_tail_fraction=\(format(lowTail))",
                         "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
                         "burst_seed_fraction=\(format(burstSeedFraction))",
@@ -2317,7 +2320,7 @@ public enum StatePatternDetector {
             let decisionPath = stateDecisionPath(
                 base: "stable_high_frequency_tonic_state_above_burst_core_floor",
                 metrics: metrics,
-                extra: relativeProvenance + stateSupportAudit + [
+                extra: relativeProvenance + stateSupport.tokens + regularityAudit + [
                     "tonic_subtype=high_frequency",
                     "low_tail_fraction=\(format(lowTail))",
                     "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
@@ -2409,8 +2412,9 @@ public enum StatePatternDetector {
             }
             let tswProvenance = (spec.tsw.map(tonicStructuralWindowProvenance) ?? []) + spec.carve
 
-            // A TSW run is a WHOLE validated regular window (TSW enforced CV/CV2/LV + adjacent-ratio +
-            // burst-cleanliness on the full span), so the band-coupled "bridge" audit — which counts ISIs
+            // A TSW run is a WHOLE structural proposal (TSW enforced adjacent-ratio + burst-cleanliness and
+            // retained CV/CV2/LV as descriptive evidence on the full span), so the band-coupled "bridge"
+            // audit — which counts ISIs
             // that fall outside the narrow support band — does not apply: every ISI in the window is tonic-
             // supported by construction. Applying it would re-introduce the exact band-clipping the sliding
             // window removes (a clean run whose jitter pokes just outside the band would be spuriously
@@ -2442,11 +2446,10 @@ public enum StatePatternDetector {
             // materialize every magnitude route as classic Tonic. Only the explicit classic-tonic route
             // may enter this label path. Legacy (non-TSW) runs preserve their prior behavior.
             let tonicMagnitudeRoutePass = spec.tsw.map { $0.route == .classicTonic } ?? true
-            // Tonic family subtype. finalLabel stays .tonic for classic and irregular; only
-            // the auditable subtype differs. Structural eligibility (burst-seed / core-run /
-            // fast-packet / bridge guards) is required for BOTH subtypes. Irregular only
-            // relaxes the regularity bands AFTER eligibility holds, so it can never become a
-            // backdoor for burst / fast-packet / pause-dominated runs.
+            // Tonic family subtype. finalLabel stays .tonic for classic and irregular; only the
+            // auditable subtype differs. CV/CV2/LV characterize the proposal but no individual metric
+            // has label authority. Structural eligibility is still required here, and the shared
+            // maximum-consensus core/deviation contract becomes authoritative after event topology freezes.
             let structuralEligibilityPass = burstSeedFractionPass && coreRunPass && fastPacketPass
                 && bridgeFractionPass && tonicMagnitudeRoutePass
             let classicRegularityPass = cvPass && cv2Pass && lvPass
@@ -2454,14 +2457,9 @@ public enum StatePatternDetector {
             let irregularCv2Pass = metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true
             let irregularLvPass = metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true
             let irregularRegularityPass = irregularCvPass && irregularCv2Pass && irregularLvPass
-            let tonicSubtype: String?
-            if structuralEligibilityPass && classicRegularityPass {
-                tonicSubtype = "classic"
-            } else if structuralEligibilityPass && irregularRegularityPass {
-                tonicSubtype = "irregular"
-            } else {
-                tonicSubtype = nil
-            }
+            let tonicSubtype = structuralEligibilityPass
+                ? (classicRegularityPass ? "classic" : "irregular")
+                : nil
             let subtypeAudit = [
                 "cv=\(format(metrics.cv))",
                 "cv2=\(format(metrics.cv2))",
@@ -2469,6 +2467,7 @@ public enum StatePatternDetector {
                 "max_isi_sec=\(format(metrics.max))",
                 "classic_regularity_pass=\(classicRegularityPass)",
                 "irregular_regularity_pass=\(irregularRegularityPass)",
+                "regularity_metrics_authority=descriptive_only",
                 "tonic_family_structural_eligibility_pass=\(structuralEligibilityPass)",
                 "irregular_cv_max=\(format(settings.irregularTonicCVMax))",
                 "irregular_cv2_max=\(format(settings.irregularTonicCV2Max))",
@@ -2496,17 +2495,6 @@ public enum StatePatternDetector {
                     // failed gate only on rejection; adding a redundant `true` token to accepted classic
                     // candidates would churn their public audit rows without changing scientific meaning.
                     rejectReasons.append("tonic_magnitude_route_pass=false")
-                }
-                // Regularity is reported as unstable only when it exceeds even the relaxed
-                // irregular bands; cv/cv2/lv between classic and irregular routes to irregular.
-                if !irregularCvPass {
-                    rejectReasons.append("reject_tonic_cv_unstable")
-                }
-                if !irregularCv2Pass {
-                    rejectReasons.append("reject_tonic_cv2_unstable")
-                }
-                if !irregularLvPass {
-                    rejectReasons.append("reject_tonic_lv_unstable")
                 }
                 let rejectDecisionPath = stateDecisionPath(
                     base: "reject_classic_tonic_state_candidate",
@@ -2686,11 +2674,11 @@ public enum StatePatternDetector {
         settings: StatePatternDetectorSettings,
         bounds: (lower: Double, upper: Double)
     ) -> [(run: (start: Int, end: Int), window: TonicStructuralWindowCandidate, carve: [String])] {
-        // Drive the sliding window with the WIDEST tonic regularity bands (the irregular tier), so a single
-        // maximal window can span both classic AND irregular tonic instead of fragmenting a moderately-
-        // variable run into classic-only cores. The per-run gate in `detectTonic` then re-assigns the
-        // classic-vs-irregular subtype from the span's ACTUAL cv/cv2/lv, so a clean run still routes classic.
-        // Magnitude / burst-contamination protection is unchanged (it keys off burstSeedUpperSec, not CV).
+        // Carry the irregular-tier CV/CV2/LV limits into the window evidence and subtype audit. Production
+        // treats no single one of those metrics as a proposal veto: maximal structural windows are bounded by
+        // QC, magnitude, burst/fast-packet protection, adjacent structure, and later by the shared frozen-
+        // topology core/deviation authority. The actual metrics still determine the descriptive classic vs
+        // irregular subtype. Magnitude / burst-contamination protection keys off burstSeedUpperSec, not CV.
         let thresholds = StructuralEvidenceThresholds(
             minimumValidISISec: settings.minValidISISec,
             burstSeedUpperSec: settings.burstSeedUpperSec,
@@ -2702,16 +2690,14 @@ public enum StatePatternDetector {
         let config = TonicStructuralWindowConfig(
             thresholds: thresholds,
             refractoryFloorSec: settings.minValidISISec,
-            // First production slice is audit-only: every structural tonic window now carries explicit
-            // n_support / n_core / ordinary-deviation evidence, but the run's existing acceptance remains
-            // authoritative until this policy is calibrated on representative recordings.
+            longWindowMetricsAreDescriptiveOnly: true,
             stateSupportSettings: StateSupportClassifierSettings(
                 minimumValidISISec: settings.minValidISISec
             )
         )
         // Pause floor for the high-side trim / bounded bridge: well above the tonic ceiling, so only a
-        // genuine pause (≫ tonic) is excluded. Expansion already stops at large ISIs and the bridge's CV
-        // re-check already refuses to span a pause, so this is a conservative secondary safety.
+        // genuine pause (≫ tonic) is excluded. Expansion also stops at structural failures, and the explicit
+        // pause-like carve below protects a bimodal gap before final core/deviation authority is applied.
         let pauseFloor = max(settings.tonicBridgeUpperSec, bounds.upper) * 2.0
         let windows = TonicStructuralWindowDetector.scanRefined(
             train: train,
@@ -2834,10 +2820,8 @@ public enum StatePatternDetector {
             "tsw_route=\(window.route.rawValue)",
             "stopped_by=\(window.boundaryReason?.rawValue ?? "train_end")"
         ]
-        // The state-support policy is audit-only at this stage, but it must be carried forward to the
-        // detector candidate rather than disappearing inside the TSW helper. The counts name the exact
-        // contract used in later review: raw support, maximum-consensus core, ordinary deviations, and
-        // whether those facts would be eligible for automatic tonic under the calibrated policy.
+        // Carry the state-support authority and counts forward to the detector candidate rather than
+        // letting them disappear inside the structural-window helper.
         func observedCount(_ key: String) -> Int? {
             window.signals.first { $0.key == key }.flatMap { signal in
                 signal.observedValue.map { Int($0.rounded()) }
@@ -2849,8 +2833,11 @@ public enum StatePatternDetector {
            let eligibility = window.signals.first(where: {
                $0.key == "tonic_state_support_automatic_eligibility"
            }) {
+            let enforced = window.signals.first(where: {
+                $0.key == "tonic_state_support_policy_enforced"
+            })?.observedValue == 1
             tokens += [
-                "state_support_policy=audited",
+                "state_support_policy=\(enforced ? "enforced" : "audited")",
                 "state_n_support=\(nSupport)",
                 "state_n_core=\(nCore)",
                 "state_ordinary_deviations=\(ordinary)",
@@ -2863,13 +2850,14 @@ public enum StatePatternDetector {
         return tokens
     }
 
-    /// Common audit projection of the maximum-consensus state core. It does not retime or filter the
-    /// supplied values and intentionally does not establish final-label authority by itself. The caller's
-    /// family-specific magnitude, burst, pause, duration, and state-occupancy checks remain in force.
-    private static func stateSupportAuditTokens(
+    /// Common projection of the maximum-consensus state core. It does not retime or filter the supplied
+    /// values. Even when enforced, family-specific magnitude, burst, pause, duration, and occupancy checks
+    /// remain independently authoritative.
+    private static func stateSupportEvidence(
         values: [Double],
-        minimumValidISISec: Double
-    ) -> [String] {
+        minimumValidISISec: Double,
+        enforced: Bool
+    ) -> (tokens: [String], eligible: Bool) {
         let stateSupportSettings = StateSupportClassifierSettings(
             minimumValidISISec: minimumValidISISec
         )
@@ -2879,18 +2867,19 @@ public enum StatePatternDetector {
             },
             settings: stateSupportSettings
         )
-        return [
-            "state_support_policy=audited",
+        let eligible = support.isEligibleForAutomaticTonic(settings: stateSupportSettings)
+        return ([
+            "state_support_policy=\(enforced ? "enforced" : "audited")",
             "state_n_support=\(support.nSupport)",
             "state_n_core=\(support.nCore)",
             "state_ordinary_deviations=\(support.ordinaryDeviationCount)",
             "state_competing_excursions=\(support.competingExcursionCount)",
-            "state_support_auto_eligible=\(support.isEligibleForAutomaticTonic(settings: stateSupportSettings))"
-        ]
+            "state_support_auto_eligible=\(eligible)"
+        ], eligible)
     }
 
-    /// Fixed exception floor for the context-aware short-tonic path: 3 spikes / 2 ISIs (scale-free count).
-    private static let shortTonicMinSpikes = 3
+    /// Approved automatic short-tonic floor: 4 spikes / 3 ISIs. Two-ISI spans remain review-only.
+    private static let shortTonicMinSpikes = 4
     /// The train must be tonic-DOMINATED — accepted long tonic must cover at least this fraction of the
     /// train's valid ISIs — before an isolated short island can be recovered as canonical tonic. Dimensionless.
     private static let shortTonicTonicDominanceFractionMin = 0.5
@@ -2900,7 +2889,7 @@ public enum StatePatternDetector {
 
     /// Context-aware SHORT-TONIC ISLAND recovery. Instead of relying on the sliding window (whose trim / seed /
     /// carve can clip a pause-bounded island), this scans the GAPS between pause-like regions directly, so it
-    /// captures the FULL island. A 2–3 ISI (3–4 spike) tonic-magnitude island between pauses is promoted to
+    /// captures the FULL island. A 3-ISI (4-spike) tonic-magnitude island between pauses is promoted to
     /// CANONICAL tonic only in a clean context, else emitted as `possible_tonic_review` (never canonical). All
     /// signals are relative (no fixed ms): local short-window regularity/compactness (A), magnitude consistency
     /// with the accepted long-tonic anchor (B), a tonic-DOMINATED + tight CLASSIC anchor (C), pause-separation
@@ -2934,10 +2923,12 @@ public enum StatePatternDetector {
         let lastValidIndex = train.isiSec.count - 1
         guard lastValidIndex >= 1 else { return [] }
 
-        // --- Train context (C): a tonic ANCHOR — the accepted long tonic must exist AND be a tight CLASSIC
-        // mode (pooled CV ≤ tonicCVMax) with substantial coverage. This is what separates a genuine tonic-
-        // with-pauses train (5x5, pooled CV ≈ 0.07) from a globally-irregular one whose locally-regular chunks
-        // merely look dominant (high-jitter, pooled CV > 0.30), and from a bursty/lone-cluster train (no anchor).
+        // --- Train context (C): a tonic ANCHOR — accepted long tonic must exist, have substantial coverage, and
+        // retain a strict robust-core majority after the unique indices of all accepted long spans are collected.
+        // This is a background-context verdict, not authority for every collected ISI: edge excursions remain
+        // visible and must still be handled by the final state-support authority. The decision uses core vs non-core
+        // counts only (not CV2/LV adjacency across separated spans). It separates genuine recurrent tonic support
+        // from a globally high-jitter train and from a bursty/lone-cluster train with no sustained tonic anchor.
         let totalValidISI = (1...lastValidIndex).reduce(into: 0) { acc, index in
             if finiteValidISI(train.isiSec[index], settings: settings) != nil { acc += 1 }
         }
@@ -2961,9 +2952,21 @@ public enum StatePatternDetector {
         let coverageFraction = totalValidISI > 0 ? Double(longCoverage) / Double(totalValidISI) : 0
         let longTonicISIs = coveredValidIndices.sorted().compactMap { finiteValidISI(train.isiSec[$0], settings: settings) }
         let anchorMedian = SortedFiniteSample(longTonicISIs, positiveOnly: true).quantile(0.5)
-        let dominantTonicClassic = (STPDStatistics.coefficientOfVariation(longTonicISIs) ?? .infinity) <= settings.tonicCVMax + 1e-12
+        let dominantSupportSettings = StateSupportClassifierSettings(
+            minimumValidISISec: settings.minValidISISec
+        )
+        let dominantSupport = StateSupportClassifier.analyze(
+            longTonicISIs.enumerated().map {
+                StateSupportISIObservation(sourceIndex: $0.offset, valueSec: $0.element)
+            },
+            settings: dominantSupportSettings
+        )
+        let dominantTonicNonCoreCount = dominantSupport.ordinaryDeviationCount
+            + dominantSupport.competingExcursionCount
+        let dominantTonicCoreMajority = dominantSupport.nCore >= shortTonicMinSpikes - 1
+            && dominantSupport.nCore > dominantTonicNonCoreCount
         let tonicDominant = coverageFraction >= shortTonicTonicDominanceFractionMin
-            && dominantTonicClassic && (anchorMedian ?? 0) > 0
+            && dominantTonicCoreMajority && (anchorMedian ?? 0) > 0
 
         let thresholds = StructuralEvidenceThresholds()
         let burstCeil = settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec)
@@ -3040,7 +3043,11 @@ public enum StatePatternDetector {
                 "short_tonic_min_spikes=\(shortTonicMinSpikes)",
                 "tonic_dominant=\(tonicDominant)",
                 "long_tonic_coverage_fraction=\(format(coverageFraction))",
-                "dominant_tonic_classic=\(dominantTonicClassic)",
+                "dominant_tonic_core_majority=\(dominantTonicCoreMajority)",
+                "dominant_tonic_n_support=\(dominantSupport.nSupport)",
+                "dominant_tonic_n_core=\(dominantSupport.nCore)",
+                "dominant_tonic_ordinary_deviations=\(dominantSupport.ordinaryDeviationCount)",
+                "dominant_tonic_competing_excursions=\(dominantSupport.competingExcursionCount)",
                 "magnitude_consistent=\(magnitudeConsistent)",
                 "island_median_sec=\(format(islandMedian))",
                 "tonic_anchor_median_sec=\(format(anchorMedian))",
@@ -3096,7 +3103,7 @@ public enum StatePatternDetector {
 
     /// Local post-pass for a narrow failure mode in the structure-first tonic detector: a stable tonic run can be
     /// clipped by one or two immediately-adjacent ISIs that are slightly above the train-local structural upper bound,
-    /// even though the expanded run still satisfies the tonic regularity gates. This is deliberately NOT a residual
+    /// even though the expanded run still satisfies structural and core/deviation support. This is deliberately NOT a residual
     /// tonic fill; only neighbors of an already-accepted tonic candidate are considered, with a tight high-side
     /// structural allowance and the same burst/fast-packet guards as the primary tonic route.
     private static func tonicBoundaryRescuedCandidates(
@@ -3267,7 +3274,6 @@ public enum StatePatternDetector {
             (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
             (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
             (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
-        guard classicRegularityPass || irregularRegularityPass else { return nil }
         let subtype = classicRegularityPass ? "classic" : "irregular"
 
         let regularityScore = mean([
@@ -3292,6 +3298,9 @@ public enum StatePatternDetector {
                 "structural_search_upper_sec=\(format(bounds.upper))",
                 "boundary_rescue_upper_slack=\(format(tonicBoundaryRescueUpperSlack))",
                 "candidate_seed_policy=structure_first_boundary_rescue_cv_cv2_lv_not_default_isi_band",
+                "classic_regularity_pass=\(classicRegularityPass)",
+                "irregular_regularity_pass=\(irregularRegularityPass)",
+                "regularity_metrics_authority=descriptive_only",
                 "burst_seed_fraction=\(format(burstSeedFraction))",
                 "burst_seed_fraction_max_effective=\(format(effectiveBurstSeedFractionMax))",
                 "core_burst_run_length=\(coreRunLength)",
@@ -3329,8 +3338,8 @@ public enum StatePatternDetector {
 
     /// Secondary tonic seeds are generated from stable windows inside the
     /// train-local non-burst ISI distribution. This keeps tonic structure-driven:
-    /// CV/CV2/LV remain the acceptance gates, and default/histogram bands do
-    /// not define the tonic search envelope.
+    /// CV/CV2/LV remain descriptive/subtype evidence, while default/histogram bands do
+    /// not define the tonic search envelope. Final support authority remains downstream.
     private static func detectTonicStructuralWindows(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings,
@@ -3390,10 +3399,16 @@ public enum StatePatternDetector {
                     let cvPass = metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true
                     let cv2Pass = metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true
                     let lvPass = metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true
+                    let classicRegularityPass = cvPass && cv2Pass && lvPass
+                    let irregularRegularityPass =
+                        (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
+                        (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
+                        (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
+                    let subtype = classicRegularityPass ? "classic" : "irregular"
                     let burstSeedFractionPass = burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12
                     let coreRunPass = coreRunLength <= coreRunLimit
                     let fastPacketPass = !fastPacketCoreExcludes(metrics, settings: settings)
-                    guard cvPass, cv2Pass, lvPass, burstSeedFractionPass, coreRunPass, fastPacketPass else {
+                    guard burstSeedFractionPass, coreRunPass, fastPacketPass else {
                         continue
                     }
 
@@ -3414,6 +3429,10 @@ public enum StatePatternDetector {
                             "structural_search_upper_sec=\(format(bounds.upper))",
                             "structural_window_upper_sec=\(format(windowUpper))",
                             "candidate_seed_policy=structure_first_window_cv_cv2_lv_not_default_isi_band",
+                            "tonic_subtype=\(subtype)",
+                            "classic_regularity_pass=\(classicRegularityPass)",
+                            "irregular_regularity_pass=\(irregularRegularityPass)",
+                            "regularity_metrics_authority=descriptive_only",
                             "window_seed_source=broad_nonburst_isi_range",
                             "burst_seed_fraction=\(format(burstSeedFraction))",
                             "burst_seed_fraction_max_effective=\(format(effectiveBurstSeedFractionMax))",
@@ -3442,7 +3461,7 @@ public enum StatePatternDetector {
                             stateRegularityScore: regularityScore,
                             stateBurstSeedFraction: burstSeedFraction,
                             stateCoreBurstRunLength: coreRunLength,
-                            stateTonicSubtype: "classic",
+                            stateTonicSubtype: subtype,
                             index: nextCandidateIndex
                         )
                     )
@@ -3487,10 +3506,28 @@ public enum StatePatternDetector {
                 $0 <= upper + tolerance(for: upper)
         }
         let bridgeUpper = max(settings.tonicBridgeUpperSec, upper)
+        // A state-support edge trim must not reject an otherwise legitimate interior ordinary
+        // deviation merely because the adaptive search upper is narrower than the approved
+        // ordinary-deviation band. Anchor the extra allowance to the maximum-consistency core
+        // median, never to the mixed-envelope mean or maximum, so a competing excursion cannot
+        // expand its own legal ceiling.
+        let supportSettings = StateSupportClassifierSettings(
+            minimumValidISISec: settings.minValidISISec
+        )
+        let supportAnalysis = StateSupportClassifier.analyze(
+            metrics.values.enumerated().map {
+                StateSupportISIObservation(sourceIndex: $0.offset, valueSec: $0.element)
+            },
+            settings: supportSettings
+        )
+        let ordinarySupportUpper = supportAnalysis.coreMedianSec.map {
+            $0 * supportSettings.ordinaryDeviationRatioUpper
+        }
+        let supportUpper = max(bridgeUpper, ordinarySupportUpper ?? bridgeUpper)
         let supportPass = zip(metrics.values, strictFlags).allSatisfy { value, strict in
             strict || (
                 value > settings.burstSeedUpperSec + tolerance(for: settings.burstSeedUpperSec) &&
-                    value <= bridgeUpper + tolerance(for: bridgeUpper)
+                    value <= supportUpper + tolerance(for: supportUpper)
             )
         }
         guard supportPass else {
@@ -3505,11 +3542,17 @@ public enum StatePatternDetector {
         let effectiveBurstSeedFractionMax = effectiveTonicBurstSeedFractionMax(settings: settings)
         let coreRunLength = maxBurstSeedRun(train: train, run: run, settings: settings)
         let coreRunLimit = tonicBurstCoreRunLimit(settings: settings)
-        let gatesPass =
-            bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12 &&
+        let classicRegularityPass =
             (metrics.cv.map { $0 <= settings.tonicCVMax + 1e-12 } ?? true) &&
             (metrics.cv2.map { $0 <= settings.tonicCV2Max + 1e-12 } ?? true) &&
-            (metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.tonicLVMax + 1e-12 } ?? true)
+        let irregularRegularityPass =
+            (metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true) &&
+            (metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true) &&
+            (metrics.lv.map { $0 <= settings.irregularTonicLVMax + 1e-12 } ?? true)
+        let subtype = classicRegularityPass ? "classic" : "irregular"
+        let gatesPass =
+            bridgeFraction <= settings.tonicBridgeFractionMax + 1e-12 &&
             burstSeedFraction <= effectiveBurstSeedFractionMax + 1e-12 &&
             coreRunLength <= coreRunLimit &&
             !fastPacketCoreExcludes(metrics, settings: settings)
@@ -3529,10 +3572,15 @@ public enum StatePatternDetector {
             extra: commonExtra + [
                 "bridge_count=\(bridgeCount)",
                 "bridge_fraction=\(format(bridgeFraction))",
+                "state_support_ordinary_upper_sec=\(format(supportUpper))",
                 "structural_search_lower_sec=\(format(lower))",
                 "structural_search_upper_sec=\(format(upper))",
                 "burst_seed_fraction=\(format(burstSeedFraction))",
                 "core_burst_run_length=\(coreRunLength)",
+                "tonic_subtype=\(subtype)",
+                "classic_regularity_pass=\(classicRegularityPass)",
+                "irregular_regularity_pass=\(irregularRegularityPass)",
+                "regularity_metrics_authority=descriptive_only",
                 "split_fragment_revalidated_with_primary_tonic_gates=true"
             ]
         )
@@ -3554,7 +3602,7 @@ public enum StatePatternDetector {
             stateRegularityScore: regularityScore,
             stateBurstSeedFraction: burstSeedFraction,
             stateCoreBurstRunLength: coreRunLength,
-            stateTonicSubtype: "classic",
+            stateTonicSubtype: subtype,
             index: 0,
             id: id
         )
@@ -3589,6 +3637,9 @@ public enum StatePatternDetector {
         let coreRunLength = maxBurstSeedRun(train: train, run: run, settings: settings)
         let effectiveLowTailMax = effectiveHighFrequencyTonicLowTailFractionMax(settings: settings)
         let burstSeedFractionMax = effectiveHighFrequencyTonicBurstSeedFractionMax(settings: settings)
+        let cvPass = metrics.cv.map { $0 <= settings.highFrequencyTonicCVMax + 1e-12 } ?? true
+        let cv2Pass = metrics.cv2.map { $0 <= settings.highFrequencyTonicCV2Max + 1e-12 } ?? true
+        let lvPass = metrics.lv.map { $0 <= settings.highFrequencyTonicLVMax + 1e-12 } ?? true
         let gatesPass =
             ((metrics.q10.map {
                 $0 >= settings.highFrequencyTonicFloorSec - tolerance(for: settings.highFrequencyTonicFloorSec)
@@ -3596,9 +3647,6 @@ public enum StatePatternDetector {
             burstSeedFraction <= burstSeedFractionMax + 1e-12 &&
             (metrics.q90.map { $0 <= highMax + tolerance(for: highMax) } ?? false) &&
             coreRunLength < settings.highFrequencyTonicBurstCoreVetoMinISI &&
-            (metrics.cv.map { $0 <= settings.highFrequencyTonicCVMax + 1e-12 } ?? true) &&
-            (metrics.cv2.map { $0 <= settings.highFrequencyTonicCV2Max + 1e-12 } ?? true) &&
-            (metrics.lv.map { $0 <= settings.highFrequencyTonicLVMax + 1e-12 } ?? true) &&
             !hasClassicBoundary(metrics: metrics, settings: settings) &&
             !fastPacketCoreExcludes(metrics, settings: settings)
         guard gatesPass else {
@@ -3618,6 +3666,10 @@ public enum StatePatternDetector {
                 "low_tail_fraction=\(format(lowTail))",
                 "burst_seed_fraction=\(format(burstSeedFraction))",
                 "core_burst_run_length=\(coreRunLength)",
+                "cv_threshold_pass=\(cvPass)",
+                "cv2_threshold_pass=\(cv2Pass)",
+                "lv_threshold_pass=\(lvPass)",
+                "regularity_metrics_authority=descriptive_only",
                 "split_fragment_revalidated_with_primary_hf_tonic_gates=true"
             ]
         )

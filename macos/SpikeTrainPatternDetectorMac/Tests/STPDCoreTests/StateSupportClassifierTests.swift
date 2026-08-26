@@ -83,6 +83,29 @@ struct StateSupportClassifierTests {
         #expect(base.ordinaryDeviationCount == scaled.ordinaryDeviationCount)
     }
 
+    @Test("Maximum-consensus core does not require an observed value at the latent centre")
+    func maximumConsensusCoreUsesCentreIntervals() {
+        let analysis = classify(milliseconds: [90, 90, 110, 110])
+
+        #expect(analysis.nCore == 4)
+        #expect(analysis.ordinaryDeviationCount == 0)
+        #expect(analysis.competingExcursionCount == 0)
+        #expect(analysis.coreMedianSec == 0.100)
+        #expect(analysis.isEligibleForAutomaticTonic(settings: settings))
+    }
+
+    @Test("Sustained tonic deviation cap is an audit warning rather than a hard veto")
+    func sustainedDeviationAuditToleranceDoesNotOverrideCoreMajority() {
+        let analysis = classify(milliseconds: [
+            100, 120, 101, 121, 99, 119, 102, 118, 100, 101, 99, 102, 100
+        ])
+
+        #expect(analysis.ordinaryDeviationCount == 4)
+        #expect(analysis.nCore > analysis.ordinaryDeviationCount)
+        #expect(analysis.exceedsOrdinaryDeviationAuditTolerance(settings: settings))
+        #expect(analysis.isEligibleForAutomaticTonic(settings: settings))
+    }
+
     private func classify(milliseconds: [Double]) -> StateSupportAnalysis {
         StateSupportClassifier.analyze(
             milliseconds.enumerated().map { offset, value in

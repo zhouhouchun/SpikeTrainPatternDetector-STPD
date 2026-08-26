@@ -100,6 +100,38 @@ func tswLongIrregularWindowFails() {
     #expect(reason == .cvExceeded || reason == .cv2Exceeded || reason == .lvExceeded || reason == .adjacentRatioExceeded)
 }
 
+// Production proposal generation must retain the standard metrics without letting one of them act as a
+// hard veto. The reusable helper remains strict by default, while the explicit descriptive policy carries
+// the failed metric forward as audit evidence for downstream state-support adjudication.
+@Test
+func tswLongMetricsCanBeDescriptiveWithoutWeakeningDefaultStrictMode() {
+    let values = [0.100, 0.110, 0.120, 0.130, 0.140]
+    let thresholds = StructuralEvidenceThresholds(
+        tonicCVMax: 0.05,
+        tonicCV2Max: 10,
+        tonicLVMax: 10
+    )
+    let strict = TonicStructuralWindowConfig(
+        thresholds: thresholds,
+        adjacentRatioMax: 2
+    )
+    #expect(tswRejectReason(tswEvaluate(values, burstValleySec: nil, config: strict)) == .cvExceeded)
+
+    let descriptive = TonicStructuralWindowConfig(
+        thresholds: thresholds,
+        adjacentRatioMax: 2,
+        longWindowMetricsAreDescriptiveOnly: true
+    )
+    guard let candidate = tswAccepted(tswEvaluate(values, burstValleySec: nil, config: descriptive)) else {
+        #expect(Bool(false), "descriptive CV evidence must reach downstream authority")
+        return
+    }
+    #expect(candidate.signals.contains {
+        $0.key == "tonic_cv" && $0.status == .fail && $0.role == .audit &&
+            $0.message.contains("not an individual veto")
+    })
+}
+
 // 5 — a hyper-regular burst-like window passes regularity but is REJECTED by the burst-contamination
 // guard using a supplied D3 valley.
 @Test

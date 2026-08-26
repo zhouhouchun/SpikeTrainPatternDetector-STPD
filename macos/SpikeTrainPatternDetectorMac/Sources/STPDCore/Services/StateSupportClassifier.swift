@@ -156,9 +156,13 @@ public struct StateSupportAnalysis: Hashable, Sendable {
     /// support verdict only: callers must still apply family magnitude, event,
     /// pause, and state-specific evidence before emitting a final label.
     public func isEligibleForAutomaticTonic(
-        settings: StateSupportClassifierSettings
+        settings: StateSupportClassifierSettings,
+        recognizedInterruptionCount: Int = 0
     ) -> Bool {
-        guard invalidCount == 0, competingExcursionCount == 0 else { return false }
+        // Known event/gap interruptions may be represented as nil observations so they break adjacency
+        // without being mistaken for corrupt input. Any additional invalid slot still fails closed.
+        guard invalidCount == max(0, recognizedInterruptionCount),
+              competingExcursionCount == 0 else { return false }
         switch nSupport {
         case ..<3:
             return false
@@ -167,9 +171,18 @@ public struct StateSupportAnalysis: Hashable, Sendable {
         case 5:
             return ordinaryDeviationCount <= 1 && nCore > ordinaryDeviationCount
         default:
-            return ordinaryDeviationCount <= settings.maximumAutomaticDeviationCount
-                && nCore > ordinaryDeviationCount
+            // For sustained states, `maximumAutomaticDeviationCount` is an audit-warning threshold,
+            // not a hard veto. Automatic support remains possible while the consensus core still
+            // outnumbers isolated, bilaterally recovered ordinary deviations.
+            return nCore > ordinaryDeviationCount
         }
+    }
+
+    /// The owner-approved `d` cap is a review hint for sustained states, not an automatic-label veto.
+    public func exceedsOrdinaryDeviationAuditTolerance(
+        settings: StateSupportClassifierSettings
+    ) -> Bool {
+        nSupport >= 6 && ordinaryDeviationCount > settings.maximumAutomaticDeviationCount
     }
 }
 
@@ -178,8 +191,8 @@ public struct StateSupportAnalysis: Hashable, Sendable {
 ///
 /// The classifier is pure and train-order preserving. It never deletes or
 /// re-times raw spikes. It is designed to become the shared support contract
-/// for tonic, HF-tonic, HFS, metrics, audit, and review; this first slice makes
-/// the scientific decision explicit and independently testable.
+/// for tonic, HF-tonic, metrics, audit, and review. HFS uses its own sustained-
+/// state support contract because its event overlays and magnitude rules differ.
 public enum StateSupportClassifier {
     public static func analyze(
         _ observations: [StateSupportISIObservation],
@@ -213,25 +226,37 @@ public enum StateSupportClassifier {
             )
         }
 
-        var coreOffsets = maximumConsensusCore(valid, settings: settings)
-        // Re-centre on the core-only median until membership stabilizes. This is
-        // what prevents an ordinary outlier from pulling the reference centre.
-        for _ in 0..<4 {
-            let coreValues = valid.compactMap { coreOffsets.contains($0.inputOffset) ? $0.valueSec : nil }
-            guard let centre = median(coreValues), centre > 0 else { break }
-            let recentered = Set(valid.compactMap { observation -> Int? in
-                isWithin(
-                    observation.valueSec,
-                    centre: centre,
-                    lower: settings.coreRatioLower,
-                    upper: settings.coreRatioUpper
-                ) ? observation.inputOffset : nil
-            })
-            guard !recentered.isEmpty else { break }
-            if recentered == coreOffsets { break }
-            coreOffsets = recentered
+        // Find the largest set supportable by one latent centre, then freeze the robust reference
+        // at that set's median and project core membership exactly once. The one projection keeps
+        // a distant value from becoming core merely by shifting a latent centre; not iterating avoids
+        // oscillation and makes the owner-approved "maximum core, then core-only median" ordering explicit.
+        let provisionalCoreOffsets = maximumConsensusCore(valid, settings: settings)
+        let provisionalCoreValues = valid.compactMap {
+            provisionalCoreOffsets.contains($0.inputOffset) ? $0.valueSec : nil
         }
-
+        guard let provisionalMedian = median(provisionalCoreValues), provisionalMedian > 0 else {
+            return StateSupportAnalysis(
+                observations: observations.map {
+                    .init(sourceIndex: $0.sourceIndex, valueSec: $0.valueSec, classification: .invalid)
+                },
+                coreMedianSec: nil,
+                nRaw: observations.count,
+                nValid: 0,
+                nSupport: 0,
+                nCore: 0,
+                ordinaryDeviationCount: 0,
+                competingExcursionCount: 0,
+                invalidCount: observations.count
+            )
+        }
+        let coreOffsets = Set(valid.compactMap { observation -> Int? in
+            isWithin(
+                observation.valueSec,
+                centre: provisionalMedian,
+                lower: settings.coreRatioLower,
+                upper: settings.coreRatioUpper
+            ) ? observation.inputOffset : nil
+        })
         let coreValues = valid.compactMap { coreOffsets.contains($0.inputOffset) ? $0.valueSec : nil }
         let coreMedian = median(coreValues)
         guard let coreMedian, coreMedian > 0 else {
@@ -313,32 +338,84 @@ public enum StateSupportClassifier {
         _ observations: [StateSupportValidObservation],
         settings: StateSupportClassifierSettings
     ) -> Set<Int> {
+        let sorted = observations.sorted {
+            if $0.valueSec != $1.valueSec { return $0.valueSec < $1.valueSec }
+            return $0.inputOffset < $1.inputOffset
+        }
+        let values = sorted.map(\.valueSec)
+        guard !values.isEmpty else { return [] }
+
+        // Each value permits a closed latent-centre interval value/upper ... value/lower.
+        // Consensus membership changes only at an interval endpoint, so 2*n endpoint centres
+        // give an exact maximum-overlap search without pairwise or combinatorial enumeration.
+        let candidateCentres = Set(values.flatMap { value in
+            [value / settings.coreRatioUpper, value / settings.coreRatioLower]
+        }.filter { $0.isFinite && $0 > 0 }).sorted()
+
+        func lowerBound(_ threshold: Double) -> Int {
+            var low = 0
+            var high = values.count
+            while low < high {
+                let middle = (low + high) / 2
+                if values[middle] < threshold { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
+
+        func upperBound(_ threshold: Double) -> Int {
+            var low = 0
+            var high = values.count
+            while low < high {
+                let middle = (low + high) / 2
+                if values[middle] <= threshold { low = middle + 1 } else { high = middle }
+            }
+            return low
+        }
+
+        let prefixLogSums = values.reduce(into: [0.0]) { partial, value in
+            partial.append((partial.last ?? 0) + log(value))
+        }
         var bestOffsets = Set<Int>()
         var bestResidual = Double.infinity
         var bestCentre = Double.infinity
 
-        for centreObservation in observations {
-            let centre = centreObservation.valueSec
-            let members = observations.filter {
-                isWithin(
-                    $0.valueSec,
-                    centre: centre,
-                    lower: settings.coreRatioLower,
-                    upper: settings.coreRatioUpper
-                )
+        for candidateCentre in candidateCentres {
+            let lowerThreshold = candidateCentre * settings.coreRatioLower
+            let upperThreshold = candidateCentre * settings.coreRatioUpper
+            let lowerTolerance = max(1e-12, abs(lowerThreshold) * 1e-12)
+            let upperTolerance = max(1e-12, abs(upperThreshold) * 1e-12)
+            let lowerIndex = lowerBound(lowerThreshold - lowerTolerance)
+            let upperExclusive = upperBound(upperThreshold + upperTolerance)
+            guard lowerIndex < upperExclusive else { continue }
+
+            let count = upperExclusive - lowerIndex
+            let middle = lowerIndex + count / 2
+            let logMedian: Double
+            if count.isMultiple(of: 2) {
+                logMedian = (log(values[middle - 1]) + log(values[middle])) / 2
+            } else {
+                logMedian = log(values[middle])
             }
-            let offsets = Set(members.map(\.inputOffset))
-            let residual = members.reduce(0.0) { partial, observation in
-                partial + abs(log(observation.valueSec / centre))
-            }
+            let feasibleLower = values[upperExclusive - 1] / settings.coreRatioUpper
+            let feasibleUpper = values[lowerIndex] / settings.coreRatioLower
+            let residualCentre = min(max(exp(logMedian), feasibleLower), feasibleUpper)
+            let logCentre = log(residualCentre)
+            let split = upperBound(residualCentre)
+            let clippedSplit = min(max(split, lowerIndex), upperExclusive)
+            let leftCount = clippedSplit - lowerIndex
+            let rightCount = upperExclusive - clippedSplit
+            let leftSum = prefixLogSums[clippedSplit] - prefixLogSums[lowerIndex]
+            let rightSum = prefixLogSums[upperExclusive] - prefixLogSums[clippedSplit]
+            let residual = logCentre * Double(leftCount) - leftSum
+                + rightSum - logCentre * Double(rightCount)
             let shouldReplace =
-                offsets.count > bestOffsets.count ||
-                (offsets.count == bestOffsets.count && residual < bestResidual - 1e-12) ||
-                (offsets.count == bestOffsets.count && abs(residual - bestResidual) <= 1e-12 && centre < bestCentre)
+                count > bestOffsets.count ||
+                (count == bestOffsets.count && residual < bestResidual - 1e-12) ||
+                (count == bestOffsets.count && abs(residual - bestResidual) <= 1e-12 && residualCentre < bestCentre)
             if shouldReplace {
-                bestOffsets = offsets
+                bestOffsets = Set(sorted[lowerIndex..<upperExclusive].map(\.inputOffset))
                 bestResidual = residual
-                bestCentre = centre
+                bestCentre = residualCentre
             }
         }
         return bestOffsets
@@ -350,7 +427,8 @@ public enum StateSupportClassifier {
         lower: Double,
         upper: Double
     ) -> Bool {
-        value >= centre * lower && value <= centre * upper
+        let tolerance = max(1e-12, abs(value) * 1e-12)
+        return value >= centre * lower - tolerance && value <= centre * upper + tolerance
     }
 
     private static func median(_ values: [Double]) -> Double? {

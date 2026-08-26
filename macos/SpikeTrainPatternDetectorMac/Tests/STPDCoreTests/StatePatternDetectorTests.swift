@@ -301,6 +301,61 @@ func tonicSubtypeIsClassicForRegularTonic() throws {
 }
 
 @Test
+func tonicProposalIsNotVetoedByOneStandardRegularityMetric() throws {
+    // Four core ISIs plus one isolated, bilaterally recovered ordinary deviation satisfy the approved
+    // state-support geometry. Artificially strict CV/CV2/LV reporting thresholds must change the audit
+    // subtype/evidence, not erase the structural proposal before downstream authority can inspect it.
+    let train = SpikeTrain(
+        name: "descriptive_regularity_tonic",
+        timestampsSec: cumulativeTimestamps(fromISI: [0.100, 0.105, 0.120, 0.098, 0.102])
+    )
+    let result = StatePatternDetector.detect(
+        train: train,
+        settings: StatePatternDetectorSettings(
+            tonicCVMax: 0.01,
+            tonicCV2Max: 0.01,
+            tonicLVMax: 0.01,
+            irregularTonicCVMax: 0.01,
+            irregularTonicCV2Max: 0.01,
+            irregularTonicLVMax: 0.01
+        )
+    )
+    let tonic = try #require(result.candidates.first {
+        $0.finalLabel == .tonic && $0.candidateLayer == "event_core_tonic_state"
+    })
+    #expect(tonic.stateTonicSubtype == "irregular")
+    #expect(tonic.decisionPath.contains("classic_regularity_pass=false"))
+    #expect(tonic.decisionPath.contains("irregular_regularity_pass=false"))
+    #expect(tonic.decisionPath.contains("regularity_metrics_authority=descriptive_only"))
+}
+
+@Test
+func pipelineStateSupportAuthorityCanSelectTonicDespiteDescriptiveMetricFailures() throws {
+    let train = SpikeTrain(
+        name: "pipeline_descriptive_regularity_tonic",
+        timestampsSec: cumulativeTimestamps(fromISI: [0.100, 0.105, 0.120, 0.098, 0.102])
+    )
+    let run = ClassicAnchorDetectionPipeline.run(
+        dataset: SpikeDataset(name: "descriptive metric authority", sourceDescription: "unit-test", trains: [train]),
+        stateTuning: StatePatternDetectorTuning(
+            tonicCVMax: 0.01,
+            tonicCV2Max: 0.01,
+            tonicLVMax: 0.01,
+            irregularTonicCVMax: 0.01,
+            irregularTonicCV2Max: 0.01,
+            irregularTonicLVMax: 0.01
+        )
+    )
+    let tonic = try #require(run.candidates.first {
+        $0.trainID == train.id && $0.finalLabel == .tonic && $0.selectedForAuto
+    })
+    #expect(tonic.decisionPath.contains("regularity_metrics_authority=descriptive_only"))
+    #expect(tonic.decisionPath.contains("state_support_policy=enforced"))
+    #expect(tonic.decisionPath.contains("state_support_auto_eligible=true"))
+    #expect(tonic.stateDirectSupportISICount == 5)
+}
+
+@Test
 func tonicSubtypeIsHighFrequencyForHighFrequencyTonic() throws {
     let train = SpikeTrain(
         name: "hf_tonic_subtype",
@@ -435,7 +490,8 @@ func selectedTonicSubtypeCountsAndStatusSummary() throws {
     #expect(TonicSubtypeCounts(classic: 0, irregular: 0, highFrequency: 0).statusSummary == "")
     #expect(TonicSubtypeCounts(classic: 4, irregular: 9, highFrequency: 2).statusSummary == "Tonic: classic 4, irregular 9, HF 2")
 
-    // Run-level helper counts selected tonic subtypes through the adaptive pipeline.
+    // A broadly variable proposal remains visible as irregular Tonic evidence at generation time, but
+    // the production pipeline abstains when it cannot form the approved core/ordinary-deviation geometry.
     let tonicTrain = SpikeTrain(name: "count_irregular", timestampsSec: cumulativeTimestamps(fromISI: irregularTonicPipelineISIs()))
     let dataset = SpikeDataset(name: "subtype counts", sourceDescription: "unit-test", trains: [tonicTrain])
     let run = ClassicAnchorDetectionPipeline.run(
@@ -443,10 +499,9 @@ func selectedTonicSubtypeCountsAndStatusSummary() throws {
         bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
     )
     let counts = run.selectedTonicSubtypeCounts
-    #expect(counts.irregular >= 1)
+    #expect(counts.irregular == 0)
     #expect(counts.total == counts.classic + counts.irregular + counts.highFrequency)
-    #expect(!counts.statusSummary.isEmpty)
-    #expect(counts.statusSummary.contains("irregular \(counts.irregular)"))
+    #expect(counts.statusSummary.isEmpty)
 }
 
 @Test
@@ -507,12 +562,11 @@ func irregularTonicMicroGapMergeDoesNotMergeAcrossSelectedCanonicalPause() throw
 }
 
 @Test
-func irregularTonicMicroGapMergeBridgesBriefContextualAndUnspecifiedPauses() throws {
+func irregularTonicMicroGapMergeBridgesBriefAndUnspecifiedPauses() throws {
     let train = mergeTestTrain(gapISISec: 0.045)
     let settings = mergeTestSettings()
     let roles: [(String, PauseBoundaryRole?)] = [
         ("brief", .briefStateInterruption),
-        ("contextual", .contextualPause),
         ("unspecified", nil),
     ]
 
@@ -564,6 +618,50 @@ func irregularTonicMicroGapMergeBridgesBriefContextualAndUnspecifiedPauses() thr
         #expect(!result.contains { $0.id == left.id }, Comment(rawValue: name))
         #expect(!result.contains { $0.id == right.id }, Comment(rawValue: name))
     }
+}
+
+@Test
+func irregularTonicMicroGapMergeDoesNotBridgeContextualPause() throws {
+    let train = mergeTestTrain(gapISISec: 0.045)
+    let settings = mergeTestSettings()
+    var left = testCandidate(
+        id: "irreg_left_contextual",
+        label: .tonic,
+        startISIIndex: 1,
+        endISIIndex: 28,
+        priority: 1_100
+    )
+    left.stateTonicSubtype = "irregular"
+    var right = testCandidate(
+        id: "irreg_right_contextual",
+        label: .tonic,
+        startISIIndex: 30,
+        endISIIndex: 57,
+        priority: 1_100
+    )
+    right.stateTonicSubtype = "irregular"
+    let pause = testCandidate(
+        id: "pause_contextual",
+        label: .pause,
+        startISIIndex: 29,
+        endISIIndex: 29,
+        priority: 900,
+        pauseBoundaryRole: .contextualPause
+    )
+
+    let result = StatePatternDetector.mergeIrregularTonicMicroGaps(
+        train: train,
+        candidates: [left, right, pause],
+        selectedEvents: [],
+        selectedGaps: [pause],
+        settings: settings,
+        authorizedFragmentIDs: [left.id, right.id]
+    )
+
+    #expect(!result.contains { $0.finalLabel == .tonic && $0.startISIIndex == 1 && $0.endISIIndex == 57 })
+    #expect(result.contains { $0.id == pause.id })
+    #expect(result.contains { $0.id == left.id })
+    #expect(result.contains { $0.id == right.id })
 }
 
 @Test
@@ -1711,8 +1809,9 @@ func noStatePatternDecisionPathContainsMMSignalAfterRemoval() throws {
 }
 
 @Test
-func regularTonicRemainsClassicGovernedByCVCV2LVAfterMMRemoval() throws {
-    // A clean uniform tonic run is still classic tonic, now governed by CV/CV2/LV (not MM).
+func regularTonicRemainsClassicWithDescriptiveCVCV2LVAfterMMRemoval() throws {
+    // A clean uniform tonic run is still classic tonic. CV/CV2/LV support its descriptive subtype;
+    // structural and state-support contracts, rather than one metric alone, authorize the label.
     let train = SpikeTrain(
         name: "mm_removal_classic_tonic",
         timestampsSec: cumulativeTimestamps(repeating: 0.040, count: 14)
