@@ -1,18 +1,23 @@
 import STPDCore
 import SwiftUI
 
-struct PatternLegendEntry: Hashable {
-    let label: ClassicAnchorLabel
+struct PatternLegendEntry: Hashable, Identifiable {
+    let id: String
+    /// A stable semantic key used to avoid duplicate chips when automatic and manual evidence
+    /// describe the same displayed pattern.
+    let key: String
     let name: String
     let color: Color
 
     static func visibleEntries(
         annotations: [ClassicAnchorEventAnnotation],
+        manualAnnotations: [ManualAnnotation],
+        trains: [SpikeTrain],
         trainIDs: Set<String>,
         timeRange: RasterTimeRange,
         timeMode: RasterTimeMode
     ) -> [PatternLegendEntry] {
-        guard !annotations.isEmpty, !trainIDs.isEmpty else {
+        guard !trainIDs.isEmpty else {
             return []
         }
 
@@ -27,7 +32,7 @@ struct PatternLegendEntry: Hashable {
             visibleLabels.insert(annotation.visualLabel)
         }
 
-        return ClassicAnchorLabel.allCases
+        var entries = ClassicAnchorLabel.allCases
             .filter { label in
                 label != .reject &&
                     label != .profile &&
@@ -35,11 +40,81 @@ struct PatternLegendEntry: Hashable {
             }
             .map { label in
                 PatternLegendEntry(
-                    label: label,
+                    id: "automatic-\(label.rawValue)",
+                    key: automaticLegendKey(for: label),
                     name: displayName(for: label),
                     color: color(for: label)
                 )
             }
+
+        let trainByID = Dictionary(uniqueKeysWithValues: trains.map { ($0.id, $0) })
+        var manualLabels = Set<ManualAnnotationLabel>()
+        for annotation in manualAnnotations where trainIDs.contains(annotation.trainID) {
+            guard annotation.label.polarity == .positive,
+                  let train = trainByID[annotation.trainID] else { continue }
+            let range: ClosedRange<Double>
+            switch timeMode {
+            case .raw:
+                range = annotation.normalizedStartSec...annotation.normalizedEndSec
+            case .aligned:
+                guard let first = train.firstTimestampSec else { continue }
+                range = (annotation.normalizedStartSec - first)...(annotation.normalizedEndSec - first)
+            }
+            guard range.upperBound >= timeRange.lowerBound,
+                  range.lowerBound <= timeRange.upperBound else { continue }
+            manualLabels.insert(annotation.label)
+        }
+
+        for label in ManualAnnotationLabel.allCases where manualLabels.contains(label) {
+            let key = manualLegendKey(for: label)
+            guard !entries.contains(where: { $0.key == key }) else { continue }
+            entries.append(
+                PatternLegendEntry(
+                    id: "manual-\(label.rawValue)",
+                    key: key,
+                    name: label.displayName,
+                    color: manualColor(for: label)
+                )
+            )
+        }
+        return entries
+    }
+
+    /// Timeline consumers do not own manual annotation geometry. Retain their automatic-only
+    /// projection while the timestamp raster supplies the richer manual-aware overload above.
+    static func visibleEntries(
+        annotations: [ClassicAnchorEventAnnotation],
+        trainIDs: Set<String>,
+        timeRange: RasterTimeRange,
+        timeMode: RasterTimeMode
+    ) -> [PatternLegendEntry] {
+        visibleEntries(
+            annotations: annotations,
+            manualAnnotations: [],
+            trains: [],
+            trainIDs: trainIDs,
+            timeRange: timeRange,
+            timeMode: timeMode
+        )
+    }
+
+    private static func automaticLegendKey(for label: ClassicAnchorLabel) -> String {
+        switch label {
+        case .burst, .highFrequencyBurst, .longBurst, .possibleBurst: "burst"
+        case .tonic: "tonic"
+        case .highFrequencyTonic: "high_frequency_tonic"
+        case .highFrequencySpiking: "high_frequency_spiking"
+        case .pause: "pause"
+        case .reject: "reject"
+        case .profile: "profile"
+        }
+    }
+
+    private static func manualLegendKey(for label: ManualAnnotationLabel) -> String {
+        switch label {
+        case .burst: "burst"
+        default: label.rawValue
+        }
     }
 
     static func displayName(for label: ClassicAnchorLabel) -> String {
@@ -84,6 +159,20 @@ struct PatternLegendEntry: Hashable {
         }
     }
 
+    private static func manualColor(for label: ManualAnnotationLabel) -> Color {
+        switch label {
+        case .burst: .orange
+        case .highFrequencyBurst: .red
+        case .longBurst: .pink
+        case .tonic: .green
+        case .highFrequencyTonic: .teal
+        case .highFrequencySpiking: .purple
+        case .pause: .blue
+        case .other: .gray
+        case .notBurst: .secondary
+        }
+    }
+
     private static func timeStart(_ annotation: ClassicAnchorEventAnnotation, mode: RasterTimeMode) -> Double {
         switch mode {
         case .aligned:
@@ -118,7 +207,7 @@ struct PatternLegendStrip: View {
         if !entries.isEmpty {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    ForEach(entries, id: \.label) { entry in
+                    ForEach(entries) { entry in
                         chip(entry)
                     }
                 }
@@ -131,7 +220,7 @@ struct PatternLegendStrip: View {
                     alignment: .trailing,
                     spacing: 4
                 ) {
-                    ForEach(entries, id: \.label) { entry in
+                    ForEach(entries) { entry in
                         chip(entry)
                     }
                 }

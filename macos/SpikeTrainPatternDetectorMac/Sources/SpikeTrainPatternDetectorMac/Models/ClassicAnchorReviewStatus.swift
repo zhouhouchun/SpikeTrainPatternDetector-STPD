@@ -11,39 +11,39 @@ enum ClassicAnchorReviewStatus: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .unreviewed:
-            return "Unreviewed"
+            return "未审核"
         case .accepted:
-            return "Accepted"
+            return "已接受"
         case .rejected:
-            return "Rejected"
+            return "已拒绝"
         case .needsReview:
-            return "Review"
+            return "待复核"
         }
     }
 
     var inspectorDescription: String {
         switch self {
         case .unreviewed:
-            return "No manual decision has been saved for this candidate yet."
+            return "尚未为此候选保存人工决定。"
         case .accepted:
-            return "Saved as accepted. This manual decision is persisted and included in event export."
+            return "已保存为接受。该人工决定会持久化并纳入事件导出。"
         case .rejected:
-            return "Saved as rejected. This candidate is removed from final labels and default event export, while retained in the audit table for traceability and undo."
+            return "已保存为拒绝。该候选会从最终标签和默认事件导出中移除，但仍保留在审计表中，以便追溯和撤销。"
         case .needsReview:
-            return "Saved for follow-up review. The decision is persisted and included in export."
+            return "已标记为后续复核。该决定会持久化并纳入导出。"
         }
     }
 
     var shortTitle: String {
         switch self {
         case .unreviewed:
-            return "Open"
+            return "未处理"
         case .accepted:
-            return "Accept"
+            return "接受"
         case .rejected:
-            return "Reject"
+            return "拒绝"
         case .needsReview:
-            return "Review"
+            return "复核"
         }
     }
 

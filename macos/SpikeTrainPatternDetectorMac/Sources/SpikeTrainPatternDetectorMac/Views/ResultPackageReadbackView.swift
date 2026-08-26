@@ -32,9 +32,7 @@ struct ResultPackageReadbackView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "tablecells")
-                .foregroundStyle(.secondary)
-            Text("Result package readback")
+            Text("结果包回读")
                 .font(.title3.weight(.semibold))
             if document.isResultPackageReading {
                 ProgressView().controlSize(.small)
@@ -43,18 +41,27 @@ struct ResultPackageReadbackView: View {
             Button {
                 document.openResultPackageWithPanel()
             } label: {
-                Label("Open Result Package…", systemImage: "shippingbox")
+                Label("打开结果包…", systemImage: "shippingbox")
             }
             .disabled(document.isResultPackageReading)
-            .help("Open a verified .stpdresult package (read-only)")
+            .help("以只读方式打开已验证的 .stpdresult 结果包")
 
-            if document.loadedResultPackage != nil {
+            Button {
+                document.openCanonicalManualResultPackageWithPanel()
+            } label: {
+                Label("打开人工审核结果…", systemImage: "person.text.rectangle")
+            }
+            .disabled(document.isResultPackageReading)
+            .help("以只读方式打开已验证的完整人工审核 .stpdresult 结果包")
+
+            if document.loadedResultPackage != nil
+                || document.loadedCanonicalManualResultPackage != nil {
                 Button {
                     document.clearLoadedResultPackage()
                 } label: {
-                    Label("Clear", systemImage: "xmark.circle")
+                    Label("清除", systemImage: "xmark.circle")
                 }
-                .help("Remove the loaded package from the viewer. Does not affect the active dataset or detection.")
+                .help("从查看器移除已加载的结果包，不影响活动数据集或检测结果。")
             }
         }
         .padding(.horizontal, 20)
@@ -68,28 +75,133 @@ struct ResultPackageReadbackView: View {
         if document.isResultPackageReading {
             centeredMessage(
                 systemImage: "hourglass",
-                title: "Reading package…",
-                subtitle: "Verifying the .stpdresult package. This can take a moment for larger packages."
+                title: "正在读取结果包…",
+                subtitle: "正在验证 .stpdresult 结果包；较大的结果包可能需要一些时间。"
             )
         } else if let package = document.loadedResultPackage {
             loadedState(package)
+        } else if let package = document.loadedCanonicalManualResultPackage {
+            canonicalManualLoadedState(package)
         } else if let message = document.resultPackageReadbackErrorMessage {
             centeredMessage(
                 systemImage: "exclamationmark.triangle",
-                title: "Could not read the package",
+                title: "无法读取结果包",
                 subtitle: message,
                 tint: .orange,
-                actionTitle: "Try Another Package…",
+                actionTitle: "尝试其他结果包…",
                 action: { document.openResultPackageWithPanel() }
             )
         } else {
             centeredMessage(
                 systemImage: "shippingbox",
-                title: "No result package loaded",
-                subtitle: "Open a verified .stpdresult package to view its R-style output tables, read-only.",
-                actionTitle: "Open Result Package…",
+                title: "尚未加载结果包",
+                subtitle: "请以只读方式打开已验证的检测器结果或完整人工审核 .stpdresult 结果包。",
+                actionTitle: "打开结果包…",
                 action: { document.openResultPackageWithPanel() }
             )
+        }
+    }
+
+    private func canonicalManualLoadedState(
+        _ package: CanonicalManualResultPackageReadResult
+    ) -> some View {
+        VStack(spacing: 0) {
+            if let message = document.resultPackageReadbackErrorMessage {
+                readErrorBanner(message)
+                Divider()
+            }
+            canonicalManualSummary(package)
+            Divider()
+            canonicalManualTable(package)
+        }
+    }
+
+    private func canonicalManualSummary(
+        _ package: CanonicalManualResultPackageReadResult
+    ) -> some View {
+        let manifest = package.manifest
+        let fields: [(String, String)] = [
+            ("结果包合同", manifest.schemaContractID),
+            ("规范数据合同", manifest.canonicalSchemaContractID),
+            ("数据集摘要", manifest.canonicalDatasetDigest),
+            ("导入记录", manifest.confirmedImportRecordDigest),
+            ("人工决定", manifest.manualDecisionDigest),
+            ("审核者", manifest.reviewer),
+            ("确认时间", manifest.confirmedAtUnixSeconds),
+            ("ISI 行数", String(package.rows.count)),
+        ]
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("已验证的完整人工审核", systemImage: "checkmark.seal.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.green)
+                if let url = document.loadedResultPackageURL {
+                    Text(url.lastPathComponent)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(url.path)
+                }
+                Spacer()
+            }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 280, maximum: 520), alignment: .leading)],
+                alignment: .leading,
+                spacing: 6
+            ) {
+                ForEach(fields, id: \.0) { field in
+                    summaryField(label: field.0, value: field.1)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
+
+    private func canonicalManualTable(
+        _ package: CanonicalManualResultPackageReadResult
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text(CanonicalManualResultPackageBuilder.isiLabelsFileName)
+                    .font(.headline)
+                Text("\(package.rows.count) 个精确 ISI 行 · 状态/事件轨道相互独立")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            Divider()
+            if package.rows.isEmpty {
+                centeredMessage(
+                    systemImage: "tray",
+                    title: "没有 ISI 行",
+                    subtitle: "已验证的结果包中不包含真实的相邻 spike 间隔。"
+                )
+            } else {
+                Table(package.rows) {
+                    TableColumn("序列") { Text($0.trainID).textSelection(.enabled) }
+                    TableColumn("ISI #") { Text(String($0.isiIndex)).monospacedDigit() }
+                    TableColumn("Left (µs)") { Text(String($0.leftTimestampMicroseconds)).monospacedDigit() }
+                    TableColumn("Right (µs)") { Text(String($0.rightTimestampMicroseconds)).monospacedDigit() }
+                    TableColumn("ISI (µs)") { Text(String($0.intervalMicroseconds)).monospacedDigit() }
+                    TableColumn("状态") { resultPattern($0.statePattern) }
+                    TableColumn("事件") { resultPattern($0.eventPattern) }
+                    TableColumn("其他") { resultPattern($0.otherPattern) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resultPattern(_ value: String) -> some View {
+        if value.isEmpty {
+            Text("—").foregroundStyle(.tertiary)
+        } else {
+            Text(value).textSelection(.enabled)
         }
     }
 
@@ -120,21 +232,21 @@ struct ResultPackageReadbackView: View {
         // The verified state and package filename are shown on the badge line; the grid carries the rest of
         // the required summary fields.
         let fields: [(String, String)] = [
-            ("Schema version", package.schemaVersion),
-            ("Detector version", package.detectorVersion),
-            ("Run ID", package.runID),
-            ("Dataset digest", package.datasetDigest),
-            ("Settings digest", package.settingsDigest),
-            ("Source mode", package.sourceMode),
-            ("Owner name", package.ownerName),
-            ("Owner email", package.ownerEmail),
-            ("Tables", "\(package.tables.count)"),
-            ("Consistency checks", "\(package.consistencyChecks.count)"),
+            ("结构版本", package.schemaVersion),
+            ("检测器版本", package.detectorVersion),
+            ("运行 ID", package.runID),
+            ("数据集摘要", package.datasetDigest),
+            ("设置摘要", package.settingsDigest),
+            ("数据源模式", package.sourceMode),
+            ("所有者姓名", package.ownerName),
+            ("所有者邮箱", package.ownerEmail),
+            ("表格数", "\(package.tables.count)"),
+            ("一致性检查数", "\(package.consistencyChecks.count)"),
         ]
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Label(
-                    package.verified ? "Verified" : "Not verified",
+                    package.verified ? "已验证" : "未验证",
                     systemImage: package.verified ? "checkmark.seal.fill" : "xmark.seal.fill"
                 )
                 .font(.callout.weight(.semibold))
@@ -197,7 +309,7 @@ struct ResultPackageReadbackView: View {
 
     private func tableSelector(_ package: ReadResult) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Tables (\(package.tables.count))")
+            sectionLabel("表格（\(package.tables.count)）")
             List(selection: tableSelectionBinding(package)) {
                 // `package.tables` is already in deterministic file-name order (the reader sorts it); it is
                 // displayed as-is without any re-sorting.
@@ -208,7 +320,7 @@ struct ResultPackageReadbackView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .help(table.fileName)
-                        Text("\(table.rowCount) row\(table.rowCount == 1 ? "" : "s")")
+                        Text("\(table.rowCount) 行")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -240,9 +352,9 @@ struct ResultPackageReadbackView: View {
 
     private func consistencyChecks(_ package: ReadResult) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Consistency checks (\(package.consistencyChecks.count))")
+            sectionLabel("一致性检查（\(package.consistencyChecks.count)）")
             if package.consistencyChecks.isEmpty {
-                Text("No consistency checks recorded.")
+                Text("没有记录一致性检查。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
@@ -288,8 +400,8 @@ struct ResultPackageReadbackView: View {
             } else {
                 centeredMessage(
                     systemImage: "tablecells",
-                    title: "No table selected",
-                    subtitle: "Select a table from the list to view its rows."
+                    title: "尚未选择表格",
+                    subtitle: "请从列表中选择一个表格以查看其数据行。"
                 )
             }
         }
@@ -300,7 +412,7 @@ struct ResultPackageReadbackView: View {
             Text(table.fileName)
                 .font(.headline)
                 .textSelection(.enabled)
-            Text("\(table.columns.count) columns · \(table.rowCount) rows")
+            Text("\(table.columns.count) 列 · \(table.rowCount) 行")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -316,7 +428,7 @@ struct ResultPackageReadbackView: View {
                 tableHeaderRow(columnNames: table.columns.map(\.name))
             }
             Spacer()
-            Label("This table has no rows (row count 0).", systemImage: "tray")
+            Label("此表格没有数据行（行数为 0）。", systemImage: "tray")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -411,7 +523,7 @@ struct ResultPackageReadbackView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Could not read the package")
+                Text("无法读取结果包")
                     .font(.caption.weight(.semibold))
                 Text(message)
                     .font(.caption)
@@ -426,7 +538,7 @@ struct ResultPackageReadbackView: View {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.borderless)
-            .help("Dismiss this message. The loaded package is unchanged.")
+            .help("关闭此消息；已加载的结果包不会改变。")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)

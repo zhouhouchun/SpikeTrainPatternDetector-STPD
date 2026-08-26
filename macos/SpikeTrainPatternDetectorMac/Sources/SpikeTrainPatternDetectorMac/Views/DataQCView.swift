@@ -17,9 +17,9 @@ struct DataQCView: View {
                     duplicateDetails(report: report)
                 } else {
                     ContentUnavailableView(
-                        "No Dataset",
+                        "尚未加载数据集",
                         systemImage: "exclamationmark.shield",
-                        description: Text(document.lastErrorMessage ?? "Review a CSV/XLSX timestamp table or load the bundled demo sample.")
+                        description: Text(document.lastErrorMessage ?? "请导入并审核 CSV/XLSX 时间戳表，或加载随应用提供的演示样本。")
                     )
                     .frame(maxWidth: .infinity, minHeight: 320)
                 }
@@ -48,11 +48,9 @@ struct DataQCView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "exclamationmark.shield")
-                .foregroundStyle(.secondary)
             Text("数据 QC")
                 .font(.title3.weight(.semibold))
-            Text("Live")
+            Text("可用")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
@@ -66,7 +64,7 @@ struct DataQCView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Label(
-                    "CSV/XLSX source facts and scientific meaning are confirmed in separate steps.",
+                    "CSV/XLSX 的数据源事实与科学含义需要分步明确确认。",
                     systemImage: "checklist"
                 )
                 .font(.callout)
@@ -77,37 +75,37 @@ struct DataQCView: View {
                 Button {
                     document.openScientificImportWithPanel()
                 } label: {
-                    Label("Import Data", systemImage: "folder")
+                    Label("导入数据", systemImage: "folder")
                 }
                 .liquidGlassButtonStyle()
-                .help("Open the two-stage CSV/XLSX import review")
+                .help("打开两阶段 CSV/XLSX 导入审核")
 
                 Button {
                     document.loadBundledSample()
                 } label: {
-                    Label("Load Demo Sample", systemImage: "arrow.clockwise")
+                    Label("加载演示样本", systemImage: "arrow.clockwise")
                 }
                 .liquidGlassButtonStyle()
-                .help("Load the bundled non-authoritative demonstration dataset")
+                .help("加载随应用提供的非权威演示数据集")
             }
 
             HStack(spacing: 24) {
                 thresholdControl(
-                    "Minimum valid ISI",
+                    "绝对无效 ISI 上限",
                     value: artifactThresholdBinding,
                     unit: $document.artifactThresholdUnit,
-                    pickerLabel: "Minimum valid ISI unit"
+                    pickerLabel: "绝对无效 ISI 上限的单位"
                 )
 
                 thresholdControl(
-                    "Refractory suspect",
+                    "疑似不应期 ISI 上限",
                     value: refractoryThresholdBinding,
                     unit: $document.refractorySuspectThresholdUnit,
-                    pickerLabel: "Refractory suspect threshold unit"
+                    pickerLabel: "疑似不应期 ISI 上限的单位"
                 )
 
                 HStack(spacing: 8) {
-                    Text("Display unit")
+                    Text("显示单位")
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -120,7 +118,7 @@ struct DataQCView: View {
                         minSegmentWidth: 30
                     )
                     .frame(width: 88)
-                    .help("Controls the display unit for QC results and messages. It does not change the raw imported timestamps.")
+                    .help("控制 QC 结果和消息的显示单位，不会更改导入的原始时间戳。")
                 }
 
                 Spacer()
@@ -174,13 +172,13 @@ struct DataQCView: View {
 
     private func summaryStrip(dataset: SpikeDataset, report: SpikeDatasetQualityReport) -> some View {
         HStack(spacing: 10) {
-            SummaryTile(title: "Trains", value: "\(dataset.trains.count)")
-            SummaryTile(title: "Spikes", value: "\(dataset.totalSpikeCount)")
-            SummaryTile(title: "Errors", value: "\(report.errorCount)", level: report.errorCount > 0 ? .error : .ok)
-            SummaryTile(title: "Warnings", value: "\(report.warningCount)", level: report.warningCount > 0 ? .warning : .ok)
-            SummaryTile(title: "Below-minimum ISI", value: "\(report.artifactISICount)", level: report.artifactISICount > 0 ? .warning : .ok)
+            SummaryTile(title: "序列", value: "\(dataset.trains.count)")
+            SummaryTile(title: "Spike", value: "\(dataset.totalSpikeCount)")
+            SummaryTile(title: "错误", value: "\(report.errorCount)", level: report.errorCount > 0 ? .error : .ok)
+            SummaryTile(title: "警告", value: "\(report.warningCount)", level: report.warningCount > 0 ? .warning : .ok)
+            SummaryTile(title: "绝对无效 ISI", value: "\(report.artifactISICount)", level: report.artifactISICount > 0 ? .warning : .ok)
             SummaryTile(
-                title: report.droppedDuplicateTimestampCount > 0 ? "Duplicates merged" : "Duplicates",
+                title: report.droppedDuplicateTimestampCount > 0 ? "已折叠重复值" : "重复时间戳",
                 value: report.droppedDuplicateTimestampCount > 0 ? "\(report.droppedDuplicateTimestampCount)" : "\(report.duplicateTimestampCount)",
                 level: duplicateSummaryLevel(report)
             )
@@ -198,20 +196,20 @@ struct DataQCView: View {
         let rows = sortedQualityRows(report.rows)
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Quality table")
+            Text("质量表")
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    qualityHeader("Status", width: 86)
-                    qualityHeader("Train", width: 190)
-                    qualityHeader("Spikes", width: 72)
-                    qualityHeader("Duration", width: 130)
+                    qualityHeader("状态", width: 86)
+                    qualityHeader("Spike train", width: 190)
+                    qualityHeader("Spike 数", width: 72)
+                    qualityHeader("时长", width: 130)
                     qualityHeader("Min ISI", width: 120)
                     qualityHeader("Median ISI", width: 130)
-                    qualityHeader("Below min", width: 74)
-                    qualityHeader("Refractory", width: 92)
-                    qualityHeader("Duplicates", width: 86)
+                    qualityHeader("绝对无效", width: 74)
+                    qualityHeader("疑似不应期", width: 92)
+                    qualityHeader("重复", width: 86)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 7)
@@ -245,7 +243,7 @@ struct DataQCView: View {
 
             if !row.warningMessage.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
-                    Text("Message")
+                    Text("消息")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 86, alignment: .leading)
@@ -313,27 +311,27 @@ struct DataQCView: View {
 
     private func artifactDetails(report: SpikeDatasetQualityReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Below-minimum ISI details")
+            Text("低于最小值的 ISI 明细")
                 .font(.headline)
 
             if report.artifactDetails.isEmpty {
-                EmptyTableNote(text: "No ISI falls below the current minimum-valid threshold.")
+                EmptyTableNote(text: "没有 ISI 落入当前绝对无效阈值范围。")
             } else {
                 Table(report.artifactDetails) {
-                    TableColumn("Train") { detail in
+                    TableColumn("Spike train") { detail in
                         Text(detail.trainName)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    TableColumn("ISI index") { detail in
+                    TableColumn("ISI 序号") { detail in
                         Text("\(detail.isiIndex)")
                             .monospacedDigit()
                     }
-                    TableColumn("Left") { detail in
+                    TableColumn("左侧 spike") { detail in
                         Text(time(detail.leftSpikeTimeSec))
                             .monospacedDigit()
                     }
-                    TableColumn("Right") { detail in
+                    TableColumn("右侧 spike") { detail in
                         Text(time(detail.rightSpikeTimeSec))
                             .monospacedDigit()
                     }
@@ -341,7 +339,7 @@ struct DataQCView: View {
                         Text(time(detail.isiSec))
                             .monospacedDigit()
                     }
-                    TableColumn("Threshold") { detail in
+                    TableColumn("阈值") { detail in
                         Text(time(detail.thresholdSec))
                             .monospacedDigit()
                     }
@@ -353,35 +351,35 @@ struct DataQCView: View {
 
     private func duplicateDetails(report: SpikeDatasetQualityReport) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Duplicate timestamp details")
+            Text("重复时间戳明细")
                 .font(.headline)
 
             if report.duplicateDetails.isEmpty {
-                EmptyTableNote(text: "No duplicate timestamps in the retained trains.")
+                EmptyTableNote(text: "保留的 spike train 中没有重复时间戳。")
             } else {
                 Table(report.duplicateDetails) {
-                    TableColumn("Train") { detail in
+                    TableColumn("Spike train") { detail in
                         Text(detail.trainName)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    TableColumn("Timestamp") { detail in
+                    TableColumn("时间戳") { detail in
                         Text(time(detail.timestampSec))
                             .monospacedDigit()
                     }
-                    TableColumn("Count") { detail in
+                    TableColumn("数量") { detail in
                         Text("\(detail.duplicateCount)")
                             .monospacedDigit()
                     }
-                    TableColumn("Sorted rows") { detail in
+                    TableColumn("排序后行号") { detail in
                         Text(detail.sortedRowIndices.map(String.init).joined(separator: ";"))
                             .monospacedDigit()
                     }
-                    TableColumn("Input rows") { detail in
+                    TableColumn("输入行号") { detail in
                         Text(detail.inputOrderIndices.map(String.init).joined(separator: ";"))
                             .monospacedDigit()
                     }
-                    TableColumn("Policy") { detail in
+                    TableColumn("处理策略") { detail in
                         Text(detail.policy.rawValue)
                     }
                 }
@@ -412,9 +410,9 @@ struct DataQCView: View {
     /// floor. A short interval alone does not prove an acquisition artifact.
     private func timestampQCMessage(_ message: String) -> String {
         message
-            .replacingOccurrences(of: "Artifact ISI", with: "Below-minimum ISI")
-            .replacingOccurrences(of: "Artifact fraction", with: "Below-minimum ISI fraction")
-            .replacingOccurrences(of: "artifact threshold", with: "minimum-valid ISI threshold")
+            .replacingOccurrences(of: "Artifact ISI", with: "绝对无效 ISI")
+            .replacingOccurrences(of: "Artifact fraction", with: "绝对无效 ISI 比例")
+            .replacingOccurrences(of: "artifact threshold", with: "绝对无效 ISI 阈值")
     }
 }
 

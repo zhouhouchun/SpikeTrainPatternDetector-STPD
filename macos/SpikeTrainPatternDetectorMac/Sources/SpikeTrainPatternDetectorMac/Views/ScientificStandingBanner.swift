@@ -9,7 +9,7 @@ struct ScientificStandingBanner: View {
         if document.dataset != nil,
            !document.activeDatasetScientificStanding.permitsAuthoritativeDetectorArtifactExport {
             Label(
-                "Exploratory data only — this demo or legacy import has not passed canonical scientific confirmation. Detector output is non-authoritative, and scientific artifact export is locked.",
+                document.activeDatasetScientificStanding.detectorResultPrefix,
                 systemImage: "lock.shield"
             )
             .font(.callout.weight(.semibold))

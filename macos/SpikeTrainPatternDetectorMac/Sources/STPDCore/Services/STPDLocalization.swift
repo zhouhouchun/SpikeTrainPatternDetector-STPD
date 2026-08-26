@@ -7,6 +7,7 @@ import Foundation
 public enum STPDLanguage: String, Sendable, CaseIterable, Hashable, Identifiable {
     case zh
     case en
+    case ru
 
     public var id: String { rawValue }
 
@@ -15,6 +16,7 @@ public enum STPDLanguage: String, Sendable, CaseIterable, Hashable, Identifiable
         switch self {
         case .zh: return "中文"
         case .en: return "English"
+        case .ru: return "Русский"
         }
     }
 }
@@ -23,24 +25,39 @@ public enum STPDLanguage: String, Sendable, CaseIterable, Hashable, Identifiable
 /// (`R/56_i18n.R`: `stpd_i18n_exact_dictionary` + `stpd_i18n_phrase_dictionary`).
 ///
 /// Convention: call sites pass the **Chinese source** string. In `zh` mode the source is returned verbatim;
-/// in `en` mode the source is translated by an exact full-string lookup, then (if no exact hit) by ordered
-/// phrase substitution, falling back to the source string. Unknown strings therefore degrade gracefully.
+/// in non-Chinese modes the source is translated by an exact full-string lookup, then (if no exact hit) by
+/// ordered phrase substitution. Russian falls back to the existing English translation for an uncovered key,
+/// rather than leaving a mixed Chinese interface.
 ///
 /// Strict non-goal: never route machine strings through here — only user-visible display text.
 public enum STPDLocalization {
     /// Translate a Chinese source string for the given language. `zh` returns the source unchanged.
     public static func text(_ source: String, language: STPDLanguage) -> String {
-        guard language == .en else { return source }
-        if let exact = exactDictionary[source] {
-            return exact
+        switch language {
+        case .zh:
+            return source
+        case .en:
+            return translated(source, exact: exactDictionary, phrases: phraseEntries) ?? source
+        case .ru:
+            return translated(source, exact: russianExactDictionary, phrases: russianPhraseEntries)
+                ?? translated(source, exact: exactDictionary, phrases: phraseEntries)
+                ?? source
         }
+    }
+
+    private static func translated(
+        _ source: String,
+        exact: [String: String],
+        phrases: [(zh: String, en: String)]
+    ) -> String? {
+        if let exact = exact[source] { return exact }
         var out = source
         var replaced = false
-        for entry in phraseEntries where out.contains(entry.zh) {
+        for entry in phrases where out.contains(entry.zh) {
             out = out.replacingOccurrences(of: entry.zh, with: entry.en)
             replaced = true
         }
-        return replaced ? out : source
+        return replaced ? out : nil
     }
 
     // MARK: - Exact dictionary (full-string Chinese source -> English). R `stpd_i18n_exact_dictionary`.
@@ -49,12 +66,28 @@ public enum STPDLocalization {
         // Language switch + top-level workbench groups/sections (R-parity where present in R/56_i18n.R).
         "语言 / Language": "Language",
         "中文": "Chinese",
+        "确定的单神经元电活动": "Confirmed single-unit activity",
+        "确定的单神经元电活动（Single-unit）": "Confirmed single-unit activity",
+        "多神经元电活动": "Multi-unit activity",
+        "多神经元电活动（Multi-unit，实验性）": "Multi-unit activity (experimental)",
+        "未知或不确定": "Unknown or uncertain",
         "主图": "Primary views",
         "状态与流形": "State & manifold",
         "诊断": "Diagnostics",
         "验证": "Validation",
         "参数": "Parameters",
         "输出": "Outputs",
+        "更多": "More",
+        "功能": "Features",
+        "左侧栏": "Left sidebar",
+        "右侧栏": "Right sidebar",
+        "打开结果包": "Open result package",
+        "打开人工审核结果包": "Open manual-review result package",
+        "导出事件 CSV": "Export events CSV",
+        "导出逐 ISI 审核草稿": "Export per-ISI review draft",
+        "导出 HFS-Burst 审计 CSV": "Export HFS–Burst audit CSV",
+        "导入人工标注": "Import manual annotations",
+        "导入审核结果": "Import review results",
         // Phase 1 IA: live-module sidebar groups
         "数据": "Data",
         "棘波图": "Raster",
@@ -65,6 +98,19 @@ public enum STPDLocalization {
         "结构检测": "Structure detection",
         "spike train 光栅图": "Spike-train raster",
         "状态与流形（后续分析）": "State & manifold (downstream analysis)",
+        "时间戳图": "Timestamp plot",
+        "Spike train ISI 热力图": "Spike-train ISI heatmap",
+        "Spike train 模式热力图": "Spike-train pattern heatmap",
+        "ISI 热力图": "ISI heatmap",
+        "模式热力图": "Pattern heatmap",
+        "合并": "Combined",
+        "手工": "Manual",
+        "状态 · 事件 · 其它": "State · event · other",
+        "状态、事件与其它标记分轨显示；不进行颜色插值。":
+            "States, events, and other marks are rendered on separate tracks; colors are not interpolated.",
+        "模式图例": "Mode legend",
+        "手工标记在同一轨道内覆盖自动显示，但不会删除自动检测记录。":
+            "Manual marks override automatic display within the same track without deleting detector evidence.",
         "对齐时间戳图": "Aligned timestamp plot",
         "原始时间戳图": "Raw timestamp plot",
         "目标核团深度图": "Target-nucleus depth plot",
@@ -79,6 +125,7 @@ public enum STPDLocalization {
         "阈值预览": "Threshold preview",
         "支持方法": "Support methods",
         "手动标记 vs 检测器报告": "Manual labels vs detector report",
+        "手工 ISI 标记与审核": "Manual ISI labeling & review",
         "科学验证": "Scientific validation",
         "批处理 / API": "Batch / API",
         "方法 / 审计说明": "Methods / audit notes",
@@ -87,6 +134,8 @@ public enum STPDLocalization {
         "自适应 train 调参": "Adaptive train tuning",
         "神经网络模型": "Neural-network model",
         "数据 QC": "Data QC",
+        "检测结果科学审核": "Scientific review of detection results",
+        "结果包回读": "Result-package readback",
         "事件 / 输出": "Events / output",
         "Seed / Bridge 诊断": "Seed / Bridge diagnostics",
 
@@ -108,6 +157,9 @@ public enum STPDLocalization {
         "显示": "Display",
         "坐标轴": "Axes",
         "时间": "Time",
+        "对齐": "Aligned",
+        "对齐时间": "Aligned time",
+        "原始时间戳": "Raw timestamp",
         "自动": "Auto",
         "最终": "Final",
         "训练选择": "Train selection",
@@ -117,6 +169,157 @@ public enum STPDLocalization {
         "数据集": "Dataset",
         "重置": "Reset",
         "图例": "Legend",
+        "最大": "Max.",
+        "数据源": "Source",
+        "spike 光栅图": "spike raster",
+        "对齐 spike 光栅图": "Aligned spike raster",
+        "原始 spike 光栅图": "Raw spike raster",
+        "Spike 高度": "Spike height",
+        "ISI 分辨率约为": "Estimated ISI resolution",
+        "细节层级上限": "detail-level limit",
+        "重置缩放": "Reset zoom",
+        "热力图清晰度": "Heatmap resolution",
+        "预设": "Preset",
+        "探索": "Explore",
+        "发表": "Publication",
+        "探索：Jet 色图；当前视图稳健 5–95% 范围。":
+            "Explore: Jet palette; robust 5th–95th percentile range for the current view.",
+        "发表：Cividis 色图；全数据集固定数值范围。":
+            "Publication: Cividis palette; fixed numeric range for the full dataset.",
+        "颜色范围": "Colour scale",
+        "当前视图 5–95% 稳健范围": "Current-view robust 5th–95th percentile range",
+        "全数据集固定范围": "Full-dataset fixed range",
+        "裁剪": "Clipped",
+        "个时间格": "time cells",
+        "颜色由局部 ISI 强度决定：短 ISI 为暖色，长 ISI 为冷色。":
+            "Color encodes local ISI intensity: short ISIs are warm; long ISIs are cool.",
+        "长 ISI / 低局部频率": "Long ISI / low local frequency",
+        "短 ISI / 高局部频率": "Short ISI / high local frequency",
+        "请先在时间戳图中选择至少一条 spike train。":
+            "Select at least one spike train in the timestamp plot first.",
+        "设置光栅视口中可见的时间跨度；旁边显示估算的 ISI 分辨率。":
+            "Set the visible time span in the raster viewport; the estimated ISI resolution appears alongside it.",
+        "以像素控制每个 spike 标记的垂直高度；最大值随当前轨道高度变化。":
+            "Control the vertical height of each spike marker in pixels; the maximum follows the current track height.",
+        "尚未加载光栅图": "Raster not loaded",
+        "目前没有可用的 spike train。": "No spike trains are available.",
+        "在时间戳图上手工标记": "Annotate on raster",
+        "开启后，在同一条 spike train 的时间戳行内拖动即可标记连续 ISI。":
+            "When enabled, drag within one spike-train row to label a contiguous ISI range.",
+        "显示 ISI 信息栏": "Show ISI information panel",
+        "关闭后不再绘制鼠标悬停的 ISI 信息栏，可提升手工标记时的流畅度。":
+            "When off, the hover ISI information panel is not drawn, improving manual-labeling responsiveness.",
+        "操作": "Action",
+        "标记": "Label",
+        "擦除": "Erase",
+        "清除轨道": "Clear track",
+        "撤销上一步": "Undo last step",
+        "在同一行拖动，仅清除所选轨道；共存轨道会保留。":
+            "Drag within one row to clear only the selected track; coexisting tracks are retained.",
+        "拖动范围必须保持在同一行；黑色 spike 始终保留可见。":
+            "Keep a drag range within one row; black spike marks always remain visible.",
+        "手工标记": "Manual labels",
+        "纯手工 ISI 标记（无需模式检测）": "Manual ISI labeling (no pattern detection)",
+        "本地草稿 · 未封存": "Local draft · unsealed",
+        "身份绑定草稿": "Identity-bound draft",
+        "审核已确认": "Review confirmed",
+        "导出已标注 ISI": "Export labeled ISIs",
+        "导入手工 ISI 草稿": "Import manual ISI draft",
+        "导出 CSV / XLSX / NEX": "Export CSV / XLSX / NEX",
+        "确认完整审核": "Confirm complete review",
+        "导出 .stpdresult": "Export .stpdresult",
+        "尚未加载 spike train": "No spike train loaded",
+        "请先导入或打开数据集，再进行 ISI 人工标注。":
+            "Import or open a dataset before manually labeling ISIs.",
+        "规范人工审核不可用": "Canonical manual review unavailable",
+        "已持久化的导入尚不具备规范人工模式审核资格。":
+            "The persisted import is not yet eligible for canonical manual pattern review.",
+        "时间图和表格都只使用原始 spike 时间戳，不运行模式检测。可在时间图拖动选择连续 ISI，也可在表格精确多选。状态与事件相互独立，因此 HFS 可与其内嵌的 HFB 共存；可选择导出 CSV、XLSX 或 NeuroExplorer NEX，文件会明确标记为本地人工草稿。":
+            "The timeline and table use only the original spike timestamps; pattern detection is not run. Drag on the timeline to select contiguous ISIs or select exact rows in the table. States and events remain independent, so HFS may coexist with an embedded HFB. Export is available as CSV, XLSX, or NeuroExplorer NEX, and the file is explicitly identified as a local manual draft.",
+        "时间图和表格都直接来自已持久化的规范整数微秒数据集，不读取任何自动检测候选。可在时间图拖动选择连续 ISI，也可在表格精确多选；任何阶段均可选择导出 CSV、XLSX 或 NeuroExplorer NEX，未标记项会保留为空。只有确认完整审核并导出 .stpdresult 时，才要求每个 ISI 都归入状态、事件或其他。状态与事件保持独立，因此 HFS 可与内嵌 HFB 共存。":
+            "The timeline and table come directly from the persisted canonical integer-microsecond dataset and do not read automatic detector candidates. Drag on the timeline to select contiguous ISIs or select exact rows in the table. CSV, XLSX, or NeuroExplorer NEX may be exported at any stage, with unlabeled entries left blank. Every ISI must be assigned to State, Event, or Other only when confirming the complete review and exporting .stpdresult. States and events remain independent, so HFS may coexist with an embedded HFB.",
+        "轨道": "Track",
+        "清除选择": "Clear selection",
+        "使用 Shift-单击或 Command-单击进行批量选择。":
+            "Use Shift-click or Command-click for multiple selection.",
+        "左时间戳（s）": "Left timestamp (s)",
+        "左 MM": "Left MM",
+        "左 MM = 左邻 ISI ÷ 当前 ISI": "Left MM = preceding ISI ÷ current ISI",
+        "当前 ISI（ms）": "Current ISI (ms)",
+        "右 MM": "Right MM",
+        "右 MM = 右邻 ISI ÷ 当前 ISI": "Right MM = following ISI ÷ current ISI",
+        "右时间戳（s）": "Right timestamp (s)",
+        "备注": "Note",
+        "审核 / ISI #": "Review / ISI #",
+        "已审核": "Reviewed",
+        "未审核": "Unreviewed",
+        "时间图手工选择": "Manual selection on timeline",
+        "拖动选择连续 ISI；点击已标记色块后按 Delete 可清除该区块。":
+            "Drag to select contiguous ISIs; click a labeled block and press Delete to clear it.",
+        "鼠标悬停在相邻 spike 之间时显示该 ISI 的时间戳、间隔与模式信息":
+            "Hover between adjacent spikes to show timestamps, interval, and pattern information for that ISI",
+        "适合窗口": "Fit to window",
+        "Spike": "Spikes",
+        "手工 ISI 时间图": "Manual ISI timeline",
+        "拖动以选择连续 ISI；点击已标记色块后按 Delete 清除该区块":
+            "Drag to select contiguous ISIs; click a labeled block and press Delete to clear it",
+        "未标记": "Unlabeled",
+        "ISI 阈值初标": "ISI threshold-assisted preliminary labeling",
+        "人工规则 · 即时预览 · 不运行检测器": "Manual rule · live preview · detector not run",
+        "ISI 闭区间": "Closed ISI range",
+        "Spike 数闭区间": "Closed spike-count range",
+        "连续 n 个 ISI 对应 n+1 个 spike；超出 spike 上限的整段会被跳过，不会被切成人工 Burst 小包。":
+            "n consecutive ISIs represent n+1 spikes; an entire run above the spike limit is skipped rather than chopped into artificial Burst packets.",
+        "指标": "Metric",
+        "指标闭区间": "Closed metric range",
+        "不限": "No limit",
+        "基于 CV/CV2/LV 的 Tonic 初标至少需要 5 个 ISI（6 个 spike）；更短片段仍由用户按结构证据审核。":
+            "CV/CV2/LV-based preliminary Tonic labeling requires at least 5 ISIs (6 spikes); shorter spans remain available for explicit structural review.",
+        "MM = 候选段内最大 ISI / 最小 ISI；仅用于 3–5 个 spike 的短 Tonic 初标。":
+            "MM = maximum ISI / minimum ISI within the candidate; it is used only for preliminary short-Tonic labeling with 3–5 spikes.",
+        "CV/CV2/LV 仅用于至少 5 个 ISI（6 个 spike）的 Tonic 初标；3–5 个 spike 请改用 MM。":
+            "CV/CV2/LV are used only for preliminary Tonic labeling with at least 5 ISIs (6 spikes); use MM for 3–5 spikes.",
+        "选中预览": "Select preview",
+        "应用初标": "Apply preliminary labels",
+        "撤销上一批": "Undo last batch",
+        "初标未写入；请查看状态信息，确认当前 spike train、最小 spike 数与已有标记。":
+            "Preliminary labels were not written. Check the status message and verify the current spike train, minimum spike count, and existing labels.",
+        "正在运行模式检测并构建审计结果…": "Running pattern detection and building audit results…",
+        "正在导入、校验并绑定手工标记…": "Importing, validating, and binding manual annotations…",
+        "正在读取并验证规范手工 ISI 草稿…": "Reading and validating the canonical manual ISI draft…",
+        "正在构建、校验并导出结果包…": "Building, validating, and exporting the result package…",
+        "正在读取并完整校验结果包…": "Reading and fully validating the result package…",
+        "正在保存或恢复并校验科学导入合同…": "Saving or restoring and validating the scientific-import contract…",
+        "正在计算 Isomap 神经流形…": "Computing the Isomap neural manifold…",
+        "正在计算 PHATE 神经流形…": "Computing the PHATE neural manifold…",
+        "正在读取并限定数据源快照…": "Reading and bounding the data-source snapshot…",
+        "正在解析表格并构建导入预备数据…": "Parsing the table and building staged import data…",
+        "正在检查数据源事实与事件属性…": "Checking source facts and event attributes…",
+        "正在验证科学含义与规范数据身份…": "Validating scientific meaning and canonical dataset identity…",
+        "正在生成 ISI 热力图…": "Generating the ISI heatmap…",
+        "正在生成模式热力图…": "Generating the pattern heatmap…",
+        "正在生成模拟数据与预览结果…": "Generating simulated data and preview results…",
+        "正在生成当前检测的权威结果表…": "Building authoritative tables for the current detection run…",
+        "正在构建结果表的语义化审阅视图…": "Building the semantic review view for the result tables…",
+        "请输入有效的 ISI 闭区间上下限。": "Enter valid bounds for the closed ISI range.",
+        "请输入有效的 Burst spike 数闭区间。": "Enter a valid closed Burst spike-count range.",
+        "基于 CV/CV2/LV 的 Tonic 初标至少需要 6 个 spike。":
+            "CV/CV2/LV-based preliminary Tonic labeling requires at least 6 spikes.",
+        "MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。":
+            "MM-based preliminary Tonic labeling supports only 3–5 spikes, and the closed MM range cannot be below 1.",
+        "请输入有效的 Tonic spike 数和指标闭区间。": "Enter a valid Tonic spike count and closed metric range.",
+        "手工标记 QC": "Manual-labeling QC",
+        "当前 spike train 未发现绝对无效 ISI。": "No absolutely invalid ISI was found in the current spike train.",
+        "仅凭时间戳无法判定两端哪一个 spike 错误；红色表示参与可疑间隔，不是单个 spike 的伪迹定论。阈值初标会排除这些 ISI。":
+            "Timestamps alone cannot identify which endpoint spike is erroneous. Red indicates involvement in a suspect interval, not a definitive artifact verdict for one spike. Threshold-assisted labeling excludes these ISIs.",
+        "绝对无效 ISI 上限": "Absolutely invalid ISI upper limit",
+        "高频 Burst（HFB）": "High-frequency Burst (HFB)",
+        "长 Burst": "Long Burst",
+        "高频 Tonic": "High-frequency Tonic",
+        "高频持续发放（HFS）": "High-frequency spiking (HFS)",
+        "非 Burst（否决）": "Not Burst (veto)",
+        "悬停约2秒或单击切换；也可按住当前玻璃块拖到目标功能后松开。":
+            "Hover for about 2 seconds or click to switch; you can also drag the current glass control to a destination and release.",
 
         // Spike-train selector popover.
         "已选择": "Selected",
@@ -151,6 +354,7 @@ public enum STPDLocalization {
         "流形序列": "Manifold trains",
 
         // I18N-2A: spike-train count controls.
+        "棘波序列": "Spike train",
         "条": "trains",
         "全部": "All",
         "选择": "Select",
@@ -352,6 +556,21 @@ public enum STPDLocalization {
         "候选与冲突": "Candidates and conflicts",
         "左": "Left",
         "右": "Right",
+        "左侧时间戳": "Left timestamp",
+        "右侧时间戳": "Right timestamp",
+        "ISI 间隔": "ISI interval",
+        "绝对无效 ISI": "Absolutely invalid ISI",
+        "通过": "Pass",
+        "STPD 检测": "STPD detection",
+        "尚无匹配结果": "No matching result",
+        "可能 Burst": "Possible Burst",
+        "配置": "Profile",
+        "ISI 详情": "ISI details",
+        "自动检测": "Automatic detection",
+        "自动审核": "Automatic review",
+        "未检测到模式": "No detected pattern",
+        "无": "None",
+        "是": "Yes",
         "已选": "Selected",
         "审核状态": "Audit status",
         "仅显示前 18 条局部 ISI；缩小时间窗以查看更多细节。":
@@ -735,12 +954,298 @@ public enum STPDLocalization {
         "参考": "Reference",
     ]
 
+    // MARK: - Russian dictionary
+    // Russian follows the same Chinese-source contract as the English table. The owner-specified
+    // core terminology is kept verbatim: Burst = «пачек», Pause = «пауза», Tonic = «тоник».
+    public static let russianExactDictionary: [String: String] = [
+        "语言 / Language": "Язык",
+        "中文": "Китайский",
+        "确定的单神经元电活动": "Подтверждённая активность одиночного нейрона",
+        "确定的单神经元电活动（Single-unit）": "Подтверждённая активность одиночного нейрона",
+        "多神经元电活动": "Мультиюнитная активность",
+        "多神经元电活动（Multi-unit，实验性）": "Мультиюнитная активность (экспериментальная)",
+        "未知或不确定": "Неизвестно или не определено",
+        "主图": "Основные виды",
+        "状态与流形": "Состояния и многообразие",
+        "诊断": "Диагностика",
+        "验证": "Проверка",
+        "参数": "Параметры",
+        "输出": "Вывод",
+        "更多": "Ещё",
+        "功能": "Функции",
+        "左侧栏": "Левая панель",
+        "右侧栏": "Правая панель",
+        "左侧时间戳": "Левая метка времени",
+        "右侧时间戳": "Правая метка времени",
+        "ISI 间隔": "Интервал ISI",
+        "绝对无效 ISI": "Абсолютно недопустимый ISI",
+        "通过": "Пройдено",
+        "STPD 检测": "Детекция STPD",
+        "尚无匹配结果": "Совпадающих результатов нет",
+        "状态": "Состояние",
+        "事件": "Событие",
+        "可能 Burst": "Возможная пачка",
+        "拒绝": "Отклонено",
+        "配置": "Профиль",
+        "ISI 详情": "Сведения об ISI",
+        "自动检测": "Автоматическая детекция",
+        "自动审核": "Автоматическая проверка",
+        "未检测到模式": "Паттерн не обнаружен",
+        "无": "Нет",
+        "是": "Да",
+        "导入数据": "Импорт данных",
+        "打开结果包": "Открыть пакет результатов",
+        "打开人工审核结果包": "Открыть пакет ручной проверки",
+        "导出事件 CSV": "Экспорт событий CSV",
+        "导出逐 ISI 审核草稿": "Экспорт черновика проверки ISI",
+        "导入人工标注": "Импорт ручных меток",
+        "导入审核结果": "Импорт результатов проверки",
+        "数据": "Данные",
+        "棘波图": "Растр",
+        "模式检测": "Детекция паттернов",
+        "数据导入 / QC": "Импорт данных / QC",
+        "数据导入与 QC": "Импорт данных и QC",
+        "结构检测": "Структурная детекция",
+        "spike train 光栅图": "Растр spike train",
+        "状态与流形（后续分析）": "Состояния и многообразие (последующий анализ)",
+        "时间戳图": "График временных меток",
+        "对齐时间戳图": "Выровненный график временных меток",
+        "原始时间戳图": "Исходный график временных меток",
+        "目标核团深度图": "Глубина целевого ядра",
+        "ISI 时间剖面": "Временной профиль ISI",
+        "ISI 状态空间": "Пространство состояний ISI",
+        "神经流形": "Нейронное многообразие",
+        "区间直方图": "Гистограмма интервалов",
+        "数据集 ISI 直方图": "Гистограмма ISI набора данных",
+        "Spike train ISI 热力图": "Тепловая карта ISI spike train",
+        "Spike train 模式热力图": "Тепловая карта паттернов spike train",
+        "ISI 热力图": "Тепловая карта ISI",
+        "模式热力图": "Тепловая карта паттернов",
+        "合并": "Совместно",
+        "自动": "Авто",
+        "手工": "Вручную",
+        "时间": "Время",
+        "对齐时间": "Выровненное время",
+        "原始时间戳": "Исходное время",
+        "数据集": "Набор данных",
+        "数据源": "Источник данных",
+        "状态 · 事件 · 其它": "Состояние · событие · другое",
+        "模式图例": "Легенда паттернов",
+        "图例": "Легенда",
+        "棘波序列": "Спайковая последовательность",
+        "显示": "Показ",
+        "来源": "Источник",
+        "热力图清晰度": "Разрешение тепловой карты",
+        "对齐": "Выровнено",
+        "原始": "Исходные",
+        "全选": "Выбрать всё",
+        "条": "шт.",
+        "全部": "Все",
+        "选择": "Выбрать",
+        "清空": "Очистить",
+        "重置": "Сбросить",
+        "最大": "Макс.",
+        "可见窗口": "Видимый интервал",
+        "可见": "Показано",
+        "序列": "Последовательности",
+        "spike 光栅图": "растр спайков",
+        "对齐 spike 光栅图": "Выровненный растр спайков",
+        "原始 spike 光栅图": "Растр исходных спайков",
+        "Spike 高度": "Высота спайка",
+        "ISI 分辨率约为": "Оценочное разрешение ISI",
+        "尚未加载光栅图": "Растр не загружен",
+        "目前没有可用的 spike train。": "Нет доступных spike train.",
+        "没有可见的 spike train": "Нет видимых spike train",
+        "请先在时间戳图中选择至少一条 spike train。": "Сначала выберите хотя бы один spike train на графике временных меток.",
+        "在时间戳图上手工标记": "Ручная разметка на растре",
+        "显示 ISI 信息栏": "Показывать панель сведений об ISI",
+        "操作": "Действие",
+        "标记": "Разметить",
+        "擦除": "Стереть",
+        "清除轨道": "Очистить дорожку",
+        "撤销上一步": "Отменить последнее действие",
+        "手工标记": "Ручные метки",
+        "纯手工 ISI 标记（无需模式检测）": "Ручная разметка ISI (без детекции паттернов)",
+        "本地草稿 · 未封存": "Локальный черновик · не запечатан",
+        "身份绑定草稿": "Черновик, привязанный к идентичности данных",
+        "审核已确认": "Проверка подтверждена",
+        "导出已标注 ISI": "Экспорт размеченных ISI",
+        "导入手工 ISI 草稿": "Импорт черновика ручной разметки ISI",
+        "导出 CSV / XLSX / NEX": "Экспорт CSV / XLSX / NEX",
+        "确认完整审核": "Подтвердить полную проверку",
+        "导出 .stpdresult": "Экспорт .stpdresult",
+        "尚未加载 spike train": "Спайковая последовательность не загружена",
+        "请先导入或打开数据集，再进行 ISI 人工标注。":
+            "Перед ручной разметкой ISI импортируйте или откройте набор данных.",
+        "规范人工审核不可用": "Каноническая ручная проверка недоступна",
+        "已持久化的导入尚不具备规范人工模式审核资格。":
+            "Сохранённый импорт пока не соответствует условиям канонической ручной проверки паттернов.",
+        "时间图和表格都只使用原始 spike 时间戳，不运行模式检测。可在时间图拖动选择连续 ISI，也可在表格精确多选。状态与事件相互独立，因此 HFS 可与其内嵌的 HFB 共存；可选择导出 CSV、XLSX 或 NeuroExplorer NEX，文件会明确标记为本地人工草稿。":
+            "Шкала времени и таблица используют только исходные временные метки спайков; детекция паттернов не запускается. Непрерывные ISI можно выбрать перетаскиванием на шкале времени, а точные строки — в таблице. Состояния и события независимы, поэтому HFS может сосуществовать со встроенным HFB. Доступен экспорт в CSV, XLSX или NeuroExplorer NEX; файл явно помечается как локальный черновик ручной разметки.",
+        "时间图和表格都直接来自已持久化的规范整数微秒数据集，不读取任何自动检测候选。可在时间图拖动选择连续 ISI，也可在表格精确多选；任何阶段均可选择导出 CSV、XLSX 或 NeuroExplorer NEX，未标记项会保留为空。只有确认完整审核并导出 .stpdresult 时，才要求每个 ISI 都归入状态、事件或其他。状态与事件保持独立，因此 HFS 可与内嵌 HFB 共存。":
+            "Шкала времени и таблица строятся непосредственно из сохранённого канонического набора данных в целых микросекундах и не используют кандидаты автоматического детектора. Непрерывные ISI можно выбрать перетаскиванием на шкале времени, а точные строки — в таблице. На любом этапе доступен экспорт в CSV, XLSX или NeuroExplorer NEX; неразмеченные позиции остаются пустыми. Назначение каждого ISI к состоянию, событию или категории «Другое» требуется только при подтверждении полной проверки и экспорте .stpdresult. Состояния и события независимы, поэтому HFS может сосуществовать со встроенным HFB.",
+        "Spike train": "Спайковая последовательность",
+        "轨道": "Дорожка",
+        "清除选择": "Снять выделение",
+        "使用 Shift-单击或 Command-单击进行批量选择。":
+            "Для множественного выбора используйте Shift-щелчок или Command-щелчок.",
+        "左时间戳（s）": "Левая метка времени (s)",
+        "左 MM": "Левый MM",
+        "左 MM = 左邻 ISI ÷ 当前 ISI": "Левый MM = предыдущий ISI ÷ текущий ISI",
+        "当前 ISI（ms）": "Текущий ISI (ms)",
+        "右 MM": "Правый MM",
+        "右 MM = 右邻 ISI ÷ 当前 ISI": "Правый MM = следующий ISI ÷ текущий ISI",
+        "右时间戳（s）": "Правая метка времени (s)",
+        "备注": "Примечание",
+        "审核 / ISI #": "Проверка / ISI #",
+        "已审核": "Проверено",
+        "未审核": "Не проверено",
+        "时间图手工选择": "Ручной выбор на шкале времени",
+        "拖动选择连续 ISI；点击已标记色块后按 Delete 可清除该区块。":
+            "Перетащите указатель, чтобы выбрать последовательные ISI; щёлкните размеченный блок и нажмите Delete, чтобы удалить его.",
+        "鼠标悬停在相邻 spike 之间时显示该 ISI 的时间戳、间隔与模式信息":
+            "При наведении между соседними спайками показывать временные метки, интервал и паттерн этого ISI",
+        "缩放": "Масштаб",
+        "适合窗口": "По размеру окна",
+        "Spike": "Спайки",
+        "手工 ISI 时间图": "Шкала времени для ручной разметки ISI",
+        "拖动以选择连续 ISI；点击已标记色块后按 Delete 清除该区块":
+            "Перетащите указатель для выбора последовательных ISI; щёлкните размеченный блок и нажмите Delete, чтобы удалить его",
+        "未标记": "Без метки",
+        "模式": "Режим",
+        "Spike 数": "Число спайков",
+        "下限": "Нижняя граница",
+        "上限": "Верхняя граница",
+        "ISI 阈值初标": "Предварительная разметка по порогам ISI",
+        "人工规则 · 即时预览 · 不运行检测器": "Ручное правило · мгновенный предпросмотр · детектор не запускается",
+        "ISI 闭区间": "Замкнутый диапазон ISI",
+        "Spike 数闭区间": "Замкнутый диапазон числа спайков",
+        "连续 n 个 ISI 对应 n+1 个 spike；超出 spike 上限的整段会被跳过，不会被切成人工 Burst 小包。":
+            "n последовательных ISI соответствуют n+1 spike; весь сегмент выше предела пропускается, а не разрезается на искусственные пачки.",
+        "指标": "Метрика",
+        "指标闭区间": "Замкнутый диапазон метрики",
+        "不限": "Без предела",
+        "基于 CV/CV2/LV 的 Tonic 初标至少需要 5 个 ISI（6 个 spike）；更短片段仍由用户按结构证据审核。":
+            "Для предварительной разметки тоника по CV/CV2/LV нужно не менее 5 ISI (6 spike); более короткие сегменты остаются для явной структурной проверки.",
+        "MM = 候选段内最大 ISI / 最小 ISI；仅用于 3–5 个 spike 的短 Tonic 初标。":
+            "MM = максимальный ISI / минимальный ISI в кандидате; метрика используется только для предварительной разметки короткого тоника из 3–5 spike.",
+        "CV/CV2/LV 仅用于至少 5 个 ISI（6 个 spike）的 Tonic 初标；3–5 个 spike 请改用 MM。":
+            "CV/CV2/LV используются только для предварительной разметки тоника из не менее 5 ISI (6 spike); для 3–5 spike используйте MM.",
+        "选中预览": "Выбрать предпросмотр",
+        "应用初标": "Применить предварительные метки",
+        "撤销上一批": "Отменить последнюю группу",
+        "初标未写入；请查看状态信息，确认当前 spike train、最小 spike 数与已有标记。":
+            "Предварительные метки не записаны. Проверьте сообщение состояния, текущий spike train, минимальное число spike и существующие метки.",
+        "正在运行模式检测并构建审计结果…": "Выполняется детекция паттернов и формируются результаты аудита…",
+        "正在导入、校验并绑定手工标记…": "Импорт, проверка и привязка ручных меток…",
+        "正在读取并验证规范手工 ISI 草稿…": "Чтение и проверка канонического черновика ручной разметки ISI…",
+        "正在构建、校验并导出结果包…": "Формирование, проверка и экспорт пакета результатов…",
+        "正在读取并完整校验结果包…": "Чтение и полная проверка пакета результатов…",
+        "正在保存或恢复并校验科学导入合同…": "Сохранение или восстановление с проверкой контракта научного импорта…",
+        "正在计算 Isomap 神经流形…": "Вычисление нейронного многообразия Isomap…",
+        "正在计算 PHATE 神经流形…": "Вычисление нейронного многообразия PHATE…",
+        "正在读取并限定数据源快照…": "Чтение и ограничение снимка источника данных…",
+        "正在解析表格并构建导入预备数据…": "Разбор таблицы и подготовка данных импорта…",
+        "正在检查数据源事实与事件属性…": "Проверка фактов источника и атрибутов событий…",
+        "正在验证科学含义与规范数据身份…": "Проверка научного смысла и канонической идентичности набора данных…",
+        "正在生成 ISI 热力图…": "Построение тепловой карты ISI…",
+        "正在生成模式热力图…": "Построение тепловой карты паттернов…",
+        "正在生成模拟数据与预览结果…": "Формирование модельных данных и результатов предпросмотра…",
+        "正在生成当前检测的权威结果表…": "Формирование авторитетных таблиц для текущего запуска детектора…",
+        "正在构建结果表的语义化审阅视图…": "Формирование семантического представления таблиц результатов для проверки…",
+        "请输入有效的 ISI 闭区间上下限。": "Введите корректные границы замкнутого диапазона ISI.",
+        "请输入有效的 Burst spike 数闭区间。": "Введите корректный замкнутый диапазон числа spike для пачки.",
+        "基于 CV/CV2/LV 的 Tonic 初标至少需要 6 个 spike。": "Для предварительной разметки тоника по CV/CV2/LV нужно не менее 6 spike.",
+        "MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。":
+            "Предварительная разметка тоника по MM поддерживает только 3–5 spike, а замкнутый диапазон MM не может быть ниже 1.",
+        "请输入有效的 Tonic spike 数和指标闭区间。": "Введите корректное число spike и замкнутый диапазон метрики для тоника.",
+        "手工标记 QC": "QC ручной разметки",
+        "当前 spike train 未发现绝对无效 ISI。": "В текущей спайковой последовательности не найдены абсолютно недопустимые ISI.",
+        "仅凭时间戳无法判定两端哪一个 spike 错误；红色表示参与可疑间隔，不是单个 spike 的伪迹定论。阈值初标会排除这些 ISI。":
+            "По одним временным меткам нельзя установить, какой из конечных спайков ошибочен. Красный цвет означает участие в подозрительном интервале, а не окончательный вывод об артефакте одного спайка. Пороговая разметка исключает такие ISI.",
+        "绝对无效 ISI 上限": "Верхняя граница абсолютно недопустимого ISI",
+        "手工 ISI 标记与审核": "Ручная разметка и проверка ISI",
+        "结构候选": "Структурные кандидаты",
+        "Seed / Bridge 诊断": "Диагностика Seed / Bridge",
+        "阈值预览": "Предпросмотр порогов",
+        "支持方法": "Вспомогательные методы",
+        "检测器 / 参数": "Детектор / параметры",
+        "模拟 / 预览": "Симулятор / предварительный просмотр",
+        "自适应 train 调参": "Адаптивная настройка train",
+        "神经网络模型": "Модель нейронной сети",
+        "数据 QC": "QC данных",
+        "检测结果科学审核": "Научная проверка результатов детекции",
+        "结果包回读": "Чтение пакета результатов",
+        "爆发": "пачек",
+        "暂停": "пауза",
+        "强直发放": "тоник",
+        "高频强直发放": "Высокочастотный тоник",
+        "高频连续发放": "Высокочастотная активность (HFS)",
+        "其他": "Другое",
+        "未标注": "Без метки",
+        "非爆发 / 强负例": "Не burst (вето)",
+        "Burst": "пачек",
+        "Pause": "пауза",
+        "Tonic": "тоник",
+        "HF burst": "Высокочастотный burst (HFB)",
+        "Long burst": "Длинный burst",
+        "HF tonic": "Высокочастотный тоник",
+        "HF spiking": "Высокочастотная активность (HFS)",
+        "Other": "Другое",
+        "Not burst (veto)": "Не burst (вето)",
+        "高频 Burst（HFB）": "Высокочастотный burst (HFB)",
+        "长 Burst": "Длинный burst",
+        "高频 Tonic": "Высокочастотный тоник",
+        "高频持续发放（HFS）": "Высокочастотная активность (HFS)",
+        "非 Burst（否决）": "Не burst (вето)",
+        "状态、事件与其它标记分轨显示；不进行颜色插值。":
+            "Состояния, события и другие метки показаны на отдельных дорожках; интерполяция цветов не применяется.",
+        "手工标记在同一轨道内覆盖自动显示，但不会删除自动检测记录。":
+            "Ручные метки перекрывают автоматическое отображение на той же дорожке, не удаляя запись детектора."
+    ]
+
     // MARK: - Phrase dictionary (ordered, longest/most-specific first; substring substitution).
     // R `stpd_i18n_phrase_dictionary`. Kept conservative for the Mac first pass: pattern terms and a few
     // compounds only (the aggressive single-character R entries are intentionally omitted so labels are not
     // mangled). Order matters — longer phrases precede the shorter ones they contain.
 
+    public static let russianPhraseEntries: [(zh: String, en: String)] = [
+        ("仅供演示——非权威。", "Только демонстрация — неавторитетный результат. "),
+        ("旧式导入——尚未经过科学确认。", "Устаревший импорт — научно не подтверждён. "),
+        ("已确认规范导入的探索视图。", "Исследовательский вид подтверждённого канонического импорта. "),
+        ("已加载", "Загружено "),
+        ("条序列", " последовательностей"),
+        ("个 spike", " spike"),
+        ("条 QC 错误", " ошибок QC"),
+        ("条 QC 警告", " предупреждений QC"),
+        ("QC 已通过", "QC пройден"),
+        ("高频强直发放", "Высокочастотный тоник"),
+        ("高频连续发放", "Высокочастотная активность"),
+        ("长爆发", "Длинный burst"),
+        ("强直发放", "тоник"),
+        ("爆发", "пачек"),
+        ("暂停", "пауза"),
+        ("其他", "другое"),
+        ("诊断", "диагностика"),
+        ("手动标记", "ручные метки"),
+        ("检测器报告", "отчёт детектора"),
+        ("数据集", "набор данных"),
+        ("时间范围", "временной диапазон"),
+        ("全时长", "полная длительность"),
+    ]
+
     public static let phraseEntries: [(zh: String, en: String)] = [
+        ("仅供演示——非权威。", "Demonstration only — non-authoritative. "),
+        ("旧式导入——尚未经过科学确认。", "Legacy import — not scientifically confirmed. "),
+        ("已确认规范导入的探索视图。", "Exploratory view of a confirmed canonical import. "),
+        ("已加载", "Loaded "),
+        ("条序列", " trains"),
+        ("个 spike", " spikes"),
+        ("条 QC 错误", " QC errors"),
+        ("条 QC 警告", " QC warnings"),
+        ("QC 已通过", "QC passed"),
+        ("已折叠", "Collapsed "),
+        ("个重复时间戳", " duplicate timestamps"),
         ("高频强直发放（HF tonic）", "HF tonic"),
         ("高频连续发放（HF spiking）", "HF spiking"),
         ("长爆发（long burst）", "long burst"),
@@ -766,4 +1271,27 @@ public enum STPDLocalization {
         ("时间范围", "time range"),
         ("全时长", "full duration"),
     ]
+}
+
+/// The owner-approved display terminology for one dataset-wide activity-mode decision.
+///
+/// These are display sources, never scientific machine tokens: callers must keep using
+/// `ScientificDatasetActivityMode` itself for persistence, identity, and analysis. Centralizing the
+/// sources here prevents individual views from silently substituting a different Chinese term.
+public extension ScientificDatasetActivityMode {
+    var activityModeDisplaySource: String {
+        switch self {
+        case .putativeSingleUnit: "确定的单神经元电活动"
+        case .intentionalMultiUnit: "多神经元电活动"
+        case .unknownOrUncertain: "未知或不确定"
+        }
+    }
+
+    var activityModePickerDisplaySource: String {
+        switch self {
+        case .putativeSingleUnit: "确定的单神经元电活动（Single-unit）"
+        case .intentionalMultiUnit: "多神经元电活动（Multi-unit，实验性）"
+        case .unknownOrUncertain: activityModeDisplaySource
+        }
+    }
 }

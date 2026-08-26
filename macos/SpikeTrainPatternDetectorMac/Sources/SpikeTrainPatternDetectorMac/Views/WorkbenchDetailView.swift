@@ -13,6 +13,12 @@ struct WorkbenchDetailView: View {
         case .rawRaster:
             RasterWorkspaceView(document: document, initialTimeMode: .raw)
                 .id(section.id)
+        case .spikeTrainISIHeatmap:
+            SpikeTrainISIHeatmapView(document: document)
+                .id(section.id)
+        case .spikeTrainModeHeatmap:
+            SpikeTrainModeHeatmapView(document: document)
+                .id(section.id)
         case .dataQC:
             DataQCView(document: document)
                 .id(section.id)
@@ -22,14 +28,29 @@ struct WorkbenchDetailView: View {
         case .isiStateSpace:
             ISIStateSpaceView(document: document)
                 .id(section.id)
+        case .neuralManifold:
+            NeuralManifoldView(document: document)
+                .id(section.id)
         case .structuralCandidates:
             StructuralCandidatesView(document: document, selectedSection: $selectedSection)
+                .id(section.id)
+        case .manualDetectorReport:
+            ManualISIWorkbenchView(document: document)
                 .id(section.id)
         case .datasetISIHistogram:
             DatasetISIHistogramView(document: document)
                 .id(section.id)
         case .detectorParameters:
             DetectorParametersView(document: document)
+                .id(section.id)
+        case .simulatorPreview:
+            SimulatorPreviewView(
+                stateTuning: document.stateDetectorTuning,
+                detectorParameters: document.detectorParameterSettings
+            )
+            .id(section.id)
+        case .detectorResultReview:
+            DetectorResultReviewView(document: document)
                 .id(section.id)
         case .eventsOutput:
             ResultPackageReadbackView(document: document)
@@ -87,11 +108,9 @@ private struct ModulePlaceholderView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: section.systemImage)
-                .foregroundStyle(.secondary)
             Text(section.title)
                 .font(.title3.weight(.semibold))
-            Text("UI shell")
+            Text("界面占位")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)

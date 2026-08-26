@@ -109,14 +109,12 @@ struct ISIDistributionFoundationView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "chart.bar.doc.horizontal")
-                    .foregroundStyle(.secondary)
-                Text("Distribution-first foundation (D1-D3)")
+                Text("分布优先基础（D1-D3）")
                     .font(.title3.weight(.semibold))
                 badge(sourceText, tint: presentation.source == .detectionRun ? .green : .orange)
                 Spacer()
             }
-            Text("Distribution-first ISI models (D1/D2) + D3-derived burst/tonic/pause interval priors — separate from the old QC ISI histogram.")
+            Text("分布优先 ISI 模型（D1/D2）与 D3 派生的 burst/tonic/pause 区间先验——独立于旧的 QC ISI 直方图。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack(spacing: 14) {
@@ -166,11 +164,11 @@ struct ISIDistributionFoundationView: View {
     private var intervalSection: some View {
         sectionCard("D3 dataset interval priors") {
             if presentation.datasetIntervals.isEmpty {
-                Text("No dataset-scope burst/tonic/pause priors derived.")
+                Text("尚未派生数据集范围的 burst/tonic/pause 先验。")
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("core = central identity band (e.g. tonic q25–q75);  acc = wider acceptance / membership band;  bridge = burst extension.")
+                    Text("core = 中心身份范围（如 tonic q25–q75）；acc = 更宽的接受/成员范围；bridge = burst 延伸范围。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(presentation.datasetIntervals, id: \.self) { interval in
@@ -210,17 +208,17 @@ struct ISIDistributionFoundationView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 // Core (identity) interval.
-                Text("core  [\(ms(interval.lowerSec)) – \(ms(interval.upperSec)) ms]")
+                Text("核心  [\(ms(interval.lowerSec)) – \(ms(interval.upperSec)) ms]")
                     .monospacedDigit()
                 // Acceptance (wider membership) interval, shown only when it differs from the core.
                 if interval.acceptanceLowerSec != nil || interval.acceptanceUpperSec != nil {
-                    Text("acc.  [\(ms(interval.acceptanceLowerSec ?? interval.lowerSec)) – \(ms(interval.acceptanceUpperSec ?? interval.upperSec)) ms]")
+                    Text("接受范围  [\(ms(interval.acceptanceLowerSec ?? interval.lowerSec)) – \(ms(interval.acceptanceUpperSec ?? interval.upperSec)) ms]")
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
                 // Burst bridge/extension upper.
                 if let bridge = interval.bridgeUpperSec {
-                    Text("bridge → \(ms(bridge)) ms")
+                    Text("桥接 → \(ms(bridge)) ms")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -242,16 +240,16 @@ struct ISIDistributionFoundationView: View {
     private var selectedTrainControl: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Text("Overlay trains (stacked)")
+                Text("叠加序列（堆叠）")
                     .font(.callout.weight(.medium))
                 Text("\(selectedDetails.count) of \(presentation.perTrainDetails.count) selected")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("None") { selectedTrainIDs = [] }
+                Button("全不选") { selectedTrainIDs = [] }
                     .disabled(selectedTrainIDs.isEmpty)
-                Button("All") { selectedTrainIDs = Set(presentation.perTrainDetails.map(\.trainID)) }
+                Button("全选") { selectedTrainIDs = Set(presentation.perTrainDetails.map(\.trainID)) }
                     .disabled(selectedDetails.count == presentation.perTrainDetails.count)
-                Button("Top \(min(topN, presentation.perTrainDetails.count))") { selectTopByISICount(topN) }
+                Button("前 \(min(topN, presentation.perTrainDetails.count)) 条") { selectTopByISICount(topN) }
                     .disabled(presentation.perTrainDetails.count <= topN)
             }
             .buttonStyle(.bordered)
@@ -274,9 +272,9 @@ struct ISIDistributionFoundationView: View {
     /// one train is selected — with a single selection that train is already the focus.
     private var focusControl: some View {
         HStack(spacing: 8) {
-            Text("Focus")
+            Text("聚焦")
                 .font(.callout.weight(.medium))
-            Picker("Focus train", selection: focusSelection) {
+            Picker("聚焦序列", selection: focusSelection) {
                 ForEach(selectedDetails, id: \.trainID) { detail in
                     Text(detail.trainName).tag(String?.some(detail.trainID))
                 }
@@ -286,7 +284,7 @@ struct ISIDistributionFoundationView: View {
             if let focus = focusedDetail {
                 HStack(spacing: 5) {
                     RoundedRectangle(cornerRadius: 2).fill(trainColor(focus.trainID)).frame(width: 12, height: 10)
-                    Text("priors drawn on chart: \(focus.trainName)")
+                    Text("图中绘制的先验：\(focus.trainName)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -333,11 +331,11 @@ struct ISIDistributionFoundationView: View {
     private var selectedTrainPriorsSection: some View {
         sectionCard("Selected-train interval priors") {
             if selectedDetails.isEmpty {
-                Text("Select one or more trains above to stack their contributions and list their train-local priors.")
+                Text("请在上方选择一条或多条序列，以堆叠其贡献并列出各序列的局部先验。")
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Train-local priors per selected train — the “trainLocal” badge distinguishes these from the dataset priors below. (All selected trains shown; deselect to shorten.)")
+                    Text("每条所选序列的局部先验——“trainLocal”徽标用于区别下方的数据集先验。（当前显示全部所选序列；取消选择可缩短列表。）")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(selectedDetails, id: \.trainID) { detail in
@@ -351,7 +349,7 @@ struct ISIDistributionFoundationView: View {
                                 }
                             }
                             if detail.intervals.isEmpty {
-                                Text("No train-local burst/tonic/pause priors derived.")
+                                Text("尚未派生序列局部的 burst/tonic/pause 先验。")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
                                 ForEach(detail.intervals, id: \.self) { interval in
@@ -370,11 +368,11 @@ struct ISIDistributionFoundationView: View {
     private var tswCandidatesSection: some View {
         sectionCard("TSW tonic structural candidates") {
             if selectedDetails.isEmpty {
-                Text("Select one or more trains above to list their TSW-2 sequence-local tonic structural candidates (debug only; TSW is unwired — it does not affect detection).")
+                Text("请在上方选择一条或多条序列，以列出其 TSW-2 序列局部 tonic 结构候选（仅用于调试；TSW 不影响检测结果）。")
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Sequence-local tonic windows discovered from each train's ISI ORDER (TSW-2) — a different object from the D3 distribution bands below: D3 = ISI-magnitude priors, TSW = ordered-run structure. On the chart, the focus train's candidates appear as PURPLE ISI value ranges (min–max), not time spans; the sequence span is the ISI-index range shown here.")
+                    Text("TSW-2 根据每条序列的 ISI 顺序发现序列局部 tonic 窗口；它不同于下方 D3 分布范围：D3 表示 ISI 数值先验，TSW 表示有序连续结构。图中，聚焦序列的候选以紫色 ISI 数值范围（最小–最大）显示，而不是时间跨度；序列跨度由此处的 ISI 索引范围表示。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(selectedDetails, id: \.trainID) { detail in
@@ -392,7 +390,7 @@ struct ISIDistributionFoundationView: View {
                             .background(isFocus ? Color.purple.opacity(0.08) : Color.clear,
                                         in: RoundedRectangle(cornerRadius: 5))
                             if rows.isEmpty {
-                                Text("No TSW tonic structural candidate.")
+                                Text("没有 TSW tonic 结构候选。")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else {
                                 ForEach(rows, id: \.self) { row in tswRow(row) }
@@ -407,7 +405,7 @@ struct ISIDistributionFoundationView: View {
     private func tswRow(_ row: TSWCandidateRow) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text("ISI seq [\(row.startISIIndex)–\(row.endISIIndex)] · spikes [\(row.startSpikeIndex)–\(row.endSpikeIndex)] · \(row.isiCount) ISIs")
+                Text("ISI 序列 [\(row.startISIIndex)–\(row.endISIIndex)] · spikes [\(row.startSpikeIndex)–\(row.endSpikeIndex)] · \(row.isiCount) 个 ISI")
                     .font(.caption).monospacedDigit()
                 badge(tswRouteLabel(row.route), tint: tswRouteTint(row.route))
                 badge(row.source, tint: row.isRefined ? .indigo : .purple)
@@ -419,7 +417,7 @@ struct ISIDistributionFoundationView: View {
             if row.isRefined {
                 HStack(spacing: 8) {
                     if let os = row.originalStartISIIndex, let oe = row.originalEndISIIndex {
-                        Text("refined from [\(os)–\(oe)]").font(.caption2).foregroundStyle(.indigo).monospacedDigit()
+                        Text("由 [\(os)–\(oe)] 精炼").font(.caption2).foregroundStyle(.indigo).monospacedDigit()
                     }
                     if row.lowSideTrimmed > 0 { badge("−\(row.lowSideTrimmed) low", tint: .teal) }
                     if row.highSideTrimmed > 0 { badge("−\(row.highSideTrimmed) high", tint: .teal) }
@@ -428,12 +426,12 @@ struct ISIDistributionFoundationView: View {
                 }
             }
             HStack(spacing: 8) {
-                Text("value range \(ms(row.lowerSec))–\(ms(row.upperSec)) ms")
+                Text("数值范围 \(ms(row.lowerSec))–\(ms(row.upperSec)) ms")
                     .font(.caption2).foregroundStyle(.purple).monospacedDigit()
                 Text("CV \(num(row.cv)) · CV2 \(num(row.cv2)) · LV \(num(row.lv))")
                     .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                 if let reason = row.boundaryReason {
-                    Text("boundary: \(reason)").font(.caption2).foregroundStyle(.secondary)
+                    Text("边界：\(reason)").font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
@@ -502,7 +500,7 @@ struct ISIDistributionFoundationView: View {
                                 in: RoundedRectangle(cornerRadius: 6))
                 }
             } else {
-                Text("Not enough ISI data to plot a distribution.")
+                Text("ISI 数据不足，无法绘制分布。")
                     .foregroundStyle(.secondary)
             }
         }
@@ -514,16 +512,16 @@ struct ISIDistributionFoundationView: View {
             legendSwatch("tonic", familyColor(.tonic))
             legendSwatch("pause", familyColor(.pause))
             Divider().frame(height: 12)
-            Text("dark = core · light = acceptance · mid = bridge")
+            Text("深色 = 核心 · 浅色 = 接受范围 · 中间色 = 桥接")
                 .font(.caption2).foregroundStyle(.secondary)
             if !selectedDetails.isEmpty {
                 Divider().frame(height: 12)
-                Text("colored stack = selected-train contributions (stacked on the gray pooled bar; colors in list below)")
+                Text("彩色堆叠 = 所选序列的贡献（叠加在灰色汇总柱上；颜色见下方列表）")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if let focus = focusedDetail {
                 Divider().frame(height: 12)
-                Text("dashed = focus “\(focus.trainName)” priors (core; tonic acc. band; burst bridge ▾)")
+                Text("虚线 = 聚焦序列“\(focus.trainName)”的先验（核心；tonic 接受范围；burst 桥接 ▾）")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             if !focusedTSWCandidates.isEmpty {
@@ -689,9 +687,9 @@ struct ISIDistributionFoundationView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("No valid ISI data")
+            Text("没有有效 ISI 数据")
                 .font(.headline)
-            Text("Load a dataset (or run detection) to populate the distribution-first foundation.")
+            Text("请加载数据集（或运行检测）以生成分布优先基础。")
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 12)

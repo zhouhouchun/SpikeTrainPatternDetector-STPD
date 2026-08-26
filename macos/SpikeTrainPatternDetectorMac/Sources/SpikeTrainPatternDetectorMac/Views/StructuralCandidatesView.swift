@@ -166,7 +166,7 @@ struct StructuralCandidatesView: View {
                         ContentUnavailableView(
                             "No Candidate Audit",
                             systemImage: "rectangle.connected.to.line.below",
-                            description: Text("Run adaptive classic-anchor detection to generate structural candidates.")
+                            description: Text("请运行自适应经典锚点检测以生成结构候选。")
                         )
                         .frame(maxWidth: .infinity, minHeight: 360)
                     }
@@ -195,11 +195,9 @@ struct StructuralCandidatesView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "rectangle.connected.to.line.below")
-                .foregroundStyle(.secondary)
             Text("结构候选")
                 .font(.title3.weight(.semibold))
-            Text("Live")
+            Text("可用")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
@@ -223,7 +221,7 @@ struct StructuralCandidatesView: View {
             }
             .liquidGlassButtonStyle()
             .disabled(!document.hasDetectorResults)
-            .help("Import review statuses for the current exploratory or confirmed run")
+            .help("为当前探索性或已确认运行导入审核状态")
 
             Button {
                 document.exportClassicAnchorEventsCSVWithPanel()
@@ -320,7 +318,7 @@ struct StructuralCandidatesView: View {
             HStack(spacing: 8) {
                 Image(systemName: "speedometer")
                     .foregroundStyle(.secondary)
-                Text("Performance")
+                Text("性能")
                     .font(.headline)
                 Text("\(report.trainCount) trains · \(report.spikeCount) spikes · \(formatRuntime(report.totalWallTimeMs))")
                     .font(.caption)
@@ -351,7 +349,7 @@ struct StructuralCandidatesView: View {
                 .font(.caption)
             }
             if rows.isEmpty {
-                Text("No timing rows recorded.")
+                Text("没有记录计时数据。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -382,13 +380,13 @@ struct StructuralCandidatesView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 12) {
-                Text("Candidate audit")
+                Text("候选审计")
                     .font(.headline)
                 Text("\(displayedCandidates.count) shown · \(candidates.count) filtered / \(totalCandidateCount) total")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 18)
-                Picker("Pattern", selection: $labelFilter) {
+                Picker("模式", selection: $labelFilter) {
                     ForEach(CandidateLabelFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
                     }
@@ -410,7 +408,7 @@ struct StructuralCandidatesView: View {
                     Button {
                         candidateDisplayLimit += 400
                     } label: {
-                        Label("Show 400 more (\(hiddenCount) hidden)", systemImage: "chevron.down")
+                        Label("再显示 400 个（尚有 \(hiddenCount) 个隐藏）", systemImage: "chevron.down")
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 10)
                     }
@@ -420,7 +418,7 @@ struct StructuralCandidatesView: View {
                     .padding(.top, 6)
                 }
                 if candidates.isEmpty {
-                    Text("No candidates match the current filters.")
+                    Text("没有候选符合当前筛选条件。")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
@@ -447,7 +445,7 @@ struct StructuralCandidatesView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Clear") {
+                Button("清除") {
                     enablesTimeWindowAudit = false
                     timeWindowTrainQuery = ""
                     timeWindowStartSec = 0
@@ -458,7 +456,7 @@ struct StructuralCandidatesView: View {
             }
 
             HStack(spacing: 12) {
-                Picker("Time", selection: $timeWindowMode) {
+                Picker("时间", selection: $timeWindowMode) {
                     ForEach(RasterTimeMode.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -470,13 +468,13 @@ struct StructuralCandidatesView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
 
-                Text("Start")
+                Text("起点")
                     .foregroundStyle(.secondary)
                 DebouncedDoubleField("s", value: $timeWindowStartSec, width: 92, maxFractionDigits: 6)
                 Text("s")
                     .foregroundStyle(.secondary)
 
-                Text("End")
+                Text("终点")
                     .foregroundStyle(.secondary)
                 DebouncedDoubleField("s", value: $timeWindowEndSec, width: 92, maxFractionDigits: 6)
                 Text("s")
@@ -615,7 +613,7 @@ struct StructuralCandidatesView: View {
             }
 
             if snapshot.isiRows.count > 18 {
-                Text("Showing first 18 local ISIs; narrow the window for more detail.")
+                Text("当前显示前 18 个局部 ISI；缩小窗口可查看更详细内容。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
@@ -637,7 +635,7 @@ struct StructuralCandidatesView: View {
 
             ForEach(snapshot.candidates.prefix(12)) { candidate in
                 Button {
-                    focus(candidate, section: .alignedRaster)
+                    focusInBackground(candidate)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
@@ -702,7 +700,7 @@ struct StructuralCandidatesView: View {
         let isFocused = document.focusedClassicAnchorCandidateID == candidate.id
 
         return Button {
-            focus(candidate, section: .alignedRaster)
+            focusInBackground(candidate)
         } label: {
             HStack(spacing: 12) {
                 reviewLabel(document.reviewStatus(for: candidate.id))
@@ -763,16 +761,16 @@ struct StructuralCandidatesView: View {
                 focus(candidate, section: .isiProfile)
             }
             Divider()
-            Button("Accept") {
+            Button("接受") {
                 document.setReviewStatus(.accepted, for: candidate.id)
             }
-            Button("Needs review") {
+            Button("需要复核") {
                 document.setReviewStatus(.needsReview, for: candidate.id)
             }
-            Button("Reject") {
+            Button("拒绝") {
                 document.setReviewStatus(.rejected, for: candidate.id)
             }
-            Button("Clear review") {
+            Button("清除审核") {
                 document.setReviewStatus(.unreviewed, for: candidate.id)
             }
         }
@@ -1073,6 +1071,13 @@ struct StructuralCandidatesView: View {
     private func focus(_ candidate: ClassicAnchorCandidate, section: WorkbenchSection) {
         document.focusClassicAnchorCandidate(candidate.id, adjustRasterReviewWindow: section == .alignedRaster || section == .rawRaster)
         selectedSection = section
+    }
+
+    /// Keeps the audit table visible while preparing the timestamp raster for the same candidate.
+    /// The document focus updates the inspector, makes the candidate train visible, selects an
+    /// appropriate review window when it is not user-locked, and queues an in-place centering request.
+    private func focusInBackground(_ candidate: ClassicAnchorCandidate) {
+        document.focusClassicAnchorCandidate(candidate.id, adjustRasterReviewWindow: true)
     }
 
     private func semanticReason(_ candidate: ClassicAnchorCandidate) -> String {

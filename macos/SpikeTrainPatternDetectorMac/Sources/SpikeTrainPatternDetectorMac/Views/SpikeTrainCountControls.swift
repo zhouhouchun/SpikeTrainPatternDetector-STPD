@@ -2,6 +2,8 @@ import STPDCore
 import SwiftUI
 
 struct SpikeTrainCountControls: View {
+    @Environment(\.l10n) private var l10n
+
     @Bindable var document: RasterDocument
     let dataset: SpikeDataset
     let scope: SpikeTrainSelectionScope
@@ -13,7 +15,7 @@ struct SpikeTrainCountControls: View {
     var body: some View {
         HStack(spacing: 8) {
             if showsTitle {
-                Text(scope.title)
+                Text(l10n.t(scope.title))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -21,7 +23,7 @@ struct SpikeTrainCountControls: View {
                     .frame(width: titleWidth, alignment: .leading)
             }
 
-            Text("显示")
+            Text(l10n.t("显示"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -32,11 +34,11 @@ struct SpikeTrainCountControls: View {
                 width: 52
             )
 
-            Text("条")
+            Text(l10n.t("条"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Button("全部") {
+            Button(l10n.t("全部")) {
                 document.selectVisibleTrainCount(dataset.trains.count, scope: scope)
             }
             .font(.caption)
@@ -46,13 +48,13 @@ struct SpikeTrainCountControls: View {
                 isTrainSelectorPresented = true
             } label: {
                 ViewThatFits(in: .horizontal) {
-                    Label("选择", systemImage: "checklist")
+                    Label(l10n.t("选择"), systemImage: "checklist")
                     Image(systemName: "checklist")
                 }
             }
             .font(.caption)
             .liquidGlassButtonStyle()
-            .help("打开详细 spike train 选择器。")
+            .help(l10n.t("打开详细 spike train 选择器。"))
             .popover(isPresented: $isTrainSelectorPresented, arrowEdge: .trailing) {
                 SpikeTrainSelectorPopover(document: document, dataset: dataset, scope: scope)
             }

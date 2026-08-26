@@ -5,6 +5,8 @@ import SwiftUI
 struct ISITimelineView: View {
     @Bindable var document: RasterDocument
 
+    @Environment(\.l10n) private var l10n
+
     @State private var pageIndex = 0
     @State private var highlightedTrainIDs: Set<String> = []
 
@@ -66,16 +68,16 @@ struct ISITimelineView: View {
     private var content: some View {
         if document.dataset == nil {
             ContentUnavailableView(
-                "ISI Trace Not Loaded",
+                l10n.t("未加载 ISI 序列"),
                 systemImage: "timeline.selection",
-                description: Text(document.lastErrorMessage ?? "Load a spike train dataset first.")
+                description: Text(document.lastErrorMessage ?? l10n.t("请先加载脉冲序列数据集。"))
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if selectedTraces.isEmpty {
             ContentUnavailableView(
-                "No ISI trains selected",
+                l10n.t("未选择 ISI 序列"),
                 systemImage: "checklist",
-                description: Text("Use the ISI train selector in the header to choose one or more spike trains.")
+                description: Text(l10n.t("使用顶部的 ISI 序列选择器选择一个或多个脉冲序列。"))
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -89,11 +91,23 @@ struct ISITimelineView: View {
                 yScale: document.isiYAxisScale,
                 lockYAxis: document.isiLockYAxis,
                 qualitySettings: document.qualitySettings,
-                eventAnnotations: document.classicAnchorEventAnnotations,
+                eventAnnotations: document.classicAnchorPublicEventAnnotations,
                 stateAnnotations: document.classicAnchorStateAnnotations,
                 focusedAnnotation: document.focusedClassicAnchorEventAnnotation,
                 reviewStatuses: document.classicAnchorReviewStatuses,
                 focusRequestID: isiFocusScrollKey,
+                reference: document.isiTimelineReference,
+                referenceTolerance: document.isiTimelineReferenceTolerance,
+                thresholdLines: document.isiTimelineShowsThresholdLines
+                    ? document.activeManualISIThresholdLines : [],
+                onLockReference: { event in
+                    document.lockISITimelineReference(
+                        trainID: event.trainID,
+                        trainName: event.trainName,
+                        intervalIndex: event.intervalIndex,
+                        isiSec: event.isiSec
+                    )
+                },
                 highlightedTrainIDs: $highlightedTrainIDs
             )
         }
@@ -104,11 +118,9 @@ struct ISITimelineView: View {
             HStack(alignment: .center, spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Image(systemName: "timeline.selection")
-                            .foregroundStyle(.secondary)
-                        Text("ISI 时间剖面")
+                        Text(l10n.t("ISI 时间剖面"))
                             .font(.headline)
-                        Text("Live")
+                        Text(l10n.t("实时"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 8)
@@ -132,6 +144,14 @@ struct ISITimelineView: View {
             }
             .scrollIndicators(.hidden)
 
+            if document.dataset != nil, !selectedTraces.isEmpty {
+                ScrollView(.horizontal) {
+                    referenceControls
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+            }
+
             if document.isiLayoutMode == .overlay, !selectedTraces.isEmpty {
                 ISIOverlayLegendStrip(
                     traces: selectedTraces,
@@ -145,7 +165,7 @@ struct ISITimelineView: View {
     private var isiTrainDisplayBlock: some View {
         if let dataset = document.dataset {
             VStack(alignment: .leading, spacing: 7) {
-                Text(SpikeTrainSelectionScope.isiTimeline.title)
+                Text(l10n.t(SpikeTrainSelectionScope.isiTimeline.title))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -162,7 +182,7 @@ struct ISITimelineView: View {
 
     private var controls: some View {
         HStack(alignment: .center, spacing: 20) {
-            controlGroup("Layout") {
+            controlGroup(l10n.t("布局")) {
                 GlassSegmentedControl(
                     options: ISITimelineLayoutMode.allCases.map { ($0, $0.title) },
                     selection: $document.isiLayoutMode,
@@ -171,7 +191,7 @@ struct ISITimelineView: View {
                 .frame(width: 176)
             }
 
-            controlGroup("Time") {
+            controlGroup(l10n.t("时间")) {
                 GlassSegmentedControl(
                     options: RasterTimeMode.allCases.map { ($0, $0.title) },
                     selection: $document.isiTimeMode,
@@ -182,7 +202,7 @@ struct ISITimelineView: View {
 
             visibleWindowControl
 
-            controlGroup("Unit", spacing: 20) {
+            controlGroup(l10n.t("单位"), spacing: 20) {
                 GlassSegmentedControl(
                     options: [
                         (.milliseconds, "ms"),
@@ -194,7 +214,7 @@ struct ISITimelineView: View {
                 .frame(width: 82)
             }
 
-            controlGroup("Y scale") {
+            controlGroup(l10n.t("Y 轴刻度")) {
                 GlassSegmentedControl(
                     options: ISIYAxisScale.allCases.map { ($0, $0.title) },
                     selection: $document.isiYAxisScale,
@@ -204,9 +224,9 @@ struct ISITimelineView: View {
             }
 
             if document.isiLayoutMode == .separateAxes {
-                Toggle("Lock Y", isOn: $document.isiLockYAxis)
+                Toggle(l10n.t("锁定 Y 轴"), isOn: $document.isiLockYAxis)
                     .toggleStyle(.checkbox)
-                    .help("Use one shared Y range across the four visible ISI panes.")
+                    .help(l10n.t("全部可见的四个 ISI 窗格使用同一共享 Y 轴范围。"))
             }
 
             pageControls
@@ -216,12 +236,75 @@ struct ISITimelineView: View {
                 document.isiVisibleWindowUnit = .seconds
                 pageIndex = 0
             } label: {
-                Label("Reset", systemImage: "arrow.counterclockwise")
+                Label(l10n.t("重置"), systemImage: "arrow.counterclockwise")
             }
             .liquidGlassButtonStyle()
             .labelStyle(.iconOnly)
-            .help("Reset ISI window")
+            .help(l10n.t("重置 ISI 窗口"))
 
+        }
+        .font(.subheadline)
+    }
+
+    private var referenceControls: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(systemName: "scope")
+                .foregroundStyle(.teal)
+
+            if let reference = document.isiTimelineReference {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("参考值 \(ISITimelineFormat.time(reference.isiSec, unit: document.isiDisplayUnit))")
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                    Text("\(reference.trainName) · interval \(reference.intervalIndex)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .frame(maxWidth: 230, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+
+                Button {
+                    document.clearISITimelineReference()
+                } label: {
+                    Label(l10n.t("清除"), systemImage: "xmark.circle")
+                }
+                .liquidGlassButtonStyle()
+                .labelStyle(.iconOnly)
+                .help(l10n.t("清除已锁定的 ISI 参考。"))
+
+                Menu {
+                    ForEach(ISIReferenceThresholdTarget.allCases) { target in
+                        Button(target.menuTitle) {
+                            document.copyISITimelineReferenceToManualThreshold(target)
+                        }
+                    }
+                } label: {
+                    Label(l10n.t("复制到手动阈值"), systemImage: "arrow.right.doc.on.clipboard")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help(l10n.t("将参考 ISI 复制到某个手动阈值字段。若该族为自动，则会成为软锚点，在下次检测器运行时生效。"))
+
+                controlGroup(l10n.t("相似 ±")) {
+                    GlassSegmentedControl(
+                        options: [(0.05, "5%"), (0.10, "10%"), (0.20, "20%")],
+                        selection: $document.isiTimelineReferenceTolerance,
+                        minSegmentWidth: 40
+                    )
+                    .frame(width: 138)
+                }
+                .help(l10n.t("高亮显示数值在参考值此比例范围内的 ISI。"))
+            } else {
+                Text(l10n.t("点击 ISI 点或线段将其锁定为参考。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle(l10n.t("阈值线"), isOn: $document.isiTimelineShowsThresholdLines)
+                .toggleStyle(.checkbox)
+                .help(l10n.t("叠加显示活动的手动阈值线（实线 = 硬门限，虚线 = 软锚点）。"))
         }
         .font(.subheadline)
     }
@@ -241,7 +324,7 @@ struct ISITimelineView: View {
 
     private var visibleWindowControl: some View {
         HStack(spacing: 12) {
-            Text("Visible window")
+            Text(l10n.t("可见窗口"))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: true, vertical: false)
             DebouncedDoubleField(
@@ -259,7 +342,7 @@ struct ISITimelineView: View {
             )
             .frame(width: 82)
         }
-        .help("Controls the width of the visible ISI time viewport. Scroll horizontally to move through time.")
+        .help(l10n.t("控制可见 ISI 时间视口的宽度。横向滚动以浏览时间轴。"))
         .padding(.trailing, 24)
     }
 
@@ -289,7 +372,7 @@ struct ISITimelineView: View {
                 .liquidGlassButtonStyle()
                 .disabled(pageIndex >= totalPages - 1)
             }
-            .help("Show the next group of up to four ISI panes.")
+            .help(l10n.t("显示下一组（最多四个）ISI 窗格。"))
         }
     }
 
@@ -346,6 +429,8 @@ private struct ISIOverlayLegendStrip: View {
     let traces: [SpikeISITrace]
     @Binding var highlightedTrainIDs: Set<String>
 
+    @Environment(\.l10n) private var l10n
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
@@ -367,11 +452,11 @@ private struct ISIOverlayLegendStrip: View {
                         .background(.quaternary.opacity(highlightedTrainIDs.contains(trace.id) ? 0.8 : 0.45), in: RoundedRectangle(cornerRadius: 7))
                     }
                     .buttonStyle(.plain)
-                    .help("Click to focus this train. Command-click to focus multiple trains.")
+                    .help(l10n.t("点击聚焦此序列。按住 Command 点击可聚焦多个序列。"))
                 }
 
                 if !highlightedTrainIDs.isEmpty {
-                    Button("Show all") {
+                    Button("显示全部") {
                         highlightedTrainIDs = []
                     }
                     .font(.caption)
@@ -420,7 +505,13 @@ private struct ISITimelineCanvasView: View {
     let focusedAnnotation: ClassicAnchorEventAnnotation?
     let reviewStatuses: [String: ClassicAnchorReviewStatus]
     let focusRequestID: Int
+    let reference: ISITimelineReference?
+    let referenceTolerance: Double
+    let thresholdLines: [ISIManualThresholdLine]
+    let onLockReference: (SpikeISIEvent) -> Void
     @Binding var highlightedTrainIDs: Set<String>
+
+    @Environment(\.l10n) private var l10n
 
     var body: some View {
         GeometryReader { proxy in
@@ -439,7 +530,7 @@ private struct ISITimelineCanvasView: View {
             )
 
             if traces.isEmpty {
-                ContentUnavailableView("No visible ISI trace", systemImage: "timeline.selection")
+                ContentUnavailableView(l10n.t("无可见 ISI 序列"), systemImage: "timeline.selection")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { verticalProxy in
@@ -470,6 +561,10 @@ private struct ISITimelineCanvasView: View {
                                         focusedAnnotation: focusedAnnotation,
                                         reviewStatuses: reviewStatuses,
                                         showsInlineLegend: layoutMode == .overlay,
+                                        reference: reference,
+                                        referenceTolerance: referenceTolerance,
+                                        thresholdLines: thresholdLines,
+                                        onLockReference: onLockReference,
                                         highlightedTrainIDs: $highlightedTrainIDs
                                     )
                                     .frame(width: layout.plotWidth, height: layout.contentHeight)
@@ -571,6 +666,8 @@ private struct ISITimelinePlotSurface: View {
     private static let eventIntervalLineWidth: CGFloat = 3.5
     private static let eventIntervalYOffset: CGFloat = 5
     private static let stateTrackLineWidth: CGFloat = 5.5
+    private static let referenceColor = Color(nsColor: .systemTeal)
+    private static let manualThresholdColor = Color(nsColor: .systemPurple)
 
     let traces: [SpikeISITrace]
     let layout: ISITimelineLayout
@@ -585,7 +682,13 @@ private struct ISITimelinePlotSurface: View {
     let focusedAnnotation: ClassicAnchorEventAnnotation?
     let reviewStatuses: [String: ClassicAnchorReviewStatus]
     let showsInlineLegend: Bool
+    let reference: ISITimelineReference?
+    let referenceTolerance: Double
+    let thresholdLines: [ISIManualThresholdLine]
+    let onLockReference: (SpikeISIEvent) -> Void
     @Binding var highlightedTrainIDs: Set<String>
+
+    @Environment(\.l10n) private var l10n
 
     @State private var hoverLocation: CGPoint?
 
@@ -607,7 +710,10 @@ private struct ISITimelinePlotSurface: View {
                 drawStateAnnotations(model: model, context: &context)
                 drawEventAnnotations(model: model, context: &context)
                 drawThresholds(model: model, context: &context)
+                drawManualThresholdLines(model: model, context: &context)
+                drawReferenceOverlay(model: model, context: &context)
                 drawTraces(model: model, context: &context)
+                drawSimilarISIHighlights(model: model, context: &context)
                 drawXAxis(model: model, context: &context)
             }
             .background(Color(nsColor: .textBackgroundColor))
@@ -647,13 +753,15 @@ private struct ISITimelinePlotSurface: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { value in
-                    guard layoutMode == .overlay,
-                          abs(value.translation.width) < 3,
+                    guard abs(value.translation.width) < 3,
                           abs(value.translation.height) < 3,
-                          let target = model.hoverTarget(at: value.location, displayUnit: displayUnit) else {
+                          let event = model.nearestEvent(at: value.location) else {
                         return
                     }
-                    updateHighlight(for: target.trainID)
+                    onLockReference(event)
+                    if layoutMode == .overlay {
+                        updateHighlight(for: event.trainID)
+                    }
                 }
         )
     }
@@ -663,12 +771,12 @@ private struct ISITimelinePlotSurface: View {
         let eventEntries = annotationLegendEntries(
             model: model,
             annotations: annotationsForDrawing(eventAnnotations, track: .event),
-            title: "Events"
+            title: l10n.t("事件")
         )
         let stateEntries = annotationLegendEntries(
             model: model,
             annotations: annotationsForDrawing(stateAnnotations, track: .state),
-            title: "States"
+            title: l10n.t("状态层")
         )
         let groups = [eventEntries, stateEntries].filter { !$0.items.isEmpty }
         if !groups.isEmpty {
@@ -808,7 +916,7 @@ private struct ISITimelinePlotSurface: View {
                 model: model,
                 context: &context
             ) {
-                labels.append(("min valid ISI \(formatTime(qualitySettings.artifactThresholdSec))", ISIPlotPalette.artifactColor))
+                labels.append(("artifact \(formatTime(qualitySettings.artifactThresholdSec))", ISIPlotPalette.artifactColor))
             }
 
             drawThreshold(
@@ -899,7 +1007,7 @@ private struct ISITimelinePlotSurface: View {
                 )
 
                 if isFocused {
-                    let label = Text("state \(legendName(for: annotation.label))")
+                    let label = Text("状态 \(legendName(for: annotation.label))")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(color.opacity(0.88))
                     context.draw(
@@ -1087,6 +1195,8 @@ private struct ISITimelinePlotSurface: View {
         yRange: ClosedRange<Double>,
         model: ISITimelinePlotModel,
         context: inout GraphicsContext,
+        lineWidth: CGFloat = 1,
+        dash: [CGFloat] = [5, 4],
         onDrawn: () -> Void
     ) {
         guard value.isFinite, model.canPlotY(value, yRange: yRange) else {
@@ -1098,8 +1208,111 @@ private struct ISITimelinePlotSurface: View {
         var path = Path()
         path.move(to: CGPoint(x: paneDataRect.minX, y: y))
         path.addLine(to: CGPoint(x: paneDataRect.maxX, y: y))
-        context.stroke(path, with: .color(color.opacity(0.76)), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        context.stroke(path, with: .color(color.opacity(0.76)), style: StrokeStyle(lineWidth: lineWidth, dash: dash))
         onDrawn()
+    }
+
+    /// Phase 2A: overlay the active manual ISI threshold lines (solid = hard gate, dashed = soft
+    /// anchor) in each visible pane, mirroring `drawThresholds`' per-pane / per-yRange handling.
+    private func drawManualThresholdLines(model: ISITimelinePlotModel, context: inout GraphicsContext) {
+        guard !thresholdLines.isEmpty else {
+            return
+        }
+        for index in traces.indices {
+            let paneRect = layout.paneRect(at: index)
+            let paneDataRect = layout.dataRect(for: paneRect)
+            let yRange = model.yRange(for: traces[index])
+            for line in thresholdLines {
+                guard model.canPlotY(line.isiSec, yRange: yRange) else {
+                    continue
+                }
+                drawThreshold(
+                    line.isiSec,
+                    color: Self.manualThresholdColor,
+                    paneRect: paneRect,
+                    yRange: yRange,
+                    model: model,
+                    context: &context,
+                    lineWidth: line.isHardGate ? 1.3 : 1,
+                    dash: line.isHardGate ? [] : [4, 3]
+                ) {}
+                let y = model.yPosition(for: line.isiSec, in: paneRect, yRange: yRange)
+                context.draw(
+                    Text(line.label)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Self.manualThresholdColor.opacity(0.95)),
+                    at: CGPoint(x: paneDataRect.minX + 5, y: y - 7),
+                    anchor: .leading
+                )
+            }
+        }
+    }
+
+    /// Phase 2A: draw the locked reference ISI line plus its similar-ISI tolerance band in every
+    /// visible pane, so the reference can be compared against each train's ISIs on its own Y range.
+    private func drawReferenceOverlay(model: ISITimelinePlotModel, context: inout GraphicsContext) {
+        guard let reference, reference.isiSec.isFinite, reference.isiSec > 0 else {
+            return
+        }
+        let tolerance = max(0, referenceTolerance)
+        let low = reference.isiSec * (1 - tolerance)
+        let high = reference.isiSec * (1 + tolerance)
+
+        for index in traces.indices {
+            let paneRect = layout.paneRect(at: index)
+            let paneDataRect = layout.dataRect(for: paneRect)
+            let yRange = model.yRange(for: traces[index])
+
+            let bandLow = max(low, yRange.lowerBound)
+            let bandHigh = min(high, yRange.upperBound)
+            if bandHigh > bandLow {
+                let yTop = model.yPosition(for: bandHigh, in: paneRect, yRange: yRange)
+                let yBottom = model.yPosition(for: bandLow, in: paneRect, yRange: yRange)
+                let bandRect = CGRect(
+                    x: paneDataRect.minX,
+                    y: min(yTop, yBottom),
+                    width: paneDataRect.width,
+                    height: abs(yBottom - yTop)
+                )
+                context.fill(Path(bandRect), with: .color(Self.referenceColor.opacity(0.10)))
+            }
+
+            if model.canPlotY(reference.isiSec, yRange: yRange) {
+                let y = model.yPosition(for: reference.isiSec, in: paneRect, yRange: yRange)
+                var path = Path()
+                path.move(to: CGPoint(x: paneDataRect.minX, y: y))
+                path.addLine(to: CGPoint(x: paneDataRect.maxX, y: y))
+                context.stroke(path, with: .color(Self.referenceColor.opacity(0.92)), style: StrokeStyle(lineWidth: 1.6))
+            }
+        }
+    }
+
+    /// Phase 2A: ring every plotted ISI marker whose value is within the tolerance band of the
+    /// locked reference, drawn on top of the traces so the "similar ISIs" stand out.
+    private func drawSimilarISIHighlights(model: ISITimelinePlotModel, context: inout GraphicsContext) {
+        guard let reference, reference.isiSec.isFinite, reference.isiSec > 0 else {
+            return
+        }
+        let tolerance = max(0, referenceTolerance)
+        let low = reference.isiSec * (1 - tolerance)
+        let high = reference.isiSec * (1 + tolerance)
+        let ringRadius = Self.isiMarkerRadius + 2.5
+
+        for (traceIndex, trace) in traces.enumerated() {
+            var rings = Path()
+            for point in model.points(for: trace, traceIndex: traceIndex)
+            where point.event.isiSec >= low && point.event.isiSec <= high {
+                rings.addEllipse(
+                    in: CGRect(
+                        x: point.location.x - ringRadius,
+                        y: point.location.y - ringRadius,
+                        width: ringRadius * 2,
+                        height: ringRadius * 2
+                    )
+                )
+            }
+            context.stroke(rings, with: .color(Self.referenceColor.opacity(0.95)), style: StrokeStyle(lineWidth: 1.5))
+        }
     }
 
     private func drawThresholdLabels(
@@ -1635,7 +1848,9 @@ private struct ISITimelinePlotModel {
         }
     }
 
-    func hoverTarget(at location: CGPoint, displayUnit: QualityDisplayUnit) -> ISIHoverTarget? {
+    /// The ISI event nearest to a point within the marker/segment hit radius, or `nil`. Shared by the
+    /// hover card and the Phase 2A click-to-lock-reference gesture so both resolve the same interval.
+    func nearestEvent(at location: CGPoint) -> SpikeISIEvent? {
         guard layout.plotRect.insetBy(dx: 0, dy: -8).contains(location),
               let paneIndex = layout.paneIndex(at: location) else {
             return nil
@@ -1667,7 +1882,11 @@ private struct ISITimelinePlotModel {
             }
         }
 
-        guard let event = best?.event else {
+        return best?.event
+    }
+
+    func hoverTarget(at location: CGPoint, displayUnit: QualityDisplayUnit) -> ISIHoverTarget? {
+        guard let event = nearestEvent(at: location) else {
             return nil
         }
 
@@ -1707,7 +1926,7 @@ private struct ISITimelinePlotModel {
 
     private func qcLabel(for event: SpikeISIEvent) -> String {
         if event.isArtifact {
-            return "Below minimum ISI"
+            return "Artifact"
         }
         if event.isRefractorySuspect {
             return "Refractory suspect"

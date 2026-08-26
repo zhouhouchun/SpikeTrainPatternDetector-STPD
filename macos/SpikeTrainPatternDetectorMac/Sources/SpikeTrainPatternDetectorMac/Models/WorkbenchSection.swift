@@ -29,6 +29,8 @@ enum WorkbenchGroup: String, CaseIterable, Identifiable {
 enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
     case alignedRaster
     case rawRaster
+    case spikeTrainISIHeatmap
+    case spikeTrainModeHeatmap
     case dbsTrack
     case isiProfile
     case isiStateSpace
@@ -46,9 +48,11 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
     case batchAPI
     case methodAudit
     case detectorParameters
+    case simulatorPreview
     case adaptiveTrainTuning
     case neuralNetworkModel
     case dataQC
+    case detectorResultReview
     case eventsOutput
 
     var id: String { rawValue }
@@ -56,9 +60,13 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .alignedRaster:
-            return "对齐时间戳图"
+            return "时间戳图"
         case .rawRaster:
             return "原始时间戳图"
+        case .spikeTrainISIHeatmap:
+            return "ISI 热力图"
+        case .spikeTrainModeHeatmap:
+            return "模式热力图"
         case .dbsTrack:
             return "目标核团深度图"
         case .isiProfile:
@@ -66,7 +74,7 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
         case .isiStateSpace:
             return "ISI 状态空间"
         case .stateTrajectory:
-            return "State trajectory"
+            return "状态轨迹"
         case .eventAlignedActivity:
             return "事件对齐活动"
         case .neuralManifold:
@@ -84,7 +92,7 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
         case .supportMethods:
             return "支持方法"
         case .manualDetectorReport:
-            return "手动标记 vs 检测器报告"
+            return "手工 ISI 标记与审核"
         case .scientificValidation:
             return "科学验证"
         case .batchAPI:
@@ -93,20 +101,24 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return "方法 / 审计说明"
         case .detectorParameters:
             return "检测器 / 参数"
+        case .simulatorPreview:
+            return "模拟 / 预览"
         case .adaptiveTrainTuning:
             return "自适应 train 调参"
         case .neuralNetworkModel:
             return "神经网络模型"
         case .dataQC:
             return "数据 QC"
+        case .detectorResultReview:
+            return "检测结果科学审核"
         case .eventsOutput:
-            return "事件 / 输出"
+            return "结果包回读"
         }
     }
 
     var group: WorkbenchGroup {
         switch self {
-        case .alignedRaster, .rawRaster, .dbsTrack, .dataQC:
+        case .alignedRaster, .rawRaster, .spikeTrainISIHeatmap, .spikeTrainModeHeatmap, .dbsTrack, .dataQC:
             return .primaryViews
         case .isiProfile, .isiStateSpace, .stateTrajectory, .eventAlignedActivity, .neuralManifold:
             return .stateAndManifold
@@ -114,9 +126,9 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return .diagnostics
         case .manualDetectorReport, .scientificValidation:
             return .validation
-        case .detectorParameters, .adaptiveTrainTuning, .neuralNetworkModel:
+        case .detectorParameters, .simulatorPreview, .adaptiveTrainTuning, .neuralNetworkModel:
             return .configuration
-        case .batchAPI, .methodAudit, .eventsOutput:
+        case .batchAPI, .methodAudit, .detectorResultReview, .eventsOutput:
             return .outputs
         }
     }
@@ -127,6 +139,10 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return "chart.xyaxis.line"
         case .rawRaster:
             return "waveform.path.ecg"
+        case .spikeTrainISIHeatmap:
+            return "square.grid.3x3.fill"
+        case .spikeTrainModeHeatmap:
+            return "square.grid.3x3.middle.filled"
         case .dbsTrack:
             return "point.3.connected.trianglepath.dotted"
         case .isiProfile:
@@ -159,12 +175,16 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return "doc.text.magnifyingglass"
         case .detectorParameters:
             return "switch.2"
+        case .simulatorPreview:
+            return "waveform.badge.plus"
         case .adaptiveTrainTuning:
             return "dial.low"
         case .neuralNetworkModel:
             return "brain"
         case .dataQC:
             return "exclamationmark.shield"
+        case .detectorResultReview:
+            return "chart.bar.doc.horizontal"
         case .eventsOutput:
             return "tablecells"
         }
@@ -172,7 +192,9 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
 
     var isLive: Bool {
         switch self {
-        case .alignedRaster, .rawRaster, .isiProfile, .isiStateSpace, .datasetISIHistogram, .dataQC, .structuralCandidates, .detectorParameters, .eventsOutput:
+        case .alignedRaster, .spikeTrainISIHeatmap, .spikeTrainModeHeatmap, .isiProfile, .isiStateSpace, .neuralManifold,
+             .datasetISIHistogram, .dataQC, .structuralCandidates, .manualDetectorReport,
+             .detectorParameters, .simulatorPreview, .detectorResultReview, .eventsOutput:
             return true
         default:
             return false
@@ -185,6 +207,10 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return 2320
         case .rawRaster:
             return 2333
+        case .spikeTrainISIHeatmap:
+            return 0
+        case .spikeTrainModeHeatmap:
+            return 0
         case .dbsTrack:
             return 2358
         case .isiProfile:
@@ -219,19 +245,23 @@ enum WorkbenchSection: String, CaseIterable, Identifiable, Hashable {
             return 3448
         case .detectorParameters:
             return 3487
+        case .simulatorPreview:
+            return 0
         case .adaptiveTrainTuning:
             return 3562
         case .neuralNetworkModel:
             return 3609
         case .dataQC:
             return 3662
+        case .detectorResultReview:
+            return 3677
         case .eventsOutput:
             return 3677
         }
     }
 
     var migrationStatus: String {
-        isLive ? "Live" : "UI shell"
+        isLive ? "可用" : "界面占位"
     }
 
     static func sections(in group: WorkbenchGroup) -> [WorkbenchSection] {

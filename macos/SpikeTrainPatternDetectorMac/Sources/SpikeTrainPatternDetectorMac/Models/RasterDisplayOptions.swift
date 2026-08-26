@@ -1,7 +1,7 @@
 import Foundation
 import STPDCore
 
-enum RasterTimeMode: String, CaseIterable, Identifiable {
+enum RasterTimeMode: String, CaseIterable, Identifiable, Sendable {
     case aligned
     case raw
 
@@ -10,23 +10,23 @@ enum RasterTimeMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .aligned:
-            return "Aligned"
+            return "对齐"
         case .raw:
-            return "Raw"
+            return "原始"
         }
     }
 
     var axisTitle: String {
         switch self {
         case .aligned:
-            return "Aligned time"
+            return "对齐时间"
         case .raw:
-            return "Raw timestamp"
+            return "原始时间戳"
         }
     }
 }
 
-struct RasterTimeRange {
+struct RasterTimeRange: Sendable {
     let lowerBound: Double
     let upperBound: Double
 

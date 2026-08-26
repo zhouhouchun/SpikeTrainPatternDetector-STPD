@@ -4,6 +4,14 @@ import Observation
 import STPDCore
 import UniformTypeIdentifiers
 
+struct PinnedTonicSensitivity: Equatable {
+    let preview: SegmentSensitivityPreview
+    let candidateID: String
+    let trainName: String
+    let startISIIndex: Int
+    let endISIIndex: Int
+}
+
 /// How the currently installed dataset entered the legacy active-document surface.
 ///
 /// The current preparation-only importer intentionally has no "authoritative" case: it validates
@@ -13,6 +21,10 @@ enum ActiveDatasetScientificStanding: Equatable, Sendable {
     case noDataset
     case nonAuthoritativeDemo
     case legacyUnreviewedImport
+    /// A Double-seconds display projection of an exact, persisted canonical import. It may drive
+    /// plots, per-train QC, and manual exploration, but the exact microsecond canonical dataset
+    /// remains the source of truth for manual decisions and result-package sealing.
+    case canonicalConfirmedExploration(datasetDigest: String)
 
     var permitsAuthoritativeDetectorArtifactExport: Bool { false }
     var permitsSealedResultExport: Bool { permitsAuthoritativeDetectorArtifactExport }
@@ -22,9 +34,11 @@ enum ActiveDatasetScientificStanding: Equatable, Sendable {
         case .noDataset:
             return ""
         case .nonAuthoritativeDemo:
-            return "Demo result — non-authoritative; sealed export is locked. "
+            return "演示结果——非权威；封存导出已锁定。"
         case .legacyUnreviewedImport:
-            return "Unreviewed legacy-import result — non-authoritative; sealed export is locked. "
+            return "尚未审核的旧式导入结果——非权威；封存导出已锁定。"
+        case .canonicalConfirmedExploration:
+            return "已确认规范数据的探索视图——自动检测结果仍为非权威；封存导出已锁定。"
         }
     }
 }
@@ -36,9 +50,9 @@ enum ActiveDatasetScientificStandingError: Error, Equatable, LocalizedError, Sen
     var errorDescription: String? {
         switch self {
         case .canonicalConfirmationRequired:
-            return "Sealed result export requires a canonically confirmed scientific import. Demo and legacy CSV data are non-authoritative."
+            return "封存结果导出需要经过规范确认的科学导入。演示数据和旧式 CSV 数据均不具备权威性。"
         case .authoritativeDetectorArtifactExportRequiresCanonicalConfirmation:
-            return "Detector CSV export requires a canonically confirmed scientific import. Demo and legacy CSV results are exploratory and cannot be exported as scientific artifacts."
+            return "检测器 CSV 导出需要经过规范确认的科学导入。演示和旧式 CSV 结果仅供探索，不能作为科学结果导出。"
         }
     }
 }
@@ -84,21 +98,54 @@ private struct ClassicAnchorAnnotationCache: Sendable {
     }
 }
 
+/// A user-locked interval used only as a visual/manual-threshold reference. It does not influence
+/// detection until the reviewer explicitly copies its value into a manual threshold and reruns.
+struct ISITimelineReference: Equatable, Hashable {
+    var trainID: String
+    var trainName: String
+    var intervalIndex: Int
+    var isiSec: Double
+}
+
+enum ISIReferenceThresholdTarget: String, CaseIterable, Identifiable {
+    case burstSeedMax, pauseMin, tonicMin, tonicMax, hfTonicMin, hfTonicMax
+    var id: String { rawValue }
+    var menuTitle: String {
+        switch self {
+        case .burstSeedMax: return "Burst seed 最大 ISI"
+        case .pauseMin: return "Pause 最小 ISI"
+        case .tonicMin: return "Tonic 最小 ISI"
+        case .tonicMax: return "Tonic 最大 ISI"
+        case .hfTonicMin: return "HF tonic 最小 ISI"
+        case .hfTonicMax: return "HF tonic 最大 ISI"
+        }
+    }
+}
+
+struct ISIManualThresholdLine: Hashable {
+    var isiSec: Double
+    var label: String
+    var isHardGate: Bool
+}
+
 @MainActor
 @Observable
 final class RasterDocument {
     private static let defaultVisibleTrainCount = 10
     private static let defaultISIVisibleTrainCount = 4
     private static let defaultISIStateSpaceVisibleTrainCount = 1
+    private static let defaultNeuralManifoldVisibleTrainCount = 8
+    private static let fallbackRasterVisibleWindowSeconds = 5.0
 
     var dataset: SpikeDataset?
     private(set) var activeDatasetScientificStanding: ActiveDatasetScientificStanding = .noDataset
-    let scientificImportCoordinator = ScientificImportCoordinator()
+    let scientificImportCoordinator: ScientificImportCoordinator
     var isScientificImportSheetPresented = false
     var selectedTrainIDs: Set<String> = []
     var isiSelectedTrainIDs: Set<String> = []
     var isiStateSpaceSelectedTrainIDs: Set<String> = []
-    var statusMessage = "No dataset loaded."
+    var neuralManifoldSelectedTrainIDs: Set<String> = []
+    var statusMessage = "尚未加载数据集。"
     var lastErrorMessage: String?
     var rawImportUnit: SpikeTimeUnit = .seconds
     var rawCSVHasHeader = true
@@ -111,7 +158,32 @@ final class RasterDocument {
     var requestedVisibleTrainCount = defaultVisibleTrainCount
     var requestedISIVisibleTrainCount = defaultISIVisibleTrainCount
     var requestedISIStateSpaceVisibleTrainCount = defaultISIStateSpaceVisibleTrainCount
-    var rasterVisibleWindowSeconds = 5.0
+    var requestedNeuralManifoldVisibleTrainCount = defaultNeuralManifoldVisibleTrainCount
+    var neuralManifoldBinMs = 50.0
+    var neuralManifoldTimeOrigin: NeuralPopulationTimeOrigin = .raw
+    var neuralManifoldTransform: NeuralPopulationTransform = .sqrtCount
+    var neuralManifoldScaling: NeuralPopulationScaling = .zscore
+    var neuralManifoldSmoothingSigmaBins = 1.0
+    var neuralManifoldXAxis: NeuralManifoldPCAAxis = .nm1
+    var neuralManifoldYAxis: NeuralManifoldPCAAxis = .nm2
+    var neuralManifoldZAxis: NeuralManifoldPCAAxis = .nm3
+    var neuralManifoldDisplayMode: NeuralManifoldDisplayMode = .twoD
+    var neuralManifoldMethod: NeuralManifoldMethod = .pca
+    var neuralManifoldIsomapNeighbors = 15
+    var neuralManifoldMaxEmbeddedBins = 1200
+    var neuralManifoldIsomapComponentMode: NeuralManifoldIsomapComponentMode = .largest
+    var neuralManifoldDiffusionTime = 3
+    var neuralManifoldIsomapState: NeuralManifoldIsomapState = .idle
+    var neuralManifoldIsomapGeneration = 0
+    var neuralManifoldPhateState: NeuralManifoldPhateState = .idle
+    var neuralManifoldPhateGeneration = 0
+    var neuralManifoldColorMode: NeuralManifoldColorMode = .time
+    var neuralManifoldShowsAxes = true
+    var neuralManifoldShowsTrajectoryLine = true
+    var neuralManifoldLineStartSec = 0.0
+    var neuralManifoldLineEndSec = 0.0
+    var neuralManifoldUsesTimeGradient = true
+    var rasterVisibleWindowSeconds = fallbackRasterVisibleWindowSeconds
     // Once the reviewer manually sets the visible-window length, the per-candidate
     // auto-fit must stop overriding it so the chosen zoom persists across reviews.
     var rasterVisibleWindowUserLocked = false
@@ -124,16 +196,27 @@ final class RasterDocument {
     var isiYAxisScale: ISIYAxisScale = .linear
     var isiLayoutMode: ISITimelineLayoutMode = .separateAxes
     var isiLockYAxis = false
+    var isiTimelineReference: ISITimelineReference?
+    var isiTimelineReferenceTolerance: Double = 0.10
+    var isiTimelineShowsThresholdLines = true
     var isiStateSpaceTimeMode: RasterTimeMode = .aligned
     var isiStateSpaceLayoutMode: ISIStateSpaceLayoutMode = .singleTrain
     var isiStateSpaceDisplayUnit: QualityDisplayUnit = .milliseconds
     var isiStateSpaceAxisScale: ISIYAxisScale = .log
     var isiStateSpaceHalfWindowK = 3
+    /// R-compatible state-space validity floor, in seconds. This is independent of the QC flagging
+    /// threshold and is used only by state-space feature construction.
+    var isiStateSpaceMinValidISISec = SpikeISIStateSpaceFeatureBuilder.defaultMinValidISISec
     var isiStateSpaceScaling: ISIStateSpaceScaling = .robust
+    var isiStateSpaceColorMode: ISIStateSpaceColorMode = .qc
     var isiStateSpaceLabelSource: ISIStateSpaceLabelSource = .auditFinal
     var isiStateSpaceWinsorizeExtremeLogISI = true
     var isiStateSpaceBreakLongISI = true
     var isiStateSpaceBreakThresholdMs = 150.0
+    var isiStateSpaceMethod: ISIStateSpaceMethod = .featureAxes
+    var isiStateSpaceIsomapNeighbors = 15
+    var isiStateSpaceIsomapComponentMode: ISIStateSpaceIsomapComponentMode = .largest
+    var isiStateSpacePhasePortraitLag = 1
     var classicAnchorDetectionRun: ClassicAnchorDetectionRun?
     var isResultPackageExporting = false
     var isManualAnnotationImporting = false
@@ -142,6 +225,9 @@ final class RasterDocument {
     // annotations. See RasterDocument+ResultPackageReadback.swift for the read flow.
     /// The immutable, verified result of the last successful `.stpdresult` read-back, if any.
     var loadedResultPackage: STPDResultPackageReadResult?
+    /// A verified detector-independent, complete-manual-review result package. This is isolated from
+    /// both the active detector document and `loadedResultPackage`; only one readback kind is shown.
+    var loadedCanonicalManualResultPackage: CanonicalManualResultPackageReadResult?
     /// The selected package URL, retained only for display.
     var loadedResultPackageURL: URL?
     /// True while a read is in flight; also used to prevent duplicate read requests.
@@ -156,6 +242,13 @@ final class RasterDocument {
     var resultPackageLoadCompletionID = 0
     var focusedClassicAnchorCandidateID: String?
     var classicAnchorFocusRequestID = 0
+    private(set) var pinnedISIDiagnostic: PinnedISIDiagnostic?
+    private(set) var pinnedISIRequestID = 0
+    private(set) var pinnedISIComparison: PinnedISIComparison?
+    private var pinnedISIBeforeRerun: PinnedISIDiagnostic?
+    /// Pattern-family filter for manual-review navigation. This changes only queue presentation,
+    /// never detector candidates or labels.
+    var activeReviewChannel: ClassicAnchorReviewChannel = .all
     var classicAnchorReviewStatuses: [String: ClassicAnchorReviewStatus] = [:]
     /// Provenance captured when this app instance authors a candidate review.
     /// Imported or legacy status-only rows have no entry and cannot silently
@@ -164,15 +257,36 @@ final class RasterDocument {
     /// Reserved for a future sealed local-authoring workflow. Bare entries are never populated by
     /// CSV import and are rejected by result-package export until that workflow supplies provenance.
     var manualAnnotationsByTrain: [String: [ManualAnnotation]] = [:]
+    /// Raster-integrated authoring is an explicit local editing mode. It is detector-independent and
+    /// starts disabled so ordinary pan/hover behavior is unchanged until the reviewer opts in.
+    var manualAnnotationModeEnabled = false
+    var rasterManualAnnotationEditMode: RasterManualAnnotationEditMode = .apply
+    var selectedManualLabel: ManualAnnotationLabel = .burst
+    var selectedManualClearTrack: ManualAnnotationSemanticTrack = .event
+    var selectedManualAnnotationID: UUID?
+    var manualISIUndoStack: [ManualISIUndoSnapshot] = []
+    /// Exact integer-microsecond source retained only for the canonical manual-review workbench.
+    /// It is projected from the persisted confirmed import and never activates the legacy detector.
+    var canonicalManualDataset: CanonicalScientificDataset?
+    /// Identity-bound manual decisions. Any edit clears `confirmedCanonicalManualLabels`.
+    var canonicalManualISILabelDraft: CanonicalManualISILabelDraft?
+    /// True only while an identity-bound XLSX draft is decoded and verified off the main actor.
+    /// It prevents concurrent replacements of the in-memory manual workbench draft.
+    var isCanonicalManualISIDraftImporting = false
+    /// A complete explicit human confirmation; still not a written result package by itself.
+    var confirmedCanonicalManualLabels: ConfirmedCanonicalManualISILabels?
     /// Atomic identity-bound CSV batches. Their annotation payload is intentionally not mirrored
     /// into `manualAnnotationsByTrain`, so imported evidence cannot outlive its approval receipt.
     var approvedManualAnnotationImports:
         [ManualAnnotationCSVApprovedBatch] = []
     var detectorStatusMessage = "Detector has not run."
     var detectorLastRunDate: Date?
-    /// Part of detector authority and result-package provenance. The default
-    /// matches `HybridPatternDetectionFramework.run` and preserves the clean app path.
-    var useAdaptiveV2Canonicalization = false
+    /// Signature of the exact inputs that produced the displayed detector run. Parameter edits do
+    /// not silently masquerade as applied results; the UI compares this with the live settings.
+    private var lastDetectionInputsSignature: DetectionInputsSignature?
+    /// Restored product default from the reviewed integration snapshot. This remains explicit in
+    /// run identity and can be disabled for comparison with the classic canonicalization path.
+    var useAdaptiveV2Canonicalization = true
     var detectorHistogramBinWidthMs = 5.0
     var detectorClassicBurstContrastMin = 3.0
     var detectorClassicBurstFlankPauseContrastMin = 5.0
@@ -213,6 +327,7 @@ final class RasterDocument {
     var manualPauseMode: ThresholdMode = .automatic
     var manualPauseMinISIMs = 0.0
     var manualThresholdScopeKind: ManualThresholdScopeKind = .allTrains
+    var lastLearnedApplyResult: LearnedThresholdApplyResult?
     var isDetectorRunning = false
     private var detectorRunGeneration = 0
     private var classicAnchorAnnotationCache = ClassicAnchorAnnotationCache.empty
@@ -220,9 +335,16 @@ final class RasterDocument {
     private let sampleFileName = "Grechishnikova_STN_2017_subset"
     private let sampleFileExtension = "csv"
     private let reviewPersistence = ClassicAnchorReviewPersistence()
+    let manualAnnotationPersistence = ManualAnnotationPersistence()
     private var loadedCSVURL: URL?
     private var loadedCSVUnit: SpikeTimeUnit = .seconds
     private var loadedCSVHasHeader = true
+
+    init(
+        scientificImportCoordinator: ScientificImportCoordinator = ScientificImportCoordinator()
+    ) {
+        self.scientificImportCoordinator = scientificImportCoordinator
+    }
 
     var qualitySettings: SpikeQualitySettings {
         let artifactSec = max(0, artifactThresholdMs) / 1000
@@ -259,6 +381,79 @@ final class RasterDocument {
         )
     }
 
+    func lockISITimelineReference(
+        trainID: String,
+        trainName: String,
+        intervalIndex: Int,
+        isiSec: Double
+    ) {
+        guard isiSec.isFinite, isiSec > 0 else { return }
+        isiTimelineReference = ISITimelineReference(
+            trainID: trainID,
+            trainName: trainName,
+            intervalIndex: intervalIndex,
+            isiSec: isiSec
+        )
+    }
+
+    func clearISITimelineReference() {
+        isiTimelineReference = nil
+    }
+
+    @discardableResult
+    func copyISITimelineReferenceToManualThreshold(
+        _ target: ISIReferenceThresholdTarget
+    ) -> Bool {
+        guard let reference = isiTimelineReference,
+              reference.isiSec.isFinite,
+              reference.isiSec > 0 else { return false }
+        let milliseconds = reference.isiSec * 1_000
+        switch target {
+        case .burstSeedMax:
+            manualBurstSeedMaxISIMs = milliseconds
+            if manualBurstMode == .automatic { manualBurstMode = .softAnchor }
+        case .pauseMin:
+            manualPauseMinISIMs = milliseconds
+            if manualPauseMode == .automatic { manualPauseMode = .softAnchor }
+        case .tonicMin:
+            manualTonicMinISIMs = milliseconds
+            if manualTonicMode == .automatic { manualTonicMode = .softAnchor }
+        case .tonicMax:
+            manualTonicMaxISIMs = milliseconds
+            if manualTonicMode == .automatic { manualTonicMode = .softAnchor }
+        case .hfTonicMin:
+            manualHFTonicMinISIMs = milliseconds
+            if manualHFTonicMode == .automatic { manualHFTonicMode = .softAnchor }
+        case .hfTonicMax:
+            manualHFTonicMaxISIMs = milliseconds
+            if manualHFTonicMode == .automatic { manualHFTonicMode = .softAnchor }
+        }
+        return true
+    }
+
+    var activeManualISIThresholdLines: [ISIManualThresholdLine] {
+        var lines: [ISIManualThresholdLine] = []
+        func add(_ milliseconds: Double, _ mode: ThresholdMode, _ label: String) {
+            guard mode != .automatic,
+                  milliseconds.isFinite,
+                  milliseconds > 0 else { return }
+            lines.append(
+                ISIManualThresholdLine(
+                    isiSec: milliseconds / 1_000,
+                    label: label,
+                    isHardGate: mode == .hardGate
+                )
+            )
+        }
+        add(manualBurstSeedMaxISIMs, manualBurstMode, "burst seed ≤")
+        add(manualPauseMinISIMs, manualPauseMode, "pause ≥")
+        add(manualTonicMinISIMs, manualTonicMode, "tonic min")
+        add(manualTonicMaxISIMs, manualTonicMode, "tonic max")
+        add(manualHFTonicMinISIMs, manualHFTonicMode, "HF tonic min")
+        add(manualHFTonicMaxISIMs, manualHFTonicMode, "HF tonic max")
+        return lines
+    }
+
     var stateDetectorTuning: StatePatternDetectorTuning {
         StatePatternDetectorTuning(
             tonicMinSpikes: detectorTonicMinSpikes,
@@ -276,6 +471,73 @@ final class RasterDocument {
             highFrequencySpikingAllowedLargeFraction: detectorHighFrequencySpikingAllowedLargeFraction,
             highFrequencySpikingMaxConsecutiveLargeISI: detectorHighFrequencySpikingMaxConsecutiveLargeISI
         )
+    }
+
+    var manualThresholdScope: ManualThresholdScope {
+        ManualThresholdScope.resolve(
+            kind: manualThresholdScopeKind,
+            focusedTrainID: focusedClassicAnchorCandidate?.trainID,
+            selectedTrainIDs: selectedTrainIDs,
+            allTrainIDs: dataset?.trains.map(\.id) ?? []
+        )
+    }
+
+    /// Converts the UI's millisecond fields to the detector's seconds-internal threshold contract.
+    /// Automatic fields are inert; spike-count limits are hard-gate only.
+    var manualThresholdProfile: ManualThresholdProfile {
+        func isi(_ milliseconds: Double, mode: ThresholdMode) -> ManualISIThreshold {
+            mode != .automatic && milliseconds > 0
+                ? ManualISIThreshold(mode: mode, valueSec: milliseconds / 1_000)
+                : .automatic
+        }
+        func count(_ value: Int, mode: ThresholdMode) -> ManualSpikeCountThreshold {
+            mode == .hardGate && value > 0
+                ? ManualSpikeCountThreshold(mode: .hardGate, value: value)
+                : .automatic
+        }
+        return ManualThresholdProfile(
+            burst: BurstManualThresholds(
+                seedUpperISI: isi(manualBurstSeedMaxISIMs, mode: manualBurstMode),
+                bridgeUpperISI: isi(manualBurstBridgeMaxISIMs, mode: manualBurstMode),
+                minSpikes: count(manualBurstMinSpikes, mode: manualBurstMode)
+            ),
+            hfs: HFSManualThresholds(
+                minSpikes: count(manualHFSMinSpikes, mode: manualHFSMode),
+                minDurationSec: isi(manualHFSMinDurationMs, mode: manualHFSMode)
+            ),
+            hfTonic: HFTonicManualThresholds(
+                minSpikes: count(manualHFTonicMinSpikes, mode: manualHFTonicMode),
+                isiFloor: isi(manualHFTonicMinISIMs, mode: manualHFTonicMode),
+                isiUpper: isi(manualHFTonicMaxISIMs, mode: manualHFTonicMode)
+            ),
+            tonic: TonicManualThresholds(
+                minSpikes: count(manualTonicMinSpikes, mode: manualTonicMode),
+                isiLower: isi(manualTonicMinISIMs, mode: manualTonicMode),
+                isiUpper: isi(manualTonicMaxISIMs, mode: manualTonicMode)
+            ),
+            pause: PauseManualThresholds(
+                isiLower: isi(manualPauseMinISIMs, mode: manualPauseMode)
+            )
+        )
+    }
+
+    var currentDetectionInputsSignature: DetectionInputsSignature? {
+        guard let dataset else { return nil }
+        return DetectionInputsSignature(
+            datasetID: dataset.id.uuidString,
+            bandSettings: adaptiveDetectorBandSettings,
+            qualitySettings: qualitySettings,
+            stateTuning: stateDetectorTuning,
+            detectorParameters: detectorParameterSettings,
+            manualThresholdProfile: manualThresholdProfile,
+            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+            manualThresholdScope: manualThresholdScope
+        )
+    }
+
+    var detectionResultsAreStale: Bool {
+        guard hasDetectorResults, let lastDetectionInputsSignature else { return false }
+        return currentDetectionInputsSignature != lastDetectionInputsSignature
     }
 
     var appliedDuplicateTimestampPolicy: DuplicateTimestampPolicy? {
@@ -318,6 +580,46 @@ final class RasterDocument {
 
     var classicAnchorEventAnnotations: [ClassicAnchorEventAnnotation] {
         classicAnchorAnnotationCache.eventAnnotations.filter { isManuallyRejected($0) == false }
+    }
+
+    /// Unfiltered automatic annotations used only for audit/export. A rejected candidate must remain
+    /// visible in `auto_pattern`; rejection changes the reviewed/final projection, not detector history.
+    var classicAnchorRawEventAnnotations: [ClassicAnchorEventAnnotation] {
+        classicAnchorAnnotationCache.eventAnnotations
+    }
+
+    var taskEvents: [TaskEvent] { dataset?.taskEvents ?? [] }
+
+    /// Public event layer after local manual locks/vetoes. The detector's raw annotations remain
+    /// untouched; this projection is presentation/review evidence only.
+    var classicAnchorPublicEventAnnotations: [ClassicAnchorEventAnnotation] {
+        let base = classicAnchorEventAnnotations
+        guard let dataset, !manualAnnotationsByTrain.isEmpty else { return base }
+        var vetoed: [String: Set<Int>] = [:]
+        var locked: [String: Set<Int>] = [:]
+        var manualBurst: [String: Set<Int>] = [:]
+        for train in dataset.trains {
+            guard let projection = manualAnnotationProjection(forTrainID: train.id),
+                  projection.hasManualEffect else { continue }
+            if !projection.autoBurstBlockedByVetoISIs.isEmpty {
+                vetoed[train.id] = projection.autoBurstBlockedByVetoISIs
+            }
+            if !projection.autoBlockedByManualLockISIs.isEmpty {
+                locked[train.id] = projection.autoBlockedByManualLockISIs
+            }
+            let support = Set(projection.manualPositiveLabelByISI.compactMap { index, label in
+                ManualAnnotationProjector.burstFamilyLabels.contains(label) ? index : nil
+            })
+            if !support.isEmpty { manualBurst[train.id] = support }
+        }
+        let trains = Dictionary(uniqueKeysWithValues: dataset.trains.map { ($0.id, $0) })
+        return ManualAnnotationProjector.projectPublicEventAnnotations(
+            base,
+            vetoedBurstISIsByTrain: vetoed,
+            lockSuppressedISIsByTrain: locked,
+            validatedManualBurstSupportISIsByTrain: manualBurst,
+            trainsByID: trains
+        ).annotations
     }
 
     var classicAnchorStateAnnotations: [ClassicAnchorEventAnnotation] {
@@ -383,15 +685,22 @@ final class RasterDocument {
         if let xlsx = UTType(filenameExtension: "xlsx") {
             supportedContentTypes.append(xlsx)
         }
+        if let nex = UTType(filenameExtension: "nex", conformingTo: .data) {
+            supportedContentTypes.append(nex)
+        }
         panel.allowedContentTypes = supportedContentTypes
-        panel.message = "Choose a CSV or XLSX timestamp table. Source facts and scientific meaning will be confirmed separately."
+        panel.message = "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。"
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return
         }
 
-        isScientificImportSheetPresented = true
-        Task { await scientificImportCoordinator.beginImport(from: url) }
+        if url.pathExtension.lowercased() == "nex" {
+            loadNEX(from: url, duplicatePolicy: duplicateTimestampPolicy)
+        } else {
+            isScientificImportSheetPresented = true
+            Task { await scientificImportCoordinator.beginImport(from: url) }
+        }
     }
 
     /// Compatibility entry point for older callers. All user-facing raw-data imports now enter the
@@ -402,6 +711,60 @@ final class RasterDocument {
 
     func dismissScientificImportReview() {
         isScientificImportSheetPresented = false
+    }
+
+    /// Installs a plotting/exploration projection of the exact canonical dataset. The conversion to
+    /// Double seconds is deliberately downstream of canonical identity and never feeds canonical
+    /// review or sealed manual-result construction. Exact duplicate ticks remain repeated spikes.
+    func installCanonicalDatasetForExploration(
+        _ canonical: CanonicalScientificDataset,
+        fingerprint: CanonicalScientificDatasetFingerprint
+    ) {
+        let segmentID = canonical.recordingSegment.semanticID.semanticID.canonicalText
+        let sourceDescription = "规范导入 · SHA-256 \(fingerprint.datasetDigest.prefix(12))…"
+        let trains = canonical.spikeTrains.map { train in
+            SpikeTrain(
+                name: train.semanticID.semanticID.canonicalText,
+                timestampsSec: train.rawTimestamps.map {
+                    Double($0.microseconds) / 1_000_000
+                },
+                duplicateTimestampPolicy: .errorKeep
+            )
+        }
+        let taskEvents = canonical.eventScopeGroups.flatMap { group in
+            let groupID = group.semanticID.semanticID.canonicalText
+            return group.eventDefinitions.flatMap { definition in
+                let definitionID = definition.semanticID.semanticID.canonicalText
+                return definition.occurrences.enumerated().map { index, occurrence in
+                    TaskEvent(
+                        id: "\(groupID):\(definitionID):\(index + 1)",
+                        name: definitionID,
+                        timeSec: Double(occurrence.tick.microseconds) / 1_000_000,
+                        column: definitionID,
+                        eventIndex: index + 1,
+                        trialID: segmentID,
+                        source: sourceDescription
+                    )
+                }
+            }
+        }
+        let displayDataset = SpikeDataset(
+            name: segmentID,
+            sourceDescription: sourceDescription,
+            trains: trains,
+            taskEvents: taskEvents
+        )
+        installDataset(
+            displayDataset,
+            sourceURL: nil,
+            unit: .seconds,
+            hasHeader: true,
+            duplicatePolicy: .errorKeep,
+            preserveSelection: false,
+            scientificStanding: .canonicalConfirmedExploration(
+                datasetDigest: fingerprint.datasetDigest
+            )
+        )
     }
 
     func applyDuplicateTimestampPolicy(_ policy: DuplicateTimestampPolicy) {
@@ -452,7 +815,7 @@ final class RasterDocument {
         }
 
         guard let dataset else {
-            detectorStatusMessage = "No dataset loaded."
+            detectorStatusMessage = "尚未加载数据集。"
             lastErrorMessage = nil
             return
         }
@@ -464,8 +827,22 @@ final class RasterDocument {
         let qualitySettings = qualitySettings
         let stateTuning = stateDetectorTuning
         let detectorParameters = detectorParameterSettings
+        let manualProfile = manualThresholdProfile
+        let adaptiveV2 = useAdaptiveV2Canonicalization
+        let manualScope = manualThresholdScope
+        let signature = DetectionInputsSignature(
+            datasetID: datasetSnapshot.id.uuidString,
+            bandSettings: bandSettings,
+            qualitySettings: qualitySettings,
+            stateTuning: stateTuning,
+            detectorParameters: detectorParameters,
+            manualThresholdProfile: manualProfile,
+            useAdaptiveV2Canonicalization: adaptiveV2,
+            manualThresholdScope: manualScope
+        )
 
         isDetectorRunning = true
+        pinnedISIBeforeRerun = pinnedISIDiagnostic
         detectorStatusMessage = "Running structural candidate detection..."
         lastErrorMessage = nil
 
@@ -477,6 +854,9 @@ final class RasterDocument {
                 refractoryAction: .warnOnly,
                 stateTuning: stateTuning,
                 detectorParameters: detectorParameters,
+                manualThresholdProfile: manualProfile,
+                useAdaptiveV2Canonicalization: adaptiveV2,
+                manualThresholdScope: manualScope,
                 buildCommit: ResultPackageAppBuildIdentity.current
             )
             let annotationCache = ClassicAnchorAnnotationCache(dataset: datasetSnapshot, run: run)
@@ -485,7 +865,8 @@ final class RasterDocument {
                 self.finishAdaptiveClassicAnchorDetection(
                     run,
                     annotationCache: annotationCache,
-                    generation: generation
+                    generation: generation,
+                    signature: signature
                 )
             }
         }
@@ -501,7 +882,8 @@ final class RasterDocument {
     private func finishAdaptiveClassicAnchorDetection(
         _ run: ClassicAnchorDetectionRun,
         annotationCache: ClassicAnchorAnnotationCache,
-        generation: Int
+        generation: Int,
+        signature: DetectionInputsSignature
     ) {
         guard generation == detectorRunGeneration else {
             return
@@ -515,8 +897,13 @@ final class RasterDocument {
             )
         classicAnchorDetectionRun = run
         classicAnchorAnnotationCache = annotationCache
+        lastDetectionInputsSignature = signature
         retainReviewStatuses(for: run)
         restorePersistedReviewStatuses(for: run)
+        if let before = pinnedISIBeforeRerun {
+            recomputePinnedISIAfterRerun(before: before)
+        }
+        pinnedISIBeforeRerun = nil
         if let focusedClassicAnchorCandidateID,
            !run.candidates.contains(where: { $0.id == focusedClassicAnchorCandidateID }) {
             self.focusedClassicAnchorCandidateID = nil
@@ -562,6 +949,92 @@ final class RasterDocument {
     func clearClassicAnchorFocus() {
         focusedClassicAnchorCandidateID = nil
         classicAnchorFocusRequestID &+= 1
+    }
+
+    func pinISIDiagnostic(_ diagnostic: PinnedISIDiagnostic) {
+        pinnedISIDiagnostic = diagnostic
+        pinnedISIComparison = nil
+        pinnedISIRequestID &+= 1
+    }
+
+    func clearPinnedISIDiagnostic() {
+        pinnedISIDiagnostic = nil
+        pinnedISIComparison = nil
+        pinnedISIBeforeRerun = nil
+        pinnedISIRequestID &+= 1
+    }
+
+    private func recomputePinnedISIAfterRerun(before: PinnedISIDiagnostic) {
+        guard let dataset,
+              let train = dataset.trains.first(where: { $0.id == before.trainID }),
+              train.isiSec.indices.contains(before.isiIndex),
+              let isi = train.isiSec[before.isiIndex],
+              isi.isFinite else {
+            pinnedISIComparison = nil
+            return
+        }
+        let covering = classicAnchorPublicEventAnnotations
+            .filter { annotation in
+                (classicAnchorReviewStatuses[annotation.candidateID] ?? .unreviewed) != .rejected
+                    && annotation.trainID == train.id
+                    && (annotation.coveredISIIndices(in: train)?.contains(before.isiIndex) ?? false)
+            }
+            .sorted {
+                $0.priority != $1.priority ? $0.priority > $1.priority : $0.id < $1.id
+            }
+            .first
+        let band = classicAnchorDetectionRun?.resolution(for: train.id)?.burstBand
+        let manualPauseLowerSec = manualPauseMode != .automatic && manualPauseMinISIMs > 0
+            ? manualPauseMinISIMs / 1_000
+            : nil
+        let diagnostic = PerISIDiagnosticBuilder.diagnose(
+            isiSec: isi,
+            coveringCandidateLabel: covering?.displayFamilyName,
+            seedLowerSec: band?.seedLowerSec,
+            seedUpperSec: band?.seedUpperSec,
+            bridgeUpperSec: band?.bridgeUpperSec,
+            manualPauseLowerSec: manualPauseLowerSec
+        )
+        let after = PinnedISIDiagnostic(
+            trainID: before.trainID,
+            trainName: train.name,
+            isiIndex: before.isiIndex,
+            leftTimestampSec: before.leftTimestampSec,
+            rightTimestampSec: before.rightTimestampSec,
+            isiSec: isi,
+            reviewStatus: covering.map {
+                (classicAnchorReviewStatuses[$0.candidateID] ?? .unreviewed).title
+            },
+            diagnostic: diagnostic
+        )
+        pinnedISIDiagnostic = after
+        pinnedISIComparison = PinnedISIComparison(before: before, after: after)
+    }
+
+    func adaptiveV2Explanation(
+        trainID: String,
+        isiIndex: Int
+    ) -> AdaptiveV2CanonicalizationExplanation {
+        guard let candidates = classicAnchorDetectionRun?.result(for: trainID)?.candidates else {
+            return .absent
+        }
+        let covering = candidates
+            .filter {
+                $0.startISIIndex <= isiIndex
+                    && isiIndex <= $0.endISIIndex
+                    && $0.decisionPath.contains("adaptive_v2_canonicalization=")
+            }
+            .sorted { lhs, rhs in
+                if lhs.selectedForAuto != rhs.selectedForAuto {
+                    return lhs.selectedForAuto && !rhs.selectedForAuto
+                }
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.id < rhs.id
+            }
+            .first
+        return covering.map {
+            AdaptiveV2CanonicalizationExplanation.parse(decisionPath: $0.decisionPath)
+        } ?? .absent
     }
 
     func reviewStatus(for candidateID: String) -> ClassicAnchorReviewStatus {
@@ -717,22 +1190,41 @@ final class RasterDocument {
         return max(highResolutionContext, eventCoverageContext)
     }
 
-    private func standardRasterVisibleWindowSeconds(for dataset: SpikeDataset) -> Double {
-        let candidate = dataset.maxAlignedDurationSec / 5.0
-        guard candidate.isFinite, candidate > 0 else {
-            return 5.0
-        }
-        return min(max(candidate, 0.01), 600.0)
-    }
-
     func resetRasterVisibleWindowToStandard() {
         if let dataset {
-            rasterVisibleWindowSeconds = standardRasterVisibleWindowSeconds(for: dataset)
+            let standardWindow = standardRasterVisibleWindow(for: dataset)
+            rasterVisibleWindowSeconds = standardWindow.seconds
+            rasterVisibleWindowUnit = standardWindow.unit
         } else {
-            rasterVisibleWindowSeconds = 5.0
+            rasterVisibleWindowSeconds = Self.fallbackRasterVisibleWindowSeconds
+            rasterVisibleWindowUnit = .seconds
         }
-        rasterVisibleWindowUnit = rasterVisibleWindowSeconds < 1 ? .milliseconds : .seconds
-        rasterVisibleWindowUserLocked = true
+        // This is the dataset-derived default, not an explicit user choice. Keep it unlocked so
+        // selecting a structural candidate can automatically load a review-sized timestamp window.
+        rasterVisibleWindowUserLocked = false
+    }
+
+    private func standardRasterVisibleWindow(
+        for dataset: SpikeDataset
+    ) -> (seconds: Double, unit: QualityDisplayUnit) {
+        let durations = dataset.trains
+            .map(\.rawDurationSec)
+            .filter { $0.isFinite && $0 > 0 }
+        guard !durations.isEmpty else {
+            return (Self.fallbackRasterVisibleWindowSeconds, .seconds)
+        }
+
+        let meanSeconds = durations.reduce(0, +) / Double(durations.count)
+        guard meanSeconds.isFinite, meanSeconds > 0 else {
+            return (Self.fallbackRasterVisibleWindowSeconds, .seconds)
+        }
+
+        if meanSeconds >= 1 {
+            return (max(1, meanSeconds.rounded()), .seconds)
+        }
+
+        let roundedMilliseconds = max(1, (meanSeconds * 1_000).rounded())
+        return (roundedMilliseconds / 1_000, .milliseconds)
     }
 
     func exportClassicAnchorEventsCSVWithPanel() {
@@ -896,6 +1388,8 @@ final class RasterDocument {
             return isiSelectedTrainIDs
         case .isiStateSpace:
             return isiStateSpaceSelectedTrainIDs
+        case .neuralManifold:
+            return neuralManifoldSelectedTrainIDs
         }
     }
 
@@ -907,6 +1401,8 @@ final class RasterDocument {
             return requestedISIVisibleTrainCount
         case .isiStateSpace:
             return requestedISIStateSpaceVisibleTrainCount
+        case .neuralManifold:
+            return requestedNeuralManifoldVisibleTrainCount
         }
     }
 
@@ -922,12 +1418,22 @@ final class RasterDocument {
             case .isiStateSpace:
                 requestedISIStateSpaceVisibleTrainCount = max(1, count)
                 isiStateSpaceSelectedTrainIDs = []
+            case .neuralManifold:
+                requestedNeuralManifoldVisibleTrainCount = max(1, count)
+                neuralManifoldSelectedTrainIDs = []
             }
             return
         }
 
         let clampedCount = clampedVisibleTrainCount(count, total: dataset.trains.count)
-        let selectedIDs = Set(dataset.trains.prefix(clampedCount).map(\.id))
+        // A numeric display-count edit must not silently discard a reviewer’s explicit train
+        // choice and replace it with the first N dataset columns. Keep current valid choices
+        // first; only fill newly requested slots from the dataset's stable source order.
+        let selectedIDs = preferredVisibleTrainIDs(
+            currentSelection: selectedTrainIDs(for: scope),
+            count: clampedCount,
+            dataset: dataset
+        )
         switch scope {
         case .raster:
             requestedVisibleTrainCount = clampedCount
@@ -938,6 +1444,9 @@ final class RasterDocument {
         case .isiStateSpace:
             requestedISIStateSpaceVisibleTrainCount = clampedCount
             isiStateSpaceSelectedTrainIDs = selectedIDs
+        case .neuralManifold:
+            requestedNeuralManifoldVisibleTrainCount = clampedCount
+            neuralManifoldSelectedTrainIDs = selectedIDs
         }
     }
 
@@ -958,7 +1467,25 @@ final class RasterDocument {
             if !selection.isEmpty {
                 requestedISIStateSpaceVisibleTrainCount = selection.count
             }
+        case .neuralManifold:
+            neuralManifoldSelectedTrainIDs = selection
+            if !selection.isEmpty {
+                requestedNeuralManifoldVisibleTrainCount = selection.count
+            }
         }
+    }
+
+    private func preferredVisibleTrainIDs(
+        currentSelection: Set<String>,
+        count: Int,
+        dataset: SpikeDataset
+    ) -> Set<String> {
+        let retained = dataset.trains.filter { currentSelection.contains($0.id) }
+        let remainingCapacity = max(0, count - retained.count)
+        let additions = dataset.trains
+            .filter { !currentSelection.contains($0.id) }
+            .prefix(remainingCapacity)
+        return Set(retained.prefix(count).map(\.id) + additions.map(\.id))
     }
 
     func loadCSV(
@@ -1007,6 +1534,41 @@ final class RasterDocument {
         }
     }
 
+    private func loadNEX(
+        from url: URL,
+        duplicatePolicy: DuplicateTimestampPolicy
+    ) {
+        do {
+            let source = try BoundedScientificSourceReader.readNEX(from: url)
+            let imported = try NeuroExplorerNEXCodec.read(source.snapshot)
+            let sourceDescription = "\(url.path) · SHA-256 \(source.sourceSHA256)"
+            let parsed = NeuroExplorerNEXDatasetAdapter.dataset(
+                from: imported,
+                name: url.deletingPathExtension().lastPathComponent,
+                sourceDescription: sourceDescription,
+                duplicateTimestampPolicy: duplicatePolicy
+            )
+            installDataset(
+                parsed,
+                sourceURL: nil,
+                unit: .seconds,
+                hasHeader: false,
+                duplicatePolicy: duplicatePolicy,
+                preserveSelection: false,
+                scientificStanding: .legacyUnreviewedImport
+            )
+            let ignoredSuffix = imported.ignoredVariableNames.isEmpty
+                ? ""
+                : "；已忽略 \(imported.ignoredVariableNames.count) 个 Continuous/Population Vector 变量"
+            statusMessage = "已从 NEX 加载 \(parsed.trains.count) 条 spike train、\(parsed.totalSpikeCount) 个 spike、\(parsed.taskEvents.count) 个事件边界\(ignoredSuffix)。当前可浏览、手工标记并导出；尚未获得自动检测或封存结果权限。"
+        } catch {
+            statusMessage = dataset == nil
+                ? "NEX 加载失败。"
+                : "NEX 加载失败；现有数据集已保留。"
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
     private func parseCSV(
         from url: URL,
         unit: SpikeTimeUnit,
@@ -1036,33 +1598,53 @@ final class RasterDocument {
         let previousSelection = selectedTrainIDs
         let previousISISelection = isiSelectedTrainIDs
         let previousISIStateSpaceSelection = isiStateSpaceSelectedTrainIDs
+        let previousNeuralManifoldSelection = neuralManifoldSelectedTrainIDs
         let allTrainIDs = Set(parsed.trains.map(\.id))
         let retainedSelection = previousSelection.intersection(allTrainIDs)
         let retainedISISelection = previousISISelection.intersection(allTrainIDs)
         let retainedISIStateSpaceSelection = previousISIStateSpaceSelection.intersection(allTrainIDs)
+        let retainedNeuralManifoldSelection = previousNeuralManifoldSelection.intersection(allTrainIDs)
 
         invalidateDetectorRunForDatasetMutation()
+        if !preserveSelection {
+            resetManualThresholdFields()
+        }
+        resetNeuralManifoldEmbeddingCaches()
         dataset = parsed
         activeDatasetScientificStanding = scientificStanding
-        // Default standard visible window = 1/5 of the longest spike-train duration,
-        // and keep it stable across reviews (Center re-centres at this window instead
-        // of auto-zooming per candidate). The reviewer can still change it manually.
-        rasterVisibleWindowSeconds = standardRasterVisibleWindowSeconds(for: parsed)
-        rasterVisibleWindowUnit = rasterVisibleWindowSeconds < 1 ? .milliseconds : .seconds
-        rasterVisibleWindowUserLocked = true
+        // Use the rounded mean train duration as a dataset-specific, legible initial zoom.
+        // The reviewer can still change it manually.
+        let standardWindow = standardRasterVisibleWindow(for: parsed)
+        rasterVisibleWindowSeconds = standardWindow.seconds
+        rasterVisibleWindowUnit = standardWindow.unit
+        // Dataset-derived defaults remain eligible for automatic candidate-review zoom. Only a
+        // direct user edit of the visible-window field locks the scale.
+        rasterVisibleWindowUserLocked = false
         classicAnchorDetectionRun = nil
         classicAnchorAnnotationCache = .empty
         focusedClassicAnchorCandidateID = nil
         classicAnchorFocusRequestID &+= 1
+        pinnedISIDiagnostic = nil
+        pinnedISIComparison = nil
+        pinnedISIBeforeRerun = nil
         classicAnchorReviewStatuses = [:]
         classicAnchorReviewInputs = [:]
         manualAnnotationsByTrain = [:]
+        manualISIUndoStack = []
+        rasterManualAnnotationEditMode = .apply
+        canonicalManualDataset = nil
+        canonicalManualISILabelDraft = nil
+        confirmedCanonicalManualLabels = nil
         approvedManualAnnotationImports = []
         detectorLastRunDate = nil
+        lastDetectionInputsSignature = nil
         detectorStatusMessage = "Detector has not run."
         selectedTrainIDs = preserveSelection && !retainedSelection.isEmpty ? retainedSelection : defaultVisibleTrainIDs(for: parsed)
         isiSelectedTrainIDs = preserveSelection && !retainedISISelection.isEmpty ? retainedISISelection : defaultISIVisibleTrainIDs(for: parsed)
         isiStateSpaceSelectedTrainIDs = preserveSelection && !retainedISIStateSpaceSelection.isEmpty ? retainedISIStateSpaceSelection : defaultISIStateSpaceVisibleTrainIDs(for: parsed)
+        neuralManifoldSelectedTrainIDs = preserveSelection && !retainedNeuralManifoldSelection.isEmpty
+            ? retainedNeuralManifoldSelection
+            : defaultNeuralManifoldVisibleTrainIDs(for: parsed)
         if !selectedTrainIDs.isEmpty {
             requestedVisibleTrainCount = selectedTrainIDs.count
         }
@@ -1072,32 +1654,41 @@ final class RasterDocument {
         if !isiStateSpaceSelectedTrainIDs.isEmpty {
             requestedISIStateSpaceVisibleTrainCount = isiStateSpaceSelectedTrainIDs.count
         }
+        if !neuralManifoldSelectedTrainIDs.isEmpty {
+            requestedNeuralManifoldVisibleTrainCount = neuralManifoldSelectedTrainIDs.count
+        }
         loadedCSVURL = sourceURL
         loadedCSVUnit = unit
         loadedCSVHasHeader = hasHeader
         duplicateTimestampPolicy = duplicatePolicy
 
+        // Manual drafts are keyed to the dataset rather than a detector run. Revalidate every
+        // restored range against the newly installed train geometry so stale/cross-dataset marks
+        // never become visible annotations.
+        loadManualAnnotations()
+
         let report = SpikeQualityAnalyzer.analyze(dataset: parsed, settings: qualitySettings)
-        let qualitySuffix = report.errorCount > 0 ? ", \(report.errorCount) QC error(s)" :
-            report.warningCount > 0 ? ", \(report.warningCount) QC warning(s)" : ", QC passed"
+        let qualitySuffix = report.errorCount > 0 ? "，\(report.errorCount) 条 QC 错误" :
+            report.warningCount > 0 ? "，\(report.warningCount) 条 QC 警告" : "，QC 已通过"
         let droppedSuffix = report.droppedDuplicateTimestampCount > 0 ?
-            ", \(report.droppedDuplicateTimestampCount) duplicate timestamp(s) collapsed" : ""
+            "，已折叠 \(report.droppedDuplicateTimestampCount) 个重复时间戳" : ""
         let standingPrefix = switch scientificStanding {
         case .noDataset:
             ""
         case .nonAuthoritativeDemo:
-            "Demo only — non-authoritative. "
+            "仅供演示——非权威。"
         case .legacyUnreviewedImport:
-            "Legacy import — not scientifically confirmed. "
+            "旧式导入——尚未经过科学确认。"
+        case .canonicalConfirmedExploration:
+            "已确认规范导入的探索视图。"
         }
         statusMessage = standingPrefix
-            + "\(parsed.trains.count) trains, \(parsed.totalSpikeCount) spikes loaded\(qualitySuffix)\(droppedSuffix)."
+            + "已加载 \(parsed.trains.count) 条序列、\(parsed.totalSpikeCount) 个 spike\(qualitySuffix)\(droppedSuffix)。"
         lastErrorMessage = nil
     }
 
     private func defaultVisibleTrainIDs(for dataset: SpikeDataset) -> Set<String> {
-        let count = clampedVisibleTrainCount(Self.defaultVisibleTrainCount, total: dataset.trains.count)
-        return Set(dataset.trains.prefix(count).map(\.id))
+        Set(dataset.trains.map(\.id))
     }
 
     private func defaultISIVisibleTrainIDs(for dataset: SpikeDataset) -> Set<String> {
@@ -1107,6 +1698,14 @@ final class RasterDocument {
 
     private func defaultISIStateSpaceVisibleTrainIDs(for dataset: SpikeDataset) -> Set<String> {
         let count = clampedVisibleTrainCount(Self.defaultISIStateSpaceVisibleTrainCount, total: dataset.trains.count)
+        return Set(dataset.trains.prefix(count).map(\.id))
+    }
+
+    private func defaultNeuralManifoldVisibleTrainIDs(for dataset: SpikeDataset) -> Set<String> {
+        let count = clampedVisibleTrainCount(
+            Self.defaultNeuralManifoldVisibleTrainCount,
+            total: dataset.trains.count
+        )
         return Set(dataset.trains.prefix(count).map(\.id))
     }
 

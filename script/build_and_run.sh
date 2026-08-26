@@ -26,6 +26,7 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SAMPLE_CSV="$ROOT_DIR/inst/extdata/Grechishnikova_STN_2017_subset.csv"
 ICON_SOURCE="$APP_DIR/Resources/AppIcon.icns"
+LOGO_MARK_SOURCE="$APP_DIR/Resources/LogoMark.png"
 GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 LOCK_FILE="$DIST_DIR/.build_and_run.lock"
 BUNDLE_TRANSACTION_HELPER="$ROOT_DIR/script/bundle_transaction.py"
@@ -90,7 +91,7 @@ PY
 }
 
 source_digest() {
-  python3 - "$APP_DIR" "$SAMPLE_CSV" "$ICON_SOURCE" <<'PY'
+  python3 - "$APP_DIR" "$SAMPLE_CSV" "$ICON_SOURCE" "$LOGO_MARK_SOURCE" <<'PY'
 import hashlib
 import os
 import pathlib
@@ -100,6 +101,7 @@ import sys
 root = pathlib.Path(sys.argv[1])
 sample_csv = pathlib.Path(sys.argv[2])
 icon_source = pathlib.Path(sys.argv[3])
+logo_mark_source = pathlib.Path(sys.argv[4])
 
 def require_real_path(path, *, directory):
     try:
@@ -154,6 +156,9 @@ if os.path.lexists(icon_source):
     require_real_path(icon_source, directory=False)
     paths.append(icon_source)
 
+require_real_path(logo_mark_source, directory=False)
+paths.append(logo_mark_source)
+
 digest = hashlib.sha256()
 for path in sorted(paths, key=lambda item: item.as_posix()):
     if path == sample_csv:
@@ -184,6 +189,7 @@ validate_managed_path "$APP_DIR/Package.swift" >/dev/null
 validate_managed_path "$APP_DIR/Sources" >/dev/null
 validate_managed_path "$SAMPLE_CSV" >/dev/null
 validate_managed_path "$ICON_SOURCE" >/dev/null
+validate_managed_path "$LOGO_MARK_SOURCE" >/dev/null
 validate_managed_path "$APP_BUNDLE" >/dev/null
 validate_managed_path "$LOCK_FILE" >/dev/null
 validate_managed_path "$BUNDLE_TRANSACTION_HELPER" >/dev/null
@@ -639,6 +645,17 @@ if [[ -e "$ICON_SOURCE" || -L "$ICON_SOURCE" ]]; then
   APP_ICON_PRESENT=true
 fi
 
+validate_managed_path "$LOGO_MARK_SOURCE" >/dev/null
+if [[ ! -f "$LOGO_MARK_SOURCE" || -L "$LOGO_MARK_SOURCE" ]]; then
+  echo "logo mark is not a real file: $LOGO_MARK_SOURCE" >&2
+  exit 1
+fi
+cp "$LOGO_MARK_SOURCE" "$STAGED_APP_RESOURCES/LogoMark.png"
+if ! cmp -s "$LOGO_MARK_SOURCE" "$STAGED_APP_RESOURCES/LogoMark.png"; then
+  echo "packaged logo mark does not match its source: $LOGO_MARK_SOURCE" >&2
+  exit 1
+fi
+
 {
 cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -672,6 +689,19 @@ cat <<PLIST
 PLIST
 } >"$STAGED_INFO_PLIST"
 
+# SwiftPM signs the raw executable ad hoc, but that signature does not bind the
+# app bundle's Info.plist or packaged resources. Re-sign the completed bundle so
+# local distribution validation detects any later resource or metadata change.
+# Finder may attach metadata while the hidden staging bundle is being assembled.
+# It is never application content and strict code signing rejects it, so remove
+# extended attributes from this newly-created, repository-managed stage only.
+/usr/bin/xattr -cr "$STAGED_APP_BUNDLE"
+find "$STAGED_APP_BUNDLE" \( -name '._*' -o -name '.DS_Store' \) -type f -delete
+/usr/bin/xattr -d com.apple.FinderInfo "$STAGED_APP_BUNDLE" 2>/dev/null || true
+/usr/bin/xattr -d 'com.apple.fileprovider.fpfs#P' "$STAGED_APP_BUNDLE" 2>/dev/null || true
+/usr/bin/codesign --force --sign - --timestamp=none "$STAGED_APP_BUNDLE"
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$STAGED_APP_BUNDLE"
+
 POST_PACKAGE_DIGEST="$(source_digest)"
 if [[ "$POST_PACKAGE_DIGEST" != "$SOURCE_DIGEST" ]]; then
   echo "source changed during packaging; leaving the existing app untouched" >&2
@@ -682,6 +712,18 @@ cleanup_scratch
 stop_packaged_instances
 validate_managed_path "$APP_BUNDLE" >/dev/null
 publish_bundle_transaction
+
+clean_published_bundle_metadata() {
+  /usr/bin/xattr -cr "$APP_BUNDLE"
+  /usr/bin/xattr -d com.apple.FinderInfo "$APP_BUNDLE" 2>/dev/null || true
+  /usr/bin/xattr -d 'com.apple.fileprovider.fpfs#P' "$APP_BUNDLE" 2>/dev/null || true
+}
+
+# Publishing can cause Finder to attach metadata to the now-visible bundle root.
+# Clear that non-content metadata from the repository-managed final bundle and
+# verify the exact artifact that will be launched, not only its hidden stage.
+clean_published_bundle_metadata
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 launch_packaged_app() {
   local attempt pids count launched_pid stable_pids

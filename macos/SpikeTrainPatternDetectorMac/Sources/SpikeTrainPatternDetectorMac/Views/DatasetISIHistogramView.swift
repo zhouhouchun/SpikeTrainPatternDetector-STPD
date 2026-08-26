@@ -1,4 +1,5 @@
 import STPDCore
+@preconcurrency import AppKit
 import SwiftUI
 
 private enum DatasetISIHistogramDisplayMode: String, CaseIterable, Hashable {
@@ -40,9 +41,12 @@ private struct DatasetHistogramBand: Identifiable, Hashable {
 struct DatasetISIHistogramView: View {
     @Bindable var document: RasterDocument
 
+    @Environment(\.l10n) private var l10n
+
     @State private var displayMode: DatasetISIHistogramDisplayMode = .overlay
     @State private var displayUnit: QualityDisplayUnit = .milliseconds
     @State private var xMaxSec = 0.0
+    @State private var xWindowStartSec = 0.0
     @State private var logY = false
     @State private var showQC = true
     @State private var showStructuralBands = true
@@ -57,7 +61,7 @@ struct DatasetISIHistogramView: View {
                         dataset: dataset,
                         qualitySettings: document.qualitySettings,
                         binWidthSec: max(1e-9, document.detectorHistogramBinWidthMs / 1000),
-                        xMaxSec: xMaxSec > 0 ? xMaxSec : nil
+                        xMaxSec: nil
                     )
                     let bands = structuralBands(for: summary)
 
@@ -70,7 +74,9 @@ struct DatasetISIHistogramView: View {
                         logY: logY,
                         showQC: showQC,
                         qualitySettings: document.qualitySettings,
-                        bands: showStructuralBands ? bands : []
+                        bands: showStructuralBands ? bands : [],
+                        visibleWindowSec: xMaxSec > 0 ? xMaxSec : nil,
+                        xWindowStartSec: $xWindowStartSec
                     )
                     .frame(minHeight: 430)
                     .background(Color(nsColor: .textBackgroundColor))
@@ -84,9 +90,9 @@ struct DatasetISIHistogramView: View {
                     trainAuditTable(summary: summary)
                 } else {
                     ContentUnavailableView(
-                        "No Dataset",
+                        l10n.t("无数据集"),
                         systemImage: "chart.bar.xaxis",
-                        description: Text(document.lastErrorMessage ?? "Open a raw spike timestamp CSV or load the bundled sample.")
+                        description: Text(document.lastErrorMessage ?? l10n.t("打开原始棘波时间戳 CSV，或加载内置示例。"))
                     )
                     .frame(maxWidth: .infinity, minHeight: 420)
                 }
@@ -99,18 +105,16 @@ struct DatasetISIHistogramView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: "chart.bar.xaxis")
-                .foregroundStyle(.secondary)
-            Text("数据集 ISI 直方图")
+            Text(l10n.t("数据集 ISI 直方图"))
                 .font(.title3.weight(.semibold))
-            Text("Live")
+            Text(l10n.t("实时"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(.quaternary, in: Capsule())
             Spacer()
-            Text("Diagnostic only · structure-first detection")
+            Text(l10n.t("仅供诊断 · 结构优先检测"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -118,7 +122,7 @@ struct DatasetISIHistogramView: View {
 
     private var controls: some View {
         HStack(alignment: .center, spacing: 18) {
-            controlGroup("Mode") {
+            controlGroup(l10n.t("模式")) {
                 GlassSegmentedControl(
                     options: DatasetISIHistogramDisplayMode.allCases.map { ($0, $0.title) },
                     selection: $displayMode,
@@ -127,26 +131,27 @@ struct DatasetISIHistogramView: View {
                 .frame(width: 242)
             }
 
-            controlGroup("Bin") {
+            controlGroup(l10n.t("分箱")) {
                 DebouncedDoubleField("5", value: binWidthBinding, width: 78, maxFractionDigits: 6)
                 unitControl
             }
 
-            controlGroup("X max") {
+            controlGroup(l10n.t("X 窗口")) {
                 DebouncedDoubleField("0", value: xMaxBinding, width: 86, maxFractionDigits: 6)
-                Text("0 = auto")
+                Text(l10n.t("0 = 全部"))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+            .help(l10n.t("输入窗口宽度后，可在图中拖动或用触控板左右滑动 X 轴。"))
 
-            Toggle("log Y", isOn: $logY)
+            Toggle(l10n.t("对数 Y"), isOn: $logY)
                 .toggleStyle(.checkbox)
             Toggle("QC", isOn: $showQC)
                 .toggleStyle(.checkbox)
-                .help("Show minimum-valid-ISI and refractory-suspect thresholds.")
-            Toggle("Structure bands", isOn: $showStructuralBands)
+                .help(l10n.t("显示伪迹与绝对不应期阈值。"))
+            Toggle(l10n.t("结构频带"), isOn: $showStructuralBands)
                 .toggleStyle(.checkbox)
-                .help("Show intervals inferred from the structural detector. These bands do not change histogram counts.")
+                .help(l10n.t("显示由结构检测器推断的区间。这些频带不会改变直方图计数。"))
 
             Spacer(minLength: 16)
         }
@@ -204,12 +209,13 @@ struct DatasetISIHistogramView: View {
 
     private func summaryStrip(_ summary: DatasetISIHistogramSummary) -> some View {
         HStack(spacing: 10) {
-            histogramMetric("Valid ISI", "\(summary.totalValidISICount.formatted())")
-            histogramMetric("Visible", "\(summary.visibleValidISICount.formatted())")
-            histogramMetric("Trains", "\(summary.contributingTrainCount)/\(summary.trainRows.count)")
-            histogramMetric("Bin", formatTime(summary.binWidthSec))
-            histogramMetric("X max", formatTime(summary.xMaxSec))
-            histogramMetric("Below minimum", "\(summary.artifactExcludedCount.formatted())")
+            histogramMetric(l10n.t("有效 ISI"), "\(summary.totalValidISICount.formatted())")
+            histogramMetric(l10n.t("可见"), "\(summary.visibleValidISICount.formatted())")
+            histogramMetric(l10n.t("序列数"), "\(summary.contributingTrainCount)/\(summary.trainRows.count)")
+            histogramMetric(l10n.t("分箱"), formatTime(summary.binWidthSec))
+            histogramMetric(l10n.t("全量 X"), formatTime(summary.xMaxSec))
+            histogramMetric(l10n.t("X 窗口"), xMaxSec > 0 ? formatTime(min(xMaxSec, summary.xMaxSec)) : l10n.t("全部"))
+            histogramMetric(l10n.t("已排除伪迹"), "\(summary.artifactExcludedCount.formatted())")
         }
     }
 
@@ -293,12 +299,12 @@ struct DatasetISIHistogramView: View {
 
     private func bandTable(bands: [DatasetHistogramBand]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Structure-derived ISI bands")
+            sectionTitle(l10n.t("结构衍生 ISI 频带"))
 
             if bands.isEmpty {
                 Text(document.classicAnchorDetectionRun == nil
-                     ? "Run structural detection to show structure-derived ISI bands. Histogram counts remain available before detection."
-                     : "No structure-derived dataset bands are available for the current detection run.")
+                     ? l10n.t("运行结构检测以显示结构衍生 ISI 频带。检测前仍可查看直方图计数。")
+                     : l10n.t("当前检测运行没有可用的结构衍生数据集频带。"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(14)
@@ -347,11 +353,11 @@ struct DatasetISIHistogramView: View {
 
     private var bandRowHeader: some View {
         HStack(spacing: 14) {
-            Text("Pattern").frame(width: 150, alignment: .leading)
-            Text("Lower").frame(width: 110, alignment: .leading)
-            Text("Upper").frame(width: 110, alignment: .leading)
-            Text("Anchors").frame(width: 80, alignment: .leading)
-            Text("Source").frame(maxWidth: .infinity, alignment: .leading)
+            Text(l10n.t("模式分类")).frame(width: 150, alignment: .leading)
+            Text(l10n.t("下限")).frame(width: 110, alignment: .leading)
+            Text(l10n.t("上限")).frame(width: 110, alignment: .leading)
+            Text(l10n.t("锚点")).frame(width: 80, alignment: .leading)
+            Text(l10n.t("来源")).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
@@ -362,7 +368,7 @@ struct DatasetISIHistogramView: View {
 
     private func trainAuditTable(summary: DatasetISIHistogramSummary) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Per-train ISI audit")
+            sectionTitle(l10n.t("逐序列 ISI 审计"))
 
             ScrollView(.horizontal) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -383,17 +389,17 @@ struct DatasetISIHistogramView: View {
 
     private var trainRowHeader: some View {
         HStack(spacing: 12) {
-            tableHeader("Train", width: 280)
-            tableHeader("Valid", width: 70)
-            tableHeader("Visible", width: 70)
-            tableHeader("Below min", width: 74)
-            tableHeader("Min", width: 92)
+            tableHeader(l10n.t("序列"), width: 280)
+            tableHeader(l10n.t("有效"), width: 70)
+            tableHeader(l10n.t("可见"), width: 70)
+            tableHeader(l10n.t("伪迹"), width: 74)
+            tableHeader(l10n.t("最小值"), width: 92)
             tableHeader("Q10", width: 92)
             tableHeader("Q25", width: 92)
-            tableHeader("Median", width: 92)
+            tableHeader(l10n.t("中位数"), width: 92)
             tableHeader("Q75", width: 92)
             tableHeader("Q90", width: 92)
-            tableHeader("Max", width: 92)
+            tableHeader(l10n.t("最大值"), width: 92)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -468,6 +474,8 @@ struct DatasetISIHistogramView: View {
 }
 
 private struct DatasetISIHistogramChart: View {
+    private static let balancedSeriesColor = STPDAppTheme.accent
+
     let summary: DatasetISIHistogramSummary
     let mode: DatasetISIHistogramDisplayMode
     let displayUnit: QualityDisplayUnit
@@ -475,8 +483,13 @@ private struct DatasetISIHistogramChart: View {
     let showQC: Bool
     let qualitySettings: SpikeQualitySettings
     let bands: [DatasetHistogramBand]
+    let visibleWindowSec: Double?
+    @Binding var xWindowStartSec: Double
+
+    @Environment(\.l10n) private var l10n
 
     @State private var hoverLocation: CGPoint?
+    @State private var panStartSec: Double?
 
     var body: some View {
         GeometryReader { proxy in
@@ -485,13 +498,20 @@ private struct DatasetISIHistogramChart: View {
                 mode: mode,
                 displayUnit: displayUnit,
                 logY: logY,
-                size: proxy.size
+                size: proxy.size,
+                visibleWindowSec: visibleWindowSec,
+                requestedWindowStartSec: xWindowStartSec
             )
 
             ZStack(alignment: .topLeading) {
                 Canvas { context, _ in
                     draw(model: model, context: &context)
                 }
+                DatasetISIHistogramScrollMonitor(
+                    model: model,
+                    xWindowStartSec: $xWindowStartSec
+                )
+                .allowsHitTesting(false)
 
                 if let hoverLocation,
                    let bin = model.bin(at: hoverLocation) {
@@ -509,8 +529,29 @@ private struct DatasetISIHistogramChart: View {
                     hoverLocation = nil
                 }
             }
+            .gesture(panGesture(model: model))
         }
         .frame(minHeight: 420)
+    }
+
+    private func panGesture(model: DatasetISIHistogramPlotModel) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard model.canPan else {
+                    return
+                }
+                let baseStart = panStartSec ?? xWindowStartSec
+                if panStartSec == nil {
+                    panStartSec = xWindowStartSec
+                }
+                let fraction = Double(value.translation.width / max(model.plotRect.width, 1))
+                let proposed = baseStart - fraction * model.xSpanSec
+                xWindowStartSec = model.clampedWindowStart(proposed)
+            }
+            .onEnded { _ in
+                panStartSec = nil
+                xWindowStartSec = model.clampedWindowStart(xWindowStartSec)
+            }
     }
 
     private func draw(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
@@ -528,10 +569,10 @@ private struct DatasetISIHistogramChart: View {
     private func drawBackground(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
         context.fill(Path(CGRect(origin: .zero, size: model.size)), with: .color(Color(nsColor: .textBackgroundColor)))
 
-        let title = Text("Dataset ISI distribution")
+        let title = Text(l10n.t("数据集 ISI 分布"))
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
-        context.draw(title, at: CGPoint(x: model.plotRect.minX, y: 20), anchor: .leading)
+        context.draw(title, at: CGPoint(x: model.plotRect.minX + 32, y: model.plotRect.minY - 28), anchor: .leading)
 
         for tick in model.yTicks {
             let y = model.yPosition(for: tick)
@@ -555,8 +596,11 @@ private struct DatasetISIHistogramChart: View {
 
     private func drawBands(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
         for band in bands {
-            let x0 = model.xPosition(for: band.lowerSec)
-            let x1 = model.xPosition(for: band.upperSec)
+            guard let clipped = model.clippedRange(lower: band.lowerSec, upper: band.upperSec) else {
+                continue
+            }
+            let x0 = model.xPosition(for: clipped.lower)
+            let x1 = model.xPosition(for: clipped.upper)
             let rect = CGRect(
                 x: min(x0, x1),
                 y: model.plotRect.minY,
@@ -577,8 +621,11 @@ private struct DatasetISIHistogramChart: View {
 
     private func drawBars(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
         for bin in summary.bins {
-            let x = model.xPosition(for: bin.binLeftSec)
-            let width = max(1, model.xPosition(for: bin.binRightSec) - x)
+            guard let clipped = model.clippedRange(lower: bin.binLeftSec, upper: bin.binRightSec) else {
+                continue
+            }
+            let x = model.xPosition(for: clipped.lower)
+            let width = max(1, model.xPosition(for: clipped.upper) - x)
             let inset = min(width * 0.16, 2.5)
 
             switch mode {
@@ -596,7 +643,7 @@ private struct DatasetISIHistogramChart: View {
                     value: bin.trainBalancedFraction,
                     x: x + inset,
                     width: max(1, width - inset * 2),
-                    color: Color(red: 0.42, green: 0.36, blue: 0.78).opacity(0.68),
+                    color: Self.balancedSeriesColor.opacity(0.62),
                     model: model,
                     context: &context
                 )
@@ -641,7 +688,7 @@ private struct DatasetISIHistogramChart: View {
 
         var path = Path()
         var hasPoint = false
-        for bin in summary.bins where bin.trainBalancedFraction > 0 {
+        for bin in summary.bins where bin.trainBalancedFraction > 0 && model.contains(seconds: bin.midSec) {
             let point = CGPoint(
                 x: model.xPosition(for: bin.midSec),
                 y: model.yPosition(for: bin.trainBalancedFraction)
@@ -653,14 +700,15 @@ private struct DatasetISIHistogramChart: View {
                 hasPoint = true
             }
         }
-        context.stroke(path, with: .color(Color(red: 0.42, green: 0.36, blue: 0.78).opacity(0.92)), lineWidth: 1.8)
+        context.stroke(path, with: .color(Self.balancedSeriesColor.opacity(0.94)), lineWidth: 1.8)
     }
 
     private func drawQCThresholds(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
         drawVerticalRule(
             at: qualitySettings.artifactThresholdSec,
             color: .secondary,
-            label: "Min valid ISI",
+            label: l10n.t("伪迹"),
+            labelRow: 0,
             dash: [4, 4],
             model: model,
             context: &context
@@ -668,7 +716,8 @@ private struct DatasetISIHistogramChart: View {
         drawVerticalRule(
             at: qualitySettings.refractorySuspectThresholdSec,
             color: .orange,
-            label: "Refractory",
+            label: l10n.t("绝对不应期"),
+            labelRow: 1,
             dash: [2, 3],
             model: model,
             context: &context
@@ -679,11 +728,12 @@ private struct DatasetISIHistogramChart: View {
         at seconds: Double,
         color: Color,
         label: String,
+        labelRow: Int,
         dash: [CGFloat],
         model: DatasetISIHistogramPlotModel,
         context: inout GraphicsContext
     ) {
-        guard seconds.isFinite, seconds >= 0, seconds <= summary.xMaxSec else {
+        guard seconds.isFinite, model.contains(seconds: seconds) else {
             return
         }
         let x = model.xPosition(for: seconds)
@@ -699,8 +749,11 @@ private struct DatasetISIHistogramChart: View {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(color.opacity(0.82)),
-            at: CGPoint(x: x + 4, y: model.plotRect.maxY - 10),
-            anchor: .leading
+            at: CGPoint(
+                x: min(max(x + 6, model.plotRect.minX + 8), model.plotRect.maxX - 8),
+                y: model.thresholdLabelY(row: labelRow)
+            ),
+            anchor: x < model.plotRect.midX ? .leading : .trailing
         )
     }
 
@@ -731,29 +784,30 @@ private struct DatasetISIHistogramChart: View {
             Text(mode.yAxisTitle)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary),
-            at: CGPoint(x: 12, y: model.plotRect.minY - 15),
-            anchor: .leading
+            at: CGPoint(x: model.plotRect.minX - 18, y: model.plotRect.minY - 28),
+            anchor: .trailing
         )
     }
 
     private func drawLegend(model: DatasetISIHistogramPlotModel, context: inout GraphicsContext) {
         let entries: [(String, Color)] = switch mode {
         case .raw:
-            [("Raw pooled count", Color(nsColor: .labelColor).opacity(0.64))]
+            [(l10n.t("原始汇集计数"), Color(nsColor: .labelColor).opacity(0.64))]
         case .balanced:
-            [("Train-balanced fraction", Color(red: 0.42, green: 0.36, blue: 0.78).opacity(0.82))]
+            [(l10n.t("序列均衡占比"), Self.balancedSeriesColor.opacity(0.82))]
         case .overlay:
             [
-                ("Raw pooled fraction", Color(nsColor: .labelColor).opacity(0.42)),
-                ("Train-balanced fraction", Color(red: 0.42, green: 0.36, blue: 0.78).opacity(0.92))
+                (l10n.t("原始汇集占比"), Color(nsColor: .labelColor).opacity(0.42)),
+                (l10n.t("序列均衡占比"), Self.balancedSeriesColor.opacity(0.94))
             ]
         }
 
-        var x = model.plotRect.maxX
-        let y = model.plotRect.minY - 18
-        for entry in entries.reversed() {
-            let textWidth = CGFloat(entry.0.count) * 5.7 + 30
-            x -= textWidth
+        // Fixed vertical legend slots avoid Chinese/English text-width estimation errors and keep the
+        // line swatches from running underneath adjacent labels.
+        let x = model.plotRect.maxX - 178
+        let firstY = model.plotRect.minY - (entries.count > 1 ? 36 : 28)
+        for (index, entry) in entries.enumerated() {
+            let y = firstY + CGFloat(index) * 16
             var line = Path()
             line.move(to: CGPoint(x: x, y: y))
             line.addLine(to: CGPoint(x: x + 18, y: y))
@@ -770,13 +824,13 @@ private struct DatasetISIHistogramChart: View {
 
     private func histogramHoverCard(bin: DatasetISIHistogramBin) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("ISI bin")
+            Text(l10n.t("ISI 分箱"))
                 .font(.caption.weight(.semibold))
             Divider()
-            hoverRow("Range", "\(formatTime(bin.binLeftSec)) - \(formatTime(bin.binRightSec))")
-            hoverRow("Raw count", "\(bin.rawCount)")
-            hoverRow("Raw fraction", percent(bin.rawFraction))
-            hoverRow("Train-balanced", percent(bin.trainBalancedFraction))
+            hoverRow(l10n.t("范围"), "\(formatTime(bin.binLeftSec)) - \(formatTime(bin.binRightSec))")
+            hoverRow(l10n.t("原始计数"), "\(bin.rawCount)")
+            hoverRow(l10n.t("原始占比"), percent(bin.rawFraction))
+            hoverRow(l10n.t("序列均衡"), percent(bin.trainBalancedFraction))
         }
         .font(.caption)
         .padding(10)
@@ -816,6 +870,100 @@ private struct DatasetISIHistogramChart: View {
     }
 }
 
+private struct DatasetISIHistogramScrollMonitor: NSViewRepresentable {
+    let model: DatasetISIHistogramPlotModel
+    @Binding var xWindowStartSec: Double
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> DatasetISIHistogramMonitorView {
+        let view = DatasetISIHistogramMonitorView(frame: .zero)
+        view.frameDidChange = { [weak coordinator = context.coordinator] frame in
+            coordinator?.chartFrameInWindow = frame
+        }
+        context.coordinator.installIfNeeded()
+        return view
+    }
+
+    func updateNSView(_ nsView: DatasetISIHistogramMonitorView, context: Context) {
+        let binding = $xWindowStartSec
+        context.coordinator.model = model
+        context.coordinator.currentStart = { binding.wrappedValue }
+        context.coordinator.setStart = { binding.wrappedValue = $0 }
+        nsView.updateWindowFrame()
+        context.coordinator.installIfNeeded()
+    }
+
+    static func dismantleNSView(_ nsView: DatasetISIHistogramMonitorView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
+    }
+
+    final class Coordinator {
+        var model: DatasetISIHistogramPlotModel?
+        var currentStart: () -> Double = { 0 }
+        var setStart: (Double) -> Void = { _ in }
+        var chartFrameInWindow: CGRect = .null
+
+        private var monitor: Any?
+
+        func installIfNeeded() {
+            guard monitor == nil else {
+                return
+            }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.handleScroll(event) ?? event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            monitor = nil
+        }
+
+        private func handleScroll(_ event: NSEvent) -> NSEvent? {
+            guard let model,
+                  model.canPan,
+                  chartFrameInWindow.contains(event.locationInWindow) else {
+                return event
+            }
+
+            let horizontal = event.scrollingDeltaX
+            let shiftVertical = event.modifierFlags.contains(.shift) ? event.scrollingDeltaY : 0
+            let dominantDelta = abs(horizontal) >= abs(shiftVertical) ? horizontal : shiftVertical
+            guard abs(dominantDelta) > 0.01 else {
+                return event
+            }
+
+            let deltaFraction = Double(dominantDelta / max(model.plotRect.width, 1))
+            let proposed = currentStart() + deltaFraction * model.xSpanSec
+            setStart(model.clampedWindowStart(proposed))
+            return nil
+        }
+    }
+}
+
+private final class DatasetISIHistogramMonitorView: NSView {
+    var frameDidChange: ((CGRect) -> Void)?
+
+    override func layout() {
+        super.layout()
+        updateWindowFrame()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateWindowFrame()
+    }
+
+    func updateWindowFrame() {
+        frameDidChange?(convert(bounds, to: nil))
+    }
+}
+
 private struct DatasetISIHistogramPlotModel {
     let summary: DatasetISIHistogramSummary
     let mode: DatasetISIHistogramDisplayMode
@@ -827,13 +975,17 @@ private struct DatasetISIHistogramPlotModel {
     let yMinPositive: Double
     let yTicks: [Double]
     let xTicks: [Double]
+    let xLowerSec: Double
+    let xUpperSec: Double
 
     init(
         summary: DatasetISIHistogramSummary,
         mode: DatasetISIHistogramDisplayMode,
         displayUnit: QualityDisplayUnit,
         logY: Bool,
-        size: CGSize
+        size: CGSize,
+        visibleWindowSec: Double?,
+        requestedWindowStartSec: Double
     ) {
         self.summary = summary
         self.mode = mode
@@ -842,10 +994,17 @@ private struct DatasetISIHistogramPlotModel {
         self.size = size
         self.plotRect = CGRect(
             x: 64,
-            y: 38,
+            y: 56,
             width: max(1, size.width - 84),
-            height: max(1, size.height - 92)
+            height: max(1, size.height - 110)
         )
+        let fullMaxSec = max(summary.xMaxSec, 1e-9)
+        let visibleSpanSec = visibleWindowSec
+            .flatMap { $0.isFinite && $0 > 0 ? min(max($0, 1e-9), fullMaxSec) : nil } ?? fullMaxSec
+        let maxStartSec = max(0, fullMaxSec - visibleSpanSec)
+        let startSec = min(max(requestedWindowStartSec, 0), maxStartSec)
+        self.xLowerSec = startSec
+        self.xUpperSec = min(fullMaxSec, startSec + visibleSpanSec)
 
         let values = summary.bins.flatMap { bin -> [Double] in
             switch mode {
@@ -865,15 +1024,46 @@ private struct DatasetISIHistogramPlotModel {
         self.yTicks = logY
             ? Self.logTicks(minValue: yMinPositive, maxValue: yMax)
             : Self.linearTicks(maxValue: yMax)
-        self.xTicks = Self.linearXTicks(maxValue: summary.xMaxSec)
+        self.xTicks = Self.linearXTicks(lowerValue: xLowerSec, upperValue: xUpperSec)
+    }
+
+    var xSpanSec: Double {
+        max(xUpperSec - xLowerSec, 1e-9)
+    }
+
+    var canPan: Bool {
+        summary.xMaxSec > xSpanSec + 1e-9
+    }
+
+    func thresholdLabelY(row: Int) -> CGFloat {
+        let offset = 36 + CGFloat(max(row, 0)) * 15
+        return min(max(plotRect.minY + offset, plotRect.minY + 24), plotRect.maxY - 24)
+    }
+
+    func clampedWindowStart(_ value: Double) -> Double {
+        let maxStartSec = max(0, summary.xMaxSec - xSpanSec)
+        return min(max(value, 0), maxStartSec)
     }
 
     func xPosition(for seconds: Double) -> CGFloat {
-        guard summary.xMaxSec > 0 else {
+        guard xSpanSec > 0 else {
             return plotRect.minX
         }
-        let fraction = min(max(seconds / summary.xMaxSec, 0), 1)
+        let fraction = (seconds - xLowerSec) / xSpanSec
         return plotRect.minX + plotRect.width * CGFloat(fraction)
+    }
+
+    func contains(seconds: Double) -> Bool {
+        seconds.isFinite && seconds >= xLowerSec && seconds <= xUpperSec
+    }
+
+    func clippedRange(lower: Double, upper: Double) -> (lower: Double, upper: Double)? {
+        let clippedLower = max(min(lower, upper), xLowerSec)
+        let clippedUpper = min(max(lower, upper), xUpperSec)
+        guard clippedUpper > clippedLower else {
+            return nil
+        }
+        return (clippedLower, clippedUpper)
     }
 
     func yPosition(for value: Double) -> CGFloat {
@@ -892,12 +1082,12 @@ private struct DatasetISIHistogramPlotModel {
 
     func bin(at location: CGPoint) -> DatasetISIHistogramBin? {
         guard plotRect.contains(location),
-              summary.xMaxSec > 0,
+              xSpanSec > 0,
               !summary.bins.isEmpty else {
             return nil
         }
         let fraction = Double((location.x - plotRect.minX) / plotRect.width)
-        let seconds = min(max(fraction, 0), 1) * summary.xMaxSec
+        let seconds = xLowerSec + min(max(fraction, 0), 1) * xSpanSec
         let index = min(max(Int(floor(seconds / summary.binWidthSec)), 0), summary.bins.count - 1)
         return summary.bins[index]
     }
@@ -968,11 +1158,12 @@ private struct DatasetISIHistogramPlotModel {
         return ticks.isEmpty ? [minValue, maxValue] : ticks
     }
 
-    private static func linearXTicks(maxValue: Double) -> [Double] {
-        guard maxValue.isFinite, maxValue > 0 else {
+    private static func linearXTicks(lowerValue: Double, upperValue: Double) -> [Double] {
+        guard lowerValue.isFinite, upperValue.isFinite, upperValue > lowerValue else {
             return [0]
         }
-        return (0...5).map { maxValue * Double($0) / 5.0 }
+        let span = upperValue - lowerValue
+        return (0...5).map { lowerValue + span * Double($0) / 5.0 }
     }
 }
 

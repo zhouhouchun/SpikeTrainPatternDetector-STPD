@@ -39,6 +39,30 @@ extension RasterDocument {
         beginResultPackageRead(at: url)
     }
 
+    /// Opens the detector-independent result produced by a complete canonical manual ISI review.
+    /// A separate action avoids guessing between two manifest contracts after a validation failure.
+    func openCanonicalManualResultPackageWithPanel() {
+        guard !isResultPackageReading else {
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.message = "Choose a complete-manual-review .stpdresult package. Every manifest field and ISI row is validated before display."
+        panel.prompt = "Open Manual Result"
+        if let contentType = Self.stpdResultPackageContentType {
+            panel.allowedContentTypes = [contentType]
+        }
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        beginCanonicalManualResultPackageRead(at: url)
+    }
+
     /// Starts an isolated, detached read. A monotonically increasing request token guards against a stale
     /// completion overwriting a newer request (or a completion arriving after an explicit clear).
     private func beginResultPackageRead(at url: URL) {
@@ -63,6 +87,28 @@ extension RasterDocument {
         }
     }
 
+    private func beginCanonicalManualResultPackageRead(at url: URL) {
+        let token = resultPackageReadRequestToken &+ 1
+        resultPackageReadRequestToken = token
+        isResultPackageReading = true
+        resultPackageReadbackErrorMessage = nil
+
+        Task.detached(priority: .userInitiated) {
+            let outcome: ResultPackageReadOutcome
+            do {
+                let result = try STPDResultPackageReader.readCanonicalManualResult(
+                    packageAt: url
+                )
+                outcome = .canonicalManualSuccess(result)
+            } catch {
+                outcome = .failure(error.localizedDescription)
+            }
+            await MainActor.run {
+                self.finishResultPackageRead(outcome, url: url, token: token)
+            }
+        }
+    }
+
     /// Applies a completed read on the MainActor, ignoring it if a newer request has since started.
     private func finishResultPackageRead(_ outcome: ResultPackageReadOutcome, url: URL, token: Int) {
         guard token == resultPackageReadRequestToken else {
@@ -74,6 +120,13 @@ extension RasterDocument {
         switch outcome {
         case .success(let result):
             loadedResultPackage = result
+            loadedCanonicalManualResultPackage = nil
+            loadedResultPackageURL = url
+            resultPackageReadbackErrorMessage = nil
+            resultPackageLoadCompletionID &+= 1 // signal the UI to navigate to `.eventsOutput`
+        case .canonicalManualSuccess(let result):
+            loadedCanonicalManualResultPackage = result
+            loadedResultPackage = nil
             loadedResultPackageURL = url
             resultPackageReadbackErrorMessage = nil
             resultPackageLoadCompletionID &+= 1 // signal the UI to navigate to `.eventsOutput`
@@ -95,6 +148,7 @@ extension RasterDocument {
         resultPackageReadRequestToken &+= 1
         isResultPackageReading = false
         loadedResultPackage = nil
+        loadedCanonicalManualResultPackage = nil
         loadedResultPackageURL = nil
         resultPackageReadbackErrorMessage = nil
     }
@@ -103,5 +157,6 @@ extension RasterDocument {
 /// A small Sendable success/failure value marshaled from the detached read back to the MainActor.
 private enum ResultPackageReadOutcome: Sendable {
     case success(STPDResultPackageReadResult)
+    case canonicalManualSuccess(CanonicalManualResultPackageReadResult)
     case failure(String)
 }

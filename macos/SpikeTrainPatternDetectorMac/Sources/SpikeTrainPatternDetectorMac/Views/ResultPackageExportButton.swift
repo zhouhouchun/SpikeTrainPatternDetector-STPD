@@ -11,10 +11,10 @@ struct ResultPackageExportButton: View {
                 HStack(spacing: 6) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Exporting Result Package…")
+                    Text("正在导出结果包…")
                 }
             } else {
-                Label("Export Result Package…", systemImage: "archivebox")
+                Label("导出结果包…", systemImage: "archivebox")
             }
         }
         .disabled(

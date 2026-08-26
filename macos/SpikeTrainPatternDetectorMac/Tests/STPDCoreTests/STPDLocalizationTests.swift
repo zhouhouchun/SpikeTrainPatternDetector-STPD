@@ -360,8 +360,185 @@ func i18n2BMachineStringsStillPassThrough() {
 func defaultLanguageIsChineseAndEnumIsStable() {
     #expect(STPDLanguage(rawValue: "zh") == .zh)
     #expect(STPDLanguage(rawValue: "en") == .en)
+    #expect(STPDLanguage(rawValue: "ru") == .ru)
     #expect(STPDLanguage(rawValue: "bogus") == nil)
-    #expect(STPDLanguage.allCases == [.zh, .en])
+    #expect(STPDLanguage.allCases == [.zh, .en, .ru])
     #expect(STPDLanguage.zh.nativeLabel == "中文")
     #expect(STPDLanguage.en.nativeLabel == "English")
+    #expect(STPDLanguage.ru.nativeLabel == "Русский")
+}
+
+@Test
+func russianUsesOwnerApprovedPatternTermsAndEnglishFallback() {
+    #expect(STPDLocalization.text("爆发", language: .ru) == "пачек")
+    #expect(STPDLocalization.text("暂停", language: .ru) == "пауза")
+    #expect(STPDLocalization.text("强直发放", language: .ru) == "тоник")
+    #expect(STPDLocalization.text("Burst", language: .ru) == "пачек")
+    #expect(STPDLocalization.text("确定的单神经元电活动", language: .ru)
+        == "Подтверждённая активность одиночного нейрона")
+    #expect(STPDLocalization.text("Seed / Bridge 诊断", language: .ru) == "Диагностика Seed / Bridge")
+    #expect(STPDLocalization.text("数据集 ISI 直方图", language: .ru)
+        == "Гистограмма ISI набора данных")
+    #expect(STPDLocalization.text("棘波序列", language: .ru) == "Спайковая последовательность")
+    #expect(STPDLocalization.text("显示", language: .ru) == "Показ")
+    #expect(STPDLocalization.text("条", language: .ru) == "шт.")
+    #expect(STPDLocalization.text("全部", language: .ru) == "Все")
+    #expect(STPDLocalization.text("选择", language: .ru) == "Выбрать")
+    #expect(STPDLocalization.text("棘波序列", language: .en) == "Spike train")
+}
+
+@Test
+func rasterTimeAxisAndRussianLayoutLabelsAreFullyLocalized() {
+    let cases: [(String, String, String)] = [
+        ("对齐时间", "Aligned time", "Выровненное время"),
+        ("原始时间戳", "Raw timestamp", "Исходное время"),
+        ("可见窗口", "Visible window", "Видимый интервал"),
+        ("可见", "Visible", "Показано"),
+        ("序列", "Train", "Последовательности"),
+        ("spike 光栅图", "spike raster", "растр спайков"),
+        ("对齐 spike 光栅图", "Aligned spike raster", "Выровненный растр спайков"),
+        ("原始 spike 光栅图", "Raw spike raster", "Растр исходных спайков"),
+        ("数据源", "Source", "Источник данных"),
+        ("Spike 高度", "Spike height", "Высота спайка"),
+    ]
+
+    for (source, english, russian) in cases {
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+        #expect(STPDLocalization.text(source, language: .en) == english)
+        #expect(STPDLocalization.text(source, language: .ru) == russian)
+    }
+}
+
+@Test
+func manualThresholdAssistantAndQCTranslateWithoutMixedChinese() {
+    let english: [(String, String)] = [
+        ("ISI 阈值初标", "ISI threshold-assisted preliminary labeling"),
+        ("ISI 闭区间", "Closed ISI range"),
+        ("Spike 数闭区间", "Closed spike-count range"),
+        ("应用初标", "Apply preliminary labels"),
+        ("手工标记 QC", "Manual-labeling QC"),
+        ("绝对无效 ISI", "Absolutely invalid ISI"),
+        ("MM = 候选段内最大 ISI / 最小 ISI；仅用于 3–5 个 spike 的短 Tonic 初标。",
+         "MM = maximum ISI / minimum ISI within the candidate; it is used only for preliminary short-Tonic labeling with 3–5 spikes."),
+    ]
+    for (source, expected) in english {
+        #expect(STPDLocalization.text(source, language: .en) == expected)
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+    }
+
+    let russian: [(String, String)] = [
+        ("ISI 阈值初标", "Предварительная разметка по порогам ISI"),
+        ("模式", "Режим"),
+        ("下限", "Нижняя граница"),
+        ("上限", "Верхняя граница"),
+        ("手工标记 QC", "QC ручной разметки"),
+        ("绝对无效 ISI", "Абсолютно недопустимый ISI"),
+        ("MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。",
+         "Предварительная разметка тоника по MM поддерживает только 3–5 spike, а замкнутый диапазон MM не может быть ниже 1."),
+    ]
+    for (source, expected) in russian {
+        #expect(STPDLocalization.text(source, language: .ru) == expected)
+    }
+}
+
+@Test
+func manualISIWorkbenchSurfaceTranslatesWithoutMixedChinese() {
+    let visibleChineseSources = [
+        "纯手工 ISI 标记（无需模式检测）",
+        "本地草稿 · 未封存",
+        "导出已标注 ISI",
+        "时间图和表格都只使用原始 spike 时间戳，不运行模式检测。可在时间图拖动选择连续 ISI，也可在表格精确多选。状态与事件相互独立，因此 HFS 可与其内嵌的 HFB 共存；可选择导出 CSV、XLSX 或 NeuroExplorer NEX，文件会明确标记为本地人工草稿。",
+        "身份绑定草稿",
+        "导入手工 ISI 草稿",
+        "确认完整审核",
+        "轨道",
+        "清除选择",
+        "使用 Shift-单击或 Command-单击进行批量选择。",
+        "左时间戳（s）",
+        "左 MM = 左邻 ISI ÷ 当前 ISI",
+        "当前 ISI（ms）",
+        "右 MM = 右邻 ISI ÷ 当前 ISI",
+        "右时间戳（s）",
+        "备注",
+        "审核 / ISI #",
+        "时间图手工选择",
+        "拖动选择连续 ISI；点击已标记色块后按 Delete 可清除该区块。",
+        "鼠标悬停在相邻 spike 之间时显示该 ISI 的时间戳、间隔与模式信息",
+        "适合窗口",
+        "手工 ISI 时间图",
+        "未标记",
+    ]
+
+    func containsCJK(_ value: String) -> Bool {
+        value.unicodeScalars.contains { scalar in
+            (0x3400...0x4DBF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+        }
+    }
+
+    for source in visibleChineseSources {
+        #expect(!containsCJK(STPDLocalization.text(source, language: .en)))
+        #expect(!containsCJK(STPDLocalization.text(source, language: .ru)))
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+    }
+
+    #expect(STPDLocalization.text("Spike train", language: .ru)
+        == "Спайковая последовательность")
+    #expect(STPDLocalization.text("Spike", language: .ru) == "Спайки")
+    #expect(STPDLocalization.text("Burst", language: .ru) == "пачек")
+    #expect(STPDLocalization.text("Tonic", language: .ru) == "тоник")
+    #expect(STPDLocalization.text("Pause", language: .ru) == "пауза")
+}
+
+@Test
+func delayedBackgroundProgressMessagesTranslateInAllSupportedLanguages() {
+    let cases: [(String, String, String)] = [
+        (
+            "正在运行模式检测并构建审计结果…",
+            "Running pattern detection and building audit results…",
+            "Выполняется детекция паттернов и формируются результаты аудита…"
+        ),
+        (
+            "正在生成模式热力图…",
+            "Generating the pattern heatmap…",
+            "Построение тепловой карты паттернов…"
+        ),
+        (
+            "正在验证科学含义与规范数据身份…",
+            "Validating scientific meaning and canonical dataset identity…",
+            "Проверка научного смысла и канонической идентичности набора данных…"
+        ),
+        (
+            "正在生成当前检测的权威结果表…",
+            "Building authoritative tables for the current detection run…",
+            "Формирование авторитетных таблиц для текущего запуска детектора…"
+        ),
+        (
+            "正在构建结果表的语义化审阅视图…",
+            "Building the semantic review view for the result tables…",
+            "Формирование семантического представления таблиц результатов для проверки…"
+        ),
+    ]
+
+    for (source, english, russian) in cases {
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+        #expect(STPDLocalization.text(source, language: .en) == english)
+        #expect(STPDLocalization.text(source, language: .ru) == russian)
+    }
+}
+
+@Test
+func activityModeTerminologyUsesTheApprovedSingleSource() {
+    let cases: [(ScientificDatasetActivityMode, String, String, String)] = [
+        (.putativeSingleUnit, "确定的单神经元电活动", "确定的单神经元电活动（Single-unit）", "Confirmed single-unit activity"),
+        (.intentionalMultiUnit, "多神经元电活动", "多神经元电活动（Multi-unit，实验性）", "Multi-unit activity"),
+        (.unknownOrUncertain, "未知或不确定", "未知或不确定", "Unknown or uncertain"),
+    ]
+
+    for (mode, source, pickerSource, english) in cases {
+        #expect(mode.activityModeDisplaySource == source)
+        #expect(mode.activityModePickerDisplaySource == pickerSource)
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+        #expect(STPDLocalization.text(source, language: .en) == english)
+    }
 }

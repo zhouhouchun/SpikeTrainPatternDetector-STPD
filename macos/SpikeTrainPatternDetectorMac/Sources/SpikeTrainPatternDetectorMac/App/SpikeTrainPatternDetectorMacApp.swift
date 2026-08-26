@@ -1,4 +1,5 @@
 import AppKit
+import STPDCore
 import SwiftUI
 
 @MainActor
@@ -60,11 +61,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         document.openResultPackageWithPanel()
     }
 
+    @objc private func openCanonicalManualResultPackage() {
+        showMainWindow()
+        document.openCanonicalManualResultPackageWithPanel()
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(importManualAnnotations) {
             return document.canImportAuthoritativeManualAnnotations
         }
-        if menuItem.action == #selector(openResultPackage) {
+        if menuItem.action == #selector(openResultPackage)
+            || menuItem.action == #selector(openCanonicalManualResultPackage) {
             return !document.isResultPackageReading
         }
         return true
@@ -100,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer: false
         )
         window.title = "Spike Train Pattern Detector"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        // Keep the titlebar free of app controls.  The persistent title/actions
+        // row lives inside ContentView so it remains visible in full-screen and
+        // follows the document content rather than the window chrome.
         window.contentViewController = NSHostingController(rootView: rootView)
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 1240, height: 700)
@@ -184,6 +196,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             action: #selector(openResultPackage),
             keyEquivalent: ""
         ).target = self
+        fileMenu.addItem(
+            withTitle: "Open Manual Result Package...",
+            action: #selector(openCanonicalManualResultPackage),
+            keyEquivalent: ""
+        ).target = self
         fileMenu.addItem(.separator())
         fileMenu.addItem(
             withTitle: "Load Demo Sample",
@@ -203,5 +220,163 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ).target = self
 
         NSApp.mainMenu = mainMenu
+    }
+}
+
+struct MainTitlebarLogo: View {
+    private let green = Color(red: 0.149, green: 0.569, blue: 0.455)
+
+    private var logoImage: Image {
+        if let url = Bundle.main.url(forResource: "LogoMark", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return Image(nsImage: image)
+        }
+        return Image(systemName: "waveform.path.ecg")
+    }
+
+    var body: some View {
+        let mark = logoImage
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+
+        ZStack {
+            if #available(macOS 26.0, *) {
+                // The native Liquid Glass surface is clipped back to the mark's
+                // alpha, so the glass belongs to the green line rather than to a
+                // rectangular icon backdrop.
+                mark
+                    .foregroundStyle(green)
+                    .glassEffect(.regular.tint(green.opacity(0.86)), in: Rectangle())
+                    .mask(mark)
+            } else {
+                // macOS 14 fallback: retain the native adaptive material and a
+                // restrained highlight for systems without glassEffect.
+                mark.foregroundStyle(green.opacity(0.82))
+                mark.foregroundStyle(.regularMaterial).opacity(0.48)
+                mark.foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.72),
+                            green.opacity(0.90),
+                            Color.black.opacity(0.18),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            }
+
+            mark
+                .foregroundStyle(Color.white.opacity(0.42))
+                .blur(radius: 0.30)
+                .offset(y: -0.45)
+                .mask(
+                    LinearGradient(
+                        colors: [.white, .white.opacity(0.08), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        }
+        .padding(1)
+        .accessibilityLabel("Spike Train Pattern Detector logo")
+    }
+}
+
+struct MainTitlebarActions: View {
+    @Bindable var document: RasterDocument
+    @Binding var language: STPDLanguage
+    @Binding var isLeftSidebarVisible: Bool
+    @Binding var isRightSidebarVisible: Bool
+    @Environment(\.l10n) private var l10n
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                TitlebarLanguageControl(selection: $language)
+                Button { isLeftSidebarVisible.toggle() } label: { actionLabel("左侧栏") }
+                Button { isRightSidebarVisible.toggle() } label: { actionLabel("右侧栏") }
+                Button { document.openScientificImportWithPanel() } label: { actionLabel("导入数据") }
+                Menu { outputMenu } label: { actionLabel("输出") }
+                Menu { moreMenu } label: { actionLabel("更多") }
+            }
+
+            HStack(spacing: 12) {
+                TitlebarLanguageControl(selection: $language)
+                Menu {
+                    Button(l10n.t("左侧栏")) { isLeftSidebarVisible.toggle() }
+                    Button(l10n.t("右侧栏")) { isRightSidebarVisible.toggle() }
+                    Button(l10n.t("导入数据")) { document.openScientificImportWithPanel() }
+                    Menu(l10n.t("输出")) { outputMenu }
+                    Menu(l10n.t("更多")) { moreMenu }
+                } label: {
+                    actionLabel("功能")
+                }
+            }
+        }
+        .font(.system(size: 15, weight: .medium))
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(.thinMaterial, in: Capsule())
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func actionLabel(_ title: String) -> some View {
+        Text(l10n.t(title))
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(.primary)
+    }
+
+    @ViewBuilder
+    private var outputMenu: some View {
+        Button(l10n.t("打开结果包")) { document.openResultPackageWithPanel() }
+            .disabled(document.isResultPackageReading)
+        Button(l10n.t("打开人工审核结果包")) { document.openCanonicalManualResultPackageWithPanel() }
+            .disabled(document.isResultPackageReading)
+        Button(l10n.t("导出事件 CSV")) { document.exportClassicAnchorEventsCSVWithPanel() }
+            .disabled(!document.canExportClassicAnchorEventsCSV)
+        Button(l10n.t("导出逐 ISI 审核草稿")) { document.exportReviewedISIDraftCSVWithPanel() }
+            .disabled(!document.canExportReviewedISIDraft)
+        Button(l10n.t("导出 HFS-Burst 审计 CSV")) { document.exportHFSBurstArbitrationAuditCSVWithPanel() }
+            .disabled(!document.canExportHFSBurstArbitrationAuditCSV)
+        ResultPackageExportButton(document: document)
+    }
+
+    @ViewBuilder
+    private var moreMenu: some View {
+        Button(l10n.t("导入人工标注")) { document.importManualAnnotationsWithPanel() }
+            .disabled(!document.canImportAuthoritativeManualAnnotations)
+        Button(l10n.t("导入审核结果")) { document.importClassicAnchorReviewStatusesWithPanel() }
+            .disabled(!document.hasDetectorResults)
+        Button(l10n.t("加载示例")) { document.loadBundledSample() }
+    }
+}
+
+struct TitlebarLanguageControl: View {
+    @Binding var selection: STPDLanguage
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(STPDLanguage.allCases) { language in
+                Button {
+                    selection = language
+                } label: {
+                    Text(language.nativeLabel)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(selection == language ? Color.white : Color.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background {
+                            if selection == language {
+                                Capsule().fill(STPDAppTheme.accent)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.nativeLabel)
+            }
+        }
     }
 }

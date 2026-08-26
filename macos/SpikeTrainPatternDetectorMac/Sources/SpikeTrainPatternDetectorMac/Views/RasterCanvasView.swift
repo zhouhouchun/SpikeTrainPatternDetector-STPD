@@ -1,3 +1,4 @@
+import AppKit
 import STPDCore
 import SwiftUI
 
@@ -14,6 +15,17 @@ struct RasterCanvasView: View {
     let focusedTimeRangeOverride: RasterTimeRange?
     let reviewStatuses: [String: ClassicAnchorReviewStatus]
     let focusRequestID: Int
+    var adaptiveBurstBands: [String: AdaptiveBand] = [:]
+    var manualPauseLowerSec: Double? = nil
+    /// External task/stimulus events. They are display-only evidence and never enter detection.
+    let taskEvents: [TaskEvent]
+    let manualAnnotations: [ManualAnnotation]
+    let manualAnnotationModeEnabled: Bool
+    let showsISIInformationPanel: Bool
+    let selectedManualLabel: ManualAnnotationLabel
+    let manualAnnotationEraseModeEnabled: Bool
+    let onApplyManualLabel: (ManualAnnotationLabel, String, Set<Int>) -> Void
+    var onPinISI: (PinnedISIDiagnostic) -> Void = { _ in }
 
     private var visibleTrains: [SpikeTrain] {
         guard !selectedTrainIDs.isEmpty else {
@@ -39,11 +51,14 @@ struct RasterCanvasView: View {
             let layout = RasterLayout(
                 containerSize: proxy.size,
                 trainCount: trains.count,
+                trainNames: trains.map(\.name),
                 timeRange: displayTimeRange,
                 visibleWindowSeconds: visibleWindowSeconds
             )
             let legendEntries = PatternLegendEntry.visibleEntries(
                 annotations: eventAnnotations,
+                manualAnnotations: manualAnnotations,
+                trains: trains,
                 trainIDs: Set(trains.map(\.id)),
                 timeRange: layout.timeRange,
                 timeMode: timeMode
@@ -51,7 +66,7 @@ struct RasterCanvasView: View {
 
             Group {
                 if trains.isEmpty {
-                    ContentUnavailableView("No visible spike trains", systemImage: "waveform.path.ecg")
+                    ContentUnavailableView("没有可见的 spike train", systemImage: "waveform.path.ecg")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollViewReader { verticalProxy in
@@ -75,11 +90,25 @@ struct RasterCanvasView: View {
                                             spikeTickHeightPx: spikeTickHeightPx,
                                             eventAnnotations: eventAnnotations,
                                             focusedAnnotation: focusedAnnotation,
-                                            reviewStatuses: reviewStatuses
+                                            reviewStatuses: reviewStatuses,
+                                            adaptiveBurstBands: adaptiveBurstBands,
+                                            manualPauseLowerSec: manualPauseLowerSec,
+                                            taskEvents: taskEvents,
+                                            manualAnnotations: manualAnnotations,
+                                            manualAnnotationModeEnabled: manualAnnotationModeEnabled,
+                                            showsISIInformationPanel: showsISIInformationPanel,
+                                            selectedManualLabel: selectedManualLabel,
+                                            manualAnnotationEraseModeEnabled:
+                                                manualAnnotationEraseModeEnabled,
+                                            onApplyManualLabel: onApplyManualLabel,
+                                            onPinISI: onPinISI
                                         )
                                         .frame(width: layout.plotWidth, height: layout.contentHeight)
                                     }
                                     .id(displayTimeRangeID)
+                                    // Keep the native horizontal scroller clear of the workbench's
+                                    // lower edge without changing the raster's allocated height.
+                                    .padding(.bottom, 3)
                                     .frame(width: layout.plotViewportWidth, height: layout.contentHeight)
                                     .onAppear {
                                         scrollToFocusedAnnotation(
@@ -173,6 +202,38 @@ private enum RasterFocusScrollID: Hashable {
     case event(String)
 }
 
+private struct ManualDragPreview {
+    let trainIndex: Int
+    let startX: CGFloat
+    let currentX: CGFloat
+    let resolvedSpikeRange: ClosedRange<Int>?
+    let isValid: Bool
+}
+
+enum RasterLabelWidthResolver {
+    static let minimumWidth: CGFloat = 160
+    static let maximumWidth: CGFloat = 280
+    private static let minimumPlotViewportWidth: CGFloat = 260
+    private static let horizontalPadding: CGFloat = 24
+
+    static func width(
+        trainNames: [String],
+        fontSize: CGFloat,
+        containerWidth: CGFloat
+    ) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: fontSize)
+        let measuredWidth = trainNames
+            .map { name in
+                (name as NSString).size(withAttributes: [.font: font]).width
+            }
+            .max() ?? 0
+        let desiredWidth = ceil(measuredWidth) + horizontalPadding
+        let availableWidth = max(minimumWidth, containerWidth - minimumPlotViewportWidth)
+        let upperBound = min(maximumWidth, availableWidth)
+        return min(max(desiredWidth, minimumWidth), upperBound)
+    }
+}
+
 private struct RasterLayout {
     static let topInset: CGFloat = 66
     static let bottomInset: CGFloat = 54
@@ -192,12 +253,18 @@ private struct RasterLayout {
     init(
         containerSize: CGSize,
         trainCount: Int,
+        trainNames: [String],
         timeRange: RasterTimeRange,
         visibleWindowSeconds: Double
     ) {
         let containerWidth = max(containerSize.width, 420)
         let containerHeight = max(containerSize.height, 280)
-        let labelWidth = min(max(containerWidth * 0.24, 190), 300)
+        let labelFontSize: CGFloat = trainCount > 12 ? 10 : 11
+        let labelWidth = RasterLabelWidthResolver.width(
+            trainNames: trainNames,
+            fontSize: labelFontSize,
+            containerWidth: containerWidth
+        )
         let plotViewportWidth = max(containerWidth - labelWidth, 260)
 
         let trainCount = max(trainCount, 1)
@@ -301,38 +368,135 @@ private struct RasterPlotCanvas: View {
     let eventAnnotations: [ClassicAnchorEventAnnotation]
     let focusedAnnotation: ClassicAnchorEventAnnotation?
     let reviewStatuses: [String: ClassicAnchorReviewStatus]
+    let adaptiveBurstBands: [String: AdaptiveBand]
+    let manualPauseLowerSec: Double?
+    let taskEvents: [TaskEvent]
+    let manualAnnotations: [ManualAnnotation]
+    let manualAnnotationModeEnabled: Bool
+    let showsISIInformationPanel: Bool
+    let selectedManualLabel: ManualAnnotationLabel
+    let manualAnnotationEraseModeEnabled: Bool
+    let onApplyManualLabel: (ManualAnnotationLabel, String, Set<Int>) -> Void
+    let onPinISI: (PinnedISIDiagnostic) -> Void
+    @Environment(\.l10n) private var l10n
     @State private var hoverLocation: CGPoint?
+    @State private var manualDragPreview: ManualDragPreview?
+
+    private static let minimumManualDragWidth: CGFloat = 6
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Canvas { context, _ in
                 drawPlotBackground(context: &context)
                 drawLaneAxis(context: &context)
+                drawTaskEvents(context: &context)
                 drawEventAnnotations(context: &context)
                 drawFocusedAnnotation(context: &context)
+                drawManualAnnotations(context: &context)
+                drawManualDragPreview(context: &context)
+                drawManualDragSpikeHighlight(context: &context)
                 drawSpikeTicks(context: &context)
                 drawXAxis(context: &context)
             }
             .background(Color(nsColor: .textBackgroundColor))
 
-            if let hoverLocation, let target = hoverTarget(at: hoverLocation) {
-                RasterHoverCard(target: target)
-                    .frame(width: 286, alignment: .leading)
-                    .position(hoverCardPosition(for: hoverLocation))
+            if manualAnnotationModeEnabled {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(manualDragGesture)
+                    // In annotation mode this transparent surface owns the drag gesture. Give it the
+                    // hover tracker as well, otherwise SwiftUI can fail to deliver the pointer location
+                    // to the enclosing ZStack while a reviewer moves between adjacent spikes.
+                    .modifier(
+                        RasterISIInformationHoverTracking(
+                            isEnabled: showsISIInformationPanel,
+                            hoverLocation: $hoverLocation
+                        )
+                    )
+            }
+
+            if showsISIInformationPanel,
+               let hoverLocation,
+               let target = hoverTarget(at: hoverLocation) {
+                RasterHoverCard(
+                    target: target,
+                    highTransparency: manualAnnotationModeEnabled
+                )
+                    .frame(width: 310, alignment: .leading)
+                    .position(hoverCardPosition(for: hoverLocation, rowCount: target.rows.count))
                     .allowsHitTesting(false)
             }
 
             focusedEventAnchor
         }
         .contentShape(Rectangle())
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location):
-                hoverLocation = location
-            case .ended:
-                hoverLocation = nil
-            }
+        .modifier(
+            RasterISIInformationHoverTracking(
+                isEnabled: showsISIInformationPanel && !manualAnnotationModeEnabled,
+                hoverLocation: $hoverLocation
+            )
+        )
+        .onTapGesture {
+            guard showsISIInformationPanel,
+                  !manualAnnotationModeEnabled,
+                  let location = hoverLocation,
+                  let diagnostic = pinnedDiagnostic(at: location) else { return }
+            onPinISI(diagnostic)
         }
+        .onChange(of: manualAnnotationModeEnabled) { _, enabled in
+            if !enabled { manualDragPreview = nil }
+        }
+        .onChange(of: showsISIInformationPanel) { _, isVisible in
+            if !isVisible { hoverLocation = nil }
+        }
+    }
+
+    private func pinnedDiagnostic(at location: CGPoint) -> PinnedISIDiagnostic? {
+        guard layout.plotRect.contains(location),
+              let trainIndex = trainIndex(at: location),
+              trains.indices.contains(trainIndex) else { return nil }
+        let train = trains[trainIndex]
+        let centerY = layout.laneY(at: trainIndex)
+        let tolerance = min(max(layout.laneHeight * 0.34, 10), max(layout.laneHeight / 2 - 2, 10))
+        guard abs(location.y - centerY) <= tolerance else { return nil }
+
+        var best: (value: PinnedISIDiagnostic, distance: CGFloat)?
+        for rightIndex in train.timestampsSec.indices.dropFirst() {
+            let leftTime = train.rasterTimestamp(at: rightIndex - 1, mode: timeMode)
+            let rightTime = train.rasterTimestamp(at: rightIndex, mode: timeMode)
+            let leftX = layout.xPosition(for: leftTime)
+            let rightX = layout.xPosition(for: rightTime)
+            let low = min(leftX, rightX)
+            let high = max(leftX, rightX)
+            guard location.x >= low - 8, location.x <= high + 8,
+                  train.isiSec.indices.contains(rightIndex),
+                  let isi = train.isiSec[rightIndex], isi.isFinite else { continue }
+            let annotation = annotationCoveringISI(train: train, rightIndex: rightIndex)
+            let band = adaptiveBurstBands[train.id]
+            let diagnosis = PerISIDiagnosticBuilder.diagnose(
+                isiSec: isi,
+                coveringCandidateLabel: annotation?.displayFamilyName,
+                seedLowerSec: band?.seedLowerSec,
+                seedUpperSec: band?.seedUpperSec,
+                bridgeUpperSec: band?.bridgeUpperSec,
+                manualPauseLowerSec: manualPauseLowerSec
+            )
+            let value = PinnedISIDiagnostic(
+                trainID: train.id,
+                trainName: train.name,
+                isiIndex: rightIndex,
+                leftTimestampSec: leftTime,
+                rightTimestampSec: rightTime,
+                isiSec: isi,
+                reviewStatus: annotation.map {
+                    (reviewStatuses[$0.candidateID] ?? .unreviewed).title
+                },
+                diagnostic: diagnosis
+            )
+            let distance = abs(location.x - (low + high) / 2)
+            if best == nil || distance < best!.distance { best = (value, distance) }
+        }
+        return best?.value
     }
 
     private func drawPlotBackground(context: inout GraphicsContext) {
@@ -342,11 +506,25 @@ private struct RasterPlotCanvas: View {
         bottomAxis.addLine(to: CGPoint(x: plotRect.maxX, y: plotRect.maxY))
         context.stroke(bottomAxis, with: .color(Color(nsColor: .separatorColor).opacity(0.75)), lineWidth: 1)
 
-        let titleText = "\(timeMode.axisTitle), \(TimeFormatting.seconds(layout.timeRange.lowerBound)) to \(TimeFormatting.seconds(layout.timeRange.upperBound))"
+        let titleText = localizedTimeRangeTitle
         let title = Text(titleText)
             .font(.caption)
             .foregroundStyle(.secondary)
         context.draw(title, at: CGPoint(x: plotRect.minX, y: 18), anchor: .leading)
+    }
+
+    private var localizedTimeRangeTitle: String {
+        let axis = l10n.t(timeMode.axisTitle)
+        let lower = TimeFormatting.seconds(layout.timeRange.lowerBound)
+        let upper = TimeFormatting.seconds(layout.timeRange.upperBound)
+        switch l10n.language {
+        case .zh:
+            return "\(axis)，\(lower) 至 \(upper)"
+        case .en:
+            return "\(axis), \(lower) to \(upper)"
+        case .ru:
+            return "\(axis): \(lower)–\(upper)"
+        }
     }
 
     private func drawLaneAxis(context: inout GraphicsContext) {
@@ -377,6 +555,38 @@ private struct RasterPlotCanvas: View {
             lanePath.addLine(to: CGPoint(x: layout.xPosition(for: endTimestamp), y: y))
         }
         context.stroke(lanePath, with: .color(Color(nsColor: .separatorColor).opacity(0.15)), lineWidth: 4)
+    }
+
+    /// Draw global task/stimulus events only in raw time. In aligned mode every train has its own
+    /// origin, so a shared vertical line would be scientifically ambiguous.
+    private func drawTaskEvents(context: inout GraphicsContext) {
+        guard !taskEvents.isEmpty else { return }
+        let plotRect = layout.plotRect
+
+        guard timeMode == .raw else {
+            let note = Text("\(taskEvents.count) 个任务事件 · 原始时间（切换到“原始”查看）")
+                .font(.caption2)
+                .foregroundStyle(Color.red.opacity(0.7))
+            context.draw(
+                note,
+                at: CGPoint(x: plotRect.maxX - 6, y: plotRect.minY + 8),
+                anchor: .topTrailing
+            )
+            return
+        }
+
+        let style = StrokeStyle(lineWidth: 1, dash: [4, 3])
+        for event in taskEvents {
+            let time = event.timeSec
+            guard time.isFinite,
+                  time >= layout.timeRange.lowerBound,
+                  time <= layout.timeRange.upperBound else { continue }
+            let x = layout.xPosition(for: time)
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: plotRect.minY))
+            line.addLine(to: CGPoint(x: x, y: plotRect.maxY))
+            context.stroke(line, with: .color(Color.red.opacity(0.55)), style: style)
+        }
     }
 
     private func drawEventAnnotations(context: inout GraphicsContext) {
@@ -638,6 +848,296 @@ private struct RasterPlotCanvas: View {
         )
     }
 
+    // MARK: - Detector-independent manual annotation
+
+    private var manualDragGesture: some Gesture {
+        DragGesture(minimumDistance: Self.minimumManualDragWidth, coordinateSpace: .local)
+            .onChanged { value in
+                guard let startIndex = trainIndex(atY: value.startLocation.y),
+                      trainIndex(atY: value.location.y) == startIndex else {
+                    manualDragPreview = trainIndex(atY: value.startLocation.y).map {
+                        ManualDragPreview(
+                            trainIndex: $0,
+                            startX: value.startLocation.x,
+                            currentX: value.location.x,
+                            resolvedSpikeRange: nil,
+                            isValid: false
+                        )
+                    }
+                    return
+                }
+                manualDragPreview = makeManualDragPreview(
+                    trainIndex: startIndex,
+                    startX: value.startLocation.x,
+                    currentX: value.location.x
+                )
+            }
+            .onEnded { value in
+                defer { manualDragPreview = nil }
+                guard abs(value.location.x - value.startLocation.x)
+                        >= Self.minimumManualDragWidth,
+                      let startIndex = trainIndex(atY: value.startLocation.y),
+                      trainIndex(atY: value.location.y) == startIndex,
+                      trains.indices.contains(startIndex) else { return }
+
+                let train = trains[startIndex]
+                let rawRange = rawTimeRange(
+                    train: train,
+                    x0: value.startLocation.x,
+                    x1: value.location.x
+                )
+                let candidate = ManualAnnotation(
+                    trainID: train.id,
+                    label: selectedManualLabel,
+                    startSec: rawRange.lowerBound,
+                    endSec: rawRange.upperBound
+                )
+                guard let covered = ManualAnnotationGeometryResolver
+                    .resolve(annotation: candidate, in: train)
+                    .coveredISIIndices else { return }
+                onApplyManualLabel(selectedManualLabel, train.id, Set(covered))
+            }
+    }
+
+    private func trainIndex(atY y: CGFloat) -> Int? {
+        let plot = layout.plotRect
+        guard layout.laneHeight > 0, y >= plot.minY, y < plot.maxY else { return nil }
+        let index = Int((y - plot.minY) / layout.laneHeight)
+        return trains.indices.contains(index) ? index : nil
+    }
+
+    private func displayTime(atX x: CGFloat) -> Double {
+        let data = layout.dataRect
+        let width = max(data.width, .leastNonzeroMagnitude)
+        let fraction = Double(max(0, min(1, (x - data.minX) / width)))
+        return layout.timeRange.lowerBound + fraction * layout.timeRange.duration
+    }
+
+    private func rawTimeRange(train: SpikeTrain, x0: CGFloat, x1: CGFloat) -> ClosedRange<Double> {
+        let displayStart = displayTime(atX: min(x0, x1))
+        let displayEnd = displayTime(atX: max(x0, x1))
+        let first = train.firstTimestampSec ?? 0
+        let aligned = timeMode == .aligned
+        let rawStart = ManualAnnotationTimeConversion.rawSec(
+            displaySec: displayStart,
+            firstTimestampSec: first,
+            aligned: aligned
+        )
+        let rawEnd = ManualAnnotationTimeConversion.rawSec(
+            displaySec: displayEnd,
+            firstTimestampSec: first,
+            aligned: aligned
+        )
+        return min(rawStart, rawEnd)...max(rawStart, rawEnd)
+    }
+
+    private func makeManualDragPreview(
+        trainIndex: Int,
+        startX: CGFloat,
+        currentX: CGFloat
+    ) -> ManualDragPreview {
+        let train = trains[trainIndex]
+        let rawRange = rawTimeRange(train: train, x0: startX, x1: currentX)
+        let candidate = ManualAnnotation(
+            trainID: train.id,
+            label: selectedManualLabel,
+            startSec: rawRange.lowerBound,
+            endSec: rawRange.upperBound
+        )
+        let geometry = ManualAnnotationGeometryResolver.resolve(
+            annotation: candidate,
+            in: train
+        )
+        return ManualDragPreview(
+            trainIndex: trainIndex,
+            startX: startX,
+            currentX: currentX,
+            resolvedSpikeRange: geometry.coveredSpikeIndices,
+            isValid: geometry.coveredISIIndices != nil
+        )
+    }
+
+    private func drawManualAnnotations(context: inout GraphicsContext) {
+        let grouped = Dictionary(grouping: manualAnnotations, by: \.trainID)
+        for (trainIndex, train) in trains.enumerated() {
+            guard let annotations = grouped[train.id] else { continue }
+            var rangesByLabel: [ManualAnnotationLabel: [ClosedRange<Int>]] = [:]
+            for annotation in annotations {
+                guard let range = cachedManualISIIndexRange(annotation, in: train) else { continue }
+                rangesByLabel[annotation.label, default: []].append(range)
+            }
+
+            for label in ManualAnnotationLabel.allCases {
+                guard let ranges = rangesByLabel[label], !ranges.isEmpty else { continue }
+                let y = manualTrackY(label: label, trainIndex: trainIndex)
+                var path = Path()
+                for range in mergedManualISIRanges(ranges) {
+                    let leftIndex = range.lowerBound - 1
+                    let rightIndex = range.upperBound
+                    guard train.timestampsSec.indices.contains(leftIndex),
+                          train.timestampsSec.indices.contains(rightIndex) else { continue }
+                    let left = train.rasterTimestamp(at: leftIndex, mode: timeMode)
+                    let right = train.rasterTimestamp(at: rightIndex, mode: timeMode)
+                    let lower = max(min(left, right), layout.timeRange.lowerBound)
+                    let upper = min(max(left, right), layout.timeRange.upperBound)
+                    guard upper >= lower else { continue }
+                    path.move(to: CGPoint(x: layout.xPosition(for: lower), y: y))
+                    path.addLine(to: CGPoint(x: layout.xPosition(for: upper), y: y))
+                }
+
+                context.stroke(
+                    path,
+                    with: .color(Color(nsColor: .textBackgroundColor)),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .butt)
+                )
+                context.stroke(
+                    path,
+                    with: .color(manualLabelColor(label).opacity(0.95)),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .butt)
+                )
+            }
+        }
+    }
+
+    /// Raster labels authored in this app already contain resolved ISI indices.
+    /// Reusing that immutable display cache avoids rescanning every timestamp on
+    /// every Canvas redraw while horizontal scrolling.  Older/imported entries
+    /// without a usable cache retain the established resolver as a safe fallback.
+    private func cachedManualISIIndexRange(
+        _ annotation: ManualAnnotation,
+        in train: SpikeTrain
+    ) -> ClosedRange<Int>? {
+        guard annotation.trainID == train.id else { return nil }
+        if let start = annotation.startISIIndex,
+           let end = annotation.endISIIndex,
+           start >= 1,
+           end >= start,
+           end < train.timestampsSec.count {
+            return start...end
+        }
+        return ManualAnnotationGeometryResolver.resolve(annotation: annotation, in: train)
+            .coveredISIIndices
+    }
+
+    /// Collapsing contiguous or overlapping intervals into one stroked segment
+    /// preserves label geometry while eliminating thousands of redundant path
+    /// strokes for dense manually reviewed regions.
+    private func mergedManualISIRanges(
+        _ ranges: [ClosedRange<Int>]
+    ) -> [ClosedRange<Int>] {
+        let ordered = ranges.sorted {
+            if $0.lowerBound != $1.lowerBound { return $0.lowerBound < $1.lowerBound }
+            return $0.upperBound < $1.upperBound
+        }
+        guard var current = ordered.first else { return [] }
+        var merged: [ClosedRange<Int>] = []
+        for range in ordered.dropFirst() {
+            if range.lowerBound <= current.upperBound + 1 {
+                current = current.lowerBound...max(current.upperBound, range.upperBound)
+            } else {
+                merged.append(current)
+                current = range
+            }
+        }
+        merged.append(current)
+        return merged
+    }
+
+    private func drawManualDragPreview(context: inout GraphicsContext) {
+        guard let preview = manualDragPreview,
+              trains.indices.contains(preview.trainIndex) else { return }
+        let y = manualTrackY(label: selectedManualLabel, trainIndex: preview.trainIndex)
+        let x0 = max(layout.dataRect.minX, min(preview.startX, preview.currentX))
+        let x1 = min(layout.dataRect.maxX, max(preview.startX, preview.currentX))
+        guard x1 >= x0 else { return }
+        let color = manualAnnotationEraseModeEnabled
+            ? Color.red
+            : (preview.isValid ? manualLabelColor(selectedManualLabel) : Color.red)
+
+        // Keep the transient drag affordance visually consistent with a committed manual label.
+        // A full-lane rectangle obscures spike geometry and can be mistaken for the final mark.
+        // Flat line ends mark the exact selected time range without the visual overhang of a
+        // rounded stroke cap.
+        var rail = Path()
+        rail.move(to: CGPoint(x: x0, y: y))
+        rail.addLine(to: CGPoint(x: x1, y: y))
+        context.stroke(
+            rail,
+            with: .color(Color(nsColor: .textBackgroundColor).opacity(0.96)),
+            style: StrokeStyle(lineWidth: 8, lineCap: .butt)
+        )
+        context.stroke(
+            rail,
+            with: .color(color.opacity(preview.isValid ? 0.95 : 0.82)),
+            style: StrokeStyle(
+                lineWidth: 4,
+                lineCap: .butt,
+                dash: preview.isValid && !manualAnnotationEraseModeEnabled ? [] : [5, 4]
+            )
+        )
+
+        let capHalfHeight = min(max(layout.laneHeight * 0.07, 4), 8)
+        var caps = Path()
+        for x in [x0, x1] {
+            caps.move(to: CGPoint(x: x, y: y - capHalfHeight))
+            caps.addLine(to: CGPoint(x: x, y: y + capHalfHeight))
+        }
+        context.stroke(
+            caps,
+            with: .color(color.opacity(0.88)),
+            style: StrokeStyle(lineWidth: 2, lineCap: .butt)
+        )
+    }
+
+    private func drawManualDragSpikeHighlight(context: inout GraphicsContext) {
+        guard let preview = manualDragPreview,
+              preview.isValid,
+              let range = preview.resolvedSpikeRange,
+              trains.indices.contains(preview.trainIndex) else { return }
+        let train = trains[preview.trainIndex]
+        let y = layout.laneY(at: preview.trainIndex)
+        let halfHeight = layout.clampedSpikeTickHeight(spikeTickHeightPx) / 2 + 4
+        var path = Path()
+        for spikeIndex in range where train.timestampsSec.indices.contains(spikeIndex) {
+            let time = train.rasterTimestamp(at: spikeIndex, mode: timeMode)
+            guard time >= layout.timeRange.lowerBound,
+                  time <= layout.timeRange.upperBound else { continue }
+            let x = layout.xPosition(for: time)
+            path.move(to: CGPoint(x: x, y: y - halfHeight))
+            path.addLine(to: CGPoint(x: x, y: y + halfHeight))
+        }
+        context.stroke(
+            path,
+            with: .color((manualAnnotationEraseModeEnabled
+                          ? Color.red
+                          : manualLabelColor(selectedManualLabel)).opacity(0.34)),
+            lineWidth: 5
+        )
+    }
+
+    private func manualTrackY(label: ManualAnnotationLabel, trainIndex: Int) -> CGFloat {
+        let offset: CGFloat = switch label.semanticTrack {
+        case .state: 0.22
+        case .event: 0.32
+        case .other: 0.42
+        }
+        return layout.laneY(at: trainIndex) + layout.laneHeight * offset
+    }
+
+    private func manualLabelColor(_ label: ManualAnnotationLabel) -> Color {
+        switch label {
+        case .burst: .orange
+        case .highFrequencyBurst: .red
+        case .longBurst: .pink
+        case .tonic: .green
+        case .highFrequencyTonic: .teal
+        case .highFrequencySpiking: .purple
+        case .pause: .blue
+        case .other: .gray
+        case .notBurst: .secondary
+        }
+    }
+
     private func drawSpikeTicks(context: inout GraphicsContext) {
         for (index, train) in trains.enumerated() {
             drawSpikes(for: train, at: index, context: &context)
@@ -807,7 +1307,9 @@ private struct RasterPlotCanvas: View {
 
     private func isiHoverTarget(at location: CGPoint, train: SpikeTrain, trainIndex: Int) -> RasterHoverTarget? {
         let laneCenterY = layout.laneY(at: trainIndex)
-        let verticalTolerance = min(max(layout.laneHeight * 0.34, 10), max(layout.laneHeight / 2 - 2, 10))
+        // The user is inspecting the interval between two spikes, not a narrow mathematical center
+        // line. Accept the entire visible lane while still excluding the neighbouring train.
+        let verticalTolerance = max(0, layout.laneHeight / 2 - 2)
         guard abs(location.y - laneCenterY) <= verticalTolerance else {
             return nil
         }
@@ -836,28 +1338,24 @@ private struct RasterPlotCanvas: View {
             let isArtifact = isArtifactISI(isi)
             let annotation = annotationCoveringISI(train: train, rightIndex: rightIndex)
             var rows: [(label: String, value: String)] = [
-                ("Left", formatTime(leftTimestamp)),
-                ("Right", formatTime(rightTimestamp)),
-                ("ISI", formatTime(isi))
+                (l10n.t("左侧时间戳"), formatTime(leftTimestamp)),
+                (l10n.t("右侧时间戳"), formatTime(rightTimestamp)),
+                (l10n.t("ISI 间隔"), formatTime(isi))
             ]
             if let annotation {
-                rows.append(("Mode", annotation.displayFamilyName))
-                if annotation.displaySubtypeName != annotation.displayFamilyName {
-                    rows.append(("Subtype", annotation.displaySubtypeName))
-                }
-                rows.append(("Track", annotation.semanticTrack.rawValue))
-                if !annotation.displayAuditSubtypeName.isEmpty,
-                   annotation.displayAuditSubtypeName.lowercased() != annotation.displaySubtypeName.lowercased() {
-                    rows.append(("Audit type", annotation.displayAuditSubtypeName))
-                }
-                if annotation.auditReviewStatus != "accepted" {
-                    rows.append(("Audit", annotation.auditReviewStatus))
-                }
-                rows.append(("Review", (reviewStatuses[annotation.candidateID] ?? .unreviewed).title))
+                rows.append((l10n.t("自动检测"), localizedAutomaticResult(annotation)))
+                rows.append((l10n.t("自动审核"), l10n.t((reviewStatuses[annotation.candidateID] ?? .unreviewed).title)))
             } else {
-                rows.append(("Mode", "others"))
+                rows.append((l10n.t("自动检测"), l10n.t("未检测到模式")))
             }
-            rows.append(("Below minimum ISI", isArtifact ? "Yes" : "No"))
+            let manualLabels = manualLabelsCoveringISI(train: train, rightIndex: rightIndex)
+            rows.append((
+                l10n.t("手工标记"),
+                manualLabels.isEmpty
+                    ? l10n.t("无")
+                    : manualLabels.map(localizedManualLabel).joined(separator: " · ")
+            ))
+            rows.append((l10n.t("低于最小有效 ISI"), isArtifact ? l10n.t("是") : l10n.t("否")))
 
             let shortISIPadding: CGFloat
             if intervalWidth < 12 {
@@ -874,7 +1372,7 @@ private struct RasterPlotCanvas: View {
             let distance = abs(location.x - midpoint)
             let isDuplicateTimestamp = abs(isi) <= 1e-12
             let target = RasterHoverTarget(
-                title: isDuplicateTimestamp ? "Duplicate timestamp" : "ISI",
+                title: isDuplicateTimestamp ? l10n.t("重复时间戳") : l10n.t("ISI 详情"),
                 trainName: train.name,
                 rows: rows
             )
@@ -889,6 +1387,47 @@ private struct RasterPlotCanvas: View {
         }
 
         return bestTarget?.target
+    }
+
+    /// Manual annotations are an independent, user-authored overlay. Showing them alongside — never
+    /// instead of — the automatic result lets a reviewer compare the two sources without altering either.
+    private func manualLabelsCoveringISI(train: SpikeTrain, rightIndex: Int) -> [ManualAnnotationLabel] {
+        manualAnnotations
+            .filter { annotation in
+                annotation.trainID == train.id
+                    && (ManualAnnotationGeometryResolver.resolve(annotation: annotation, in: train)
+                        .coveredISIIndices?.contains(rightIndex) ?? false)
+            }
+            .map(\.label)
+            .sorted { lhs, rhs in
+                if lhs.semanticTrack == rhs.semanticTrack { return lhs.rawValue < rhs.rawValue }
+                return lhs.semanticTrack.rawValue < rhs.semanticTrack.rawValue
+            }
+    }
+
+    private func localizedAutomaticResult(_ annotation: ClassicAnchorEventAnnotation) -> String {
+        let label: String
+        switch annotation.label {
+        case .burst, .highFrequencyBurst, .longBurst, .possibleBurst:
+            label = l10n.t("爆发")
+        case .tonic:
+            label = l10n.t("强直发放")
+        case .highFrequencyTonic:
+            label = l10n.t("高频强直发放")
+        case .highFrequencySpiking:
+            label = l10n.t("高频连续发放")
+        case .pause:
+            label = l10n.t("暂停")
+        case .reject:
+            label = l10n.t("拒绝")
+        case .profile:
+            label = l10n.t("配置")
+        }
+        return label
+    }
+
+    private func localizedManualLabel(_ label: ManualAnnotationLabel) -> String {
+        l10n.t(label.displayNameZH)
     }
 
     private func annotationCoveringISI(train: SpikeTrain, rightIndex: Int) -> ClassicAnchorEventAnnotation? {
@@ -950,9 +1489,11 @@ private struct RasterPlotCanvas: View {
         return distance < current.distance
     }
 
-    private func hoverCardPosition(for location: CGPoint) -> CGPoint {
-        let cardWidth: CGFloat = 286
-        let cardHeight: CGFloat = 132
+    private func hoverCardPosition(for location: CGPoint, rowCount: Int) -> CGPoint {
+        let cardWidth: CGFloat = 310
+        // Header + train name + divider + rows + padding. This keeps a full automatic/manual
+        // comparison card inside the plot instead of positioning it as though it held only 3 rows.
+        let cardHeight = min(CGFloat(86 + rowCount * 19), 250)
         let margin: CGFloat = 10
         let xCandidate = location.x + cardWidth / 2 + 16
         let x: CGFloat
@@ -1026,6 +1567,29 @@ private struct RasterPlotCanvas: View {
     }
 }
 
+/// Disabling the ISI information panel also removes its continuous-hover
+/// tracking path, avoiding repeated hit testing while a manual drag is active.
+private struct RasterISIInformationHoverTracking: ViewModifier {
+    let isEnabled: Bool
+    @Binding var hoverLocation: CGPoint?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    hoverLocation = location
+                case .ended:
+                    hoverLocation = nil
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
 private struct RasterHoverTarget {
     let title: String
     let trainName: String
@@ -1034,6 +1598,7 @@ private struct RasterHoverTarget {
 
 private struct RasterHoverCard: View {
     let target: RasterHoverTarget
+    let highTransparency: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -1069,50 +1634,113 @@ private struct RasterHoverCard: View {
         }
         .font(.caption2)
         .padding(10)
-        .modifier(RasterHoverGlassPanel())
+        .modifier(RasterHoverGlassPanel(highTransparency: highTransparency))
     }
 }
 
 private struct RasterHoverGlassPanel: ViewModifier {
+    let highTransparency: Bool
     private let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content
-                .background {
-                    shape
-                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.10))
-                }
-                .glassEffect(.regular, in: shape)
-                .overlay {
-                    shape
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.44),
-                                    Color(nsColor: .separatorColor).opacity(0.24)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
+            if highTransparency {
+                content
+                    .background {
+                        shape
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.025))
+                            .glassEffect(.clear, in: shape)
+                            .mask { RasterHoverLeadingEdgeMask() }
+                    }
+                    .overlay {
+                        shape
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.20),
+                                        Color(nsColor: .separatorColor).opacity(0.12)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.75
+                            )
+                            .mask { RasterHoverLeadingEdgeMask() }
+                    }
+            } else {
+                content
+                    .background {
+                        shape
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.18))
+                    }
+                    .glassEffect(.regular, in: shape)
+                    .overlay {
+                        shape
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.40),
+                                        Color(nsColor: .separatorColor).opacity(0.22)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(color: .black.opacity(0.06), radius: 18, y: 5)
+            }
+        } else {
+            if highTransparency {
+                content
+                    .background {
+                        shape
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.06)
+                            .mask { RasterHoverLeadingEdgeMask() }
+                    }
+                    .overlay {
+                        shape
+                            .stroke(
+                                Color(nsColor: .separatorColor).opacity(0.18),
+                                lineWidth: 0.75
+                            )
+                            .mask { RasterHoverLeadingEdgeMask() }
+                    }
+            } else {
+                content
+                    .background {
+                        shape
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.88)
+                    }
+                    .overlay {
+                        shape.stroke(
+                            Color(nsColor: .separatorColor).opacity(0.38),
                             lineWidth: 1
                         )
-                }
-                .shadow(color: .black.opacity(0.06), radius: 20, y: 6)
-        } else {
-            content
-                .background {
-                    shape
-                        .fill(.ultraThinMaterial)
-                        .opacity(0.10)
-                }
-                .overlay {
-                    shape
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.38), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.06), radius: 18, y: 5)
+                    }
+                    .shadow(color: .black.opacity(0.06), radius: 18, y: 5)
+            }
         }
+    }
+}
+
+/// Masks the already-rendered glass layer, rather than changing its shape. This removes
+/// the native leading refraction without introducing a new glass boundary at the fade.
+private struct RasterHoverLeadingEdgeMask: View {
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .clear, location: 0.05),
+                .init(color: .white, location: 0.13),
+                .init(color: .white, location: 1)
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 }
 

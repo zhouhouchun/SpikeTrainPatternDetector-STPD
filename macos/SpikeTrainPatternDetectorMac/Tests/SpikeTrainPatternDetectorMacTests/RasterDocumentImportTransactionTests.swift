@@ -6,6 +6,59 @@ import Testing
 @Suite("RasterDocument CSV import transaction", .serialized)
 @MainActor
 struct RasterDocumentImportTransactionTests {
+    @Test("A newly installed dataset shows every spike train in the raster")
+    func newDatasetShowsAllRasterTrains() throws {
+        try withTemporaryDirectory { directory in
+            let sourceURL = directory.appendingPathComponent("twelve-trains.csv")
+            let headers = (1...12).map { "train_\($0)" }.joined(separator: ",")
+            let firstRow = Array(repeating: "0.0", count: 12).joined(separator: ",")
+            let secondRow = Array(repeating: "1.0", count: 12).joined(separator: ",")
+            try "\(headers)\n\(firstRow)\n\(secondRow)\n".write(
+                to: sourceURL,
+                atomically: true,
+                encoding: .utf8
+            )
+
+            let document = RasterDocument()
+            document.loadCSV(
+                from: sourceURL,
+                unit: .seconds,
+                hasHeader: true,
+                duplicatePolicy: .errorKeep
+            )
+
+            let dataset = try #require(document.dataset)
+            #expect(dataset.trains.count == 12)
+            #expect(document.selectedTrainIDs == Set(dataset.trains.map(\.id)))
+            #expect(document.requestedVisibleTrainCount == 12)
+            #expect(!document.rasterVisibleWindowUserLocked)
+        }
+    }
+
+    @Test("Raster train labels use their measured width instead of a fixed canvas fraction")
+    func rasterLabelWidthUsesVisibleNames() {
+        let shortWidth = RasterLabelWidthResolver.width(
+            trainNames: ["unit_a"],
+            fontSize: 11,
+            containerWidth: 1_800
+        )
+        let screenshotWidth = RasterLabelWidthResolver.width(
+            trainNames: ["LT1D10.003_SPK 01a", "RT1D9.781_SPK 01b"],
+            fontSize: 11,
+            containerWidth: 1_800
+        )
+        let longWidth = RasterLabelWidthResolver.width(
+            trainNames: [String(repeating: "long_train_name_", count: 4)],
+            fontSize: 11,
+            containerWidth: 1_800
+        )
+
+        #expect(shortWidth == RasterLabelWidthResolver.minimumWidth)
+        #expect(screenshotWidth < 220)
+        #expect(longWidth > screenshotWidth)
+        #expect(longWidth <= RasterLabelWidthResolver.maximumWidth)
+    }
+
     @Test("Malformed CSV preserves an active document")
     func malformedCSVPreservesActiveDocument() async throws {
         try await withTemporaryDirectory { directory in
@@ -179,7 +232,7 @@ struct RasterDocumentImportTransactionTests {
             #expect(document.isiSelectedTrainIDs == ["replacement_train"])
             #expect(document.isiStateSpaceSelectedTrainIDs == ["replacement_train"])
             #expect(document.duplicateTimestampPolicy == .warnKeep)
-            #expect(document.statusMessage.contains("1 trains, 3 spikes loaded"))
+            #expect(document.statusMessage.contains("已加载 1 条序列、3 个 spike"))
             #expect(document.lastErrorMessage == nil)
         }
     }
@@ -198,7 +251,7 @@ struct RasterDocumentImportTransactionTests {
                 duplicatePolicy: .errorKeep
             )
             #expect(document.activeDatasetScientificStanding == .legacyUnreviewedImport)
-            #expect(document.statusMessage.contains("not scientifically confirmed"))
+            #expect(document.statusMessage.contains("尚未经过科学确认"))
 
             document.runAdaptiveClassicAnchorDetection()
             let clock = ContinuousClock()
@@ -208,7 +261,7 @@ struct RasterDocumentImportTransactionTests {
             }
 
             _ = try #require(document.classicAnchorDetectionRun)
-            #expect(document.detectorStatusMessage.contains("non-authoritative"))
+            #expect(document.detectorStatusMessage.contains("非权威"))
             #expect(!document.canExportCurrentResultPackage)
             #expect(!document.canExportClassicAnchorEventsCSV)
             #expect(!document.canExportHFSBurstArbitrationAuditCSV)
@@ -227,11 +280,11 @@ struct RasterDocumentImportTransactionTests {
 
             document.exportClassicAnchorEventsCSVWithPanel()
             #expect(document.statusMessage == "Detector CSV export blocked.")
-            #expect(document.lastErrorMessage?.contains("exploratory") == true)
+            #expect(document.lastErrorMessage?.contains("仅供探索") == true)
 
             document.exportHFSBurstArbitrationAuditCSVWithPanel()
             #expect(document.statusMessage == "Detector audit CSV export blocked.")
-            #expect(document.lastErrorMessage?.contains("exploratory") == true)
+            #expect(document.lastErrorMessage?.contains("仅供探索") == true)
         }
     }
 
@@ -243,9 +296,57 @@ struct RasterDocumentImportTransactionTests {
 
         _ = try #require(document.dataset)
         #expect(document.activeDatasetScientificStanding == .nonAuthoritativeDemo)
-        #expect(document.statusMessage.contains("Demo only — non-authoritative"))
+        #expect(document.statusMessage.contains("仅供演示——非权威"))
         #expect(!document.canExportCurrentResultPackage)
         #expect(!document.canImportAuthoritativeManualAnnotations)
+    }
+
+    @Test("Focusing a structural candidate prepares its timestamp raster in the background")
+    func candidateFocusPreparesRaster() async throws {
+        try await withTemporaryDirectory { directory in
+            let sourceURL = directory.appendingPathComponent("focus.csv")
+            try Self.activeCSV.write(to: sourceURL, atomically: true, encoding: .utf8)
+
+            let document = RasterDocument()
+            document.loadCSV(
+                from: sourceURL,
+                unit: .seconds,
+                hasHeader: true,
+                duplicatePolicy: .errorKeep
+            )
+            // Train durations are 0.20 s and 1.86 s: mean 1.03 s -> integer 1 s.
+            #expect(document.rasterVisibleWindowSeconds == 1)
+            #expect(document.rasterVisibleWindowUnit == .seconds)
+            #expect(!document.rasterVisibleWindowUserLocked)
+            document.runAdaptiveClassicAnchorDetection()
+
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while document.isDetectorRunning, clock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+
+            let run = try #require(document.classicAnchorDetectionRun)
+            let annotation = try #require(
+                document.classicAnchorCandidateAuditAnnotations.first(where: { annotation in
+                    document.dataset?.trains.contains(where: { $0.id == annotation.trainID }) == true
+                })
+            )
+            let candidate = try #require(
+                run.candidates.first(where: { $0.id == annotation.candidateID })
+            )
+            let requestBefore = document.classicAnchorFocusRequestID
+            document.selectedTrainIDs = []
+            document.rasterVisibleWindowSeconds = 17
+
+            document.focusClassicAnchorCandidate(candidate.id, adjustRasterReviewWindow: true)
+
+            #expect(document.focusedClassicAnchorCandidateID == candidate.id)
+            #expect(document.focusedClassicAnchorCandidate?.id == candidate.id)
+            #expect(document.classicAnchorFocusRequestID == requestBefore + 1)
+            #expect(document.selectedTrainIDsIncludingFocusedCandidate(for: .raster).contains(annotation.trainID))
+            #expect(document.rasterVisibleWindowSeconds < 17)
+        }
     }
 
     private func populateActiveState(in document: RasterDocument) async throws {
