@@ -71,6 +71,7 @@ enum STPDResultSchemaColumns {
         "gate_status", "action", "selected_for_auto", "selection_status",
         "start_isi_index", "end_isi_index", "start_spike_ordinal", "end_spike_ordinal",
         "n_isi", "n_valid_isi", "n_spikes", "anchor_family", "anchor_lock_level",
+        "pause_boundary_role",
     ]
 
     private static let candidateFeatures = [
@@ -101,6 +102,8 @@ enum STPDResultSchemaColumns {
         "state_regularity_score", "state_burst_seed_fraction", "state_low_tail_fraction",
         "state_local_stability_score", "state_core_burst_run_length",
         "state_continuity_authority_frozen", "state_continuity_merge_terminal",
+        "state_direct_support_spans", "state_interruption_spans",
+        "state_direct_support_isi_count", "state_direct_support_adjacent_pair_count",
         "state_train_percentile_median", "state_local_percentile_median",
         "state_local_percentile_q90", "state_local_robust_z_median",
         "state_local_robust_z_abs_q80", "state_local_robust_z_q10",
@@ -178,6 +181,7 @@ enum STPDResultSchemaColumns {
         "status", "details", "event_uid", "automatic_source_id",
         "source_support_isi_indices", "source_semantic_track",
         "source_event_track_class", "source_label", "source_lock_level",
+        "source_pause_boundary_role",
         "source_state_tonic_subtype", "source_score", "source_priority",
         "source_decision_path",
     ]

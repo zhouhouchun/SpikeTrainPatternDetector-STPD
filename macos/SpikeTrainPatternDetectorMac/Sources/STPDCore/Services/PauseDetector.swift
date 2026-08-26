@@ -446,8 +446,12 @@ public enum PauseDetector {
         let gateStatus = tonicPauseGuard == nil
             ? "event_core_pause_pass"
             : "event_core_pause_pass_tonic_guarded"
+        let pauseBoundaryRole: PauseBoundaryRole = hasStrong
+            ? .canonicalPauseAnchor
+            : .briefStateInterruption
         let decisionPath = [
             "relative_long_isi_gap_layer",
+            "pause_boundary_role=\(pauseBoundaryRole.rawValue)",
             "pause_floor=\(format(pauseFloor))",
             "pause_floor_base=\(format(pauseFloorBase))",
             "train_q90_guard_raw=\(format(trainQ90))",
@@ -508,7 +512,8 @@ public enum PauseDetector {
             anchorContrastMinRequired: settings.eventCoreLocalFactor,
             anchorContrastGeomRequired: settings.eventCoreGlobalFactor,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 
@@ -559,8 +564,12 @@ public enum PauseDetector {
             0.70 * log(max(localRatio ?? 1, 1)) +
             0.30 * log(max(globalRatio ?? 1, 1)) +
             (hasStrong ? 0.25 : 0)
+        let pauseBoundaryRole: PauseBoundaryRole = hasStrong
+            ? .canonicalPauseAnchor
+            : .briefStateInterruption
         let decisionPath = [
             "pause_long_isi_exceeds_local_and_global_baseline_thresholds",
+            "pause_boundary_role=\(pauseBoundaryRole.rawValue)",
             "threshold_median=\(format(medianThreshold))",
             "local_ratio=\(format(localRatio))",
             "global_ratio=\(format(globalRatio))",
@@ -616,7 +625,8 @@ public enum PauseDetector {
             anchorContrastMinRequired: settings.alpha,
             anchorContrastGeomRequired: settings.globalMedianFactor,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 

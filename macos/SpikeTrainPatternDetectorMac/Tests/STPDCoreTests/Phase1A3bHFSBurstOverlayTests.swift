@@ -34,7 +34,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             end: 30,
             priority: 900,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let fragments = StateEventCompatibilityResolver.splitStateCandidates(
@@ -54,6 +55,59 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
                     $0.endISIIndex >= burst.endISIIndex
             }
         )
+    }
+
+    func testPhase1A3bBriefContextualAndUnspecifiedPausesDoNotSplitHFS() {
+        let train = makeTrain(
+            intervals: intervals(
+                count: 60,
+                base: 0.01,
+                replacing: [(30...30, 0.08)]
+            )
+        )
+        let hfs = makeCandidate(
+            id: "hfs-parent",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 60,
+            priority: 1_040,
+            q50: 0.01
+        )
+        let roles: [(String, PauseBoundaryRole?)] = [
+            ("brief", .briefStateInterruption),
+            ("contextual", .contextualPause),
+            ("unspecified", nil),
+        ]
+
+        XCTAssertEqual(train.isiSec[30] ?? .nan, 0.08, accuracy: 1e-12)
+        for (name, role) in roles {
+            let gap = makeCandidate(
+                id: "\(name)-pause",
+                label: .pause,
+                start: 30,
+                end: 30,
+                priority: 900,
+                selected: true,
+                q50: 0.08,
+                pauseBoundaryRole: role
+            )
+            XCTAssertEqual(gap.pauseBoundaryRole, role)
+
+            let resolution = StateEventCompatibilityResolver.resolveStateCandidates(
+                train: train,
+                candidates: [hfs, gap],
+                selectedEvents: [],
+                selectedGaps: [gap],
+                settings: hfsSettings
+            )
+
+            XCTAssertTrue(resolution.fragments.isEmpty, name)
+            XCTAssertTrue(resolution.consumedStateCandidateIdentities.isEmpty, name)
+            XCTAssertTrue(
+                resolution.boundaryCandidateIDsByConsumedStateCandidateIdentity.isEmpty,
+                name
+            )
+        }
     }
 
     func testPhase1A3bBurstAloneDoesNotGenerateHFSFragmentsWithoutTonicEvidence() {
@@ -194,7 +248,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             end: 10,
             priority: 900,
             selected: false,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let otherTrainPause = makeCandidate(
             id: "other-train-pause",
@@ -204,7 +259,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             end: 30,
             priority: 900,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let resolution = StateEventCompatibilityResolver.resolveStateCandidates(
@@ -245,7 +301,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             end: 30,
             priority: 900,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let first = StateEventCompatibilityResolver.splitStateCandidates(
@@ -522,7 +579,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 10,
             end: 10,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let settings = StatePatternDetectorSettings(
             highFrequencySpikingMinSpikes: 15,
@@ -589,7 +647,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 30,
             end: 30,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let resolved = MultiTrackPhase1BResolver.resolve(
@@ -643,7 +702,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 20,
             end: 20,
             priority: 900,
-            q50: 0.10
+            q50: 0.10,
+            pauseBoundaryRole: .briefStateInterruption
         )
 
         let resolved = MultiTrackPhase1BResolver.resolve(
@@ -674,8 +734,23 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             .sorted { $0.lowerBound < $1.lowerBound }
         let parent = resolved.first { $0.id == hfs.id }
 
-        XCTAssertEqual(selectedPauseIndices, Set([20, 30]))
-        XCTAssertEqual(selectedHFSRanges, [1...19, 21...29, 31...60])
+        // The brief interruption remains audit-visible but cannot out-rank the HFS state
+        // as a selected hard gap. Only the canonical completion at index 30 is selected.
+        XCTAssertEqual(selectedPauseIndices, Set([30]))
+        XCTAssertEqual(selectedHFSRanges, [1...29, 31...60])
+        XCTAssertEqual(
+            resolved.first { $0.id == establishedPause.id }?.pauseBoundaryRole,
+            .briefStateInterruption
+        )
+        XCTAssertEqual(
+            resolved.first {
+                $0.finalLabel == .pause && $0.startISIIndex == 30
+            }?.pauseBoundaryRole,
+            .canonicalPauseAnchor
+        )
+        XCTAssertTrue(
+            selectedHFSRanges.contains { $0.lowerBound <= 20 && $0.upperBound >= 20 }
+        )
         XCTAssertEqual(parent?.selectedForAuto, false)
         XCTAssertEqual(
             parent?.selectionStatus,
@@ -713,7 +788,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 60,
             end: 60,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let bursts = burstRanges.enumerated().map { index, range in
             makeCandidate(
@@ -794,7 +870,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 60,
             end: 60,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let secondPause = makeCandidate(
             id: "pause-80",
@@ -802,7 +879,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 80,
             end: 80,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let first = MultiTrackPhase1BResolver.resolve(
@@ -880,7 +958,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             start: 30,
             end: 30,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
 
         let resolved = MultiTrackPhase1BResolver.resolve(
@@ -997,7 +1076,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
         priority: Int,
         cv: Double = 0.20,
         selected: Bool = false,
-        q50: Double
+        q50: Double,
+        pauseBoundaryRole: PauseBoundaryRole? = nil
     ) -> ClassicAnchorCandidate {
         let nISI = max(1, end - start + 1)
         return ClassicAnchorCandidate(
@@ -1045,7 +1125,8 @@ final class Phase1A3bHFSBurstOverlayTests: XCTestCase {
             anchorContrastMinRequired: 1,
             anchorContrastGeomRequired: 1,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 }

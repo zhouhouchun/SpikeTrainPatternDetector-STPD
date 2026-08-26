@@ -48,6 +48,39 @@ func tswShortIrregularWindowFailsCompactness() {
     #expect(tswRejectReason(e) == .notCompact)
 }
 
+// The state-support policy is emitted as auditable evidence before it becomes automatic-label authority.
+// This is the owner's real-recording example: the bounded 120 ms beat has bilateral core recovery and
+// stays a valid ordinary tonic deviation rather than becoming an artifact.
+@Test
+func tswStateSupportAuditPreservesIsolatedOrdinaryDeviation() {
+    let policy = StateSupportClassifierSettings(minimumValidISISec: 0.001)
+    let config = TonicStructuralWindowConfig(stateSupportSettings: policy)
+    let evaluation = tswEvaluate([0.100, 0.105, 0.120, 0.098, 0.102], burstValleySec: nil, config: config)
+    guard let candidate = tswAccepted(evaluation) else { #expect(Bool(false), "expected accepted"); return }
+    #expect(candidate.signals.contains {
+        $0.key == "tonic_state_support_n_core" && $0.observedValue == 4
+    })
+    #expect(candidate.signals.contains {
+        $0.key == "tonic_state_support_ordinary_deviations" && $0.observedValue == 1 && $0.status == .pass
+    })
+    #expect(candidate.signals.contains {
+        $0.key == "tonic_state_support_automatic_eligibility" && $0.status == .pass
+    })
+}
+
+// Enabling the policy is an explicit calibrated decision. Adjacent off-core ISIs cannot spend the
+// ordinary-deviation allowance as if they were harmless tonic noise.
+@Test
+func tswStateSupportContractRejectsAdjacentExcursionsWhenEnabled() {
+    let policy = StateSupportClassifierSettings(minimumValidISISec: 0.001)
+    let config = TonicStructuralWindowConfig(
+        stateSupportSettings: policy,
+        enforcesStateSupportEligibility: true
+    )
+    let evaluation = tswEvaluate([0.100, 0.120, 0.122, 0.101, 0.099], burstValleySec: nil, config: config)
+    #expect(tswRejectReason(evaluation) == .stateSupportInsufficient)
+}
+
 // 3 — long regular window (8 ISIs) passes CV/CV2/LV.
 @Test
 func tswLongRegularWindowPassesCVCV2LV() {
@@ -312,7 +345,7 @@ func tsw2BoundaryProvenanceUsesCleanTokens() {
     #expect(c.decisionPath.contains("right_boundary_fail="))
     #expect(c.decisionPath.contains(reason.rawValue))
     let allowed: Set<TonicWindowBoundaryReason> = [
-        .insufficientData, .notCompact, .adjacentRatioExceeded, .cvExceeded, .cv2Exceeded, .lvExceeded,
+        .insufficientData, .stateSupportInsufficient, .notCompact, .adjacentRatioExceeded, .cvExceeded, .cv2Exceeded, .lvExceeded,
         .burstContamination, .invalidNextISI,
     ]
     #expect(allowed.contains(reason))

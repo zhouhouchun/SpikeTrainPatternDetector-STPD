@@ -95,8 +95,16 @@ public enum StructuralSeedBandResolver {
         //  - tonic: not from a structural-window fill (event_core_tonic_state_structural_window),
         //    which is a non-event-driven absolute band (rate-relative);
         //  - pause: not derived solely from audit-only structural pause prior evidence.
-        let tonicUsesStructuralWindow = tonicAnchors.contains {
-            $0.candidateLayer.lowercased().contains("structural_window")
+        let tonicUsesStructuralWindow = tonicAnchors.contains { candidate in
+            // The primary TSW integration deliberately materializes its accepted span on the
+            // canonical `event_core_tonic_state` layer; its structural-window provenance lives in
+            // the decision path. Looking only at `candidateLayer` therefore let a rate-relative TSW
+            // fill masquerade as a conserved tonic anchor and enter the cross-train dataset prior.
+            // Keep both checks: the layer form covers legacy/diagnostic emitters, while the decision-
+            // path form covers the current primary TSW route. This is an aggregation firewall only;
+            // it does not demote the train-local candidate or change its label/geometry.
+            candidate.candidateLayer.lowercased().contains("structural_window") ||
+                candidate.decisionPath.lowercased().contains("tonic_structural_window")
         }
         let pauseIsAuditOnly = !pauseAnchors.isEmpty
             && pauseAnchors.allSatisfy(\.isStructuralPausePriorEvidence)

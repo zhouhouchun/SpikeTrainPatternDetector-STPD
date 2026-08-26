@@ -412,7 +412,8 @@ func phase1a3aSelectedPauseAndBurstRemainHardMergeBoundaries() {
         end: 29,
         priority: 1_500,
         subtype: nil,
-        selected: true
+        selected: true,
+        pauseBoundaryRole: .canonicalPauseAnchor
     )
     let burst = phase1a3aCandidate(
         train: train,
@@ -446,6 +447,41 @@ func phase1a3aSelectedPauseAndBurstRemainHardMergeBoundaries() {
     #expect(!burstBlocked.contains { $0.startISIIndex == 1 && $0.endISIIndex == 57 })
     #expect(pauseBlocked.contains { $0.id == pause.id })
     #expect(burstBlocked.contains { $0.id == burst.id })
+}
+
+@Test
+func phase1a3aBriefPauseRemainsBridgeableAsAnInternalStateGap() {
+    let train = phase1a3aMergeTrain(gapISISec: 0.045)
+    let settings = phase1a3aSettings()
+    let fragments = phase1a3aFragments(train: train)
+    let authorized = Set(fragments.map(\.id))
+    let miniPause = phase1a3aCandidate(
+        train: train,
+        id: "selected-mini-pause",
+        label: .pause,
+        start: 29,
+        end: 29,
+        priority: 1_500,
+        subtype: nil,
+        selected: true,
+        pauseBoundaryRole: .briefStateInterruption
+    )
+
+    let result = StatePatternDetector.mergeIrregularTonicMicroGaps(
+        train: train,
+        candidates: fragments + [miniPause],
+        selectedEvents: [],
+        selectedGaps: [miniPause],
+        settings: settings,
+        authorizedFragmentIDs: authorized
+    )
+
+    #expect(result.contains {
+        $0.startISIIndex == 1 &&
+            $0.endISIIndex == 57 &&
+            $0.decisionPath.contains("irregular_tonic_micro_gap_merge=true")
+    })
+    #expect(result.contains { $0.id == miniPause.id })
 }
 
 @Test
@@ -1428,7 +1464,8 @@ private func phase1a3aCandidate(
     end: Int,
     priority: Int,
     subtype: String?,
-    selected: Bool = false
+    selected: Bool = false,
+    pauseBoundaryRole: PauseBoundaryRole? = nil
 ) -> ClassicAnchorCandidate {
     var candidate = ClassicAnchorCandidate(
         id: id,
@@ -1475,7 +1512,8 @@ private func phase1a3aCandidate(
         anchorContrastMinRequired: 1,
         anchorContrastGeomRequired: 1,
         refractorySuspectCount: 0,
-        refractorySuspectAction: nil
+        refractorySuspectAction: nil,
+        pauseBoundaryRole: pauseBoundaryRole
     )
     candidate.stateTonicSubtype = subtype
     return candidate

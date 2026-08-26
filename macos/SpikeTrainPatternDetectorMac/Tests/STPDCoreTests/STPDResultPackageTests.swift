@@ -5959,18 +5959,18 @@ func resultPackageSchemaIsCompleteTypedAndStable() throws {
         .runMetadata: "0a900b992c89df8acf01682bdd83a144727593d87d7d71f4312883c8d3a06d26",
         .parametersReport: "851e0fac9fac8269caadee89ef237fba838267c12caf420bd37065957efaf441",
         .resolvedParameters: "3e788241ca08dc2366abc20be401cb49bfef4a818a2bd8770d3d813bec7f1698",
-        .candidateLedger: "cdac50650a88175373159b7c399761a44ddfd5930ab0086790aeb76ffe66bb5a",
-        .candidateFeatures: "e01ed6778f97fcf1527487fdf98f9c51b821215e270bf2303b9dd59b2c7353a9",
+        .candidateLedger: "52d4be4eac5ba51d2d742206c5be99fd777c400d18fa7b6fa38bd170fc9df16f",
+        .candidateFeatures: "e3ba638848f9b45abbe0372641f4d0e923ad58b8be26db51e27c069aca32c15e",
         .finalDecisions: "da9f2568449651a7452064cf98a0044ea0c0f1123bd0327070f011a420a29c9d",
         .candidateLedgerDiagnostic:
-            "cdac50650a88175373159b7c399761a44ddfd5930ab0086790aeb76ffe66bb5a",
+            "52d4be4eac5ba51d2d742206c5be99fd777c400d18fa7b6fa38bd170fc9df16f",
         .candidateFeaturesDiagnostic:
-            "e01ed6778f97fcf1527487fdf98f9c51b821215e270bf2303b9dd59b2c7353a9",
+            "e3ba638848f9b45abbe0372641f4d0e923ad58b8be26db51e27c069aca32c15e",
         .finalDecisionsDiagnostic:
             "da9f2568449651a7452064cf98a0044ea0c0f1123bd0327070f011a420a29c9d",
         .eventsFinal: "ca9af10740963a2b1a2676f7f4d0efb0d06833d3718ce0481d1b1dfd17bd98e5",
         .isiLabelsFinal: "5b955914c2fe680ec83f7f0b6c3b22c02a3965deb40a4639f74564f423e45a59",
-        .candidateDiagnosticAudit: "648dbb1f71d191c0d9bb9974cd16ca5157f7045e30d0badef062ca91055ac6d9",
+        .candidateDiagnosticAudit: "1d6506c9da3f757dcf414f3ee3feda6ab809ea752f3ac999586fab50a2efdc51",
         .resultConsistencyCheck: "9ac0cbfa6f1ef344c4cf1dbc5e3b6724e331efecc3a705f51aed11af25f314ef",
         .manualAnnotations: "41e9a180a092a7df951c1957cf4c79618a455b189b9dfd78089e6a05cebcf294",
         .manualAnnotationImportApprovals:
@@ -6049,6 +6049,13 @@ func resultPackageSchemaIsCompleteTypedAndStable() throws {
 
     let optionalColumns: [(STPDResultTable, String)] = [
         (.runMetadata, "dataset_source"),
+        (.candidateLedger, "pause_boundary_role"),
+        (.candidateLedgerDiagnostic, "pause_boundary_role"),
+        (.candidateFeatures, "state_direct_support_spans"),
+        (.candidateFeatures, "state_interruption_spans"),
+        (.candidateFeatures, "state_direct_support_isi_count"),
+        (.candidateFeatures, "state_direct_support_adjacent_pair_count"),
+        (.candidateDiagnosticAudit, "source_pause_boundary_role"),
         (.finalDecisions, "failure_reason"),
         (.finalDecisions, "state_tonic_subtype"),
         (.eventsFinal, "state_tonic_subtype"),
@@ -6070,6 +6077,10 @@ func resultPackageSchemaIsCompleteTypedAndStable() throws {
         (.candidateFeatures, "suppressed_by_hf_state", .boolean),
         (.candidateFeatures, "state_continuity_authority_frozen", .boolean),
         (.candidateFeatures, "state_continuity_merge_terminal", .boolean),
+        (.candidateFeatures, "state_direct_support_spans", .stringList),
+        (.candidateFeatures, "state_interruption_spans", .stringList),
+        (.candidateFeatures, "state_direct_support_isi_count", .integer),
+        (.candidateFeatures, "state_direct_support_adjacent_pair_count", .integer),
         (.candidateFeatures, "hf_min_spikes_required", .integer),
         (.candidateFeatures, "score", .real),
         (.candidateFeatures, "profile_burst_contrast_s", .real),
@@ -9424,22 +9435,25 @@ private func dataQualityQCTampered(
 
 @Test func v4PreservesUnaffectedHistoricalTablesAndAddsManualAuthorityColumns() throws {
     // v4 intentionally extends Manual_annotations with authority_source + import_approval_id and
-    // adds the approval ledger. Every unaffected historical non-metadata table remains byte-identical
-    // to its frozen v2 baseline.
+    // adds the approval ledger. Public authority-bearing candidate identity, geometry, final events, and
+    // per-ISI labels remain byte-identical. Four all-candidate diagnostic tables intentionally change when
+    // detector audit evidence evolves: ledger/features bind the diagnostic candidate evidence, while
+    // decisions/audit carry its rejection path. Their explicit digests freeze the state-support audit and
+    // the explicit rejection of a non-classic Tonic magnitude route rather than disguising either change.
     // Candidate-linked hashes include package-time completion of missing ordered-span CV2 before
     // deterministic candidate UID derivation; detector selection and geometry remain unchanged.
     let historicalHashes: [STPDResultTable: String] = [
         .parametersReport: "1fdef9b34fdfde5ca551aedb9a6216b94a76b3ff9e5a4202a59675d195cfa53e",
-        .resolvedParameters: "99f3aca8e4033cb23c57826866298d76a8b36109cd43d1634d4c2039322d172b",
-        .candidateLedger: "50c8c5f2f5a8bdef0adfba3dba6b042f4e5fe3ec7a48ac6a155371f806a6de13",
-        .candidateFeatures: "c41d580f171dabd4979bebc721f57be53f65bfaa613d939a0f1457f57e942aea",
-        .finalDecisions: "4fa4967dbf19062a1f7a0223ee622c9a715804750d4621001653d966125cb924",
-        .candidateLedgerDiagnostic: "2ca98522b4fd5b5eb63939ac244bca44f2817c111bd308e37dc4c327d033be32",
-        .candidateFeaturesDiagnostic: "96baa00893be9ebe13b1a6e595ca12836df78d446e66cd4e3dff2e1353fe7afa",
-        .finalDecisionsDiagnostic: "38ebc641d8490d01a3d0a96705ae708b68146ad8eb536ea03296dbee0da5ef2e",
-        .eventsFinal: "9291a1f3f4f7c29ad8eccb7ce4d0df9885249c2e23f2b54415ccbcbd8803ef2d",
-        .isiLabelsFinal: "4d755475ee5149a12df88e5212438cc3562ea4243aa15e5601d4ccea136d7dfb",
-        .candidateDiagnosticAudit: "7b89094eed171bb742f2834bb2fabce149a0eaae61f6c1876259d8dd1e54aef3",
+        .resolvedParameters: "41a6793b2d12200b6dda7bab78650b9d49ae0b2155a78097774f4ddb648c3fe9",
+        .candidateLedger: "61b3aced54c241855e3c63662ebb2f8283bfe41ee176e1708728d05147448a09",
+        .candidateFeatures: "68df6a95a9f1791691e4be5bd9d8c291c0935928daf889508d5394a3049fcf7c",
+        .finalDecisions: "e6e5ac279abf45b813050729c0f185f9ce99f80d7206a053abedf23ecb25a4ea",
+        .candidateLedgerDiagnostic: "1ce33c7a1bf520ae0549516dd544110f3a1b1ea67c4d4640d65ab5380494336e",
+        .candidateFeaturesDiagnostic: "adb56586736f5df4baf352909396a5fcdc68469a7f94429cdb21b390fbab9bc3",
+        .finalDecisionsDiagnostic: "16ba490112d65c5d377dc7231851b50715d89c4cd6741cd2aab3740ad59bbbad",
+        .eventsFinal: "9059e01753c067b86c0966e6d2837b48f245839b381e18a55e8b4f4e68e30b30",
+        .isiLabelsFinal: "378ac399df11d2d6b1370ad17ee846351515c74ce41a9234a540463eb60fc2a6",
+        .candidateDiagnosticAudit: "ce7a0cc578d3bee49157646546816c2964ad371bb4385d0dba32d91aa8217e73",
         .resultConsistencyCheck: "8cc44940f534e9180783d91464ef303b0a98b704f91114d44b954824621a3dba",
         .manualAnnotations: "7f9599665876bcfbb2b0b65ca0e9a6192b8d2631f087375305cee89edb104420",
         .reviewStatus: "c2b068df2ad0734f1363868ba3c74450f97cd491069d2eb291b05cb0353f37fa",
@@ -9453,8 +9467,10 @@ private func dataQualityQCTampered(
         let text = String(decoding: table.csvData, as: UTF8.self).replacingOccurrences(of: rid, with: "RID")
         return STPDStableIdentifier.digest(Data(text.utf8))
     }
-    // Unaffected tables retain their historical bytes. The manual table's updated hash freezes the
-    // deliberate v4 reverse-link schema rather than falsely claiming v2 byte identity.
+    // These deterministic hashes freeze the complete current package projection. Dataset-relative
+    // state-band evidence changes resolved settings and candidate selection; Pause boundary role and
+    // discontiguous state-support geometry are identity-bearing, so candidate UIDs and their event/ISI
+    // foreign-key projections necessarily change with them.
     for (table, expected) in historicalHashes {
         let data = try #require(package.tables[table])
         #expect(normalizedHash(data) == expected, "table \(table.rawValue) is no longer byte-stable")

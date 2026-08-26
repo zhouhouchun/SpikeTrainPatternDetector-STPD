@@ -317,21 +317,27 @@ func sampleClassicBurstFlanksBecomeStructuralPauseEvidenceBelowClassicPauseFloor
         Array(candidate.startISIIndex...candidate.endISIIndex)
     })
     _ = try #require(burstEvents.first)
-    let flankPauses = run.candidates.filter { candidate in
+    let flankPauseEvidence = run.candidates.filter { candidate in
         candidate.trainID == train.id &&
-            candidate.selectedForAuto &&
             candidate.auditRecommendedTrack == .gap &&
             candidate.finalLabel == .pause &&
+            candidate.candidateLayer == "classic_burst_flank_pause" &&
             (candidate.startISIIndex == 83 || candidate.startISIIndex == 92)
     }
-    let allFlankPausesSelected = flankPauses.allSatisfy { $0.selectedForAuto }
-    let allFlankPausesGap = flankPauses.allSatisfy { $0.auditRecommendedTrack == .gap }
-    let allFlankPausesBelowClassicPauseFloor = flankPauses.allSatisfy { ($0.maxIntraISISec ?? 0) < 0.100 }
+    let allFlankPausesRemainAuditVisible = flankPauseEvidence.allSatisfy { !$0.selectedForAuto }
+    let allFlankPausesGap = flankPauseEvidence.allSatisfy { $0.auditRecommendedTrack == .gap }
+    let allFlankPausesAreBriefInterruptions = flankPauseEvidence.allSatisfy {
+        $0.pauseBoundaryRole == .briefStateInterruption
+    }
+    let allFlankPausesBelowClassicPauseFloor = flankPauseEvidence.allSatisfy {
+        ($0.maxIntraISISec ?? 0) < 0.100
+    }
 
     #expect(coveredBurstISI == Set(84...91))
-    #expect(Set(flankPauses.map(\.startISIIndex)) == [83, 92])
-    #expect(allFlankPausesSelected)
+    #expect(Set(flankPauseEvidence.map(\.startISIIndex)) == [83, 92])
+    #expect(allFlankPausesRemainAuditVisible)
     #expect(allFlankPausesGap)
+    #expect(allFlankPausesAreBriefInterruptions)
     #expect(allFlankPausesBelowClassicPauseFloor)
 }
 

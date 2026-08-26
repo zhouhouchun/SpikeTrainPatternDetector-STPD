@@ -751,6 +751,17 @@ public enum ClassicAnchorDetectionPipeline {
         // Identity hashing is invocation bookkeeping, not detector runtime. Start performance
         // accounting only after the immutable run identity has been captured.
         let performanceRecorder = PerformanceRecorder(dataset: dataset)
+        // Freeze one raw-data-only relative state-band profile for this dataset/sheet before any
+        // Burst, Pause, Tonic, or HFS candidate exists. The fixed QC floor is the same effective
+        // floor used by state detection. This snapshot is never recomputed from, or updated by,
+        // detector output, so later reruns cannot create a feedback loop or pool separate sheets.
+        let frozenDatasetStateBandProfile = FrozenDatasetStateBandProfile.compute(
+            dataset: dataset,
+            minimumValidISISec: max(
+                bandSettings.minValidISISec,
+                qualitySettings.artifactThresholdSec
+            )
+        )
         // Phase D2-wire: compute the dataset ISI distribution once, before per-train band resolution,
         // at the detector/band floor so it aligns with the valid-ISI set the resolver uses. Diagnostic
         // only in this slice — threaded into the returned run, consumed by no detector (D3 later).
@@ -824,7 +835,8 @@ public enum ClassicAnchorDetectionPipeline {
                     )
                     let detectorSettings = resolvedDetectorSettings.classic
                     let pauseSettings = resolvedDetectorSettings.pause
-                    let stateSettings = resolvedDetectorSettings.state
+                    var stateSettings = resolvedDetectorSettings.state
+                    stateSettings.frozenDatasetStateBandProfile = frozenDatasetStateBandProfile
                     let burstResult = ClassicAnchorDetector.detect(train: train, settings: detectorSettings)
                     let burstSeedRunCandidates = tagPipelineStage(
                         BurstSeedRunAssembler.detect(
@@ -969,7 +981,8 @@ public enum ClassicAnchorDetectionPipeline {
                     )
                     let bridgeSettings = resolvedBridgeSettings.classic
                     let bridgePauseSettings = resolvedBridgeSettings.pause
-                    let bridgeStateSettings = resolvedBridgeSettings.state
+                    var bridgeStateSettings = resolvedBridgeSettings.state
+                    bridgeStateSettings.frozenDatasetStateBandProfile = frozenDatasetStateBandProfile
                     let bridgeCandidates = tagPipelineStage(
                         StructuralBridgeExpansionResolver.detect(
                             train: train,
@@ -1135,7 +1148,8 @@ public enum ClassicAnchorDetectionPipeline {
                     )
                     let finalDetectorSettings = resolvedFinalSettings.classic
                     let finalPauseSettings = resolvedFinalSettings.pause
-                    let finalStateSettings = resolvedFinalSettings.state
+                    var finalStateSettings = resolvedFinalSettings.state
+                    finalStateSettings.frozenDatasetStateBandProfile = frozenDatasetStateBandProfile
                     let seedAwareBurstResult = ClassicAnchorDetector.detect(
                         train: train,
                         settings: finalDetectorSettings

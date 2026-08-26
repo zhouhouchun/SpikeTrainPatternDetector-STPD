@@ -30,6 +30,9 @@ public enum TonicWindowSource: String, Hashable, Sendable {
 /// Why a window (or an expansion step) failed — attached to the failing edge as boundary evidence.
 public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
     case insufficientData          // fewer than 2 valid ISIs / degenerate median
+    /// The calibrated state-support contract found no valid maximum-consensus core, or a deviation
+    /// geometry that cannot automatically support a state.
+    case stateSupportInsufficient
     case notCompact                // short window: an ISI fell outside median*[low, high]
     case adjacentRatioExceeded     // a single adjacent ISI step jumped more than the allowed ratio
     case cvExceeded                // long window: CV over the max
@@ -41,6 +44,7 @@ public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
     public var message: String {
         switch self {
         case .insufficientData: return "fewer than two valid ISIs for a regularity test"
+        case .stateSupportInsufficient: return "the state-support core/deviation contract was not satisfied"
         case .notCompact: return "an ISI fell outside the median compactness band"
         case .adjacentRatioExceeded: return "an adjacent ISI step exceeded the allowed ratio"
         case .cvExceeded: return "CV exceeded the tonic maximum"
@@ -54,8 +58,9 @@ public enum TonicWindowBoundaryReason: String, Hashable, Sendable {
 
 /// TSW-2A — the family/magnitude ROUTE a regularity-passing window is classified into. Regularity alone
 /// does not make a window classic tonic; its central magnitude must be compatible with the tonic family.
-/// Only `.classicTonic` is "accepted as classic tonic"; the others keep the window as structural evidence
-/// without contaminating classic tonic. This is a debug/structural classification — TSW is unwired.
+/// Only `.classicTonic` may be consumed as authoritative classic tonic; the other routes keep the window
+/// as structural evidence without contaminating classic tonic. The route is structural evidence here;
+/// final-label authority belongs to the consuming detector.
 public enum TonicStructuralWindowRoute: String, Hashable, Sendable {
     case classicTonic              // regular AND magnitude-compatible with the tonic family
     case highFrequencyTonic        // regular but too fast for classic tonic (short/moderate run)
@@ -97,6 +102,14 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
     /// Below it a regular window is too fast for classic tonic regardless of any train-local quantile.
     /// This is what stops a fast-dominated train's low q25 from confirming fast regular windows as classic.
     public var classicTonicMinRefractoryMultiple: Double
+    /// Optional shared state-support policy. When present, its core/deviation accounting is emitted as
+    /// audit evidence for every evaluated tonic window. The historical compactness/CV path remains
+    /// authoritative unless `enforcesStateSupportEligibility` is explicitly enabled by a calibrated run.
+    public var stateSupportSettings: StateSupportClassifierSettings?
+    /// When true, a window that fails the shared core/deviation support policy cannot become an automatic
+    /// tonic candidate. It defaults to false while the policy is calibrated against real recordings, so
+    /// callers can inspect the evidence without silently changing labels.
+    public var enforcesStateSupportEligibility: Bool
 
     public init(
         thresholds: StructuralEvidenceThresholds = StructuralEvidenceThresholds(),
@@ -108,7 +121,9 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
         tonicReviewBufferRatio: Double = 1.25,
         minBurstSupportCountForValley: Int = 2,
         highFrequencySpikingMinSpikes: Int = 30,
-        classicTonicMinRefractoryMultiple: Double = 15.0
+        classicTonicMinRefractoryMultiple: Double = 15.0,
+        stateSupportSettings: StateSupportClassifierSettings? = nil,
+        enforcesStateSupportEligibility: Bool = false
     ) {
         self.thresholds = thresholds
         self.refractoryFloorSec = refractoryFloorSec
@@ -120,6 +135,8 @@ public struct TonicStructuralWindowConfig: Hashable, Sendable {
         self.minBurstSupportCountForValley = minBurstSupportCountForValley
         self.highFrequencySpikingMinSpikes = highFrequencySpikingMinSpikes
         self.classicTonicMinRefractoryMultiple = classicTonicMinRefractoryMultiple
+        self.stateSupportSettings = stateSupportSettings
+        self.enforcesStateSupportEligibility = enforcesStateSupportEligibility
     }
 }
 
@@ -257,6 +274,43 @@ public enum TonicStructuralWindowDetector {
         }
         let long = vals.count >= config.longWindowMinISI
         var signals: [EvidenceSignal] = []
+
+        if let supportSettings = config.stateSupportSettings {
+            let support = StateSupportClassifier.analyze(
+                vals.enumerated().map { offset, value in
+                    StateSupportISIObservation(sourceIndex: offset + 1, valueSec: value)
+                },
+                settings: supportSettings
+            )
+            let eligible = support.isEligibleForAutomaticTonic(settings: supportSettings)
+            signals += [
+                EvidenceSignal(
+                    key: "tonic_state_support_n_support", status: .pass, role: .audit,
+                    observedValue: Double(support.nSupport),
+                    message: "n_raw=\(support.nRaw) n_valid=\(support.nValid)"
+                ),
+                EvidenceSignal(
+                    key: "tonic_state_support_n_core", status: .pass, role: .audit,
+                    observedValue: Double(support.nCore),
+                    message: "maximum_consensus_core"
+                ),
+                EvidenceSignal(
+                    key: "tonic_state_support_ordinary_deviations", status: eligible ? .pass : .fail,
+                    role: .audit, observedValue: Double(support.ordinaryDeviationCount),
+                    requiredValue: Double(supportSettings.maximumAutomaticDeviationCount),
+                    message: "competing=\(support.competingExcursionCount) invalid=\(support.invalidCount)"
+                ),
+                EvidenceSignal(
+                    key: "tonic_state_support_automatic_eligibility", status: eligible ? .pass : .fail,
+                    role: .eligibility, observedValue: Double(support.nCore),
+                    requiredValue: Double(support.ordinaryDeviationCount),
+                    message: "n_support=\(support.nSupport)"
+                )
+            ]
+            if config.enforcesStateSupportEligibility && !eligible {
+                return (false, signals, .stateSupportInsufficient, long)
+            }
+        }
 
         if long {
             let cv = metrics.cv ?? .infinity

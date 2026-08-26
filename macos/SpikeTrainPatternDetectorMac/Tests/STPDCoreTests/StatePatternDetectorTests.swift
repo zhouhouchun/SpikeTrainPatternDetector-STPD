@@ -422,6 +422,8 @@ func tonicSubtypeAnnotationCarriesSubtypeAndDisplayNames() throws {
         train: hfTrain,
         settings: StatePatternDetectorSettings(highFrequencyTonicFloorSec: 0.010, highFrequencyTonicUpperSec: 0.030)
     ).candidates.first { $0.finalLabel == .highFrequencyTonic })
+    #expect(hfTonic.decisionPath.contains("state_support_policy=audited"))
+    #expect(hfTonic.decisionPath.contains("state_n_core=10"))
     let hfAnn = ClassicAnchorEventAnnotation(candidate: hfTonic, train: hfTrain)
     #expect(hfAnn.stateTonicSubtype == "high_frequency")
     #expect(hfAnn.displaySubtypeName == "HF tonic")
@@ -478,14 +480,21 @@ func irregularTonicMicroGapMergeAcceptsTinyNonEventGap() throws {
 }
 
 @Test
-func irregularTonicMicroGapMergeDoesNotMergeAcrossSelectedPause() throws {
+func irregularTonicMicroGapMergeDoesNotMergeAcrossSelectedCanonicalPause() throws {
     let train = mergeTestTrain(gapISISec: 0.045)
     let settings = mergeTestSettings()
     var left = testCandidate(id: "irreg_left", label: .tonic, startISIIndex: 1, endISIIndex: 28, priority: 1_100)
     left.stateTonicSubtype = "irregular"
     var right = testCandidate(id: "irreg_right", label: .tonic, startISIIndex: 30, endISIIndex: 57, priority: 1_100)
     right.stateTonicSubtype = "irregular"
-    let pause = testCandidate(id: "pause", label: .pause, startISIIndex: 29, endISIIndex: 29, priority: 900)
+    let pause = testCandidate(
+        id: "pause",
+        label: .pause,
+        startISIIndex: 29,
+        endISIIndex: 29,
+        priority: 900,
+        pauseBoundaryRole: .canonicalPauseAnchor
+    )
 
     let result = StatePatternDetector.mergeIrregularTonicMicroGaps(
         train: train, candidates: [left, right, pause], selectedEvents: [], selectedGaps: [pause],
@@ -495,6 +504,66 @@ func irregularTonicMicroGapMergeDoesNotMergeAcrossSelectedPause() throws {
     #expect(!result.contains { $0.finalLabel == .tonic && $0.startISIIndex == 1 && $0.endISIIndex == 57 })
     #expect(result.contains { $0.id == "irreg_left" })
     #expect(result.contains { $0.id == "irreg_right" })
+}
+
+@Test
+func irregularTonicMicroGapMergeBridgesBriefContextualAndUnspecifiedPauses() throws {
+    let train = mergeTestTrain(gapISISec: 0.045)
+    let settings = mergeTestSettings()
+    let roles: [(String, PauseBoundaryRole?)] = [
+        ("brief", .briefStateInterruption),
+        ("contextual", .contextualPause),
+        ("unspecified", nil),
+    ]
+
+    for (name, role) in roles {
+        var left = testCandidate(
+            id: "irreg_left_\(name)",
+            label: .tonic,
+            startISIIndex: 1,
+            endISIIndex: 28,
+            priority: 1_100
+        )
+        left.stateTonicSubtype = "irregular"
+        var right = testCandidate(
+            id: "irreg_right_\(name)",
+            label: .tonic,
+            startISIIndex: 30,
+            endISIIndex: 57,
+            priority: 1_100
+        )
+        right.stateTonicSubtype = "irregular"
+        let pause = testCandidate(
+            id: "pause_\(name)",
+            label: .pause,
+            startISIIndex: 29,
+            endISIIndex: 29,
+            priority: 900,
+            pauseBoundaryRole: role
+        )
+
+        let result = StatePatternDetector.mergeIrregularTonicMicroGaps(
+            train: train,
+            candidates: [left, right, pause],
+            selectedEvents: [],
+            selectedGaps: [pause],
+            settings: settings,
+            authorizedFragmentIDs: [left.id, right.id]
+        )
+
+        #expect(pause.pauseBoundaryRole == role)
+        #expect(
+            result.contains {
+                $0.finalLabel == .tonic &&
+                    $0.startISIIndex == 1 &&
+                    $0.endISIIndex == 57
+            },
+            Comment(rawValue: name)
+        )
+        #expect(result.contains { $0.id == pause.id }, Comment(rawValue: name))
+        #expect(!result.contains { $0.id == left.id }, Comment(rawValue: name))
+        #expect(!result.contains { $0.id == right.id }, Comment(rawValue: name))
+    }
 }
 
 @Test
@@ -1128,7 +1197,7 @@ func hfsProtectionAuditColumnsAreAvailableInFullCSVExport() throws {
 }
 
 @Test
-func selectedGapDoesNotSplitHigherPriorityTonicState() throws {
+func selectedPauseWithoutBoundaryRoleDoesNotSplitOrConsumeTonicState() throws {
     let train = SpikeTrain(
         name: "arbitration_train",
         timestampsSec: cumulativeTimestamps(repeating: 0.020, count: 14)
@@ -1152,14 +1221,18 @@ func selectedGapDoesNotSplitHigherPriorityTonicState() throws {
         selectionStatus: "selected_by_gap_track_monotonic_completion"
     )
 
-    let fragments = StateEventCompatibilityResolver.splitStateCandidates(
+    #expect(selectedGap.pauseBoundaryRole == nil)
+
+    let resolution = StateEventCompatibilityResolver.resolveStateCandidates(
         train: train,
         candidates: [tonic, selectedGap],
         selectedEvents: [],
         selectedGaps: [selectedGap]
     )
 
-    #expect(fragments.isEmpty)
+    #expect(resolution.fragments.isEmpty)
+    #expect(resolution.consumedStateCandidateIdentities.isEmpty)
+    #expect(resolution.boundaryCandidateIDsByConsumedStateCandidateIdentity.isEmpty)
 }
 
 @Test
@@ -1559,10 +1632,10 @@ func eventAnnotationTimeBoundsFollowISISpanEvenWhenSpikeSpanDiffers() throws {
 }
 
 private func irregularTonicISIs() -> [Double] {
-    // 96 sustained, moderately-variable ISIs (seconds) resembling the GPi example: a fixed
-    // deterministic i.i.d. lognormal-like draw with whole-train CV ~0.43, CV2 ~0.53, median
-    // ~25 ms, max 67 ms (< the obvious pause scale), and NO sub-burst-seed short ISIs. No long
-    // silence, no burst/fast-packet dominance — so it is tonic-family but not classic-regular.
+    // 96 sustained, moderately-variable ISIs (seconds): a deterministic lognormal-like shape with
+    // whole-train CV ~0.43 and CV2 ~0.53, scaled to a median near 50 ms so this fixture tests
+    // irregularity without also sitting on the HFT/HFS-vs-classic-tonic magnitude boundary. Scaling
+    // preserves every dimensionless regularity statistic and keeps the maximum below pause scale.
     return [
         0.015, 0.0231, 0.0121, 0.0272, 0.0145, 0.0218, 0.014, 0.0264, 0.0306, 0.0278,
         0.012, 0.0344, 0.0428, 0.0327, 0.0171, 0.032, 0.0341, 0.0204, 0.0258, 0.0196,
@@ -1574,7 +1647,7 @@ private func irregularTonicISIs() -> [Double] {
         0.0499, 0.0199, 0.0367, 0.0343, 0.0422, 0.03, 0.0532, 0.0436, 0.024, 0.012,
         0.0221, 0.0335, 0.0193, 0.04, 0.0184, 0.0145, 0.0208, 0.0218, 0.0501, 0.017,
         0.0358, 0.0259, 0.012, 0.036, 0.0251, 0.0362
-    ]
+    ].map { $0 * 2 }
 }
 
 private func mergeTestTrain(gapISISec: Double) -> SpikeTrain {
@@ -1762,7 +1835,8 @@ private func testCandidate(
     startSpikeIndex: Int? = nil,
     endSpikeIndex: Int? = nil,
     priority: Int,
-    intraQ90Sec: Double? = nil
+    intraQ90Sec: Double? = nil,
+    pauseBoundaryRole: PauseBoundaryRole? = nil
 ) -> ClassicAnchorCandidate {
     ClassicAnchorCandidate(
         id: id,
@@ -1809,7 +1883,8 @@ private func testCandidate(
         anchorContrastMinRequired: 1,
         anchorContrastGeomRequired: 1,
         refractorySuspectCount: 0,
-        refractorySuspectAction: nil
+        refractorySuspectAction: nil,
+        pauseBoundaryRole: pauseBoundaryRole
     )
 }
 

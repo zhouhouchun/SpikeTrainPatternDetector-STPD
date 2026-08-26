@@ -164,8 +164,12 @@ public enum PauseMonotonicCompletionDetector {
         let score = isi / max(pauseFloor, settings.minValidISISec)
         let isStrong = isi >= max(settings.strongThresholdSec, pauseFloor) -
             tolerance(for: max(settings.strongThresholdSec, pauseFloor))
+        let pauseBoundaryRole: PauseBoundaryRole = isStrong
+            ? .canonicalPauseAnchor
+            : .briefStateInterruption
         let decisionPath = [
             "train_pause_floor_monotonic_completion",
+            "pause_boundary_role=\(pauseBoundaryRole.rawValue)",
             "source=selected_pause_floor",
             "pause_floor_sec=\(format(pauseFloor))",
             "isi_sec=\(format(isi))",
@@ -221,7 +225,8 @@ public enum PauseMonotonicCompletionDetector {
             anchorContrastMinRequired: 1,
             anchorContrastGeomRequired: 1,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 

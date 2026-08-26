@@ -157,9 +157,11 @@ public enum ClassicAnchorCandidateArbitrator {
                         : "not_selected__state_candidate_ineligible"
                     continue
                 }
-                // An embedded tonic window fully contained inside a strong HF state belongs to
-                // the HF envelope; demote it so it cannot out-vote the long HF state.
-                if state.finalLabel == .tonic,
+                // An embedded tonic-family window fully contained inside a strong HF state belongs
+                // to the HF envelope; demote it so several shorter Tonic/HFT proposals cannot
+                // out-vote the independently supported sustained state. The candidates remain in
+                // the audit pool; only their authority is removed here.
+                if (state.finalLabel == .tonic || state.finalLabel == .highFrequencyTonic),
                    strongHFStates.contains(where: { $0.id != state.id && fullyContains($0, state) }) {
                     unselectedStatusByIdentity[stateIdentity] = "not_selected__contained_in_strong_hf_state"
                     continue
@@ -258,20 +260,30 @@ public enum ClassicAnchorCandidateArbitrator {
 
     /// A high-frequency state strong and long enough to dominate embedded tonic windows.
     /// These are arbitration-selection thresholds (not detection thresholds): an eligible,
-    /// non-burst-dominated, state-level HFS run that is genuinely high-frequency (absolute
-    /// q90 cap, so a slow ~28 Hz irregular-tonic run is never treated as a dominating HFS)
-    /// with strong short-ISI and bridge evidence.
+    /// non-burst-dominated, state-level HFS run with strong support evidence. Legacy candidates
+    /// retain the historical absolute 30 ms guard. Only a candidate explicitly produced from the
+    /// frozen raw dataset-relative route may use its own audited q90 ceiling; this prevents the
+    /// legacy adaptive path from silently widening the strong-HFS definition.
     private static let strongHighFrequencyStateMinISI = 20
     private static let strongHighFrequencyStateQ90MaxSec = 0.030
     private static let strongHighFrequencyStateShortFractionMin = 0.7
     private static let strongHighFrequencyStateBridgeFractionMin = 0.6
 
     private static func isStrongHighFrequencyState(_ candidate: ClassicAnchorCandidate) -> Bool {
-        candidate.finalLabel == .highFrequencySpiking &&
+        let frozenDatasetRelativeRoute = candidate.hfSpikingAcceptanceRoute?
+            .split(separator: "+")
+            .contains("frozen_dataset_relative_state_band") == true
+        let q90Ceiling = frozenDatasetRelativeRoute
+            ? max(
+                strongHighFrequencyStateQ90MaxSec,
+                candidate.hfSpikingQ90MaxSec ?? strongHighFrequencyStateQ90MaxSec
+            )
+            : strongHighFrequencyStateQ90MaxSec
+        return candidate.finalLabel == .highFrequencySpiking &&
             candidate.isEligibleForAutoSelection &&
             candidate.hfSpikingBurstDominated != true &&
             candidate.nISI >= strongHighFrequencyStateMinISI &&
-            (candidate.intraQ90Sec ?? .infinity) <= strongHighFrequencyStateQ90MaxSec &&
+            (candidate.intraQ90Sec ?? .infinity) <= q90Ceiling &&
             (candidate.hfSpikingShortFraction ?? 0) >= strongHighFrequencyStateShortFractionMin &&
             (candidate.hfSpikingBridgeFraction ?? 0) >= strongHighFrequencyStateBridgeFractionMin
     }
@@ -924,7 +936,12 @@ public extension ClassicAnchorCandidate {
             eventLocalPercentileQ90: eventLocalPercentileQ90,
             eventLocalRobustZMedian: eventLocalRobustZMedian,
             eventLocalRobustZAbsQ80: eventLocalRobustZAbsQ80,
-            eventLocalRobustZQ10: eventLocalRobustZQ10
+            eventLocalRobustZQ10: eventLocalRobustZQ10,
+            pauseBoundaryRole: pauseBoundaryRole,
+            stateDirectSupportSpans: stateDirectSupportSpans,
+            stateInterruptionSpans: stateInterruptionSpans,
+            stateDirectSupportISICount: stateDirectSupportISICount,
+            stateDirectSupportAdjacentPairCount: stateDirectSupportAdjacentPairCount
         )
     }
 
@@ -1072,7 +1089,12 @@ public extension ClassicAnchorCandidate {
             eventLocalPercentileQ90: eventLocalPercentileQ90,
             eventLocalRobustZMedian: eventLocalRobustZMedian,
             eventLocalRobustZAbsQ80: eventLocalRobustZAbsQ80,
-            eventLocalRobustZQ10: eventLocalRobustZQ10
+            eventLocalRobustZQ10: eventLocalRobustZQ10,
+            pauseBoundaryRole: pauseBoundaryRole,
+            stateDirectSupportSpans: stateDirectSupportSpans,
+            stateInterruptionSpans: stateInterruptionSpans,
+            stateDirectSupportISICount: stateDirectSupportISICount,
+            stateDirectSupportAdjacentPairCount: stateDirectSupportAdjacentPairCount
         )
     }
 
@@ -1225,7 +1247,12 @@ public extension ClassicAnchorCandidate {
             eventLocalPercentileQ90: eventLocalPercentileQ90,
             eventLocalRobustZMedian: eventLocalRobustZMedian,
             eventLocalRobustZAbsQ80: eventLocalRobustZAbsQ80,
-            eventLocalRobustZQ10: eventLocalRobustZQ10
+            eventLocalRobustZQ10: eventLocalRobustZQ10,
+            pauseBoundaryRole: pauseBoundaryRole,
+            stateDirectSupportSpans: stateDirectSupportSpans,
+            stateInterruptionSpans: stateInterruptionSpans,
+            stateDirectSupportISICount: stateDirectSupportISICount,
+            stateDirectSupportAdjacentPairCount: stateDirectSupportAdjacentPairCount
         )
     }
 }

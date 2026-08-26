@@ -48,6 +48,20 @@ public enum ClassicAnchorLockLevel: String, Sendable {
     case auditOnly = "audit_only"
 }
 
+/// Semantic role of Pause evidence relative to state occupancy. This is
+/// deliberately independent of `ClassicAnchorLockLevel`: confidence in a gap
+/// is not the same question as whether that gap terminates a state.
+public enum PauseBoundaryRole: String, Hashable, Sendable {
+    /// High-specificity Pause that no state may cross or use to pool support.
+    case canonicalPauseAnchor = "canonical_pause_anchor"
+    /// Pause defined by event topology (for example between burst cores). It is
+    /// real gap evidence, but not automatically a hard state boundary.
+    case contextualPause = "contextual_pause"
+    /// Short interruption retained inside a state envelope and excluded from
+    /// the state's direct/core support statistics.
+    case briefStateInterruption = "brief_state_interruption"
+}
+
 public enum ClassicAnchorRefractoryAction: String, Sendable {
     case warnOnly = "warn_only"
     case excludeCandidate = "exclude_candidate"
@@ -435,6 +449,16 @@ public struct ClassicAnchorCandidate: Identifiable, Hashable, Sendable {
     public var eventLocalRobustZMedian: Double? = nil
     public var eventLocalRobustZAbsQ80: Double? = nil
     public var eventLocalRobustZQ10: Double? = nil
+    public var pauseBoundaryRole: PauseBoundaryRole? = nil
+    /// Contiguous ISI spans that directly support a state candidate. For an
+    /// ordinary contiguous state this is empty (the candidate span is the
+    /// support); it is populated when a state envelope bridges interruptions.
+    public var stateDirectSupportSpans: [ISISpan] = []
+    /// Non-support spans retained inside a state envelope. They never create
+    /// CV2/LV adjacency and never contribute to direct support counts.
+    public var stateInterruptionSpans: [ISISpan] = []
+    public var stateDirectSupportISICount: Int? = nil
+    public var stateDirectSupportAdjacentPairCount: Int? = nil
 }
 
 public struct ClassicAnchorDetectionResult: Hashable, Sendable {

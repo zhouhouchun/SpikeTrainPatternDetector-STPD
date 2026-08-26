@@ -42,14 +42,19 @@ func tswIntegrationCleanRunIsOneLongCandidate() {
     #expect(c?.endISIIndex == isis.count)                             // spans the whole run
     #expect(c?.stateTonicSubtype == "classic")
     #expect(c?.decisionPath.contains("tonic_structural_window") == true)
+    #expect(c?.decisionPath.contains("state_support_policy=audited") == true)
+    #expect(c?.decisionPath.contains("state_n_core=16") == true)
     #expect((c?.cv ?? 1) <= 0.30)
 }
 
-// 2 — on the 5x5 dataset the pause_response trains' visually-tonic baseline segments are captured as
-// selected tonic candidates produced by the TSW structural window.
+// 2 — on the 5x5 dataset every visually-tonic baseline retains TSW structural evidence. A span whose
+// magnitude route is classic may be selected as Tonic; a borderline span must remain an explicit
+// possible_tonic_review instead of either being silently deleted or forced into an authoritative label.
 @Test
-func tswIntegrationPauseResponseTonicSegmentsCaptured() throws {
+func tswIntegrationPauseResponseTonicEvidenceSelectedOrReviewable() throws {
     let dataset = try tswiFixture5x5()
+    var selectedNames: Set<String> = []
+    var reviewNames: Set<String> = []
     for n in 1...5 {
         let name = "pause_response_\(n)_s"
         let train = try #require(dataset.trains.first { $0.name == name })
@@ -57,12 +62,26 @@ func tswIntegrationPauseResponseTonicSegmentsCaptured() throws {
             dataset: SpikeDataset(name: "one", sourceDescription: dataset.sourceDescription, trains: [train]),
             bandSettings: TrainAdaptiveBandSettings()
         )
-        let tonics = (run.result(for: train.id)?.candidates ?? [])
+        let candidates = run.result(for: train.id)?.candidates ?? []
+        let tonics = candidates
             .filter { $0.selectedForAuto && $0.finalLabel == .tonic }
-        #expect(!tonics.isEmpty, "\(name): expected selected tonic baseline segments")
-        #expect(tonics.contains { $0.decisionPath.contains("tonic_structural_window") },
-                "\(name): tonic should be TSW-sourced")
+        let reviews = candidates.filter {
+            $0.finalLabel == .reject && $0.action == "reject"
+                && $0.candidateClass == "possible_tonic_review"
+                && $0.decisionPath.contains("tonic_structural_window")
+                && $0.decisionPath.contains("tsw_route=possibleTonicReview")
+                && $0.decisionPath.contains("reject_tonic_structural_magnitude_route")
+        }
+        #expect(!tonics.isEmpty || !reviews.isEmpty,
+                "\(name): TSW tonic evidence must be selected or retained for review")
+        if !tonics.isEmpty {
+            selectedNames.insert(name)
+            #expect(tonics.contains { $0.decisionPath.contains("tsw_route=classicTonic") })
+        }
+        if !reviews.isEmpty { reviewNames.insert(name) }
     }
+    #expect(selectedNames == ["pause_response_1_s", "pause_response_3_s", "pause_response_4_s"])
+    #expect(reviewNames == ["pause_response_2_s", "pause_response_5_s"])
 }
 
 // 3 — a tonic run followed by a LARGE pause ISI stops BEFORE the pause: no tonic candidate covers the
@@ -93,6 +112,34 @@ func tswIntegrationFastPacketIsNotClassicTonic() {
     let accepted = tswiAcceptedTonic(mixed)
     #expect(!accepted.isEmpty)
     #expect(!accepted.contains { c in (9...14).contains { c.startISIIndex <= $0 && c.endISIIndex >= $0 } })
+}
+
+// A structurally regular sustained fast state can pass the TSW regularity checks while its magnitude
+// route says HFS. Structural acceptance must not leak across that family route and become classic Tonic.
+// The alternating background keeps the train-level tonic floor well above the fast block without adding
+// another long regular window, so the fixture remains bounded and deterministic.
+@Test
+func tswIntegrationHFSRouteIsRetainedButCannotBecomeTonic() {
+    let fastBlock = Array(repeating: 0.020, count: 29)                    // 30 spikes: HFS route tier
+    let separatedBackground = Array(repeating: [0.100, 0.500], count: 131).flatMap { $0 }
+    let train = tswiTrain("hfs_route_not_tonic", fastBlock + [0.500] + separatedBackground)
+    let candidates = StatePatternDetector.detect(train: train).candidates
+
+    #expect(!candidates.contains {
+        $0.finalLabel == .tonic && $0.action == "accept"
+            && $0.startISIIndex <= 1 && $0.endISIIndex >= 29
+    })
+    #expect(candidates.contains {
+        $0.finalLabel == .reject && $0.action == "reject"
+            && $0.startISIIndex == 1 && $0.endISIIndex == 29
+            && $0.decisionPath.contains("tsw_route=highFrequencySpiking")
+            && $0.decisionPath.contains("reject_tonic_structural_magnitude_route")
+            && $0.decisionPath.contains("tonic_magnitude_route_pass=false")
+    })
+    #expect(candidates.contains {
+        $0.finalLabel == .highFrequencySpiking && $0.action == "accept"
+            && $0.startISIIndex <= 1 && $0.endISIIndex >= 29
+    })
 }
 
 // 5 — the integration is behind a reversible flag: OFF restores the legacy band-membership path (no

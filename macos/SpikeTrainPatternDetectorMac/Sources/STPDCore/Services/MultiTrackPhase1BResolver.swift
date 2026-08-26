@@ -83,10 +83,10 @@ public enum MultiTrackPhase1BResolver {
         let withCompletedBursts = uniqueCandidatesByIdentity(initialPool + burstLocalCompletions)
 
         // Pause completion is calibrated from the event/gap tracks before any
-        // state candidate can out-rank an established pause. A selected pause
-        // is authoritative gap evidence treated as a hard HFS state boundary in
-        // this pass, and must remain available as the monotonic-floor seed even
-        // when the unsplit HFS parent overlaps it.
+        // state candidate can out-rank established pause evidence. A selected
+        // canonical Pause is a hard state boundary; a selected brief interruption
+        // remains an internal state gap. Both remain available as monotonic-floor
+        // evidence even when an unsplit state parent overlaps them.
         let pauseCompletionAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
             withCompletedBursts
         )
@@ -102,9 +102,9 @@ public enum MultiTrackPhase1BResolver {
         )
         let withCompletedGaps = uniqueCandidatesByIdentity(withCompletedBursts + pauseCompletions)
         // Event/gap authority must be established before state competition. In
-        // particular, a selected pause is authoritative gap evidence treated as
-        // a hard HFS state boundary in this pass; it cannot first be deselected
-        // merely because the unsplit HFS parent overlaps it.
+        // particular, a selected canonical Pause cannot first be deselected merely
+        // because an unsplit state parent overlaps it. Brief interruptions remain
+        // gap evidence without acquiring hard-boundary authority.
         let eventGapAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
             withCompletedGaps
         )
@@ -146,9 +146,10 @@ public enum MultiTrackPhase1BResolver {
             mode: .multiTrack
         )
         // Conservative state-level continuity: merge adjacent irregular-tonic fragments across
-        // tiny non-event, non-pause gaps (revalidated). Runs after event/gap selection so it
-        // can refuse selected pauses/events, and before final arbitration so the merged state
-        // is chosen deterministically over its child fragments.
+        // tiny non-event gaps (revalidated). Runs after event/gap selection so it can refuse
+        // canonical Pause anchors and selected events while permitting a bounded brief
+        // interruption. It runs before final arbitration so the merged state is chosen
+        // deterministically over its child fragments.
         // Freeze state-track authority before continuity transformation. Only states selected
         // in this pass may be merged, and state candidates that already lost this pass remain
         // audit-visible but cannot be re-promoted merely because their winning fragments were

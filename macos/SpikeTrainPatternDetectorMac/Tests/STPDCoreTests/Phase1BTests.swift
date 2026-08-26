@@ -283,7 +283,8 @@ final class Phase1BTests: XCTestCase {
             end: 30,
             priority: 900,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let burst = makeCandidate(
             id: "burst",
@@ -311,6 +312,43 @@ final class Phase1BTests: XCTestCase {
         XCTAssertEqual(fragments.map(\.startISIIndex), [1, 31])
         XCTAssertEqual(fragments.map(\.endISIIndex), [29, 60])
         XCTAssertTrue(fragments.allSatisfy { $0.finalLabel == .highFrequencySpiking })
+    }
+
+    func testBriefPauseDoesNotSplitStateOccupancy() {
+        let train = makeTrain(
+            name: "train-1",
+            intervals: Array(repeating: 0.01, count: 29) +
+                [0.08] +
+                Array(repeating: 0.01, count: 30)
+        )
+        let hfs = makeCandidate(
+            id: "hfs-parent",
+            label: .highFrequencySpiking,
+            start: 1,
+            end: 60,
+            priority: 1_040
+        )
+        let miniPause = makeCandidate(
+            id: "mini-pause",
+            label: .pause,
+            start: 30,
+            end: 30,
+            selected: true,
+            q50: 0.08,
+            pauseBoundaryRole: .briefStateInterruption
+        )
+
+        let resolution = StateEventCompatibilityResolver.resolveStateCandidates(
+            train: train,
+            candidates: [hfs, miniPause],
+            selectedEvents: [],
+            selectedGaps: [miniPause],
+            settings: StatePatternDetectorSettings(highFrequencySpikingMinSpikes: 10)
+        )
+
+        XCTAssertTrue(resolution.fragments.isEmpty)
+        XCTAssertTrue(resolution.consumedStateCandidateIdentities.isEmpty)
+        XCTAssertTrue(resolution.boundaryCandidateIDsByConsumedStateCandidateIdentity.isEmpty)
     }
 
     func testSustainedHFSWithFewInternalBurstsRemainsSelectedThroughPipeline() {
@@ -448,7 +486,8 @@ final class Phase1BTests: XCTestCase {
             start: 30,
             end: 30,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let settings = StatePatternDetectorSettings(highFrequencySpikingMinSpikes: 10)
 
@@ -492,7 +531,8 @@ final class Phase1BTests: XCTestCase {
             start: 30,
             end: 30,
             selected: true,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         let settings = StatePatternDetectorSettings(highFrequencySpikingMinSpikes: 10)
         let fragments = StateEventCompatibilityResolver.splitStateCandidates(
@@ -681,7 +721,8 @@ final class Phase1BTests: XCTestCase {
             start: 20,
             end: 20,
             priority: 900,
-            q50: 0.10
+            q50: 0.10,
+            pauseBoundaryRole: .briefStateInterruption
         )
 
         let resolved = MultiTrackPhase1BResolver.resolve(
@@ -704,9 +745,16 @@ final class Phase1BTests: XCTestCase {
         let selectedHFS = resolved.filter {
             $0.selectedForAuto && $0.finalLabel == .highFrequencySpiking
         }
-        XCTAssertEqual(selectedGaps.map(\.startISIIndex), [20, 30])
-        XCTAssertEqual(selectedHFS.map(\.startISIIndex), [1, 21, 31])
-        XCTAssertEqual(selectedHFS.map(\.endISIIndex), [19, 29, 60])
+        XCTAssertEqual(selectedGaps.map(\.startISIIndex), [30])
+        XCTAssertEqual(
+            resolved.first { $0.id == "pause-established" }?.pauseBoundaryRole,
+            .briefStateInterruption
+        )
+        XCTAssertEqual(selectedHFS.map(\.startISIIndex), [1, 31])
+        XCTAssertEqual(selectedHFS.map(\.endISIIndex), [29, 60])
+        XCTAssertTrue(
+            selectedHFS.contains { $0.startISIIndex <= 20 && $0.endISIIndex >= 20 }
+        )
         XCTAssertFalse(
             selectedHFS.contains { $0.startISIIndex <= 30 && $0.endISIIndex >= 30 }
         )
@@ -735,7 +783,8 @@ final class Phase1BTests: XCTestCase {
             start: 60,
             end: 60,
             priority: 900,
-            q50: 0.20
+            q50: 0.20,
+            pauseBoundaryRole: .canonicalPauseAnchor
         )
         // Seven disjoint burst groups make the left HFS child burst-dominated.
         // The selected pause splits the parent first, so dominance is evaluated
@@ -852,7 +901,8 @@ final class Phase1BTests: XCTestCase {
         priority: Int = 100,
         cv: Double = 0.10,
         selected: Bool = false,
-        q50: Double = 0.01
+        q50: Double = 0.01,
+        pauseBoundaryRole: PauseBoundaryRole? = nil
     ) -> ClassicAnchorCandidate {
         ClassicAnchorCandidate(
             id: id,
@@ -899,7 +949,8 @@ final class Phase1BTests: XCTestCase {
             anchorContrastMinRequired: 1,
             anchorContrastGeomRequired: 1,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 }

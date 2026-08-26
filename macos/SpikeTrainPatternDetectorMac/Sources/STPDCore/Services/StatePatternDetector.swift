@@ -72,6 +72,12 @@ public struct StatePatternDetectorSettings: Hashable, Sendable {
     /// fragmented. Set false to restore the legacy band-membership seed (A/B / rollback). Not an init
     /// parameter, so every existing construction defaults to the new primary path.
     public var tonicStructuralWindowPrimary: Bool = true
+    /// Raw-data-only, dataset-level relative state-band evidence. The canonical pipeline computes
+    /// this value exactly once, before any detector candidate exists, and threads the same frozen
+    /// snapshot through every state pass. `nil` preserves the standalone detector's historical
+    /// behavior. This evidence is necessary but not sufficient for HFS naming: event dominance,
+    /// hard Pause boundaries, minimum support, and state arbitration remain downstream gates.
+    public var frozenDatasetStateBandProfile: FrozenDatasetStateBandProfile? = nil
 
     public init(
         isEnabled: Bool = true,
@@ -323,15 +329,16 @@ public enum StatePatternDetector {
     }
 
     /// Conservatively merge adjacent selectable irregular-tonic state fragments of the same
-    /// train across a tiny, non-event, non-pause gap. State-level continuity only — not a
+    /// train across a tiny, non-event gap. State-level continuity only — not a
     /// threshold relaxation. The merged span is re-validated through the same tonic-family
     /// structural-eligibility and irregular regularity gates. The convenience projection omits
     /// consumed child fragments, while the resolver's detailed result retains them as frozen,
     /// non-selectable audit records so their original metrics remain inspectable.
     ///
     /// A large gap is never bridged just because the neighbors are irregular tonic: selected
-    /// pauses, selected burst-family events, and any already-selected state inside the gap block
-    /// the merge, and the gap must also satisfy the adaptive micro-gap cap.
+    /// canonical Pause anchors, selected burst-family events, and any already-selected state
+    /// inside the gap block the merge. A selected non-canonical Pause is itself a mini gap and
+    /// may be bridged only when it also satisfies the same adaptive micro-gap cap.
     /// Only fragments explicitly authorized by the caller's prior selection pass may
     /// participate; an empty authorization set disables the merge. This prevents an
     /// unselected proposal from being re-promoted by the continuity pass. The bridge-count
@@ -586,7 +593,11 @@ public enum StatePatternDetector {
             let end = max(candidate.startISIIndex, candidate.endISIIndex)
             return start <= gapUpper && end >= gapLower
         }
-        if selectedGaps.contains(where: { $0.finalLabel == .pause && overlapsGap($0) }) {
+        if selectedGaps.contains(where: {
+            $0.finalLabel == .pause &&
+                $0.pauseBoundaryRole == .canonicalPauseAnchor &&
+                overlapsGap($0)
+        }) {
             return true
         }
         if selectedEvents.contains(where: { $0.finalLabel.isBurstEventFamily && overlapsGap($0) }) {
@@ -882,15 +893,29 @@ public enum StatePatternDetector {
             )
 
         case .highFrequencySpiking:
-            rebuilt = rebuildHighFrequencySpikingSplitCandidate(
-                train: train,
-                parent: parent,
-                run: (range.lowerBound, range.upperBound),
-                metrics: metrics,
-                settings: settings,
-                id: fragmentID,
-                commonExtra: commonExtra
-            )
+            if parent.hfSpikingAcceptanceRoute?
+                .split(separator: "+")
+                .contains(Substring(frozenDatasetRelativeHFSRoute)) == true {
+                rebuilt = rebuildFrozenDatasetRelativeHFSSplitCandidate(
+                    train: train,
+                    parent: parent,
+                    range: range,
+                    settings: settings,
+                    localContext: localContext,
+                    id: fragmentID,
+                    commonExtra: commonExtra
+                )
+            } else {
+                rebuilt = rebuildHighFrequencySpikingSplitCandidate(
+                    train: train,
+                    parent: parent,
+                    run: (range.lowerBound, range.upperBound),
+                    metrics: metrics,
+                    settings: settings,
+                    id: fragmentID,
+                    commonExtra: commonExtra
+                )
+            }
 
         default:
             rebuilt = nil
@@ -941,7 +966,600 @@ public enum StatePatternDetector {
         let packetLike: Bool
     }
 
+    private static let frozenDatasetRelativeHFSRoute = "frozen_dataset_relative_state_band"
+    /// A separate duration obligation expressed in units of the frozen dataset base center.
+    /// `29 * 0.80` is rounded up: the run must provide at least the duration of 24 base-center
+    /// cycles in addition to meeting the independent >=29-ISI geometry gate.
+    private static let frozenDatasetRelativeHFSMinimumNormalizedDuration = 24.0
+    private static let frozenDatasetRelativeHFSMinimumDirectSegmentISI = 3
+    private static let frozenDatasetRelativeHFSMaximumSlowGapISI = 1
+    private static let frozenDatasetRelativeHFSMaximumFastPacketISI = 8
+    private static let frozenDatasetRelativeHFSMaximumInterruptionSpans = 3
+    private static let frozenDatasetRelativeHFSMaximumInterruptionFraction = 0.20
+
+    private struct FrozenDatasetRelativeHFSEvidence {
+        let profile: FrozenDatasetStateBandProfile
+        let trainProfile: FrozenTrainStateBandProfile
+        let baseCenterSec: Double
+        let slowerCenterSec: Double
+        let bandLowerSec: Double
+        let bandUpperSec: Double
+    }
+
+    private struct FrozenDatasetRelativeHFSEvaluation {
+        let envelope: FrozenDatasetRelativeHFSEnvelope
+        let metrics: StateMetrics
+        let medianBandFraction: Double
+        let adjacentRatioPassFraction: Double
+        let supportFraction: Double
+        let largeFraction: Double
+        let maxConsecutiveLarge: Int
+        let normalizedDuration: Double
+        let packetization: HFSpikingPacketizationStats
+    }
+
+    private struct FrozenDatasetRelativeHFSEnvelope {
+        let directSupportSpans: [ClosedRange<Int>]
+        let interruptionSpans: [ClosedRange<Int>]
+
+        var startISIIndex: Int { directSupportSpans[0].lowerBound }
+        var endISIIndex: Int { directSupportSpans[directSupportSpans.count - 1].upperBound }
+        var directSupportISICount: Int {
+            directSupportSpans.reduce(0) { $0 + $1.count }
+        }
+        var interruptionISICount: Int {
+            interruptionSpans.reduce(0) { $0 + $1.count }
+        }
+        var envelopeISICount: Int { endISIIndex - startISIIndex + 1 }
+        var directSupportAdjacentPairCount: Int {
+            directSupportSpans.reduce(0) { $0 + max(0, $1.count - 1) }
+        }
+    }
+
     private static func detectHighFrequencySpiking(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable
+    ) -> [ClassicAnchorCandidate] {
+        let legacy = detectLegacyHighFrequencySpiking(
+            train: train,
+            settings: settings,
+            localContext: localContext
+        )
+        let relative = detectFrozenDatasetRelativeHighFrequencySpiking(
+            train: train,
+            settings: settings,
+            localContext: localContext
+        )
+        let relativeGeometry = Set(relative.map {
+            "\(min($0.startISIIndex, $0.endISIIndex)):\(max($0.startISIIndex, $0.endISIIndex))"
+        })
+        let retainedLegacy = legacy.filter { candidate in
+            // Exact duplicate geometry is represented by the stronger frozen-relative route.
+            // A merely covering legacy proposal is retained for audit because it can later lose
+            // authority under the legacy absolute-q90 gate; it must never erase relative evidence.
+            guard candidate.finalLabel == .highFrequencySpiking,
+                  candidate.isEligibleForAutoSelection else {
+                return true
+            }
+            let geometry = "\(min(candidate.startISIIndex, candidate.endISIIndex)):\(max(candidate.startISIIndex, candidate.endISIIndex))"
+            return !relativeGeometry.contains(geometry)
+        }
+        return retainedLegacy + relative
+    }
+
+    private static func detectFrozenDatasetRelativeHighFrequencySpiking(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable
+    ) -> [ClassicAnchorCandidate] {
+        guard let evidence = frozenDatasetRelativeHFSEvidence(train: train, settings: settings) else {
+            return []
+        }
+
+        var candidates: [ClassicAnchorCandidate] = []
+        for envelope in frozenDatasetRelativeHFSEnvelopes(
+            train: train,
+            settings: settings,
+            evidence: evidence
+        ) {
+            guard let evaluation = evaluateFrozenDatasetRelativeHFSSpan(
+                train: train,
+                envelope: envelope,
+                settings: settings,
+                localContext: localContext,
+                evidence: evidence
+            ) else {
+                continue
+            }
+            let hfs = makeFrozenDatasetRelativeHFSCandidate(
+                train: train,
+                evaluation: evaluation,
+                evidence: evidence,
+                settings: settings,
+                index: candidates.count + 1
+            )
+            candidates.append(hfs)
+        }
+        return candidates
+    }
+
+    /// Build bounded state envelopes from local, frozen-band direct support. A mini pause is one
+    /// valid ISI above the HFS direct band (and therefore above the great majority of HFS ISIs),
+    /// but below the conservative scale-relative ceiling used before the parallel Pause track
+    /// makes its canonical-boundary decision. It remains an internal state gap rather than direct
+    /// support. A short below-band run is an embedded fast packet. Neither interruption contributes
+    /// to direct metrics. The finite count/fraction budget prevents a chain of gaps from
+    /// manufacturing a state that has no sustained local support.
+    private static func frozenDatasetRelativeHFSEnvelopes(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings,
+        evidence: FrozenDatasetRelativeHFSEvidence,
+        restrictedTo restriction: ClosedRange<Int>? = nil
+    ) -> [FrozenDatasetRelativeHFSEnvelope] {
+        guard train.isiSec.count > 1 else { return [] }
+        let lowerIndex = max(1, restriction?.lowerBound ?? 1)
+        let upperIndex = min(train.isiSec.count - 1, restriction?.upperBound ?? (train.isiSec.count - 1))
+        guard lowerIndex <= upperIndex else { return [] }
+
+        var directRuns: [ClosedRange<Int>] = []
+        var openStart: Int?
+        for index in lowerIndex...upperIndex {
+            let isDirect = finiteValidISI(train.isiSec[index], settings: settings).map {
+                $0 >= evidence.bandLowerSec - tolerance(for: evidence.bandLowerSec) &&
+                    $0 <= evidence.bandUpperSec + tolerance(for: evidence.bandUpperSec)
+            } ?? false
+            if isDirect {
+                if openStart == nil { openStart = index }
+            } else if let start = openStart {
+                directRuns.append(start...(index - 1))
+                openStart = nil
+            }
+        }
+        if let start = openStart { directRuns.append(start...upperIndex) }
+        directRuns = directRuns.filter {
+            $0.count >= frozenDatasetRelativeHFSMinimumDirectSegmentISI
+        }
+        guard let first = directRuns.first else { return [] }
+
+        let relativeMiniPauseUpperSec = min(
+            3.0 * evidence.baseCenterSec,
+            0.90 * evidence.slowerCenterSec
+        )
+        let miniPauseUpperSec = min(
+            relativeMiniPauseUpperSec,
+            settings.highFrequencySpikingPauseBreakSec ?? .infinity
+        )
+        func interruptionSpan(
+            between left: ClosedRange<Int>,
+            and right: ClosedRange<Int>
+        ) -> ClosedRange<Int>? {
+            let start = left.upperBound + 1
+            let end = right.lowerBound - 1
+            guard start <= end else { return nil }
+            let span = start...end
+            let values = span.compactMap {
+                finiteValidISI(train.isiSec[$0], settings: settings)
+            }
+            guard values.count == span.count else { return nil }
+            let slowMiniPause = span.count <= frozenDatasetRelativeHFSMaximumSlowGapISI &&
+                values.allSatisfy { value in
+                    let belowCanonicalPauseFloor: Bool
+                    if let pauseFloor = settings.highFrequencySpikingPauseBreakSec,
+                       pauseFloor.isFinite,
+                       pauseFloor > 0 {
+                        belowCanonicalPauseFloor =
+                            value < pauseFloor - tolerance(for: pauseFloor)
+                    } else {
+                        belowCanonicalPauseFloor = true
+                    }
+                    return value > evidence.bandUpperSec + tolerance(for: evidence.bandUpperSec) &&
+                        value <= miniPauseUpperSec + tolerance(for: miniPauseUpperSec) &&
+                        belowCanonicalPauseFloor
+                }
+            let fastPacket = span.count <= frozenDatasetRelativeHFSMaximumFastPacketISI &&
+                values.allSatisfy {
+                    $0 < evidence.bandLowerSec - tolerance(for: evidence.bandLowerSec)
+                }
+            return slowMiniPause || fastPacket ? span : nil
+        }
+        func eligibleEnvelope(
+            direct: [ClosedRange<Int>],
+            interruptions: [ClosedRange<Int>]
+        ) -> FrozenDatasetRelativeHFSEnvelope? {
+            guard !direct.isEmpty,
+                  interruptions.count <= frozenDatasetRelativeHFSMaximumInterruptionSpans else {
+                return nil
+            }
+            let envelope = FrozenDatasetRelativeHFSEnvelope(
+                directSupportSpans: direct,
+                interruptionSpans: interruptions
+            )
+            guard envelope.directSupportISICount >= FrozenDatasetStateBandProfiler.sustainedMinimumISICount else {
+                return nil
+            }
+            let interruptionFraction = Double(envelope.interruptionISICount) /
+                Double(max(1, envelope.envelopeISICount))
+            guard interruptionFraction <= frozenDatasetRelativeHFSMaximumInterruptionFraction + 1e-12 else {
+                return nil
+            }
+            return envelope
+        }
+
+        var envelopes: [FrozenDatasetRelativeHFSEnvelope] = []
+        var currentDirect = [first]
+        var currentInterruptions: [ClosedRange<Int>] = []
+        for next in directRuns.dropFirst() {
+            if let interruption = interruptionSpan(
+                between: currentDirect[currentDirect.count - 1],
+                and: next
+            ) {
+                let prospectiveInterruptions = currentInterruptions + [interruption]
+                let prospectiveDirect = currentDirect + [next]
+                let prospectiveDirectCount = prospectiveDirect.reduce(0) { $0 + $1.count }
+                let prospectiveInterruptionCount = prospectiveInterruptions.reduce(0) { $0 + $1.count }
+                let prospectiveFraction = Double(prospectiveInterruptionCount) /
+                    Double(max(1, prospectiveDirectCount + prospectiveInterruptionCount))
+                if prospectiveInterruptions.count <= frozenDatasetRelativeHFSMaximumInterruptionSpans,
+                   prospectiveFraction <= frozenDatasetRelativeHFSMaximumInterruptionFraction + 1e-12 {
+                    currentDirect = prospectiveDirect
+                    currentInterruptions = prospectiveInterruptions
+                    continue
+                }
+            }
+
+            if let envelope = eligibleEnvelope(
+                direct: currentDirect,
+                interruptions: currentInterruptions
+            ) {
+                envelopes.append(envelope)
+            }
+            currentDirect = [next]
+            currentInterruptions = []
+        }
+        if let envelope = eligibleEnvelope(
+            direct: currentDirect,
+            interruptions: currentInterruptions
+        ) {
+            envelopes.append(envelope)
+        }
+        return envelopes
+    }
+
+    private static func makeFrozenDatasetRelativeHFSCandidate(
+        train: SpikeTrain,
+        evaluation: FrozenDatasetRelativeHFSEvaluation,
+        evidence: FrozenDatasetRelativeHFSEvidence,
+        settings: StatePatternDetectorSettings,
+        index: Int,
+        parent: ClassicAnchorCandidate? = nil,
+        explicitID: String? = nil,
+        additionalDecisionTokens: [String] = []
+    ) -> ClassicAnchorCandidate {
+        let metrics = evaluation.metrics
+        let envelope = evaluation.envelope
+        let packetization = evaluation.packetization
+        let regularityScore = mean([
+            metrics.cv.map { 1 / (1 + $0) },
+            metrics.cv2.map { 1 / (1 + $0) },
+            metrics.lv.map { 1 / (1 + $0) }
+        ].compactMap { $0 }) ?? 0
+        let score = 24 +
+            0.08 * Double(envelope.directSupportISICount + 1) +
+            2.5 * evaluation.medianBandFraction +
+            2.0 * evaluation.adjacentRatioPassFraction +
+            1.5 * evaluation.supportFraction -
+            2.0 * evaluation.largeFraction +
+            regularityScore
+        let directToken = envelope.directSupportSpans
+            .map { "\($0.lowerBound)-\($0.upperBound)" }
+            .joined(separator: "|")
+        let interruptionToken = envelope.interruptionSpans
+            .map { "\($0.lowerBound)-\($0.upperBound)" }
+            .joined(separator: "|")
+        let decisionPath = stateDecisionPath(
+            base: parent == nil
+                ? "dataset_relative_sustained_high_frequency_state"
+                : "dataset_relative_state_track_canonical_pause_split_pass",
+            metrics: metrics,
+            extra: additionalDecisionTokens + [
+                "hfs_scale_route=dataset_relative_sustained",
+                "frozen_raw_dataset_profile=true",
+                "profile_feedback_from_candidates=false",
+                "profile_scope=single_input_dataset",
+                "profile_min_valid_isi_sec=\(format(evidence.profile.minimumValidISISec))",
+                "profile_base_center_sec=\(format(evidence.baseCenterSec))",
+                "profile_base_log_dispersion=\(format(evidence.profile.sustainedBandLogDispersion))",
+                "profile_base_contributing_trains=\(evidence.profile.baseCenterContributingTrainCount)",
+                "profile_base_support_trains=\(evidence.profile.sustainedBaseSupportTrainCount)",
+                "profile_slower_center_sec=\(format(evidence.slowerCenterSec))",
+                "profile_slower_contributing_trains=\(evidence.profile.slowerStableContributingTrainCount)",
+                "profile_slower_to_base_ratio=\(format(evidence.slowerCenterSec / evidence.baseCenterSec))",
+                "relative_band_lower_sec=\(format(evidence.bandLowerSec))",
+                "relative_band_upper_sec=\(format(evidence.bandUpperSec))",
+                "state_direct_support_spans=\(directToken)",
+                "state_interruption_spans=\(interruptionToken)",
+                "state_direct_support_isi_count=\(envelope.directSupportISICount)",
+                "state_direct_support_adjacent_pair_count=\(envelope.directSupportAdjacentPairCount)",
+                "state_interruption_isi_count=\(envelope.interruptionISICount)",
+                "mini_pause_definition=single_valid_isi_above_hfs_direct_band",
+                "mini_pause_does_not_split_state=true",
+                "configured_canonical_pause_floor_sec=\(format(settings.highFrequencySpikingPauseBreakSec))",
+                "canonical_pause_boundary_deferred_to_parallel_pause_track=true",
+                "state_metrics_exclude_interruptions=true",
+                "state_cv2_lv_do_not_cross_interruptions=true",
+                "normalized_direct_support_duration_base_cycles=\(format(evaluation.normalizedDuration))",
+                "normalized_duration_min_base_cycles=\(format(frozenDatasetRelativeHFSMinimumNormalizedDuration))",
+                "median_band_fraction=\(format(evaluation.medianBandFraction))",
+                "adjacent_ratio_pass_fraction=\(format(evaluation.adjacentRatioPassFraction))",
+                "support_fraction=\(format(evaluation.supportFraction))",
+                "self_packet_group_count=\(packetization.groupCount)",
+                "self_packet_coverage=\(format(packetization.coverage))",
+                "self_packet_longest_group=\(packetization.longestGroup)",
+                "self_packet_like=\(packetization.packetLike)",
+                "selected_event_burst_dominance_deferred=true",
+                "acceptance_route=\(frozenDatasetRelativeHFSRoute)"
+            ]
+        )
+        let run = (start: envelope.startISIIndex, end: envelope.endISIIndex)
+        var hfs = candidate(
+            train: train,
+            run: run,
+            metrics: metrics,
+            label: .highFrequencySpiking,
+            layer: parent.map { "\($0.candidateLayer)_state_track_split" }
+                ?? "dataset_relative_sustained_hf_spiking_state",
+            candidateClass: parent.map { "\($0.candidateClass)_state_track_fragment" }
+                ?? "dataset_relative_sustained_hf_spiking_epoch",
+            gateStatus: parent == nil
+                ? "dataset_relative_sustained_hf_spiking_pass"
+                : "dataset_relative_state_track_split_hf_spiking_pass",
+            decisionPath: decisionPath,
+            score: score,
+            priority: parent?.priority ?? 1_040,
+            bandLower: evidence.bandLowerSec,
+            bandUpper: evidence.bandUpperSec,
+            contrastMinRequired: FrozenDatasetStateBandProfiler.minimumMedianBandFraction,
+            contrastGeomRequired: FrozenDatasetStateBandProfiler.minimumAdjacentRatioPassFraction,
+            stateRegularityScore: regularityScore,
+            stateHighFrequencySubtype: "hf_irregular_spiking",
+            index: index,
+            id: explicitID ?? "\(train.id)-dataset-relative-hfs-\(run.start)-\(run.end)"
+        )
+        let miniPauseUpperSec = min(
+            min(3.0 * evidence.baseCenterSec, 0.90 * evidence.slowerCenterSec),
+            settings.highFrequencySpikingPauseBreakSec ?? .infinity
+        )
+        hfs.hfSpikingQ80Sec = metrics.q80
+        hfs.hfSpikingQ80MaxSec = evidence.bandUpperSec
+        hfs.hfSpikingQ90MaxSec = evidence.bandUpperSec
+        hfs.hfSpikingShortUpperSec = evidence.bandUpperSec
+        hfs.hfSpikingEpochBridgeSec = evidence.bandUpperSec
+        hfs.hfSpikingToleratedGapSec = miniPauseUpperSec
+        hfs.hfSpikingPatternMaxISISec = miniPauseUpperSec
+        hfs.hfSpikingPauseBreakSec = settings.highFrequencySpikingPauseBreakSec
+        hfs.hfSpikingShortFraction = evaluation.supportFraction
+        hfs.hfSpikingQ90ShortFraction = evaluation.supportFraction
+        hfs.hfSpikingBridgeFraction = evaluation.adjacentRatioPassFraction
+        hfs.hfSpikingLargeFraction = evaluation.largeFraction
+        hfs.hfSpikingToleratedFraction = evaluation.supportFraction
+        hfs.hfSpikingMaxConsecutiveLargeISI = evaluation.maxConsecutiveLarge
+        hfs.hfSpikingMinSpikesRequired = settings.highFrequencySpikingMinSpikes
+        hfs.hfSpikingAcceptanceRoute = "\(frozenDatasetRelativeHFSRoute)+provisional_self_packetization"
+        hfs.hfSpikingEmbeddedBurstCount = packetization.groupCount
+        hfs.hfSpikingEmbeddedBurstGroupCount = packetization.groupCount
+        hfs.hfSpikingEmbeddedBurstCoverage = packetization.coverage
+        hfs.hfSpikingBurstDominated = false
+        hfs.hfSpikingBurstPacketLike = packetization.packetLike
+        hfs.stateDirectSupportSpans = envelope.directSupportSpans.map {
+            ISISpan(trainID: train.id, startISIIndex: $0.lowerBound, endISIIndex: $0.upperBound)
+        }
+        hfs.stateInterruptionSpans = envelope.interruptionSpans.map {
+            ISISpan(trainID: train.id, startISIIndex: $0.lowerBound, endISIIndex: $0.upperBound)
+        }
+        hfs.stateDirectSupportISICount = envelope.directSupportISICount
+        hfs.stateDirectSupportAdjacentPairCount = envelope.directSupportAdjacentPairCount
+        return hfs
+    }
+
+    private static func frozenDatasetRelativeHFSEvidence(
+        train: SpikeTrain,
+        settings: StatePatternDetectorSettings
+    ) -> FrozenDatasetRelativeHFSEvidence? {
+        guard let profile = settings.frozenDatasetStateBandProfile,
+              profile.relativeHFSAdjudicationEligibility == .eligibleWithDatasetScaleSeparation,
+              abs(profile.minimumValidISISec - settings.minValidISISec)
+                <= tolerance(for: max(profile.minimumValidISISec, settings.minValidISISec)),
+              let baseCenterSec = profile.sustainedBandCenterSec,
+              baseCenterSec.isFinite,
+              baseCenterSec > 0,
+              let slowerCenterSec = profile.slowerStableBandCenterSec,
+              slowerCenterSec.isFinite,
+              slowerCenterSec >= baseCenterSec * FrozenDatasetStateBandProfiler.minimumSlowerCenterRatio,
+              let trainProfile = profile.trains.first(where: { $0.trainID == train.id }) else {
+            return nil
+        }
+
+        let lower = baseCenterSec / FrozenDatasetStateBandProfiler.medianBandRatio
+        // The midpoint separates the two frozen bands without assuming where Burst lies. The
+        // 1.5x cap is the same scale-free membership contract used by the raw profiler.
+        let midpoint = Foundation.sqrt(baseCenterSec * slowerCenterSec)
+        let upper = min(
+            baseCenterSec * FrozenDatasetStateBandProfiler.medianBandRatio,
+            midpoint
+        )
+        guard lower.isFinite, upper.isFinite, upper >= lower else {
+            return nil
+        }
+        return FrozenDatasetRelativeHFSEvidence(
+            profile: profile,
+            trainProfile: trainProfile,
+            baseCenterSec: baseCenterSec,
+            slowerCenterSec: slowerCenterSec,
+            bandLowerSec: lower,
+            bandUpperSec: upper
+        )
+    }
+
+    private static func evaluateFrozenDatasetRelativeHFSSpan(
+        train: SpikeTrain,
+        envelope: FrozenDatasetRelativeHFSEnvelope,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        evidence: FrozenDatasetRelativeHFSEvidence
+    ) -> FrozenDatasetRelativeHFSEvaluation? {
+        guard let metrics = frozenDatasetRelativeHFSMetrics(
+            train: train,
+            envelope: envelope,
+            settings: settings,
+            localContext: localContext
+        ),
+              envelope.directSupportISICount >= FrozenDatasetStateBandProfiler.sustainedMinimumISICount,
+              envelope.directSupportISICount + 1 >= settings.highFrequencySpikingMinSpikes,
+              metrics.durationSec >= settings.highFrequencySpikingMinDurationSec -
+                tolerance(for: settings.highFrequencySpikingMinDurationSec),
+              let median = metrics.q50,
+              median >= evidence.bandLowerSec - tolerance(for: evidence.bandLowerSec),
+              median <= evidence.bandUpperSec + tolerance(for: evidence.bandUpperSec),
+              (metrics.q90 ?? .infinity) <= evidence.bandUpperSec + tolerance(for: evidence.bandUpperSec),
+              (metrics.cv ?? .infinity) <= FrozenDatasetStateBandProfiler.maximumCV + 1e-12,
+              (metrics.lv ?? .infinity) <= FrozenDatasetStateBandProfiler.maximumLV + 1e-12 else {
+            return nil
+        }
+
+        let localLower = median / FrozenDatasetStateBandProfiler.medianBandRatio
+        let localUpper = median * FrozenDatasetStateBandProfiler.medianBandRatio
+        let medianBandFraction = fraction(metrics.values) {
+            $0 >= localLower - tolerance(for: localLower) &&
+                $0 <= localUpper + tolerance(for: localUpper)
+        }
+        let adjacentPassCount = envelope.directSupportSpans.reduce(0) { total, span in
+            let values = (span.lowerBound...span.upperBound).compactMap {
+                finiteValidISI(train.isiSec[$0], settings: settings)
+            }
+            let pass = zip(values, values.dropFirst()).filter { previous, next in
+                max(previous, next) / min(previous, next)
+                    <= FrozenDatasetStateBandProfiler.maximumAdjacentRatio + 1e-12
+            }.count
+            return total + pass
+        }
+        let adjacentRatioPassFraction = Double(adjacentPassCount) /
+            Double(max(1, envelope.directSupportAdjacentPairCount))
+        let supportFraction = Double(envelope.directSupportISICount) /
+            Double(max(1, envelope.envelopeISICount))
+        let largeFraction = Double(envelope.interruptionISICount) /
+            Double(max(1, envelope.envelopeISICount))
+        let maxConsecutiveLarge = envelope.interruptionSpans.map(\.count).max() ?? 0
+        let normalizedDuration = metrics.values.reduce(0, +) / evidence.baseCenterSec
+        guard medianBandFraction >= FrozenDatasetStateBandProfiler.minimumMedianBandFraction - 1e-12,
+              adjacentRatioPassFraction >= FrozenDatasetStateBandProfiler.minimumAdjacentRatioPassFraction - 1e-12,
+              normalizedDuration >= frozenDatasetRelativeHFSMinimumNormalizedDuration - 1e-12 else {
+            return nil
+        }
+        let packetization = highFrequencySpikingPacketizationStats(
+            train: train,
+            run: (start: envelope.startISIIndex, end: envelope.endISIIndex),
+            metrics: metrics,
+            settings: settings
+        )
+        return FrozenDatasetRelativeHFSEvaluation(
+            envelope: envelope,
+            metrics: metrics,
+            medianBandFraction: medianBandFraction,
+            adjacentRatioPassFraction: adjacentRatioPassFraction,
+            supportFraction: supportFraction,
+            largeFraction: largeFraction,
+            maxConsecutiveLarge: maxConsecutiveLarge,
+            normalizedDuration: normalizedDuration,
+            packetization: packetization
+        )
+    }
+
+    /// Metrics for an envelope whose direct support can be discontinuous. CV is
+    /// defined on all direct values; CV2 and LV are averaged only over adjacent
+    /// pairs inside each original contiguous support segment.
+    private static func frozenDatasetRelativeHFSMetrics(
+        train: SpikeTrain,
+        envelope: FrozenDatasetRelativeHFSEnvelope,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable
+    ) -> StateMetrics? {
+        let directIndices = envelope.directSupportSpans.flatMap { Array($0) }
+        let values = directIndices.compactMap {
+            finiteValidISI(train.isiSec[$0], settings: settings)
+        }
+        guard values.count == directIndices.count,
+              train.timestampsSec.indices.contains(envelope.startISIIndex - 1),
+              train.timestampsSec.indices.contains(envelope.endISIIndex) else {
+            return nil
+        }
+        let envelopeValidCount = (envelope.startISIIndex...envelope.endISIIndex).compactMap {
+            finiteValidISI(train.isiSec[$0], settings: settings)
+        }.count
+        guard envelopeValidCount == envelope.envelopeISICount else { return nil }
+
+        let contextPoints = directIndices.compactMap { localContext.point(for: $0) }
+        let trainPercentiles = contextPoints.map(\.trainPercentile)
+        let localPercentiles = contextPoints.compactMap(\.localPercentile)
+        let localRobustZValues = contextPoints.compactMap(\.localRobustZ)
+        let valueSample = SortedFiniteSample(values)
+        let trainPercentileSample = SortedFiniteSample(trainPercentiles)
+        let localPercentileSample = SortedFiniteSample(localPercentiles)
+        let localRobustZSample = SortedFiniteSample(localRobustZValues)
+        let localRobustZAbsSample = SortedFiniteSample(localRobustZValues.map(abs))
+
+        var cv2Terms: [Double] = []
+        var lvTerms: [Double] = []
+        for span in envelope.directSupportSpans {
+            let segment = (span.lowerBound...span.upperBound).compactMap {
+                finiteValidISI(train.isiSec[$0], settings: settings)
+            }
+            for (previous, next) in zip(segment, segment.dropFirst()) {
+                let denominator = previous + next
+                guard denominator > 0 else { continue }
+                cv2Terms.append(2 * abs(next - previous) / denominator)
+                lvTerms.append(3 * pow(next - previous, 2) / pow(denominator, 2))
+            }
+        }
+        let duration = train.timestampsSec[envelope.endISIIndex] -
+            train.timestampsSec[envelope.startISIIndex - 1]
+        return StateMetrics(
+            values: values,
+            nISI: envelope.envelopeISICount,
+            nValidISI: envelopeValidCount,
+            nSpikes: envelope.envelopeISICount + 1,
+            durationSec: duration.isFinite ? duration : 0,
+            q10: valueSample.quantile(0.10),
+            q40: valueSample.quantile(0.40),
+            q50: valueSample.quantile(0.50),
+            q80: valueSample.quantile(0.80),
+            q90: valueSample.quantile(0.90),
+            q95: valueSample.quantile(0.95),
+            mean: mean(values),
+            max: values.max(),
+            cv: STPDStatistics.coefficientOfVariation(values),
+            cv2: mean(cv2Terms),
+            lv: mean(lvTerms),
+            preGapSec: finiteValidISI(
+                envelope.startISIIndex > 1 ? train.isiSec[envelope.startISIIndex - 1] : nil,
+                settings: settings
+            ),
+            postGapSec: finiteValidISI(
+                envelope.endISIIndex < train.isiSec.count - 1
+                    ? train.isiSec[envelope.endISIIndex + 1]
+                    : nil,
+                settings: settings
+            ),
+            trainPercentileMedian: trainPercentileSample.quantile(0.50),
+            localPercentileMedian: localPercentileSample.quantile(0.50),
+            localPercentileQ90: localPercentileSample.quantile(0.90),
+            localRobustZMedian: localRobustZSample.quantile(0.50),
+            localRobustZAbsQ80: localRobustZAbsSample.quantile(0.80),
+            localRobustZQ10: localRobustZSample.quantile(0.10)
+        )
+    }
+
+    private static func detectLegacyHighFrequencySpiking(
         train: SpikeTrain,
         settings: StatePatternDetectorSettings,
         localContext: SpikeISILocalContextTable
@@ -957,10 +1575,6 @@ public enum StatePatternDetector {
             }
             if let patternMax = settings.highFrequencySpikingPatternMaxISISec,
                value > patternMax + tolerance(for: patternMax) {
-                return false
-            }
-            if let pauseBreak = settings.highFrequencySpikingPauseBreakSec,
-               value + tolerance(for: pauseBreak) >= pauseBreak {
                 return false
             }
             if value <= settings.highFrequencySpikingEpochBridgeSec + tolerance(for: settings.highFrequencySpikingEpochBridgeSec) {
@@ -1333,7 +1947,6 @@ public enum StatePatternDetector {
 
     private static func highFrequencySpikingHardBreakSec(settings: StatePatternDetectorSettings) -> Double? {
         [
-            settings.highFrequencySpikingPauseBreakSec,
             settings.highFrequencySpikingPatternMaxISISec,
             settings.highFrequencySpikingHardBreakSec
         ]
@@ -1620,6 +2233,13 @@ public enum StatePatternDetector {
                 metrics.cv2.map { 1 / (1 + $0) },
                 metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
+            // HF tonic uses a separate magnitude/packet guard, but it is still a state and should expose
+            // the same core/deviation evidence as ordinary tonic. This is audit-only until the shared
+            // policy is calibrated for the fast range; no HF-tonic label changes in this slice.
+            let stateSupportAudit = stateSupportAuditTokens(
+                values: metrics.values,
+                minimumValidISISec: settings.minValidISISec
+            )
             if !q90Pass || !lowTailPass || !burstSeedFractionPass || !burstCoreVetoPass || !fastPacketPass || !cvPass || !cv2Pass || !lvPass || !classicBoundaryPass {
                 var rejectReasons: [String] = []
                 if !q90Pass {
@@ -1652,7 +2272,7 @@ public enum StatePatternDetector {
                 let rejectDecisionPath = stateDecisionPath(
                     base: "reject_high_frequency_tonic_state_candidate",
                     metrics: metrics,
-                    extra: rejectReasons + relativeProvenance + [
+                    extra: rejectReasons + relativeProvenance + stateSupportAudit + [
                         "low_tail_fraction=\(format(lowTail))",
                         "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
                         "burst_seed_fraction=\(format(burstSeedFraction))",
@@ -1697,7 +2317,7 @@ public enum StatePatternDetector {
             let decisionPath = stateDecisionPath(
                 base: "stable_high_frequency_tonic_state_above_burst_core_floor",
                 metrics: metrics,
-                extra: relativeProvenance + [
+                extra: relativeProvenance + stateSupportAudit + [
                     "tonic_subtype=high_frequency",
                     "low_tail_fraction=\(format(lowTail))",
                     "low_tail_fraction_max_effective=\(format(effectiveLowTailMax))",
@@ -1818,12 +2438,17 @@ public enum StatePatternDetector {
                 metrics.cv2.map { 1 / (1 + $0) },
                 metrics.lv.map { 1 / (1 + $0) }
             ].compactMap { $0 }) ?? 0
+            // TSW acceptance means the span is coherent structural evidence; it is not permission to
+            // materialize every magnitude route as classic Tonic. Only the explicit classic-tonic route
+            // may enter this label path. Legacy (non-TSW) runs preserve their prior behavior.
+            let tonicMagnitudeRoutePass = spec.tsw.map { $0.route == .classicTonic } ?? true
             // Tonic family subtype. finalLabel stays .tonic for classic and irregular; only
             // the auditable subtype differs. Structural eligibility (burst-seed / core-run /
             // fast-packet / bridge guards) is required for BOTH subtypes. Irregular only
             // relaxes the regularity bands AFTER eligibility holds, so it can never become a
             // backdoor for burst / fast-packet / pause-dominated runs.
-            let structuralEligibilityPass = burstSeedFractionPass && coreRunPass && fastPacketPass && bridgeFractionPass
+            let structuralEligibilityPass = burstSeedFractionPass && coreRunPass && fastPacketPass
+                && bridgeFractionPass && tonicMagnitudeRoutePass
             let classicRegularityPass = cvPass && cv2Pass && lvPass
             let irregularCvPass = metrics.cv.map { $0 <= settings.irregularTonicCVMax + 1e-12 } ?? true
             let irregularCv2Pass = metrics.cv2.map { $0 <= settings.irregularTonicCV2Max + 1e-12 } ?? true
@@ -1851,6 +2476,7 @@ public enum StatePatternDetector {
             ]
 
             guard let acceptedSubtype = tonicSubtype else {
+                let magnitudeRouteReview = spec.tsw?.route == .possibleTonicReview
                 var rejectReasons: [String] = []
                 if !burstSeedFractionPass {
                     rejectReasons.append("reject_tonic_burst_seed_fraction_too_high")
@@ -1863,6 +2489,13 @@ public enum StatePatternDetector {
                 }
                 if !bridgeFractionPass {
                     rejectReasons.append("reject_tonic_bridge_fraction_too_high")
+                }
+                if !tonicMagnitudeRoutePass {
+                    rejectReasons.append("reject_tonic_structural_magnitude_route")
+                    // The TSW provenance already records the exact non-classic route. Emit this explicit
+                    // failed gate only on rejection; adding a redundant `true` token to accepted classic
+                    // candidates would churn their public audit rows without changing scientific meaning.
+                    rejectReasons.append("tonic_magnitude_route_pass=false")
                 }
                 // Regularity is reported as unstable only when it exceeds even the relaxed
                 // irregular bands; cv/cv2/lv between classic and irregular routes to irregular.
@@ -1906,8 +2539,12 @@ public enum StatePatternDetector {
                         metrics: metrics,
                         label: .reject,
                         layer: "event_core_tonic_state_diagnostic",
-                        candidateClass: "rejected_event_core_tonic",
-                        gateStatus: "event_core_tonic_reject",
+                        candidateClass: magnitudeRouteReview
+                            ? "possible_tonic_review"
+                            : "rejected_event_core_tonic",
+                        gateStatus: magnitudeRouteReview
+                            ? "possible_tonic_review"
+                            : "event_core_tonic_reject",
                         decisionPath: rejectDecisionPath,
                         action: "reject",
                         score: 0,
@@ -2064,7 +2701,13 @@ public enum StatePatternDetector {
         )
         let config = TonicStructuralWindowConfig(
             thresholds: thresholds,
-            refractoryFloorSec: settings.minValidISISec
+            refractoryFloorSec: settings.minValidISISec,
+            // First production slice is audit-only: every structural tonic window now carries explicit
+            // n_support / n_core / ordinary-deviation evidence, but the run's existing acceptance remains
+            // authoritative until this policy is calibrated on representative recordings.
+            stateSupportSettings: StateSupportClassifierSettings(
+                minimumValidISISec: settings.minValidISISec
+            )
         )
         // Pause floor for the high-side trim / bounded bridge: well above the tonic ceiling, so only a
         // genuine pause (≫ tonic) is excluded. Expansion already stops at large ISIs and the bridge's CV
@@ -2191,10 +2834,59 @@ public enum StatePatternDetector {
             "tsw_route=\(window.route.rawValue)",
             "stopped_by=\(window.boundaryReason?.rawValue ?? "train_end")"
         ]
+        // The state-support policy is audit-only at this stage, but it must be carried forward to the
+        // detector candidate rather than disappearing inside the TSW helper. The counts name the exact
+        // contract used in later review: raw support, maximum-consensus core, ordinary deviations, and
+        // whether those facts would be eligible for automatic tonic under the calibrated policy.
+        func observedCount(_ key: String) -> Int? {
+            window.signals.first { $0.key == key }.flatMap { signal in
+                signal.observedValue.map { Int($0.rounded()) }
+            }
+        }
+        if let nSupport = observedCount("tonic_state_support_n_support"),
+           let nCore = observedCount("tonic_state_support_n_core"),
+           let ordinary = observedCount("tonic_state_support_ordinary_deviations"),
+           let eligibility = window.signals.first(where: {
+               $0.key == "tonic_state_support_automatic_eligibility"
+           }) {
+            tokens += [
+                "state_support_policy=audited",
+                "state_n_support=\(nSupport)",
+                "state_n_core=\(nCore)",
+                "state_ordinary_deviations=\(ordinary)",
+                "state_support_auto_eligible=\(eligibility.status == .pass)"
+            ]
+        }
         if let original = window.originalSpan {
             tokens.append("refined_from=[\(original.startISIIndex)...\(original.endISIIndex)]")
         }
         return tokens
+    }
+
+    /// Common audit projection of the maximum-consensus state core. It does not retime or filter the
+    /// supplied values and intentionally does not establish final-label authority by itself. The caller's
+    /// family-specific magnitude, burst, pause, duration, and state-occupancy checks remain in force.
+    private static func stateSupportAuditTokens(
+        values: [Double],
+        minimumValidISISec: Double
+    ) -> [String] {
+        let stateSupportSettings = StateSupportClassifierSettings(
+            minimumValidISISec: minimumValidISISec
+        )
+        let support = StateSupportClassifier.analyze(
+            values.enumerated().map { offset, value in
+                StateSupportISIObservation(sourceIndex: offset + 1, valueSec: value)
+            },
+            settings: stateSupportSettings
+        )
+        return [
+            "state_support_policy=audited",
+            "state_n_support=\(support.nSupport)",
+            "state_n_core=\(support.nCore)",
+            "state_ordinary_deviations=\(support.ordinaryDeviationCount)",
+            "state_competing_excursions=\(support.competingExcursionCount)",
+            "state_support_auto_eligible=\(support.isEligibleForAutomaticTonic(settings: stateSupportSettings))"
+        ]
     }
 
     /// Fixed exception floor for the context-aware short-tonic path: 3 spikes / 2 ISIs (scale-free count).
@@ -2952,6 +3644,55 @@ public enum StatePatternDetector {
             stateHighFrequencySubtype: "hf_tonic_spiking",
             index: 0,
             id: id
+        )
+    }
+
+    private static func rebuildFrozenDatasetRelativeHFSSplitCandidate(
+        train: SpikeTrain,
+        parent: ClassicAnchorCandidate,
+        range: ClosedRange<Int>,
+        settings: StatePatternDetectorSettings,
+        localContext: SpikeISILocalContextTable,
+        id: String,
+        commonExtra: [String]
+    ) -> ClassicAnchorCandidate? {
+        guard let evidence = frozenDatasetRelativeHFSEvidence(
+            train: train,
+            settings: settings
+        ) else {
+            return nil
+        }
+        let envelopes = frozenDatasetRelativeHFSEnvelopes(
+            train: train,
+            settings: settings,
+            evidence: evidence,
+            restrictedTo: range
+        )
+        guard envelopes.count == 1,
+              let envelope = envelopes.first,
+              envelope.startISIIndex == range.lowerBound,
+              envelope.endISIIndex == range.upperBound,
+              let evaluation = evaluateFrozenDatasetRelativeHFSSpan(
+                train: train,
+                envelope: envelope,
+                settings: settings,
+                localContext: localContext,
+                evidence: evidence
+              ) else {
+            return nil
+        }
+        return makeFrozenDatasetRelativeHFSCandidate(
+            train: train,
+            evaluation: evaluation,
+            evidence: evidence,
+            settings: settings,
+            index: 0,
+            parent: parent,
+            explicitID: id,
+            additionalDecisionTokens: commonExtra + [
+                "split_fragment_revalidated_with_frozen_relative_hfs_gates=true",
+                "split_fragment_support_not_pooled_across_canonical_pause=true"
+            ]
         )
     }
 

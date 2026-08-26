@@ -160,3 +160,32 @@ func phase3_characterizesBridgeStrictPassCanonicalBypassAsBounded() {
     // BOUNDED, DOCUMENTED: strong/canonical burst seed propagates; weak does not.
     #expect(aggregate.burstSeedUpperSec == 0.008)
 }
+
+// 5 — The production TSW primary route uses the canonical tonic layer and records its true
+// structural-window origin in the decision path. That rate-relative evidence remains useful inside
+// its own train, but must never be promoted into the cross-train dataset tonic prior.
+@Test
+func phase3_primaryTSWTonicProvenanceDoesNotPropagateToDatasetPrior() {
+    let structuralWindowTonic = p3Candidate(
+        id: "tsw-tonic-1", label: .tonic, start: 2, end: 9,
+        layer: "event_core_tonic_state", gate: "event_core_tonic_pass",
+        decisionPath: "stable_mid_isi_tonic_state;candidate_seed_source=tonic_structural_window;tonic_magnitude_route=classic_tonic;state_burst_packet_guard=pass",
+        priority: 1_100, selected: true, q: 0.040
+    )
+    let train = p3Train(repeating: 0.040, count: 12)
+    let base = TrainAdaptiveBandResolver.resolve(train: train)
+    let summary = StructuralSeedBandResolver.summarize(
+        train: train,
+        resolution: base,
+        candidates: [structuralWindowTonic]
+    )
+
+    #expect(summary.tonicAnchorCount == 1)
+    #expect(summary.tonicSeedLowerSec != nil)
+    #expect(summary.isTonicSeedDatasetAggregatable == false)
+
+    let resolution = StructuralSeedBandResolver.attachingSummary(to: base, summary: summary)
+    let aggregate = StructuralDatasetSeedAggregator.aggregate(resolutions: [resolution])
+    #expect(aggregate.tonicSeedLowerSec == nil)
+    #expect(aggregate.tonicSeedUpperSec == nil)
+}

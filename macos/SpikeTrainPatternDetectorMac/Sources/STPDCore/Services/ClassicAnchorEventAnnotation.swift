@@ -19,6 +19,7 @@ public struct ClassicAnchorAutomaticEventSource: Hashable, Sendable {
     public let auditReviewStatus: String
     public let label: ClassicAnchorLabel
     public let lockLevel: ClassicAnchorLockLevel
+    public let pauseBoundaryRole: PauseBoundaryRole?
     public let stateTonicSubtype: String?
     public let score: Double
     public let priority: Int
@@ -35,6 +36,7 @@ public struct ClassicAnchorAutomaticEventSource: Hashable, Sendable {
         auditReviewStatus: String,
         label: ClassicAnchorLabel,
         lockLevel: ClassicAnchorLockLevel,
+        pauseBoundaryRole: PauseBoundaryRole?,
         stateTonicSubtype: String?,
         score: Double,
         priority: Int,
@@ -50,6 +52,7 @@ public struct ClassicAnchorAutomaticEventSource: Hashable, Sendable {
         self.auditReviewStatus = auditReviewStatus
         self.label = label
         self.lockLevel = lockLevel
+        self.pauseBoundaryRole = pauseBoundaryRole
         self.stateTonicSubtype = stateTonicSubtype
         self.score = score
         self.priority = priority
@@ -72,6 +75,7 @@ public struct ClassicAnchorAutomaticEventSource: Hashable, Sendable {
             auditReviewStatus: auditReviewStatus,
             label: label,
             lockLevel: lockLevel,
+            pauseBoundaryRole: pauseBoundaryRole,
             stateTonicSubtype: stateTonicSubtype,
             score: score,
             priority: priority,
@@ -207,6 +211,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
                 auditReviewStatus: candidate.auditReviewStatus,
                 label: candidate.finalLabel,
                 lockLevel: candidate.anchorLockLevel,
+                pauseBoundaryRole: candidate.pauseBoundaryRole,
                 stateTonicSubtype: Self.normalizedTonicSubtype(
                     candidate.stateTonicSubtype,
                     for: candidate.finalLabel
@@ -615,6 +620,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
                     auditReviewStatus: existing.auditReviewStatus,
                     label: existing.label,
                     lockLevel: existing.lockLevel,
+                    pauseBoundaryRole: existing.pauseBoundaryRole,
                     stateTonicSubtype: existing.stateTonicSubtype,
                     score: existing.score,
                     priority: existing.priority,
@@ -640,6 +646,7 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
             && lhs.auditReviewStatus == rhs.auditReviewStatus
             && lhs.label == rhs.label
             && lhs.lockLevel == rhs.lockLevel
+            && lhs.pauseBoundaryRole == rhs.pauseBoundaryRole
             && lhs.stateTonicSubtype == rhs.stateTonicSubtype
             && lhs.score == rhs.score
             && lhs.priority == rhs.priority
@@ -660,6 +667,10 @@ public struct ClassicAnchorEventAnnotation: Identifiable, Hashable, Sendable {
         _ rhs: ClassicAnchorAutomaticEventSource
     ) -> Bool {
         if lhs.candidateID != rhs.candidateID { return lhs.candidateID < rhs.candidateID }
+        if lhs.pauseBoundaryRole?.rawValue != rhs.pauseBoundaryRole?.rawValue {
+            return (lhs.pauseBoundaryRole?.rawValue ?? "") <
+                (rhs.pauseBoundaryRole?.rawValue ?? "")
+        }
         if lhs.supportISIIndices.first != rhs.supportISIIndices.first {
             return (lhs.supportISIIndices.first ?? Int.max) < (rhs.supportISIIndices.first ?? Int.max)
         }

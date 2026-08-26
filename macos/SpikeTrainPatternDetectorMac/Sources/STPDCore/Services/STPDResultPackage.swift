@@ -1676,6 +1676,8 @@ enum STPDResultColumnCatalog {
         "right_spike_ordinal",
         "stage_ordinal",
         "state_core_burst_run_length",
+        "state_direct_support_isi_count",
+        "state_direct_support_adjacent_pair_count",
         "start_isi_index",
         "start_spike_index",
         "start_spike_array_index",
@@ -1737,6 +1739,8 @@ enum STPDResultColumnCatalog {
         "source_event_ids",
         "source_candidate_uids",
         "source_support_isi_indices",
+        "state_direct_support_spans",
+        "state_interruption_spans",
         "state_high_frequency_subtypes",
         "unresolved_candidate_ids",
         "unresolved_source_candidate_ids",
@@ -1767,10 +1771,10 @@ enum STPDResultColumnCatalog {
         case .runMetadata:
             return ["dataset_source"]
         case .parametersReport,
-             .candidateLedger,
-             .candidateLedgerDiagnostic,
              .resultConsistencyCheck:
             return []
+        case .candidateLedger, .candidateLedgerDiagnostic:
+            return ["pause_boundary_role"]
         case .resolvedParameters:
             return [
                 "requested_value", "adaptive_value", "effective_value",
@@ -1817,6 +1821,7 @@ enum STPDResultColumnCatalog {
                 "event_uid", "automatic_source_id",
                 "source_support_isi_indices", "source_semantic_track",
                 "source_event_track_class", "source_label", "source_lock_level",
+                "source_pause_boundary_role",
                 "source_state_tonic_subtype", "source_score", "source_priority",
                 "source_decision_path",
             ]
@@ -4527,6 +4532,11 @@ private extension STPDResultPackageBuilder {
             ("hfSpikingEmbeddedBurstCount", candidate.hfSpikingEmbeddedBurstCount),
             ("hfSpikingEmbeddedBurstGroupCount", candidate.hfSpikingEmbeddedBurstGroupCount),
             ("stateCoreBurstRunLength", candidate.stateCoreBurstRunLength),
+            ("stateDirectSupportISICount", candidate.stateDirectSupportISICount),
+            (
+                "stateDirectSupportAdjacentPairCount",
+                candidate.stateDirectSupportAdjacentPairCount
+            ),
             ("hardBurstCoreISICount", candidate.hardBurstCoreISICount),
         ]
         invalidFields.append(contentsOf: optionalCounts.compactMap { name, value in
@@ -4623,6 +4633,85 @@ private extension STPDResultPackageBuilder {
             throw STPDResultPackageError.invalidInput(
                 "candidate \(candidate.id) geometry or counts are inconsistent with its train"
             )
+        }
+        func validatedStateSpanCount(
+            _ spans: [ISISpan],
+            field: String
+        ) throws -> Int {
+            var previousEnd: Int?
+            var total = 0
+            for span in spans {
+                guard span.trainID == candidate.trainID,
+                      span.startISIIndex >= candidate.startISIIndex,
+                      span.startISIIndex <= span.endISIIndex,
+                      span.endISIIndex <= candidate.endISIIndex else {
+                    throw STPDResultPackageError.invalidInput(
+                        "candidate \(candidate.id) has invalid \(field) geometry"
+                    )
+                }
+                if let previousEnd,
+                   span.startISIIndex <= previousEnd + 1 {
+                    throw STPDResultPackageError.invalidInput(
+                        "candidate \(candidate.id) has noncanonical \(field) ordering"
+                    )
+                }
+                let (updated, overflow) = total.addingReportingOverflow(span.rawISICount)
+                guard !overflow else {
+                    throw STPDResultPackageError.invalidInput(
+                        "candidate \(candidate.id) has overflowing \(field) geometry"
+                    )
+                }
+                total = updated
+                previousEnd = span.endISIIndex
+            }
+            return total
+        }
+        let directSupportCount = try validatedStateSpanCount(
+            candidate.stateDirectSupportSpans,
+            field: "stateDirectSupportSpans"
+        )
+        let interruptionCount = try validatedStateSpanCount(
+            candidate.stateInterruptionSpans,
+            field: "stateInterruptionSpans"
+        )
+        if candidate.stateDirectSupportSpans.isEmpty {
+            guard candidate.stateInterruptionSpans.isEmpty,
+                  candidate.stateDirectSupportISICount == nil,
+                  candidate.stateDirectSupportAdjacentPairCount == nil else {
+                throw STPDResultPackageError.invalidInput(
+                    "candidate \(candidate.id) has incomplete state-support geometry"
+                )
+            }
+        } else {
+            let expectedAdjacentPairs = candidate.stateDirectSupportSpans.reduce(0) {
+                $0 + max(0, $1.rawISICount - 1)
+            }
+            let orderedStateSpans = (
+                candidate.stateDirectSupportSpans.map { (span: $0, isDirect: true) }
+                    + candidate.stateInterruptionSpans.map { (span: $0, isDirect: false) }
+            ).sorted {
+                if $0.span.startISIIndex != $1.span.startISIIndex {
+                    return $0.span.startISIIndex < $1.span.startISIIndex
+                }
+                return $0.span.endISIIndex < $1.span.endISIIndex
+            }
+            let coversEnvelopeWithoutOverlapOrHoles =
+                orderedStateSpans.first?.span.startISIIndex == candidate.startISIIndex
+                && orderedStateSpans.last?.span.endISIIndex == candidate.endISIIndex
+                && zip(orderedStateSpans, orderedStateSpans.dropFirst()).allSatisfy {
+                    $1.span.startISIIndex == $0.span.endISIIndex + 1
+                }
+            // Rejected/demoted state proposals deliberately retain their original support
+            // evidence for audit, so finalLabel is not used as a type gate here.
+            guard directSupportCount <= candidate.nValidISI,
+                  directSupportCount + interruptionCount == candidate.nISI,
+                  coversEnvelopeWithoutOverlapOrHoles,
+                  candidate.stateDirectSupportISICount == directSupportCount,
+                  candidate.stateDirectSupportAdjacentPairCount == expectedAdjacentPairs else {
+                throw STPDResultPackageError.invalidInput(
+                    "candidate \(candidate.id) state-support counts or envelope are inconsistent"
+                )
+            }
         }
         if let duration = candidate.durationSec {
             let expectedDuration =
@@ -4824,6 +4913,7 @@ private extension STPDResultPackageBuilder {
                   source.auditReviewStatus == candidate.auditReviewStatus,
                   source.label == candidate.finalLabel,
                   source.lockLevel == candidate.anchorLockLevel,
+                  source.pauseBoundaryRole == candidate.pauseBoundaryRole,
                   source.stateTonicSubtype == candidate.stateTonicSubtype,
                   canonicalEqual(source.score, candidate.score),
                   source.priority == candidate.priority,
@@ -4880,6 +4970,7 @@ private extension STPDResultPackageBuilder {
             String(candidate.nSpikes),
             candidate.anchorFamily,
             candidate.anchorLockLevel.rawValue,
+            candidate.pauseBoundaryRole?.rawValue ?? "",
             STPDCanonicalValue.double(candidate.durationSec),
             STPDCanonicalValue.double(candidate.intraQ10Sec),
             STPDCanonicalValue.double(candidate.intraQ40Sec),
@@ -4953,6 +5044,10 @@ private extension STPDResultPackageBuilder {
             candidate.stateTonicSubtype ?? "",
             STPDCanonicalValue.bool(candidate.stateContinuityAuthorityFrozen),
             STPDCanonicalValue.bool(candidate.stateContinuityMergeTerminal),
+            canonicalStateSupportSpans(candidate.stateDirectSupportSpans),
+            canonicalStateSupportSpans(candidate.stateInterruptionSpans),
+            STPDCanonicalValue.int(candidate.stateDirectSupportISICount),
+            STPDCanonicalValue.int(candidate.stateDirectSupportAdjacentPairCount),
             candidate.stateHighFrequencySubtype ?? "",
             STPDCanonicalValue.double(candidate.stateTrainPercentileMedian),
             STPDCanonicalValue.double(candidate.stateLocalPercentileMedian),
@@ -5007,6 +5102,21 @@ private extension STPDResultPackageBuilder {
         ]
     }
 
+    /// Stable, human-readable geometry for the discontiguous support carried by one state
+    /// envelope. The owning train is already identity material for the candidate; each supplied
+    /// span is nevertheless validated to reference that same train before this representation is
+    /// used. Family hints are included so a future non-nil hint cannot be silently identity-free.
+    static func canonicalStateSupportSpans(_ spans: [ISISpan]) -> String {
+        guard !spans.isEmpty else { return "" }
+        return STPDCanonicalValue.stringList(spans.map { span in
+            [
+                String(span.startISIIndex),
+                String(span.endISIIndex),
+                span.familyHint?.rawValue ?? "",
+            ].joined(separator: ":")
+        })
+    }
+
     static func eventIdentityComponents(
         _ event: ClassicAnchorEventAnnotation,
         sourceCandidateUIDs: [String],
@@ -5023,6 +5133,7 @@ private extension STPDResultPackageBuilder {
                 source.auditReviewStatus,
                 source.label.rawValue,
                 source.lockLevel.rawValue,
+                source.pauseBoundaryRole?.rawValue ?? "",
                 source.stateTonicSubtype ?? "",
                 STPDCanonicalValue.double(source.score),
                 String(source.priority),
@@ -5810,6 +5921,7 @@ private extension STPDResultPackageBuilder {
             "selection_status", "start_isi_index",
             "end_isi_index", "start_spike_ordinal", "end_spike_ordinal", "n_isi",
             "n_valid_isi", "n_spikes", "anchor_family", "anchor_lock_level",
+            "pause_boundary_role",
         ]
         let rows = records.map { record in
             let candidate = record.candidate
@@ -5837,6 +5949,7 @@ private extension STPDResultPackageBuilder {
                 "n_spikes": String(candidate.nSpikes),
                 "anchor_family": candidate.anchorFamily,
                 "anchor_lock_level": candidate.anchorLockLevel.rawValue,
+                "pause_boundary_role": candidate.pauseBoundaryRole?.rawValue ?? "",
             ])
         }
         return try table(tableKind, headers: headers, rows: rows)
@@ -5878,6 +5991,8 @@ private extension STPDResultPackageBuilder {
             "state_regularity_score", "state_burst_seed_fraction", "state_low_tail_fraction",
             "state_local_stability_score", "state_core_burst_run_length",
             "state_continuity_authority_frozen", "state_continuity_merge_terminal",
+            "state_direct_support_spans", "state_interruption_spans",
+            "state_direct_support_isi_count", "state_direct_support_adjacent_pair_count",
             "state_train_percentile_median", "state_local_percentile_median",
             "state_local_percentile_q90", "state_local_robust_z_median",
             "state_local_robust_z_abs_q80", "state_local_robust_z_q10",
@@ -6005,6 +6120,14 @@ private extension STPDResultPackageBuilder {
                     STPDCanonicalValue.bool(c.stateContinuityAuthorityFrozen),
                 "state_continuity_merge_terminal":
                     STPDCanonicalValue.bool(c.stateContinuityMergeTerminal),
+                "state_direct_support_spans":
+                    canonicalStateSupportSpans(c.stateDirectSupportSpans),
+                "state_interruption_spans":
+                    canonicalStateSupportSpans(c.stateInterruptionSpans),
+                "state_direct_support_isi_count":
+                    STPDCanonicalValue.int(c.stateDirectSupportISICount),
+                "state_direct_support_adjacent_pair_count":
+                    STPDCanonicalValue.int(c.stateDirectSupportAdjacentPairCount),
                 "state_train_percentile_median": STPDCanonicalValue.double(c.stateTrainPercentileMedian),
                 "state_local_percentile_median": STPDCanonicalValue.double(c.stateLocalPercentileMedian),
                 "state_local_percentile_q90": STPDCanonicalValue.double(c.stateLocalPercentileQ90),
@@ -6362,6 +6485,7 @@ private extension STPDResultPackageBuilder {
             "status", "details", "event_uid", "automatic_source_id",
             "source_support_isi_indices", "source_semantic_track",
             "source_event_track_class", "source_label", "source_lock_level",
+            "source_pause_boundary_role",
             "source_state_tonic_subtype", "source_score", "source_priority",
             "source_decision_path",
         ]
@@ -6461,6 +6585,7 @@ private extension STPDResultPackageBuilder {
                     "source_event_track_class": source.eventTrackClass,
                     "source_label": source.label.rawValue,
                     "source_lock_level": source.lockLevel.rawValue,
+                    "source_pause_boundary_role": source.pauseBoundaryRole?.rawValue ?? "",
                     "source_state_tonic_subtype": source.stateTonicSubtype ?? "",
                     "source_score": STPDCanonicalValue.double(source.score),
                     "source_priority": String(source.priority),
@@ -7995,6 +8120,7 @@ enum STPDResultPackageValidator {
         .ledger("n_spikes"),
         .ledger("anchor_family"),
         .ledger("anchor_lock_level"),
+        .ledger("pause_boundary_role"),
         .features("duration_sec"),
         .features("intra_q10_sec"),
         .features("intra_q40_sec"),
@@ -8068,6 +8194,10 @@ enum STPDResultPackageValidator {
         .decisions("state_tonic_subtype"),
         .features("state_continuity_authority_frozen"),
         .features("state_continuity_merge_terminal"),
+        .features("state_direct_support_spans"),
+        .features("state_interruption_spans"),
+        .features("state_direct_support_isi_count"),
+        .features("state_direct_support_adjacent_pair_count"),
         .decisions("state_high_frequency_subtype"),
         .features("state_train_percentile_median"),
         .features("state_local_percentile_median"),

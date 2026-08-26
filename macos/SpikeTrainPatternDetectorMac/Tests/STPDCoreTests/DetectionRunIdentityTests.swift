@@ -434,8 +434,11 @@ func pipelineAttachesAuthoritativeIdentityWithoutChangingScientificSnapshot() {
     #expect(candidateBehaviorSnapshot(run: first).contains {
         $0.hasPrefix("__dataset__|__dataset__-structural-dataset-seed-profile|")
     })
+    // This digest includes the state-support eligibility, core/deviation counts, burst-packet guard, and
+    // dataset-relative placement audit tokens. They intentionally change candidate evidence, while the public event
+    // and per-ISI label snapshots above remain unchanged.
     #expect(snapshotDigest(candidateBehaviorSnapshot(run: first))
-        == "65ca42dd396ee4cf448e6e2bdc72e1c02d35a1a1d261232433c7aaaef4eb11eb")
+        == "29979752b73a470a89c76978ba60196ea0b23c173e8a3e6784991aba14ae1119")
     #expect(perISILabelSnapshot(run: first, dataset: dataset).count == 9)
     #expect(snapshotDigest(perISILabelSnapshot(run: first, dataset: dataset))
         == "7d3f303548edce0c76c14fc697d14a1acacffec4d0125849469c1931d5a2638b")

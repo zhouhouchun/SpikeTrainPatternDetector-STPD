@@ -115,11 +115,15 @@ public enum ClassicBurstFlankPauseDetector {
         let sourceStrength = sourceIsPossibleBurst
             ? "weak_possible_burst_flank_pause_prior"
             : "classic_burst_flank_pause"
+        let pauseBoundaryRole: PauseBoundaryRole = isStrong
+            ? .canonicalPauseAnchor
+            : .briefStateInterruption
         let priorEvidenceTag = structuralPauseSeedPass
             ? "structural_pause_prior_seed_support_only__below_event_support"
             : "structural_pause_prior_only__below_event_contrast"
         let decisionPath = [
             eventPass ? "classic_burst_flank_pause_event" : "classic_burst_flank_pause_prior",
+            "pause_boundary_role=\(pauseBoundaryRole.rawValue)",
             "role=\(role)",
             "source_burst=\(burst.id)",
             "source_burst_layer=\(burst.candidateLayer)",
@@ -210,7 +214,8 @@ public enum ClassicBurstFlankPauseDetector {
             anchorContrastMinRequired: contrastRequired,
             anchorContrastGeomRequired: burst.anchorContrastGeomRequired,
             refractorySuspectCount: 0,
-            refractorySuspectAction: nil
+            refractorySuspectAction: nil,
+            pauseBoundaryRole: pauseBoundaryRole
         )
     }
 

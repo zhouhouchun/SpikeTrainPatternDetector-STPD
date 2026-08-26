@@ -4,7 +4,10 @@ import Foundation
 ///
 /// Phase 1B rules:
 /// - selected burst events split tonic and HF-tonic;
-/// - selected pause gaps split HFS into independent fragments, so pause-separated
+/// - only selected, high-specificity canonical Pause anchors split a state. A selected
+///   non-canonical Pause is a brief internal gap: it remains auditable but does not cut
+///   Tonic, HF-tonic, or HFS occupancy;
+/// - canonical Pause anchors split HFS into independent fragments, so pause-separated
 ///   packets are not interpreted as one continuous HFS. Selected burst events do
 ///   NOT fragment HFS — a sustained high-frequency state may contain internal
 ///   burst-like packets that are retained as overlays; true burst dominance is
@@ -98,13 +101,13 @@ public enum StateEventCompatibilityResolver {
                 $0.isEligibleForAutoSelection &&
                 $0.finalLabel.isBurstEventFamily
         }
-        let pauseGaps = selectedGaps.filter {
+        let canonicalPauseBoundaries = selectedGaps.filter {
             $0.trainID == train.id &&
                 $0.selectedForAuto &&
                 $0.isEligibleForAutoSelection &&
-                $0.finalLabel == .pause
+                isCanonicalPauseBoundary($0)
         }
-        guard !burstEvents.isEmpty || !pauseGaps.isEmpty else {
+        guard !burstEvents.isEmpty || !canonicalPauseBoundaries.isEmpty else {
             return StateEventCompatibilityResolution(
                 fragments: [],
                 consumedStateCandidateIdentities: [],
@@ -139,7 +142,7 @@ public enum StateEventCompatibilityResolver {
                 let clippedCuts = cuttingCandidates(
                     for: parent,
                     selectedEvents: burstEvents,
-                    selectedGaps: pauseGaps
+                    selectedGaps: canonicalPauseBoundaries
                 ).compactMap { cut -> CutInterval? in
                     let lower = max(
                         stateRange.lowerBound,
@@ -223,11 +226,13 @@ public enum StateEventCompatibilityResolver {
     ) -> [ClassicAnchorCandidate] {
         switch state.finalLabel {
         case .tonic, .highFrequencyTonic:
-            return selectedEvents
+            // Burst interrupts tonic occupancy. `selectedGaps` has already been narrowed to
+            // canonical Pause anchors; mini pauses remain internal state gaps.
+            return selectedEvents + selectedGaps
 
         case .highFrequencySpiking:
-            // Only selected pause/gap evidence splits HFS, because multiple
-            // pause-separated packets should not become one continuous HFS.
+            // Only canonical Pause anchors split HFS. A mini pause is a bounded
+            // interruption inside the same sustained state envelope.
             // Selected burst events no longer fragment HFS: a sustained
             // high-frequency state may contain internal burst-like packets, which
             // are retained as overlays. Whether those packets are mere internal
@@ -240,6 +245,16 @@ public enum StateEventCompatibilityResolver {
         default:
             return []
         }
+    }
+
+    /// Pause confidence and state-boundary semantics are intentionally independent.
+    /// Only the explicit semantic role may authorize a hard split; labels, IDs,
+    /// lock level, and absolute ISI magnitude cannot silently manufacture one.
+    private static func isCanonicalPauseBoundary(
+        _ candidate: ClassicAnchorCandidate
+    ) -> Bool {
+        candidate.finalLabel == .pause &&
+            candidate.pauseBoundaryRole == .canonicalPauseAnchor
     }
 
     private static func sourceFrontier(

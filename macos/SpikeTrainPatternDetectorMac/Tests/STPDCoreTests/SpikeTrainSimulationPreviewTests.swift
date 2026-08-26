@@ -111,18 +111,21 @@ private func isis(_ train: SpikeTrain) -> [Double] { train.isiSec.compactMap { $
 }
 
 @Test func preview_stricterTonicCVGateFromTuningFlipsVerdict() throws {
-    // A rung that PASSES under the default tonic CV gate (0.30) FAILS under a stricter gate (0.15) — proving the verdict
-    // reflects the SUPPLIED state-pattern tuning, not a fixed default. Generation is gate-independent, so the trains
-    // (and their CVs) are identical across tunings; only the evaluation differs.
+    // Tighten the CV gate below a rung that the complete current detector actually accepts as clean tonic. This keeps
+    // the fixture valid when other independently justified state-support checks become stricter: the test still proves
+    // that the supplied gate, rather than a fixed default, controls the verdict.
     let defaultRows = SpikeTrainSimulationPreview.generate(config: .init())
+    let acceptedIndex = try #require(defaultRows.firstIndex {
+        $0.reason == .passes && ($0.cv ?? 0) > 0
+    })
+    let acceptedCV = try #require(defaultRows[acceptedIndex].cv)
+    let strictCVMax = acceptedCV * 0.5
     let strictRows = SpikeTrainSimulationPreview.generate(
-        config: .init(stateTuning: StatePatternDetectorTuning(tonicCVMax: 0.15)))
+        config: .init(stateTuning: StatePatternDetectorTuning(tonicCVMax: strictCVMax)))
     #expect(defaultRows.map(\.cv) == strictRows.map(\.cv))            // same generated trains
-    let idx = try #require(defaultRows.firstIndex { ($0.cv ?? 0) > 0.15 && ($0.cv ?? 0) <= 0.30 })
-    #expect(defaultRows[idx].passesTonicRegularityGates)             // passes the 0.30 default gate
-    #expect(defaultRows[idx].reason == .passes)
-    #expect(!strictRows[idx].passesTonicRegularityGates)            // fails the 0.15 stricter gate
-    #expect(strictRows[idx].reason == .cvTooHigh)                   // CV is the first failing gate
+    #expect(defaultRows[acceptedIndex].passesTonicRegularityGates)
+    #expect(!strictRows[acceptedIndex].passesTonicRegularityGates)
+    #expect(strictRows[acceptedIndex].reason == .cvTooHigh)          // CV is the first failing gate
 }
 
 @Test func preview_stricterMinSpikesGateFromTuningCanFailLowRung() {
@@ -143,8 +146,11 @@ private func isis(_ train: SpikeTrain) -> [Double] { train.isiSec.compactMap { $
 }
 
 @Test func compare_stricterCVGateFlipsAtLeastOneRung() throws {
+    let acceptedCV = try #require(
+        SpikeTrainSimulationPreview.generate().first { $0.reason == .passes && ($0.cv ?? 0) > 0 }?.cv
+    )
     let rows = SpikeTrainSimulationPreview.compare(
-        config: .init(stateTuning: StatePatternDetectorTuning(tonicCVMax: 0.15)))
+        config: .init(stateTuning: StatePatternDetectorTuning(tonicCVMax: acceptedCV * 0.5)))
     #expect(rows.contains { $0.changed })
     // The flipped rung passed under defaults but fails the stricter current CV gate.
     let flipped = try #require(rows.first { $0.changed && $0.default.reason == .passes })
