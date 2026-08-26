@@ -198,9 +198,29 @@ func selectedTrackCSVExportCarriesIrregularTonicSubtypeForSelectedStateRows() th
     for value in isiMs { ts.append((ts.last ?? 0) + value / 1000) }
     let train = SpikeTrain(name: "irregular_csv_tonic", timestampsSec: ts)
     let dataset = SpikeDataset(name: "irregular tonic csv export", sourceDescription: "unit-test", trains: [train])
-    let run = ClassicAnchorDetectionPipeline.run(
-        dataset: dataset,
-        bandSettings: TrainAdaptiveBandSettings(minValidISISec: 0.001, histogramBinWidthSec: 0.005)
+    // Keep this an exporter-contract test rather than coupling it to the production detector's
+    // current HFS-vs-irregular-Tonic arbitration. Generate the real irregular-Tonic candidate,
+    // then place that one state alone through the ordinary state-track arbitrator.
+    let irregularCandidate = try #require(StatePatternDetector.detect(train: train).candidates.first {
+        $0.finalLabel == .tonic && $0.stateTonicSubtype == "irregular"
+    })
+    let selectedCandidates = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+        [irregularCandidate]
+    )
+    let run = ClassicAnchorDetectionRun(
+        bandSettings: TrainAdaptiveBandSettings(
+            minValidISISec: 0.001,
+            histogramBinWidthSec: 0.005
+        ),
+        qualitySettings: SpikeQualitySettings(),
+        resolutions: [],
+        results: [
+            ClassicAnchorDetectionResult(
+                trainID: train.id,
+                trainName: train.name,
+                candidates: selectedCandidates
+            )
+        ]
     )
     let exportedAt = try #require(ISO8601DateFormatter().date(from: "2026-06-17T00:00:00Z"))
 

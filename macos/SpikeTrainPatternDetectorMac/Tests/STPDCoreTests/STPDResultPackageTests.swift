@@ -9435,25 +9435,25 @@ private func dataQualityQCTampered(
 
 @Test func v4PreservesUnaffectedHistoricalTablesAndAddsManualAuthorityColumns() throws {
     // v4 intentionally extends Manual_annotations with authority_source + import_approval_id and
-    // adds the approval ledger. Public authority-bearing candidate identity, geometry, final events, and
-    // per-ISI labels remain byte-identical. Four all-candidate diagnostic tables intentionally change when
-    // detector audit evidence evolves: ledger/features bind the diagnostic candidate evidence, while
-    // decisions/audit carry its rejection path. Their explicit digests freeze the state-support audit and
-    // the explicit rejection of a non-classic Tonic magnitude route rather than disguising either change.
-    // Candidate-linked hashes include package-time completion of missing ordered-span CV2 before
-    // deterministic candidate UID derivation; detector selection and geometry remain unchanged.
+    // adds the approval ledger. The explicit digests below freeze the complete current projection.
+    // Candidate-linked tables intentionally changed with the approved Pause-boundary and direct-state-
+    // support contracts: one canonical Pause now splits the fixture's Tonic state into two independently
+    // supported candidates, while brief Burst-flank interruptions remain noncanonical gap evidence. State metrics
+    // now exclude only each frozen Burst core (not its wider envelope) and record that authority explicitly.
+    // Those geometry, metric, selection, audit, and UID changes necessarily propagate to final event/ISI tables.
+    // Parameters, QC, manual authority, task events, and HFS audit tables remain byte-identical.
     let historicalHashes: [STPDResultTable: String] = [
         .parametersReport: "1fdef9b34fdfde5ca551aedb9a6216b94a76b3ff9e5a4202a59675d195cfa53e",
         .resolvedParameters: "41a6793b2d12200b6dda7bab78650b9d49ae0b2155a78097774f4ddb648c3fe9",
-        .candidateLedger: "61b3aced54c241855e3c63662ebb2f8283bfe41ee176e1708728d05147448a09",
-        .candidateFeatures: "68df6a95a9f1791691e4be5bd9d8c291c0935928daf889508d5394a3049fcf7c",
-        .finalDecisions: "e6e5ac279abf45b813050729c0f185f9ce99f80d7206a053abedf23ecb25a4ea",
-        .candidateLedgerDiagnostic: "1ce33c7a1bf520ae0549516dd544110f3a1b1ea67c4d4640d65ab5380494336e",
-        .candidateFeaturesDiagnostic: "adb56586736f5df4baf352909396a5fcdc68469a7f94429cdb21b390fbab9bc3",
-        .finalDecisionsDiagnostic: "16ba490112d65c5d377dc7231851b50715d89c4cd6741cd2aab3740ad59bbbad",
-        .eventsFinal: "9059e01753c067b86c0966e6d2837b48f245839b381e18a55e8b4f4e68e30b30",
-        .isiLabelsFinal: "378ac399df11d2d6b1370ad17ee846351515c74ce41a9234a540463eb60fc2a6",
-        .candidateDiagnosticAudit: "ce7a0cc578d3bee49157646546816c2964ad371bb4385d0dba32d91aa8217e73",
+        .candidateLedger: "376f68c2c829bc20e5040c6f719c9e86737544d74afb6a46364763fe0d2761fb",
+        .candidateFeatures: "f3d6e4e5cc96e2b5aabba385a332d621dbf87ee15305e83a0bceefb3e0c8198d",
+        .finalDecisions: "602c999dc44584e6d933c8936c88678107c790952eb17c41b0409263f5dc926e",
+        .candidateLedgerDiagnostic: "ea9c6c829b7e525a62d79746a1423b48a15c42d787c68aead7972c1f6b864c98",
+        .candidateFeaturesDiagnostic: "93abda20c59cb5d5b447cd3330c38f24fa94ecfe01d36d4c460f202c0e313160",
+        .finalDecisionsDiagnostic: "146f1267b6ee3ef276f3dc6e85658a5ed1b94fa0fd9f6b7179d1eb29e1df3dde",
+        .eventsFinal: "ecc8a5eabba67a957871dc98f1fb7c60940f0eb251acaf15f194b13b4634aad9",
+        .isiLabelsFinal: "94f6a87817741c46de9e54def97dfa2a4c626ea5515db31d0a6c250eaa85f2e9",
+        .candidateDiagnosticAudit: "e992e16361acc2b74e58b32f28141423238fe63d5b60448106dcca8df1bbeb92",
         .resultConsistencyCheck: "8cc44940f534e9180783d91464ef303b0a98b704f91114d44b954824621a3dba",
         .manualAnnotations: "7f9599665876bcfbb2b0b65ca0e9a6192b8d2631f087375305cee89edb104420",
         .reviewStatus: "c2b068df2ad0734f1363868ba3c74450f97cd491069d2eb291b05cb0353f37fa",
