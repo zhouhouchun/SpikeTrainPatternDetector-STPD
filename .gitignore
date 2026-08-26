@@ -25,6 +25,10 @@ src/symbols.rds
 dist/
 macos/SpikeTrainPatternDetectorMac/.build/
 
+# Generated local reports, renders, and scratch work
+/output/
+/tmp/
+
 # Python/render intermediates
 __pycache__/
 *.pyc
