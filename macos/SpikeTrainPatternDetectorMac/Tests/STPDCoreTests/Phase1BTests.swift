@@ -904,7 +904,7 @@ final class Phase1BTests: XCTestCase {
         q50: Double = 0.01,
         pauseBoundaryRole: PauseBoundaryRole? = nil
     ) -> ClassicAnchorCandidate {
-        ClassicAnchorCandidate(
+        var candidate = ClassicAnchorCandidate(
             id: id,
             trainID: "train-1",
             trainName: "train-1",
@@ -952,5 +952,10 @@ final class Phase1BTests: XCTestCase {
             refractorySuspectAction: nil,
             pauseBoundaryRole: pauseBoundaryRole
         )
+        if label == .burst {
+            candidate.burstSeedRunStartISI = start
+            candidate.burstSeedRunEndISI = end
+        }
+        return candidate
     }
 }

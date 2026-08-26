@@ -7,6 +7,10 @@ public struct PauseDetectorSettings: Hashable, Sendable {
     public var strongThresholdSec: Double
     public var adaptiveLowerSec: Double?
     public var adaptiveUpperSec: Double?
+    /// User-confirmed absolute Pause floor. Unlike the adaptive lower bound, this also constrains
+    /// contextual/inter-burst Pause evidence that is intentionally allowed below the ordinary
+    /// train-adaptive Pause threshold.
+    public var manualHardLowerSec: Double?
     public var alpha: Double
     public var beta: Double
     public var contextRelax: Double
@@ -35,6 +39,7 @@ public struct PauseDetectorSettings: Hashable, Sendable {
         strongThresholdSec: Double = 0.150,
         adaptiveLowerSec: Double? = nil,
         adaptiveUpperSec: Double? = nil,
+        manualHardLowerSec: Double? = nil,
         alpha: Double = 2.2,
         beta: Double = 0.8,
         contextRelax: Double = 0.9,
@@ -62,6 +67,7 @@ public struct PauseDetectorSettings: Hashable, Sendable {
         self.strongThresholdSec = strongThresholdSec.isFinite && strongThresholdSec > 0 ? strongThresholdSec : 0.150
         self.adaptiveLowerSec = adaptiveLowerSec.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         self.adaptiveUpperSec = adaptiveUpperSec.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        self.manualHardLowerSec = manualHardLowerSec.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
         self.alpha = alpha.isFinite && alpha > 0 ? alpha : 2.2
         self.beta = beta.isFinite && beta > 0 ? beta : 0.8
         self.contextRelax = contextRelax.isFinite && contextRelax > 0 ? contextRelax : 0.9

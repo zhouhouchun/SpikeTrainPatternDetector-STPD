@@ -5,11 +5,13 @@ import Foundation
 /// The order is intentional:
 /// 1. select events and initial gaps;
 /// 2. complete the monotonic pause floor;
-/// 3. reselect authoritative event/gap tracks independently of state;
-/// 4. split states at selected gap/event boundaries and consume spanning parents;
-/// 5. resolve HFS packet dominance from selected canonical events;
-/// 6. merge caller-authorized irregular-tonic fragments with full-span revalidation;
-/// 7. perform final four-track arbitration.
+/// 3. freeze Burst topology and adjudicate contextual/inter-burst gaps;
+/// 4. reselect authoritative event/gap tracks independently of state;
+/// 5. split states at selected gap/event boundaries and consume spanning parents;
+/// 6. resolve HFS packet dominance from selected canonical events;
+/// 7. enforce Tonic-family/HFS direct-support authority after removing frozen interruptions;
+/// 8. merge caller-authorized irregular-tonic fragments with full-span revalidation;
+/// 9. re-project support on generated envelopes and perform final four-track arbitration.
 ///
 /// State splitting deliberately precedes event-derived HFS rejection. Otherwise
 /// an HFS parent that spans a selected pause could be rejected as a whole before
@@ -105,13 +107,32 @@ public enum MultiTrackPhase1BResolver {
         // particular, a selected canonical Pause cannot first be deselected merely
         // because an unsplit state parent overlaps it. Brief interruptions remain
         // gap evidence without acquiring hard-boundary authority.
-        let eventGapAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
+        // Freeze event topology after Burst local completion and ordinary Pause
+        // completion. Contextual/inter-burst Pause reads this topology once and
+        // cannot feed back into Burst core generation, thresholds, or completion.
+        let preContextEventGapAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
             withCompletedGaps
+        )
+        let frozenBurstEvents = selectedEventCandidates(in: preContextEventGapAuthority)
+        let contextualInterburstGaps = tagPipelineStage(
+            ContextualInterburstPauseDetector.detect(
+                train: train,
+                frozenBurstCandidates: frozenBurstEvents,
+                settings: pauseSettings,
+                existingCandidates: preContextEventGapAuthority
+            ),
+            "\(stagePrefix)_contextual_interburst_pause"
+        )
+        let withContextualGaps = uniqueCandidatesByIdentity(
+            withCompletedGaps + contextualInterburstGaps
+        )
+        let eventGapAuthority = ClassicAnchorCandidateArbitrator.arbitrate(
+            withContextualGaps
         )
         let selectedEvents = selectedEventCandidates(in: eventGapAuthority)
         let selectedGaps = selectedGapCandidates(in: eventGapAuthority)
         let eventGapResolved = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
-            withCompletedGaps
+            withContextualGaps
         )
 
         var effectiveStateSettings = stateSettings
@@ -145,6 +166,13 @@ public enum MultiTrackPhase1BResolver {
             selectedEvents: selectedEvents,
             mode: .multiTrack
         )
+        let supportAuthorizedPool = StateSupportAuthorityResolver.apply(
+            to: protectedPool,
+            train: train,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: effectiveStateSettings
+        )
         // Conservative state-level continuity: merge adjacent irregular-tonic fragments across
         // tiny non-event gaps (revalidated). Runs after event/gap selection so it can refuse
         // canonical Pause anchors and selected events while permitting a bounded brief
@@ -155,12 +183,12 @@ public enum MultiTrackPhase1BResolver {
         // audit-visible but cannot be re-promoted merely because their winning fragments were
         // consumed into one longer candidate.
         let eligibleStateIdentities = Set(
-            protectedPool.lazy.filter {
+            supportAuthorizedPool.lazy.filter {
                 $0.arbitrationTrack == .state && $0.isEligibleForAutoSelection
             }.map(StatePatternDetector.CandidateIdentity.init)
         )
         let continuityArbitrated = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
-            protectedPool
+            supportAuthorizedPool
         )
         let selectedStateIdentities = Set(
             continuityArbitrated.lazy.filter {
@@ -197,7 +225,14 @@ public enum MultiTrackPhase1BResolver {
             authorizedFragmentIDs: authorizedIrregularTonicFragmentIDs
         )
         let mergedPool = uniqueCandidatesByIdentity(mergeResult.candidates)
-        let finalSelectionPool = mergedPool.filter {
+        let finalSupportPool = StateSupportAuthorityResolver.apply(
+            to: mergedPool,
+            train: train,
+            selectedEvents: selectedEvents,
+            selectedGaps: selectedGaps,
+            settings: effectiveStateSettings
+        )
+        let finalSelectionPool = finalSupportPool.filter {
             $0.arbitrationTrack != .state ||
                 $0.selectedForAuto ||
                 mergeResult.generatedCandidateIdentities.contains(
@@ -213,7 +248,7 @@ public enum MultiTrackPhase1BResolver {
         for candidate in finalResolved {
             finalResolvedByIdentity[StatePatternDetector.CandidateIdentity(candidate)] = candidate
         }
-        let finalCandidates = mergedPool.map { candidate in
+        let finalCandidates = finalSupportPool.map { candidate in
             finalResolvedByIdentity[StatePatternDetector.CandidateIdentity(candidate)] ?? candidate
         }
 
@@ -227,7 +262,7 @@ public enum MultiTrackPhase1BResolver {
             train: train,
             preProtectionCandidates: withSplitStates,
             selectedEventsUsedForPacketization: selectedEvents,
-            protectedCandidates: protectedPool,
+            protectedCandidates: supportAuthorizedPool,
             finalCandidates: finalCandidates,
             pipelineStage: stagePrefix,
             settings: effectiveAuditSettings
