@@ -952,6 +952,10 @@ public extension ClassicAnchorCandidate {
         action: String? = nil,
         score: Double? = nil,
         priority: Int? = nil,
+        stateSupportCV: Double? = nil,
+        stateSupportCV2: Double? = nil,
+        stateSupportLV: Double? = nil,
+        replaceStateSupportMetrics: Bool = false,
         selectedForAuto: Bool = false,
         selectionStatus: String = "not_selected"
     ) -> ClassicAnchorCandidate {
@@ -984,9 +988,9 @@ public extension ClassicAnchorCandidate {
             intraQ95Sec: intraQ95Sec,
             maxIntraISISec: maxIntraISISec,
             meanIntraISISec: meanIntraISISec,
-            cv: cv,
-            cv2: cv2,
-            lv: lv,
+            cv: replaceStateSupportMetrics ? stateSupportCV : cv,
+            cv2: replaceStateSupportMetrics ? stateSupportCV2 : cv2,
+            lv: replaceStateSupportMetrics ? stateSupportLV : lv,
             preGapSec: preGapSec,
             postGapSec: postGapSec,
             preRatioQ90: preRatioQ90,
@@ -1105,6 +1109,7 @@ public extension ClassicAnchorCandidate {
     /// single-edge change does not meaningfully move them, and the canonicalization verdict recomputes its own
     /// q/coverage from the slice). The caller supplies the recomputed metrics (e.g. from `spanMetrics`).
     func withGeometry(
+        idOverride: String? = nil,
         startISIIndex: Int, endISIIndex: Int, startSpikeIndex: Int, endSpikeIndex: Int,
         nISI: Int, nValidISI: Int, nSpikes: Int, durationSec: Double?,
         intraQ10Sec: Double?, intraQ40Sec: Double?, intraQ50Sec: Double?, intraQ90Sec: Double?, intraQ95Sec: Double?,
@@ -1114,7 +1119,7 @@ public extension ClassicAnchorCandidate {
         decisionPath: String
     ) -> ClassicAnchorCandidate {
         ClassicAnchorCandidate(
-            id: id,
+            id: idOverride ?? id,
             trainID: trainID,
             trainName: trainName,
             candidateLayer: candidateLayer,

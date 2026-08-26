@@ -292,7 +292,7 @@ func toleratedInternalTailRescueRequiresStrongTwoSidedBoundaries() throws {
 }
 
 @Test
-func sampleClassicBurstFlanksBecomeStructuralPauseEvidenceBelowClassicPauseFloor() throws {
+func sampleClassicBurstFlanksBecomeBriefStateInterruptionsBelowClassicPauseFloor() throws {
     let sampleURL = repositoryRoot()
         .appendingPathComponent("inst/extdata/Grechishnikova_STN_2017_subset.csv")
     let csv = try String(contentsOf: sampleURL, encoding: .utf8)
@@ -324,7 +324,10 @@ func sampleClassicBurstFlanksBecomeStructuralPauseEvidenceBelowClassicPauseFloor
             candidate.candidateLayer == "classic_burst_flank_pause" &&
             (candidate.startISIIndex == 83 || candidate.startISIIndex == 92)
     }
-    let allFlankPausesRemainAuditVisible = flankPauseEvidence.allSatisfy { !$0.selectedForAuto }
+    let allFlankPausesSelectedAsBriefGaps = flankPauseEvidence.allSatisfy {
+        $0.selectedForAuto &&
+            $0.selectionStatus == "selected_by_gap_track_structural_flank_pause"
+    }
     let allFlankPausesGap = flankPauseEvidence.allSatisfy { $0.auditRecommendedTrack == .gap }
     let allFlankPausesAreBriefInterruptions = flankPauseEvidence.allSatisfy {
         $0.pauseBoundaryRole == .briefStateInterruption
@@ -335,9 +338,10 @@ func sampleClassicBurstFlanksBecomeStructuralPauseEvidenceBelowClassicPauseFloor
 
     #expect(coveredBurstISI == Set(84...91))
     #expect(Set(flankPauseEvidence.map(\.startISIIndex)) == [83, 92])
-    #expect(allFlankPausesRemainAuditVisible)
+    #expect(allFlankPausesSelectedAsBriefGaps)
     #expect(allFlankPausesGap)
     #expect(allFlankPausesAreBriefInterruptions)
+    #expect(flankPauseEvidence.allSatisfy { $0.pauseBoundaryRole != .canonicalPauseAnchor })
     #expect(allFlankPausesBelowClassicPauseFloor)
 }
 

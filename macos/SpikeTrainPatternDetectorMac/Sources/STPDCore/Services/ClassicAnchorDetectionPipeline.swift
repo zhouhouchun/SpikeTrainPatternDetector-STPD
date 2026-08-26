@@ -1197,7 +1197,7 @@ public enum ClassicAnchorDetectionPipeline {
                         stateSettings: finalStateSettings,
                         stagePrefix: "dataset_seed_aware"
                     )
-                    let seedAwareCandidates = taggingManualThresholdProvenance(
+                    let baseSeedAwareCandidates = taggingManualThresholdProvenance(
                         tagPipelineStage(
                             applyingAdaptiveV2BurstCanonicalization(
                                 demotingTonicRateRegularBurstsAndRearbitrating(
@@ -1232,6 +1232,18 @@ public enum ClassicAnchorDetectionPipeline {
                         scope: manualThresholdScope,
                         trainID: train.id
                     )
+                    let seedAwareCandidates = reconcilingPositiveTinyISIHypotheses(
+                        train: train,
+                        candidates: baseSeedAwareCandidates,
+                        resolution: resolution,
+                        detectorSettings: finalDetectorSettings,
+                        pauseSettings: finalPauseSettings,
+                        stateSettings: finalStateSettings,
+                        resolvedManualThresholds: resolvedFinalSettings.resolved,
+                        manualThresholdScope: manualThresholdScope,
+                        useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+                        minimumValidISISec: bandSettings.minValidISISec
+                    )
                     let profileCandidate = ClassicAnchorProfileAuditor.seedBandProfileCandidate(
                         train: train,
                         resolution: resolution
@@ -1250,7 +1262,21 @@ public enum ClassicAnchorDetectionPipeline {
                         trainID: result.trainID,
                         trainName: result.trainName,
                         candidates: [profileCandidate, eventCoreProfileCandidate, structuralSeedProfileCandidate] + seedAwareCandidates,
-                        hfsBurstArbitrationAuditRows: finalPhase1BResolution.hfsBurstArbitrationAuditRows
+                        hfsBurstArbitrationAuditRows:
+                            PositiveTinyISIHypothesisResolver.reconcilingHFSBurstAuditRows(
+                                finalPhase1BResolution.hfsBurstArbitrationAuditRows,
+                                train: train,
+                                finalCandidates: seedAwareCandidates,
+                                artifactThresholdSec: finalDetectorSettings.minValidISISec,
+                                settings: HFSBurstArbitrationAuditSettings().fillingMissingFallbacks(
+                                    pauseLikeThresholdSec:
+                                        finalStateSettings.highFrequencySpikingPauseBreakSec ??
+                                        finalStateSettings.highFrequencySpikingToleratedGapSec,
+                                    burstSeedUpperSec: finalStateSettings.burstSeedUpperSec,
+                                    burstBridgeUpperSec:
+                                        finalStateSettings.highFrequencySpikingEpochBridgeSec
+                                )
+                            )
                     )
                     performanceRecorder.recordTrainResult(finalResult)
                     let thresholdEvidence = ClassicAnchorResolvedThresholdEvidence(
@@ -1388,6 +1414,921 @@ public enum ClassicAnchorDetectionPipeline {
         }
 
         return order.compactMap { latestByID[$0] }
+    }
+
+    private struct MappedPositiveTinyISICandidate {
+        let scenario: PositiveTinyISIJointHypothesisScenario
+        let candidate: ClassicAnchorCandidate
+        let originalSpan: ClosedRange<Int>
+
+        var signature: String {
+            [
+                candidate.finalLabel.rawValue,
+                String(originalSpan.lowerBound),
+                String(originalSpan.upperBound),
+                candidate.stateTonicSubtype ?? "",
+                candidate.stateHighFrequencySubtype ?? "",
+                candidate.pauseBoundaryRole?.rawValue ?? "",
+                ClassicAnchorDetectionPipeline.positiveTinyMappedBurstCoreGeometry(
+                    scenario: scenario,
+                    candidate: candidate
+                ),
+            ].joined(separator: "|")
+        }
+    }
+
+    /// Resolves an isolated positive sub-floor ISI without deleting an ISI value or guessing which
+    /// boundary spike is wrong. Both exact virtual spike-removal hypotheses are classified under the
+    /// already-frozen train/dataset thresholds. Only label-and-original-geometry consensus is allowed
+    /// to become authoritative; disagreement, unsafe topology, and missing evidence stay audit-only.
+    /// No hypothesis result is fed back into band estimation.
+    private static func reconcilingPositiveTinyISIHypotheses(
+        train: SpikeTrain,
+        candidates: [ClassicAnchorCandidate],
+        resolution: TrainAdaptiveBandResolution,
+        detectorSettings: ClassicAnchorSettings,
+        pauseSettings: PauseDetectorSettings,
+        stateSettings: StatePatternDetectorSettings,
+        resolvedManualThresholds: ResolvedThresholdProfile?,
+        manualThresholdScope: ManualThresholdScope,
+        useAdaptiveV2Canonicalization: Bool,
+        minimumValidISISec: Double
+    ) -> [ClassicAnchorCandidate] {
+        let plans = PositiveTinyISIHypothesisResolver.plans(
+            train: train,
+            artifactThresholdSec: detectorSettings.minValidISISec
+        )
+        guard !plans.isEmpty else { return candidates }
+
+        var pool = candidates
+        let unsafePlans = plans.filter { $0.status != .eligibleForExactHypotheses }
+        guard unsafePlans.isEmpty else {
+            pool = suppressingCandidatesAffectedByPositiveTinyISIReview(
+                pool,
+                train: train,
+                plans: plans,
+                reason: "unsafe_positive_tiny_isi_topology"
+            )
+            pool.append(
+                positiveTinyISIReviewCandidate(
+                    train: train,
+                    plans: plans,
+                    evidence: [],
+                    reason: unsafePlans.compactMap(\.reviewReason).sorted().joined(separator: ",")
+                )
+            )
+            return ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+                uniqueCandidatesByID(pool)
+            )
+        }
+
+        let scenarios = PositiveTinyISIHypothesisResolver.jointScenarios(
+            train: train,
+            plans: plans
+        )
+        let expectedScenarioCount = 1 << plans.count
+        guard scenarios.count == expectedScenarioCount else {
+            pool = suppressingCandidatesAffectedByPositiveTinyISIReview(
+                pool,
+                train: train,
+                plans: plans,
+                reason: "joint_hypothesis_construction_failed"
+            )
+            pool.append(
+                positiveTinyISIReviewCandidate(
+                    train: train,
+                    plans: plans,
+                    evidence: [],
+                    reason: "joint_hypothesis_construction_failed"
+                )
+            )
+            return ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+                uniqueCandidatesByID(pool)
+            )
+        }
+
+        let evidenceByScenario = scenarios.map { scenario in
+            let evidence: [MappedPositiveTinyISICandidate] = {
+                let hypothesisCandidates = positiveTinyISIHypothesisCandidates(
+                    train: scenario.virtualTrain,
+                    resolution: resolution,
+                    detectorSettings: detectorSettings,
+                    pauseSettings: pauseSettings,
+                    stateSettings: stateSettings,
+                    resolvedManualThresholds: resolvedManualThresholds,
+                    manualThresholdScope: manualThresholdScope,
+                    useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+                    minimumValidISISec: minimumValidISISec
+                )
+                return hypothesisCandidates.compactMap { candidate in
+                    guard candidate.isEligibleForAutoSelection,
+                          scenario.mergedVirtualISIIndicesByOriginalISIIndex.values.contains(where: {
+                            candidate.startISIIndex <= $0 && $0 <= candidate.endISIIndex
+                          }),
+                          let span = scenario.originalISISpan(
+                            forVirtualStart: candidate.startISIIndex,
+                            end: candidate.endISIIndex
+                          ),
+                          positiveTinyMappedBurstCoreGeometry(
+                            scenario: scenario,
+                            candidate: candidate
+                          ) != "invalid" else {
+                        return nil
+                    }
+                    return MappedPositiveTinyISICandidate(
+                        scenario: scenario,
+                        candidate: candidate,
+                        originalSpan: span
+                    )
+                }
+            }()
+            return (scenario: scenario, evidence: evidence)
+        }
+        let allEvidence = evidenceByScenario.flatMap(\.evidence)
+        let signatures = Set(allEvidence.map(\.signature))
+        let agreements = signatures.compactMap { signature -> [MappedPositiveTinyISICandidate]? in
+            let selected = evidenceByScenario.compactMap { entry in
+                entry.evidence
+                    .filter { $0.signature == signature }
+                    .sorted {
+                        if $0.candidate.score != $1.candidate.score {
+                            return $0.candidate.score > $1.candidate.score
+                        }
+                        return $0.candidate.id < $1.candidate.id
+                    }
+                    .first
+            }
+            return selected.count == scenarios.count ? selected : nil
+        }
+        .sorted {
+            let lhs = $0.reduce(0) { $0 + $1.candidate.score }
+            let rhs = $1.reduce(0) { $0 + $1.candidate.score }
+            if lhs != rhs { return lhs > rhs }
+            return ($0.first?.signature ?? "") < ($1.first?.signature ?? "")
+        }
+
+        guard !agreements.isEmpty else {
+            pool = suppressingCandidatesAffectedByPositiveTinyISIReview(
+                pool,
+                train: train,
+                plans: plans,
+                reason: "hypothesis_label_or_geometry_disagreement"
+            )
+            pool.append(
+                positiveTinyISIReviewCandidate(
+                    train: train,
+                    plans: plans,
+                    evidence: allEvidence,
+                    reason: "hypothesis_label_or_geometry_disagreement"
+                )
+            )
+            return ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+                uniqueCandidatesByID(pool)
+            )
+        }
+
+        // Materialize every joint-hypothesis agreement, then let the ordinary semantic-track
+        // arbitrator choose among overlapping alternatives. This preserves independent local
+        // consensuses and State/Event overlays instead of forcing one global winning signature.
+        let consensuses = agreements.compactMap { agreement -> ClassicAnchorCandidate? in
+            guard let span = agreement.first?.originalSpan else { return nil }
+            let relevantPlans = plans.filter { span.contains($0.originalISIIndex) }
+            guard !relevantPlans.isEmpty else { return nil }
+            return positiveTinyISIConsensusCandidate(
+                train: train,
+                plans: relevantPlans,
+                evidence: agreement,
+                stateSettings: stateSettings,
+                minimumValidISISec: minimumValidISISec
+            )
+        }
+        guard !consensuses.isEmpty else {
+            pool = suppressingCandidatesAffectedByPositiveTinyISIReview(
+                pool,
+                train: train,
+                plans: plans,
+                reason: "hypothesis_consensus_materialization_failed"
+            )
+            pool.append(
+                positiveTinyISIReviewCandidate(
+                    train: train,
+                    plans: plans,
+                    evidence: allEvidence,
+                    reason: "hypothesis_consensus_materialization_failed"
+                )
+            )
+            return ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+                uniqueCandidatesByID(pool)
+            )
+        }
+
+        // Supersede only the pre-hypothesis candidates. Consensus alternatives must remain
+        // mutually independent so that the ordinary track arbitrator, not append order, chooses
+        // the best-scoring alternative. In particular, a later lower-scoring consensus must not
+        // demote an earlier higher-scoring consensus merely because their spans overlap.
+        pool = pool.map { candidate in
+            let supersedingConsensusIDs = consensuses.compactMap { consensus -> String? in
+                let span = ClosedRange(uncheckedBounds: (
+                    lower: min(consensus.startISIIndex, consensus.endISIIndex),
+                    upper: max(consensus.startISIIndex, consensus.endISIIndex)
+                ))
+                guard candidate.isEligibleForAutoSelection,
+                      candidate.arbitrationTrack == consensus.arbitrationTrack,
+                      candidate.startISIIndex <= span.upperBound,
+                      candidate.endISIIndex >= span.lowerBound else {
+                    return nil
+                }
+                return consensus.id
+            }
+            guard !supersedingConsensusIDs.isEmpty else { return candidate }
+            return candidate.withDiagnosticOverride(
+                gateStatus: "superseded_by_positive_tiny_isi_consensus",
+                decisionPath: appendDecisionTokens(
+                    candidate.decisionPath,
+                    supersedingConsensusIDs.sorted().map {
+                        "superseded_by_positive_tiny_isi_consensus=\($0)"
+                    }
+                ),
+                action: "audit_only",
+                selectedForAuto: false,
+                selectionStatus: "superseded_by_positive_tiny_isi_consensus"
+            )
+        }
+        pool.append(contentsOf: consensuses)
+
+        var reconciled = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+            uniqueCandidatesByID(pool)
+        )
+        // A merely materialized alternative is not enough: every automatically resolved ambiguity
+        // must be covered by a consensus that survived ordinary semantic-track arbitration.
+        let selectedConsensuses = reconciled.filter {
+            $0.selectedForAuto &&
+                $0.isEligibleForAutoSelection &&
+                $0.gateStatus == "positive_tiny_isi_hypothesis_consensus"
+        }
+        let coveredAmbiguityIndices = Set(selectedConsensuses.flatMap { consensus in
+            plans.compactMap { plan in
+                min(consensus.startISIIndex, consensus.endISIIndex) <= plan.originalISIIndex &&
+                    plan.originalISIIndex <= max(consensus.startISIIndex, consensus.endISIIndex)
+                    ? plan.originalISIIndex
+                    : nil
+            }
+        })
+        let unresolvedPlans = plans.filter { !coveredAmbiguityIndices.contains($0.originalISIIndex) }
+        if !unresolvedPlans.isEmpty {
+            let unresolvedSet = Set(unresolvedPlans.map(\.originalISIIndex))
+            reconciled = suppressingCandidatesAffectedByPositiveTinyISIReview(
+                reconciled,
+                train: train,
+                plans: unresolvedPlans,
+                reason: "hypothesis_consensus_not_selected"
+            )
+            reconciled.append(
+                positiveTinyISIReviewCandidate(
+                    train: train,
+                    plans: unresolvedPlans,
+                    evidence: allEvidence.filter { evidence in
+                        unresolvedSet.contains(where: { evidence.originalSpan.contains($0) })
+                    },
+                    reason: "hypothesis_label_or_geometry_disagreement"
+                )
+            )
+            return ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(
+                uniqueCandidatesByID(reconciled)
+            )
+        }
+        return reconciled
+    }
+
+    /// A review record must also remove automatic authority from every pre-hypothesis candidate
+    /// whose support can change under the unresolved spike-removal choice. For ambiguity `i`,
+    /// H_earlier can merge original ISIs `i-1...i` and H_later can merge `i...i+1`; therefore the
+    /// conservative affected footprint is `i-1...i+1`, clipped to the train. Consensus candidates
+    /// are excluded because they have already been evaluated under every safe joint hypothesis.
+    private static func suppressingCandidatesAffectedByPositiveTinyISIReview(
+        _ candidates: [ClassicAnchorCandidate],
+        train: SpikeTrain,
+        plans: [PositiveTinyISIHypothesisPlan],
+        reason: String
+    ) -> [ClassicAnchorCandidate] {
+        let lastISIIndex = max(1, train.spikeCount - 1)
+        let footprints = plans.map { plan in
+            max(1, plan.originalISIIndex - 1)...min(lastISIIndex, plan.originalISIIndex + 1)
+        }
+        let reviewIndices = plans.map(\.originalISIIndex).sorted()
+        return candidates.map { candidate in
+            let lower = min(candidate.startISIIndex, candidate.endISIIndex)
+            let upper = max(candidate.startISIIndex, candidate.endISIIndex)
+            let isAffected = footprints.contains { footprint in
+                max(lower, footprint.lowerBound) <= min(upper, footprint.upperBound)
+            }
+            guard candidate.trainID == train.id,
+                  candidate.isEligibleForAutoSelection,
+                  candidate.arbitrationTrack != nil,
+                  candidate.gateStatus != "positive_tiny_isi_hypothesis_consensus",
+                  isAffected else {
+                return candidate
+            }
+            return candidate.withDiagnosticOverride(
+                gateStatus: "positive_tiny_isi_hypothesis_review_required",
+                decisionPath: appendDecisionTokens(
+                    candidate.decisionPath,
+                    [
+                        "positive_tiny_isi_authority_blocked_by_review=true",
+                        "positive_tiny_isi_review_indices=\(reviewIndices.map(String.init).joined(separator: ","))",
+                        "positive_tiny_isi_review_reason=\(reason)",
+                    ]
+                ),
+                action: "audit_only",
+                selectedForAuto: false,
+                selectionStatus: "not_selected__positive_tiny_isi_review_required"
+            )
+        }
+    }
+
+    /// Runs only the train-local final candidate layer with the already-frozen resolution/settings.
+    /// This avoids a dataset rerun, re-estimation loop, or combinatorial search while keeping each
+    /// H_earlier/H_later classification on the same scientific thresholds as the authoritative run.
+    private static func positiveTinyISIHypothesisCandidates(
+        train: SpikeTrain,
+        resolution: TrainAdaptiveBandResolution,
+        detectorSettings: ClassicAnchorSettings,
+        pauseSettings: PauseDetectorSettings,
+        stateSettings: StatePatternDetectorSettings,
+        resolvedManualThresholds: ResolvedThresholdProfile?,
+        manualThresholdScope: ManualThresholdScope,
+        useAdaptiveV2Canonicalization: Bool,
+        minimumValidISISec: Double
+    ) -> [ClassicAnchorCandidate] {
+        let burstResult = ClassicAnchorDetector.detect(train: train, settings: detectorSettings)
+        let burstSeedCandidates = tagPipelineStage(
+            BurstSeedRunAssembler.detect(
+                train: train,
+                candidates: burstResult.candidates,
+                resolution: resolution,
+                settings: detectorSettings
+            ),
+            "positive_tiny_isi_hypothesis_burst_seed_run"
+        )
+        let pauseResult = PauseDetector.detect(train: train, settings: pauseSettings)
+        let stateResult = StatePatternDetector.detect(train: train, settings: stateSettings)
+        let input = uniqueCandidatesByID(
+            tagPipelineStage(burstResult.candidates, "positive_tiny_isi_hypothesis_burst") +
+                burstSeedCandidates +
+                tagPipelineStage(pauseResult.candidates, "positive_tiny_isi_hypothesis_pause") +
+                tagPipelineStage(stateResult.candidates, "positive_tiny_isi_hypothesis_state")
+        )
+        let preliminary = ClassicAnchorCandidateArbitrator.arbitrateBySemanticTrack(input)
+        let flankPauses = tagPipelineStage(
+            ClassicBurstFlankPauseDetector.detect(
+                train: train,
+                candidates: preliminary,
+                settings: pauseSettings,
+                existingCandidates: input
+            ),
+            "positive_tiny_isi_hypothesis_flank_pause"
+        )
+        let phase1B = MultiTrackPhase1BResolver.resolveWithAudit(
+            train: train,
+            candidates: input + flankPauses,
+            pauseSettings: pauseSettings,
+            stateSettings: stateSettings,
+            stagePrefix: "positive_tiny_isi_hypothesis"
+        )
+        let finalized = applyingAdaptiveV2BurstCanonicalization(
+            demotingTonicRateRegularBurstsAndRearbitrating(
+                enforcingBurstHardGateAndRearbitrating(
+                    ClassicAnchorDetector.boundaryNormalizedAdaptiveHFBurstPackets(
+                        phase1B.candidates,
+                        train: train,
+                        settings: detectorSettings
+                    ),
+                    settings: detectorSettings
+                ),
+                settings: detectorSettings,
+                manualBurstGateActive: hasUserBurstGate(resolvedManualThresholds)
+            ),
+            enabled: useAdaptiveV2Canonicalization,
+            train: train,
+            classic: detectorSettings,
+            state: stateSettings,
+            pause: pauseSettings,
+            manualBurstGateActive: hasUserBurstGate(resolvedManualThresholds),
+            minValidISISec: minimumValidISISec
+        )
+        return taggingManualThresholdProvenance(
+            tagPipelineStage(finalized, "positive_tiny_isi_hypothesis_final"),
+            resolved: resolvedManualThresholds,
+            scope: manualThresholdScope,
+            trainID: train.id
+        )
+    }
+
+    private static func positiveTinyISIConsensusCandidate(
+        train: SpikeTrain,
+        plans: [PositiveTinyISIHypothesisPlan],
+        evidence: [MappedPositiveTinyISICandidate],
+        stateSettings: StatePatternDetectorSettings,
+        minimumValidISISec: Double
+    ) -> ClassicAnchorCandidate? {
+        guard !evidence.isEmpty else { return nil }
+        let orderedEvidence = evidence.sorted { $0.scenario.key < $1.scenario.key }
+        guard let representative = orderedEvidence.first,
+              let maximumScore = orderedEvidence.map(\.candidate.score).max(),
+              maximumScore.isFinite,
+              let maximumPriority = orderedEvidence.map(\.candidate.priority).max() else {
+            return nil
+        }
+        let source = representative.candidate
+        let span = representative.originalSpan
+        let ambiguityIndices = Set(plans.map(\.originalISIIndex))
+        let nISI = span.upperBound - span.lowerBound + 1
+        let burstCoreGeometryTokenValue = orderedEvidence
+            .map {
+                positiveTinyMappedBurstCoreGeometry(
+                    scenario: $0.scenario,
+                    candidate: $0.candidate
+                )
+            }
+            .joined(separator: "|")
+        var tokens = [
+            "positive_tiny_isi_hypothesis=consensus",
+            "positive_tiny_isi_indices=\(plans.map(\.originalISIIndex).sorted().map(String.init).joined(separator: ","))",
+            "positive_tiny_isi_seconds=\(plans.sorted { $0.originalISIIndex < $1.originalISIIndex }.map { formatHypothesisNumber($0.valueSec) }.joined(separator: ","))",
+            "hypothesis_scenario_count=\(orderedEvidence.count)",
+            "hypothesis_assignments=\(orderedEvidence.map { $0.scenario.key }.joined(separator: ","))",
+            "hypothesis_labels=\(orderedEvidence.map { $0.candidate.finalLabel.rawValue }.joined(separator: "|"))",
+            "hypothesis_original_geometry=\(orderedEvidence.map { "\($0.originalSpan.lowerBound)-\($0.originalSpan.upperBound)" }.joined(separator: "|"))",
+            "hypothesis_burst_core_geometry=\(burstCoreGeometryTokenValue)",
+            metricRangeToken("hypothesis_cv_range", orderedEvidence.map { $0.candidate.cv }),
+            metricRangeToken("hypothesis_cv2_range", orderedEvidence.map { $0.candidate.cv2 }),
+            metricRangeToken("hypothesis_lv_range", orderedEvidence.map { $0.candidate.lv }),
+            "hypothesis_thresholds_frozen=true",
+            "hypothesis_feedback_to_bands=false",
+        ]
+
+        var stateDirectSpans: [ISISpan] = []
+        var stateInterruptionSpans: [ISISpan] = []
+        var stateMetrics: PositiveTinyISIDirectMetrics?
+        if source.arbitrationTrack == .state {
+            let supportSets = orderedEvidence.map { mappedStateDirectSupportIndices($0) }
+            var directIndices = supportSets.dropFirst().reduce(supportSets.first ?? Set<Int>()) {
+                $0.intersection($1)
+            }
+            directIndices.subtract(ambiguityIndices)
+            directIndices = Set(directIndices.filter { index in
+                guard span.contains(index),
+                      train.isiSec.indices.contains(index),
+                      let value = train.isiSec[index] else { return false }
+                return value.isFinite && value >= minimumValidISISec
+            })
+
+            switch source.finalLabel {
+            case .tonic, .highFrequencyTonic:
+                // Each virtual hypothesis has already passed its own final state-support authority,
+                // but their intersection can be smaller after mapping back to untouched raw geometry.
+                // Reclassify that exact original support once and fail closed if it no longer meets
+                // the owner-approved core/deviation or family minimum-count contract.
+                let supportSettings = StateSupportClassifierSettings(
+                    minimumValidISISec: minimumValidISISec
+                )
+                let originalSupport = StateSupportClassifier.analyze(
+                    span.map { index in
+                        StateSupportISIObservation(
+                            sourceIndex: index,
+                            valueSec: directIndices.contains(index) ? train.isiSec[index] : nil
+                        )
+                    },
+                    settings: supportSettings
+                )
+                let excludedCount = nISI - directIndices.count
+                guard originalSupport.isEligibleForAutomaticTonic(
+                    settings: supportSettings,
+                    recognizedInterruptionCount: excludedCount
+                ), positiveTinyOriginalSupportMeetsFamilyMinimum(
+                    label: source.finalLabel,
+                    nSupport: originalSupport.nSupport,
+                    settings: stateSettings
+                ) else {
+                    return nil
+                }
+                directIndices = Set(originalSupport.observations.compactMap { observation in
+                    switch observation.classification {
+                    case .core, .ordinaryDeviation: return observation.sourceIndex
+                    case .invalid, .competingExcursion: return nil
+                    }
+                })
+                tokens += [
+                    "positive_tiny_original_state_support_revalidated=true",
+                    "positive_tiny_original_state_n_support=\(originalSupport.nSupport)",
+                    "positive_tiny_original_state_n_core=\(originalSupport.nCore)",
+                    "positive_tiny_original_state_ordinary_deviations=\(originalSupport.ordinaryDeviationCount)",
+                ]
+
+            case .highFrequencySpiking:
+                let frozenDirectUpper = orderedEvidence.compactMap { mapped -> Double? in
+                    if let value = mapped.candidate.hfSpikingShortUpperSec,
+                       value.isFinite, value > 0 {
+                        return value
+                    }
+                    let fallback = mapped.candidate.anchorBandUpperSec
+                    return fallback.isFinite && fallback > 0 ? fallback : nil
+                }.min()
+                if let frozenDirectUpper {
+                    directIndices = Set(directIndices.filter { index in
+                        guard let value = train.isiSec[index] else { return false }
+                        return value <= frozenDirectUpper + max(1e-12, abs(frozenDirectUpper) * 1e-6)
+                    })
+                }
+                let requiredSpikes = max(
+                    3,
+                    orderedEvidence.compactMap { $0.candidate.hfSpikingMinSpikesRequired }.max()
+                        ?? stateSettings.highFrequencySpikingMinSpikes
+                )
+                let rawRequiredSupport = ceil(
+                    Double(requiredSpikes - 1) * stateSettings.highFrequencySpikingShortFractionMin
+                )
+                let requiredSupport = !rawRequiredSupport.isFinite || rawRequiredSupport >= Double(Int.max)
+                    ? Int.max
+                    : max(1, Int(rawRequiredSupport))
+                let duration = originalDuration(train: train, span: span)
+                let durationPass = duration.map { value in
+                    value >= stateSettings.highFrequencySpikingMinDurationSec -
+                        max(1e-12, abs(stateSettings.highFrequencySpikingMinDurationSec) * 1e-6)
+                } ?? false
+                guard directIndices.count >= requiredSupport,
+                      durationPass else {
+                    return nil
+                }
+                tokens += [
+                    "positive_tiny_original_hfs_support_revalidated=true",
+                    "positive_tiny_original_hfs_direct_support=\(directIndices.count)",
+                    "positive_tiny_original_hfs_direct_support_required=\(requiredSupport)",
+                ]
+
+            default:
+                return nil
+            }
+            stateDirectSpans = contiguousISISpans(indices: directIndices, trainID: train.id)
+            stateInterruptionSpans = contiguousISISpans(
+                indices: Set(span).subtracting(directIndices),
+                trainID: train.id
+            )
+            stateMetrics = positiveTinyISIDirectMetrics(
+                train: train,
+                spans: stateDirectSpans,
+                minimumValidISISec: minimumValidISISec
+            )
+            tokens += [
+                "state_metrics_scope=original_direct_support_after_positive_tiny_isi",
+                "state_direct_support_intersection_across_hypotheses=true",
+                "state_cv2_lv_cross_positive_tiny_isi=false",
+            ]
+        }
+
+        let decisionPath = appendDecisionTokens(source.decisionPath, tokens)
+        let commonDuration = originalDuration(train: train, span: span)
+        let commonCV = commonMetric(orderedEvidence.map { $0.candidate.cv })
+        let commonCV2 = commonMetric(orderedEvidence.map { $0.candidate.cv2 })
+        let commonLV = commonMetric(orderedEvidence.map { $0.candidate.lv })
+        // Every semantic field used by the cross-hypothesis agreement signature must also
+        // participate in the transient consensus ID. Otherwise two valid agreements with the
+        // same label/geometry but different Pause boundary authority could overwrite one another
+        // in `uniqueCandidatesByID` before ordinary arbitration sees them.
+        let subtypeIdentity = [
+            source.stateTonicSubtype,
+            source.stateHighFrequencySubtype,
+            source.pauseBoundaryRole?.rawValue,
+        ]
+            .compactMap { $0 }
+            .joined(separator: "-")
+        let subtypeIDSuffix = subtypeIdentity.isEmpty ? "" : "-\(subtypeIdentity)"
+        let elevatedScore = maximumScore + 1e-9
+        let consensusScore = elevatedScore.isFinite ? elevatedScore : maximumScore
+        var candidate = source.withGeometry(
+            idOverride: "\(train.id)-positive-tiny-consensus-\(plans.map(\.originalISIIndex).sorted().map(String.init).joined(separator: "-"))-\(source.finalLabel.rawValue)-\(span.lowerBound)-\(span.upperBound)\(subtypeIDSuffix)",
+            startISIIndex: span.lowerBound,
+            endISIIndex: span.upperBound,
+            startSpikeIndex: span.lowerBound,
+            endSpikeIndex: span.upperBound + 1,
+            nISI: nISI,
+            nValidISI: source.arbitrationTrack == .state
+                ? stateDirectSpans.reduce(0) { $0 + $1.rawISICount }
+                : orderedEvidence.map { $0.candidate.nValidISI }.min() ?? 0,
+            nSpikes: nISI + 1,
+            durationSec: commonDuration,
+            intraQ10Sec: commonMetric(orderedEvidence.map { $0.candidate.intraQ10Sec }),
+            intraQ40Sec: commonMetric(orderedEvidence.map { $0.candidate.intraQ40Sec }),
+            intraQ50Sec: commonMetric(orderedEvidence.map { $0.candidate.intraQ50Sec }),
+            intraQ90Sec: commonMetric(orderedEvidence.map { $0.candidate.intraQ90Sec }),
+            intraQ95Sec: commonMetric(orderedEvidence.map { $0.candidate.intraQ95Sec }),
+            maxIntraISISec: commonMetric(orderedEvidence.map { $0.candidate.maxIntraISISec }),
+            meanIntraISISec: commonMetric(orderedEvidence.map { $0.candidate.meanIntraISISec }),
+            cv: source.arbitrationTrack == .state ? stateMetrics?.cv : commonCV,
+            lv: source.arbitrationTrack == .state ? stateMetrics?.lv : commonLV,
+            preGapSec: commonMetric(orderedEvidence.map { $0.candidate.preGapSec }),
+            postGapSec: commonMetric(orderedEvidence.map { $0.candidate.postGapSec }),
+            preRatioQ90: commonMetric(orderedEvidence.map { $0.candidate.preRatioQ90 }),
+            postRatioQ90: commonMetric(orderedEvidence.map { $0.candidate.postRatioQ90 }),
+            edgeContrastMinQ90: commonMetric(orderedEvidence.map { $0.candidate.edgeContrastMinQ90 }),
+            edgeContrastGeomQ90: commonMetric(orderedEvidence.map { $0.candidate.edgeContrastGeomQ90 }),
+            decisionPath: decisionPath
+        )
+        candidate.cv2 = source.arbitrationTrack == .state ? stateMetrics?.cv2 : commonCV2
+        if candidate.arbitrationTrack == .state {
+            candidate.stateDirectSupportSpans = stateDirectSpans
+            candidate.stateInterruptionSpans = stateInterruptionSpans
+            candidate.stateDirectSupportISICount = stateDirectSpans.reduce(0) { $0 + $1.rawISICount }
+            candidate.stateDirectSupportAdjacentPairCount = stateDirectSpans.reduce(0) {
+                $0 + max(0, $1.endISIIndex - $1.startISIIndex)
+            }
+        }
+        if let mapped = positiveTinyMappedBurstCoreSpan(
+            scenario: representative.scenario,
+            candidate: source
+        ) {
+            candidate.burstSeedRunStartISI = mapped.lowerBound
+            candidate.burstSeedRunEndISI = mapped.upperBound
+        } else {
+            candidate.burstSeedRunStartISI = nil
+            candidate.burstSeedRunEndISI = nil
+        }
+        return candidate.withDiagnosticOverride(
+            gateStatus: "positive_tiny_isi_hypothesis_consensus",
+            action: "accept",
+            score: consensusScore,
+            priority: maximumPriority == .max ? .max : maximumPriority + 1,
+            selectedForAuto: false,
+            selectionStatus: "not_selected"
+        )
+    }
+
+    static func positiveTinyMappedBurstCoreSpan(
+        scenario: PositiveTinyISIJointHypothesisScenario,
+        candidate: ClassicAnchorCandidate
+    ) -> ClosedRange<Int>? {
+        guard candidate.finalLabel.isBurstEventFamily,
+              let start = candidate.burstSeedRunStartISI,
+              let end = candidate.burstSeedRunEndISI else {
+            return nil
+        }
+        return scenario.originalISISpan(
+            forVirtualStart: min(start, end),
+            end: max(start, end)
+        )
+    }
+
+    private static func positiveTinyMappedBurstCoreGeometry(
+        scenario: PositiveTinyISIJointHypothesisScenario,
+        candidate: ClassicAnchorCandidate
+    ) -> String {
+        guard candidate.finalLabel.isBurstEventFamily else { return "not_applicable" }
+        switch (candidate.burstSeedRunStartISI, candidate.burstSeedRunEndISI) {
+        case (nil, nil):
+            return "unspecified"
+        case (.some, .some):
+            guard let mapped = positiveTinyMappedBurstCoreSpan(
+                scenario: scenario,
+                candidate: candidate
+            ) else { return "invalid" }
+            return "\(mapped.lowerBound)-\(mapped.upperBound)"
+        default:
+            return "invalid"
+        }
+    }
+
+    /// The shared support classifier is authoritative for ordinary Tonic and deliberately permits
+    /// 3–4 ISIs when `d == 0`. Reapplying the detector's longer seed-window minimum here would erase
+    /// that approved short-structural-support route after positive-tiny-ISI reconciliation. HF-Tonic
+    /// keeps its independent minimum because the high-frequency subtype requires stronger separation
+    /// from Burst/HFS than ordinary short Tonic.
+    static func positiveTinyOriginalSupportMeetsFamilyMinimum(
+        label: ClassicAnchorLabel,
+        nSupport: Int,
+        settings: StatePatternDetectorSettings
+    ) -> Bool {
+        switch label {
+        case .tonic:
+            return nSupport >= 3
+        case .highFrequencyTonic:
+            return nSupport + 1 >= settings.highFrequencyTonicMinSpikes
+        default:
+            return false
+        }
+    }
+
+    private static func positiveTinyISIReviewCandidate(
+        train: SpikeTrain,
+        plans: [PositiveTinyISIHypothesisPlan],
+        evidence: [MappedPositiveTinyISICandidate],
+        reason: String
+    ) -> ClassicAnchorCandidate {
+        let orderedPlans = plans.sorted { $0.originalISIIndex < $1.originalISIIndex }
+        let indices = orderedPlans.map(\.originalISIIndex)
+        let lower = indices.min() ?? 1
+        let upper = indices.max() ?? lower
+        let labels = evidence.map { $0.candidate.finalLabel.rawValue }.sorted().joined(separator: "|")
+        let geometries = evidence.map {
+            "\($0.scenario.key):\($0.originalSpan.lowerBound)-\($0.originalSpan.upperBound)"
+        }.sorted().joined(separator: "|")
+        let tokens = [
+            "positive_tiny_isi_hypothesis=review",
+            "positive_tiny_isi_indices=\(indices.map(String.init).joined(separator: ","))",
+            "positive_tiny_isi_seconds=\(orderedPlans.map { formatHypothesisNumber($0.valueSec) }.joined(separator: ","))",
+            "positive_tiny_isi_review_reason=\(reason)",
+            "hypothesis_labels=\(labels.isEmpty ? "none" : labels)",
+            "hypothesis_original_geometry=\(geometries.isEmpty ? "none" : geometries)",
+            "hypothesis_thresholds_frozen=true",
+            "hypothesis_feedback_to_bands=false",
+        ]
+        return ClassicAnchorCandidate(
+            id: "\(train.id)-positive-tiny-review-\(indices.map(String.init).joined(separator: "-"))",
+            trainID: train.id,
+            trainName: train.name,
+            candidateLayer: "positive_tiny_isi_hypothesis_review",
+            candidateClass: "positive_tiny_isi_ambiguity",
+            finalLabel: .reject,
+            gateStatus: "positive_tiny_isi_hypothesis_review_required",
+            decisionPath: tokens.joined(separator: ";"),
+            action: "audit_only",
+            score: 0,
+            priority: 0,
+            selectedForAuto: false,
+            selectionStatus: "not_selected",
+            startISIIndex: lower,
+            endISIIndex: upper,
+            startSpikeIndex: lower,
+            endSpikeIndex: upper + 1,
+            nISI: upper - lower + 1,
+            nValidISI: 0,
+            nSpikes: upper - lower + 2,
+            durationSec: originalDuration(train: train, span: lower...upper),
+            intraQ10Sec: nil,
+            intraQ40Sec: nil,
+            intraQ50Sec: nil,
+            intraQ90Sec: nil,
+            intraQ95Sec: nil,
+            maxIntraISISec: nil,
+            meanIntraISISec: nil,
+            cv: nil,
+            lv: nil,
+            preGapSec: finiteISI(train: train, index: lower - 1),
+            postGapSec: finiteISI(train: train, index: upper + 1),
+            preRatioQ90: nil,
+            postRatioQ90: nil,
+            edgeContrastMinQ90: nil,
+            edgeContrastGeomQ90: nil,
+            anchorFamily: "positive_tiny_isi_ambiguity",
+            anchorLockLevel: .auditOnly,
+            anchorBandLowerSec: 0,
+            anchorBandUpperSec: max(0, orderedPlans.map(\.valueSec).max() ?? 0),
+            anchorBandSource: .structure,
+            anchorContrastMinRequired: 0,
+            anchorContrastGeomRequired: 0,
+            refractorySuspectCount: 0,
+            refractorySuspectAction: nil
+        )
+    }
+
+    private static func contiguousISISpans(indices: Set<Int>, trainID: String) -> [ISISpan] {
+        let sorted = indices.sorted()
+        guard var start = sorted.first else { return [] }
+        var end = start
+        var spans: [ISISpan] = []
+        for index in sorted.dropFirst() {
+            if index == end + 1 {
+                end = index
+            } else {
+                spans.append(ISISpan(trainID: trainID, startISIIndex: start, endISIIndex: end))
+                start = index
+                end = index
+            }
+        }
+        spans.append(ISISpan(trainID: trainID, startISIIndex: start, endISIIndex: end))
+        return spans
+    }
+
+    private struct PositiveTinyISIDirectMetrics {
+        let cv: Double?
+        let cv2: Double?
+        let lv: Double?
+    }
+
+    private static func mappedStateDirectSupportIndices(
+        _ evidence: MappedPositiveTinyISICandidate
+    ) -> Set<Int> {
+        let candidate = evidence.candidate
+        let virtualSpans = candidate.stateDirectSupportSpans.isEmpty
+            ? [ISISpan(
+                trainID: candidate.trainID,
+                startISIIndex: candidate.startISIIndex,
+                endISIIndex: candidate.endISIIndex
+            )]
+            : candidate.stateDirectSupportSpans
+        return Set(virtualSpans.flatMap { span -> [Int] in
+            guard let mapped = evidence.scenario.originalISISpan(
+                forVirtualStart: span.startISIIndex,
+                end: span.endISIIndex
+            ) else { return [] }
+            return Array(mapped)
+        })
+    }
+
+    /// Computes the default state-support metrics only from untouched original ISIs. CV is allowed
+    /// to pool direct values; CV2/LV are calculated within each contiguous direct-support span and
+    /// therefore never create a synthetic adjacency across a positive-tiny ambiguity.
+    private static func positiveTinyISIDirectMetrics(
+        train: SpikeTrain,
+        spans: [ISISpan],
+        minimumValidISISec: Double
+    ) -> PositiveTinyISIDirectMetrics? {
+        let segments = spans.map { span in
+            (span.startISIIndex...span.endISIIndex).compactMap { index -> Double? in
+                guard train.isiSec.indices.contains(index),
+                      let value = train.isiSec[index],
+                      value.isFinite,
+                      value >= minimumValidISISec else { return nil }
+                return value
+            }
+        }
+        let values = segments.flatMap { $0 }
+        guard !values.isEmpty else { return nil }
+        var cv2Terms: [Double] = []
+        var lvTerms: [Double] = []
+        for segment in segments {
+            for (left, right) in zip(segment, segment.dropFirst()) {
+                let denominator = left + right
+                guard denominator > 0 else { continue }
+                cv2Terms.append(2 * abs(right - left) / denominator)
+                lvTerms.append(3 * pow(right - left, 2) / pow(denominator, 2))
+            }
+        }
+        return PositiveTinyISIDirectMetrics(
+            cv: STPDStatistics.coefficientOfVariation(values),
+            cv2: cv2Terms.isEmpty ? nil : cv2Terms.reduce(0, +) / Double(cv2Terms.count),
+            lv: lvTerms.isEmpty ? nil : lvTerms.reduce(0, +) / Double(lvTerms.count)
+        )
+    }
+
+    private static func originalDuration(
+        train: SpikeTrain,
+        span: ClosedRange<Int>
+    ) -> Double? {
+        let earlierTimestampIndex = span.lowerBound - 1
+        let laterTimestampIndex = span.upperBound
+        guard earlierTimestampIndex >= 0,
+              laterTimestampIndex < train.timestampsSec.count else { return nil }
+        let duration = train.timestampsSec[laterTimestampIndex] -
+            train.timestampsSec[earlierTimestampIndex]
+        return duration.isFinite && duration >= 0 ? duration : nil
+    }
+
+    private static func finiteISI(train: SpikeTrain, index: Int) -> Double? {
+        guard train.isiSec.indices.contains(index),
+              let value = train.isiSec[index], value.isFinite else { return nil }
+        return value
+    }
+
+    private static func commonMetric(_ values: [Double?]) -> Double? {
+        guard !values.isEmpty, values.allSatisfy({ $0 == nil }) == false else { return nil }
+        let finite = values.compactMap { value -> Double? in
+            guard let value, value.isFinite else { return nil }
+            return value
+        }
+        guard finite.count == values.count, let first = finite.first else { return nil }
+        return finite.dropFirst().allSatisfy { value in
+            let tolerance = max(1e-12, max(abs(first), abs(value)) * 1e-9)
+            return abs(first - value) <= tolerance
+        } ? first : nil
+    }
+
+    private static func metricRangeToken(_ key: String, _ metrics: [Double?]) -> String {
+        let values = metrics.compactMap { value -> Double? in
+            guard let value, value.isFinite else { return nil }
+            return value
+        }
+        guard let lower = values.min(), let upper = values.max() else {
+            return "\(key)=undefined"
+        }
+        return "\(key)=\(formatHypothesisNumber(lower))..\(formatHypothesisNumber(upper))"
+    }
+
+    private static func formatHypothesisNumber(_ value: Double) -> String {
+        guard value.isFinite else { return "undefined" }
+        return String(format: "%.17g", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    private static func appendDecisionTokens(_ path: String, _ tokens: [String]) -> String {
+        var existing = Set(
+            path.split(separator: ";").map {
+                String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        )
+        var parts = path.split(separator: ";").map(String.init)
+        for token in tokens where !token.isEmpty && existing.insert(token).inserted {
+            parts.append(token)
+        }
+        return parts.joined(separator: ";")
     }
 
     private static func candidatesWithPauseFloorCompletion(
@@ -1528,6 +2469,10 @@ public enum ClassicAnchorDetectionPipeline {
         var newPause = pause
         newPause.adaptiveLowerSec = resolved.pause.lowerSec
         newPause.adaptiveUpperSec = max(newPause.adaptiveUpperSec ?? resolved.pause.upperSec, resolved.pause.upperSec)
+        if profile.pause.isiLower.mode == .hardGate,
+           let value = profile.pause.isiLower.valueSec, value.isFinite, value > 0 {
+            newPause.manualHardLowerSec = value
+        }
 
         // ---- Tonic / HF-tonic / HFS (StatePatternDetectorSettings) ----
         var newState = state
