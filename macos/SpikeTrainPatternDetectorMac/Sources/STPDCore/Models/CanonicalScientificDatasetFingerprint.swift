@@ -519,7 +519,7 @@ extension CanonicalTranscriptSink {
 
     mutating func feedToken(_ value: String) {
         feedInt64(Int64(value.utf8.count))
-        var value = value
+        let value = value
         let wroteContiguously = value.utf8.withContiguousStorageIfAvailable { buffer -> Bool in
             if let base = buffer.baseAddress {
                 write(UnsafeRawBufferPointer(start: base, count: buffer.count))
@@ -527,7 +527,7 @@ extension CanonicalTranscriptSink {
             return true
         } ?? false
         if !wroteContiguously {
-            var bytes = Array(value.utf8)
+            let bytes = Array(value.utf8)
             bytes.withUnsafeBytes { write($0) }
         }
     }

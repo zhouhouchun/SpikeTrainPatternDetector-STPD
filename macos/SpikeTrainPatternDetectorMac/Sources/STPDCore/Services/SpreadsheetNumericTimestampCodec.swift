@@ -7,7 +7,7 @@ public enum SpreadsheetNumericTimestampSyntaxIssue: String, Hashable, Sendable {
     case unexpectedCharacter
 }
 
-/// A bounded failure produced while proving that one stored binary64 has one microsecond inverse.
+/// A bounded failure produced while proving that one spreadsheet number has one microsecond inverse.
 public enum SpreadsheetNumericTimestampDecodeError: Error, Hashable, Sendable, LocalizedError {
     case empty
     case lexemeTooLong(maximumUTF8Bytes: Int)
@@ -32,7 +32,7 @@ public enum SpreadsheetNumericTimestampDecodeError: Error, Hashable, Sendable, L
         case .outsideSignedMicrosecondRange:
             return "The stored spreadsheet number is outside the signed microsecond range."
         case .noWholeMicrosecondRoundTrip:
-            return "No whole microsecond tick round-trips to the stored binary64 value."
+            return "No unique whole microsecond tick matches the stored spreadsheet number within the one-ULP serialization allowance."
         case .adjacentTickCollision:
             return "An adjacent microsecond tick maps to the same stored binary64 value."
         case .binary64ReconstructionInvariant:
@@ -43,11 +43,14 @@ public enum SpreadsheetNumericTimestampDecodeError: Error, Hashable, Sendable, L
     }
 }
 
-/// Validates the representability of an XLSX stored binary64 as one unique microsecond tick.
+/// Validates the representability of an XLSX number as one unique microsecond tick.
 ///
-/// This proves a property of the value stored in the workbook, not the accuracy of the value that
-/// a producer originally measured or intended. Cell display formatting is deliberately irrelevant.
-/// The raw lexeme is the untrimmed OOXML numeric `<v>` text and must already satisfy the grammar.
+/// Excel can serialize a decimal value one binary64 ULP above or below the canonical projection of
+/// the intended whole-microsecond tick. An exact projection always has priority. When there is no
+/// exact projection, that single-ULP residue is accepted only when it identifies exactly one tick;
+/// genuine fractional-microsecond values and ambiguous neighboring ticks remain invalid. Cell
+/// display formatting is deliberately irrelevant. The raw lexeme is the untrimmed OOXML numeric
+/// `<v>` text and must already satisfy the grammar.
 public enum SpreadsheetNumericTimestampCodec {
     public static let maximumRawLexemeUTF8ByteCount = 128
 
@@ -80,8 +83,7 @@ public enum SpreadsheetNumericTimestampCodec {
         }
 
         // Signed Int64 order is mapped monotonically onto UInt64, so this lower-bound search covers
-        // the entire tick domain in at most 64 iterations (69 total canonical projections including
-        // range, candidate, and neighbor checks), without signed arithmetic or a guessed
+        // the entire tick domain in at most 64 iterations, without signed arithmetic or a guessed
         // floating-point neighborhood. Each projection is one correctly-rounded parse of the exact
         // canonical decimal k/1_000_000 (seconds) or k/1_000 (milliseconds); operational
         // `Double(k) / scale` is intentionally not used because it can double-round.
@@ -100,8 +102,28 @@ public enum SpreadsheetNumericTimestampCodec {
 
         var candidate = tick(atSignedRank: lowerRank)
         let candidateProjection = try canonicalProjection(candidate, unit: sourceUnit)
-        guard sameStoredBinary64(candidateProjection, storedValue) else {
-            throw SpreadsheetNumericTimestampDecodeError.noWholeMicrosecondRoundTrip
+        var usedOneULPAllowance = false
+        if !sameStoredBinary64(candidateProjection, storedValue) {
+            var oneULPCandidates: [MicrosecondTick] = []
+            if differsByOneBinary64ULP(candidateProjection, storedValue) {
+                oneULPCandidates.append(candidate)
+            }
+            if lowerRank > .min {
+                let previousCandidate = tick(atSignedRank: lowerRank - 1)
+                let previousProjection = try canonicalProjection(previousCandidate, unit: sourceUnit)
+                if differsByOneBinary64ULP(previousProjection, storedValue) {
+                    oneULPCandidates.append(previousCandidate)
+                }
+            }
+
+            guard oneULPCandidates.count == 1, let normalizedCandidate = oneULPCandidates.first else {
+                if oneULPCandidates.count > 1 {
+                    throw SpreadsheetNumericTimestampDecodeError.adjacentTickCollision
+                }
+                throw SpreadsheetNumericTimestampDecodeError.noWholeMicrosecondRoundTrip
+            }
+            candidate = normalizedCandidate
+            usedOneULPAllowance = true
         }
 
         // Signed zero is the one intentional bit-pattern normalization. It still undergoes the
@@ -119,7 +141,10 @@ public enum SpreadsheetNumericTimestampCodec {
                 MicrosecondTick(microseconds: previousMicroseconds),
                 unit: sourceUnit
             )
-            guard !sameStoredBinary64(previousProjection, storedValue) else {
+            let previousCollides = sameStoredBinary64(previousProjection, storedValue)
+                || (usedOneULPAllowance
+                    && differsByOneBinary64ULP(previousProjection, storedValue))
+            guard !previousCollides else {
                 throw SpreadsheetNumericTimestampDecodeError.adjacentTickCollision
             }
         }
@@ -128,14 +153,17 @@ public enum SpreadsheetNumericTimestampCodec {
                 MicrosecondTick(microseconds: nextMicroseconds),
                 unit: sourceUnit
             )
-            guard !sameStoredBinary64(nextProjection, storedValue) else {
+            let nextCollides = sameStoredBinary64(nextProjection, storedValue)
+                || (usedOneULPAllowance
+                    && differsByOneBinary64ULP(nextProjection, storedValue))
+            guard !nextCollides else {
                 throw SpreadsheetNumericTimestampDecodeError.adjacentTickCollision
             }
         }
 
-        // Canonical projection is monotone. Its preimage for one binary64 is therefore contiguous;
-        // equality at the candidate plus inequality at each in-domain adjacent tick proves global
-        // uniqueness.
+        // Canonical projection is monotone. Exact equality or the bounded one-ULP qualification at
+        // the candidate, together with rejection of each in-domain adjacent tick under the same
+        // applicable rule, proves global uniqueness.
         return candidate
     }
 
@@ -257,6 +285,14 @@ public enum SpreadsheetNumericTimestampCodec {
     private static func sameStoredBinary64(_ lhs: Double, _ rhs: Double) -> Bool {
         if lhs == 0, rhs == 0 { return true }
         return lhs.bitPattern == rhs.bitPattern
+    }
+
+    private static func differsByOneBinary64ULP(_ lhs: Double, _ rhs: Double) -> Bool {
+        guard lhs.isFinite, rhs.isFinite, !sameStoredBinary64(lhs, rhs) else {
+            return false
+        }
+        return sameStoredBinary64(lhs.nextUp, rhs)
+            || sameStoredBinary64(lhs.nextDown, rhs)
     }
 
     private static func isASCIIDigit(_ byte: UInt8) -> Bool {

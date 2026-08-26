@@ -110,7 +110,76 @@ final class ScientificImportCoordinator {
     private(set) var preflightFormIssues: [ScientificImportManifestFormIssue] = []
     private(set) var failureMessage: String?
 
+    /// The sealed persisted-and-verified confirmation, when one has been written+read-back (Confirm &
+    /// Save) or reconstructed by a full replay (Restore & Verify) this session. Its presence removes
+    /// ONLY the persistence readiness blocker. Any form / source / header / worksheet / preflight /
+    /// revalidation / cancel change clears it in memory; stored receipt history is never deleted.
+    private(set) var persistedConfirmation: PersistedConfirmedScientificImportManifest?
+    /// Decision-only summaries of saved records discovered under the current source's exact SHA.
+    /// Populated by discovery only — never auto-restored.
+    private(set) var savedManifestSummaries: [StoredManifestSummary] = []
+    /// The explicitly selected saved record to restore. Never defaulted or silently auto-selected.
+    private(set) var selectedSavedRecordDigest: String?
+    /// A user-facing status/error message for the persistence actions.
+    private(set) var persistenceMessage: String?
+    /// The identifier of the in-flight save/restore operation, or `nil` when idle. A completion may
+    /// mutate state only while it is still the active operation, so a stale save/restore can never
+    /// clobber a newer one (it is not a shared busy flag).
+    private(set) var activePersistenceOperationID: Int?
+
+    var isPersisting: Bool { activePersistenceOperationID != nil }
+
+    private let manifestStore: ScientificImportManifestFileStore
+
     @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var persistenceOperationSequence = 0
+    /// Cancels the in-flight persistence store task, if any. `cancel()` invokes it so a cancellation
+    /// actually signals the store (its cooperative lock wait and pre-publication checkpoints), rather
+    /// than merely clearing UI state.
+    @ObservationIgnored private var activePersistenceCanceller: (id: Int, cancel: @Sendable () -> Void)?
+
+    /// Installs the canceller for a persistence operation, paired with its operation ID. If an OLDER
+    /// operation's canceller is still installed, it is SIGNALLED (cancelled) before being replaced — a
+    /// superseded store task is never left running (which, under the store-global lock, would otherwise
+    /// block this newer operation indefinitely).
+    private func setPersistenceCanceller(_ id: Int, _ cancel: @escaping @Sendable () -> Void) {
+        activePersistenceCanceller?.cancel()
+        activePersistenceCanceller = (id, cancel)
+    }
+
+    /// Clears the canceller ONLY if it still belongs to `id`. An older, overlapped operation's
+    /// completion can therefore clear only its own canceller and never erase a newer operation's.
+    private func clearPersistenceCanceller(_ id: Int) {
+        if activePersistenceCanceller?.id == id { activePersistenceCanceller = nil }
+    }
+
+    init(manifestStore: ScientificImportManifestFileStore = .productionDefault()) {
+        self.manifestStore = manifestStore
+    }
+
+    private func beginPersistenceOperation() -> Int {
+        persistenceOperationSequence &+= 1
+        let id = persistenceOperationSequence
+        activePersistenceOperationID = id
+        return id
+    }
+
+    private func isCurrentPersistenceOperation(_ id: Int) -> Bool {
+        activePersistenceOperationID == id
+    }
+
+    private func finishPersistenceOperation(_ id: Int) {
+        if activePersistenceOperationID == id { activePersistenceOperationID = nil }
+    }
+
+    /// Applies a persistence completion only if this operation is still the current one and its
+    /// generation is unchanged, then retires the operation. A stale completion mutates nothing that
+    /// belongs to a newer operation.
+    private func completePersistence(_ id: Int, _ requestGeneration: Int, _ mutate: () -> Void) {
+        defer { finishPersistenceOperation(id) }
+        guard requestGeneration == generation, isCurrentPersistenceOperation(id) else { return }
+        mutate()
+    }
 
     var worksheets: [CanonicalXLSXWorksheetDescriptor] {
         workbookInspection?.worksheets ?? []
@@ -146,6 +215,30 @@ final class ScientificImportCoordinator {
     var isBusy: Bool {
         phase == .readingSource || phase == .stagingSource
             || phase == .preflightingSourceFacts || phase == .validatingScientificMeaning
+            || isPersisting
+    }
+
+    /// Whether a single clean validated preparation is available to confirm and save, and is not
+    /// already persisted this session. This is not an authority token; saving grants no analysis,
+    /// detector, or export permission.
+    var canConfirmAndSave: Bool {
+        phase == .validatedPreparation && validatedPreparation != nil && persistedConfirmation == nil
+    }
+
+    /// Whether the explicitly selected saved manifest can be restored right now. This is the exact
+    /// precondition `restoreAndVerify()` enforces, exposed so the UI can DISABLE the Restore action
+    /// rather than let a doomed click fall through to a message: a record is explicitly selected, the
+    /// review is in the clean Stage-A state (no Stage-B artifacts), no persistence operation is in
+    /// flight, and nothing has already been restored or saved this session. Once a wrapper is
+    /// installed (`persistedConfirmation != nil`), Restore is replaced by the verified-standing status
+    /// and re-restoring is neither offered nor permitted.
+    var canRestoreSelectedManifest: Bool {
+        selectedSavedRecordDigest != nil
+            && phase == .awaitingSourceDecisions
+            && !isBusy
+            && persistedConfirmation == nil
+            && transportStaging == nil && manifestForm == nil && manifestDraft == nil
+            && preparedImport == nil && validatedPreparation == nil && confirmedImport == nil
     }
 
     /// A fully validated putative-single-unit preparation. This is deliberately not an authority
@@ -189,6 +282,8 @@ final class ScientificImportCoordinator {
             source = boundedSource
             workbookInspection = inspection
             phase = .awaitingSourceDecisions
+            // Discovery only: surface any saved manifests for this exact source. Never auto-restores.
+            await refreshSavedManifests()
         } catch {
             guard requestGeneration == generation else { return }
             phase = .failed
@@ -196,7 +291,46 @@ final class ScientificImportCoordinator {
         }
     }
 
+    /// Stages the reselected source under the applied header/worksheet decisions. Pure: it reads and
+    /// returns a staging result without mutating coordinator state or bumping the generation. The
+    /// worksheet is passed explicitly so a transactional Restore can stage into local values without
+    /// touching `selectedWorksheetSheetID`.
+    private func stageTransport(
+        source: BoundedScientificSource,
+        headerDecision: CanonicalTabularHeaderDecision,
+        worksheet: CanonicalXLSXWorksheetDescriptor?
+    ) async throws -> ScientificImportTransportStaging {
+        switch source.format {
+        case .csv:
+            let snapshot = source.snapshot
+            return try await Task.detached(priority: .userInitiated) {
+                .csv(
+                    try CanonicalCSVStagingReader.readWithProvenance(
+                        data: snapshot,
+                        headerDecision: headerDecision,
+                        limits: .supportedDatasetEnvelope
+                    )
+                )
+            }.value
+        case .xlsx:
+            guard let inspection = workbookInspection, let worksheet else {
+                throw ScientificImportCoordinatorInternalError.selectedWorksheetUnavailable
+            }
+            return try await Task.detached(priority: .userInitiated) {
+                .xlsx(
+                    try CanonicalXLSXWorksheetStagingReader.readWithProvenance(
+                        inspection: inspection,
+                        worksheet: worksheet,
+                        headerDecision: headerDecision,
+                        limits: .supportedDatasetEnvelope
+                    )
+                )
+            }.value
+        }
+    }
+
     func cancel() {
+        activePersistenceCanceller?.cancel()
         generation &+= 1
         clearTransaction()
         phase = .idle
@@ -236,35 +370,9 @@ final class ScientificImportCoordinator {
         failureMessage = nil
 
         do {
-            let staging: ScientificImportTransportStaging
-            switch source.format {
-            case .csv:
-                let snapshot = source.snapshot
-                staging = try await Task.detached(priority: .userInitiated) {
-                    .csv(
-                        try CanonicalCSVStagingReader.readWithProvenance(
-                            data: snapshot,
-                            headerDecision: headerDecision,
-                            limits: .supportedDatasetEnvelope
-                        )
-                    )
-                }.value
-            case .xlsx:
-                guard let inspection = workbookInspection,
-                      let worksheet = selectedWorksheet else {
-                    throw ScientificImportCoordinatorInternalError.selectedWorksheetUnavailable
-                }
-                staging = try await Task.detached(priority: .userInitiated) {
-                    .xlsx(
-                        try CanonicalXLSXWorksheetStagingReader.readWithProvenance(
-                            inspection: inspection,
-                            worksheet: worksheet,
-                            headerDecision: headerDecision,
-                            limits: .supportedDatasetEnvelope
-                        )
-                    )
-                }.value
-            }
+            let staging = try await stageTransport(
+                source: source, headerDecision: headerDecision, worksheet: selectedWorksheet
+            )
 
             guard requestGeneration == generation else { return }
             guard staging.stagedImport.sourceTransactionBinding?.sourceBytesSHA256
@@ -319,6 +427,9 @@ final class ScientificImportCoordinator {
         preparedImport = nil
         validatedPreparation = nil
         confirmedImport = nil
+        // A new validation generation always invalidates any persisted wrapper, on success, rejection,
+        // or failure paths alike (this clears it up front, before the async pipeline runs).
+        persistedConfirmation = nil
         reviewOutcome = nil
         failureMessage = nil
         phase = .validatingScientificMeaning
@@ -433,13 +544,12 @@ final class ScientificImportCoordinator {
         }
     }
 
-    /// Confirmation plumbing reserved for a future user gesture — this slice wires no production UI
-    /// control. Invoking it confirms the current clean validated preparation, retaining an immutable
-    /// in-memory confirmation record for the exact reviewed transaction. A clean validation never
-    /// auto-confirms; confirmation only happens through this explicit call. It reuses the fingerprint
-    /// already produced during validation, creates no active dataset and no authority, installs no
-    /// `SpikeDataset`, and does not mutate the active document, detector runs, reviews, caches,
-    /// exports, or the filesystem.
+    /// Constructs only the bare in-memory confirmation for a clean validated preparation. Production
+    /// `Confirm & Save` uses `confirmAndSaveScientificImport()` to construct the same base and then pass
+    /// it through the durable store; this helper itself performs no persistence. A clean validation never
+    /// auto-confirms. It reuses the fingerprint already produced during validation, creates no active
+    /// dataset and no authority, installs no `SpikeDataset`, and does not mutate the active document,
+    /// detector runs, reviews, caches, exports, or the filesystem.
     func confirmScientificImport() {
         guard phase == .validatedPreparation,
               let validated = validatedPreparation,
@@ -449,10 +559,510 @@ final class ScientificImportCoordinator {
         confirmedImport = ScientificImportConfirmationBuilder.confirm(validated.confirmable)
     }
 
-    /// A deny-only, fail-closed analysis-readiness assessment for the current confirmation, or `nil`
-    /// when nothing is confirmed. It is informational and never grants authority.
+    // MARK: - Confirm & Save
+
+    /// The sole production save path. Builds the base confirmation from the sealed confirmable,
+    /// projects the decision-only receipt (traversing metadata only — no restage/normalize/validate/
+    /// project/fingerprint pass), and hands it to the atomic store, which writes, fully synchronizes,
+    /// atomically publishes with no-replace, and reads the final path back through the production
+    /// bounded reader. Only an exact readback match mints the sealed persisted wrapper. A failure
+    /// leaves the active dataset and all detector/export state unchanged and offers a retry.
+    func confirmAndSaveScientificImport() async {
+        guard phase == .validatedPreparation,
+              let validated = validatedPreparation,
+              !validated.validationReport.hasBlockingIssues,
+              let headerDecision else {
+            persistenceMessage = "Validate the scientific review before saving."
+            return
+        }
+        let base = ScientificImportConfirmationBuilder.confirm(validated.confirmable)
+        confirmedImport = base
+        persistedConfirmation = nil
+
+        // The sealed base is the ONLY authority for the persisted header rule: the store derives it
+        // from the base and never accepts a caller-supplied rule or receipt. As a defensive stale-UI
+        // check only, compare the current UI header decision against the base-derived rule; this can
+        // detect an inconsistency but is never the source of the persisted rule. An empty/mixed base is
+        // a fail-closed derivation defect the store reports, so it is not pre-empted here.
+        if let baseRule = try? ConfirmedScientificImportManifestPersistence.deriveHeaderRule(from: base),
+           baseRule != Self.persistedHeaderRule(headerDecision) {
+            persistenceMessage =
+                "The header decision no longer matches the validated source. Re-validate before saving."
+            return
+        }
+
+        // Save must not invalidate the validated preparation, so it captures the generation WITHOUT
+        // bumping it. Any concurrent form/source/header/worksheet/validation change bumps the
+        // generation, and a newer persistence operation supersedes this one; either way the stale
+        // completion mutates nothing.
+        let requestGeneration = generation
+        let operationID = beginPersistenceOperation()
+        persistenceMessage = nil
+
+        // The durable store is the SOLE minter of persistence standing: it writes, runs the full
+        // durability barrier, reads its own derived final path back, and matches it against the base
+        // confirmation before returning the sealed wrapper.
+        // Wrap the store call in a cancellable task the coordinator can signal from `cancel()`.
+        let store = manifestStore
+        let saveTask = Task { try await store.save(baseConfirmation: base) }
+        setPersistenceCanceller(operationID) { saveTask.cancel() }
+        let result: StoredSaveResult
+        do {
+            result = try await saveTask.value
+            clearPersistenceCanceller(operationID)
+        } catch let error as ScientificImportManifestStoreError {
+            clearPersistenceCanceller(operationID)
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = Self.saveErrorMessage(for: error)
+            }
+            return
+        } catch {
+            clearPersistenceCanceller(operationID)
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "Could not save the confirmed manifest."
+            }
+            return
+        }
+        completePersistence(operationID, requestGeneration) {
+            self.persistedConfirmation = result.manifest
+            self.persistenceMessage = result.outcome == .idempotentExisting
+                ? "This manifest was already saved (identical bytes). Analysis remains locked."
+                : "Confirmed manifest saved and verified. Analysis remains locked."
+        }
+        await refreshSavedManifests()
+    }
+
+    /// Discovers saved records for the current source's exact SHA. Discovery only — it summarizes
+    /// candidates and never restores or auto-selects anything.
+    func refreshSavedManifests() async {
+        guard let source else {
+            savedManifestSummaries = []
+            return
+        }
+        let sha = source.sourceSHA256
+        let requestGeneration = generation
+        do {
+            let discovery = try await manifestStore.discover(sourceSHA256: sha)
+            guard requestGeneration == generation else { return }
+            savedManifestSummaries = discovery.summaries
+            // Surface unreadable records distinctly; never silently report them as "no records".
+            if discovery.unreadableRecordCount > 0 {
+                persistenceMessage =
+                    "\(discovery.unreadableRecordCount) saved record(s) for this source could not be read."
+            }
+        } catch let error as ScientificImportManifestStoreError {
+            // A bounded-work, lock-timeout, or unreadable-store condition must reach the UI distinctly
+            // even though discovery returns zero records — never collapsed to a bare "no records".
+            guard requestGeneration == generation else { return }
+            savedManifestSummaries = []
+            persistenceMessage = Self.discoveryErrorMessage(for: error)
+        } catch {
+            guard requestGeneration == generation else { return }
+            savedManifestSummaries = []
+            persistenceMessage = "The saved-manifest store could not be read for this source."
+        }
+    }
+
+    private static func discoveryErrorMessage(for error: ScientificImportManifestStoreError) -> String {
+        switch error {
+        case .discoveryBudgetExceeded:
+            return "The saved-manifest store for this source is too large to scan safely; saved records are not listed."
+        case .lockTimeout:
+            return "The saved-manifest store was busy; saved records could not be listed. Try again."
+        case .storeUnreadable, .read:
+            return "The saved-manifest store could not be read for this source."
+        case .unsafePathObject:
+            return "A saved-manifest store path was not a safe regular file or directory; saved records are not listed."
+        case .durabilityUnavailable:
+            return "Durable storage is unavailable, so saved records cannot be listed."
+        case .invalidSourceSHA:
+            return "The source identifier was invalid; saved records could not be listed."
+        default:
+            return "The saved-manifest store could not be read for this source."
+        }
+    }
+
+    /// Explicitly selects a discovered saved record to restore. Even a single candidate must be
+    /// selected explicitly; nothing is ever defaulted or auto-selected.
+    func selectSavedManifest(recordDigest: String?) {
+        // A saved-record selection must not change underneath an in-flight save/restore.
+        guard activePersistenceOperationID == nil else { return }
+        selectedSavedRecordDigest = recordDigest
+    }
+
+    // MARK: - Restore & Verify
+
+    /// Restores confirmation for the reselected source ONLY by replaying the complete import chain and
+    /// matching the result exactly. Reads the selected saved receipt through the bounded reader,
+    /// applies its saved worksheet and header decision, re-stages the source, reconstructs the draft,
+    /// runs exactly one full chain (stage → resolve → normalize → validate → project → fingerprint →
+    /// confirm), and mints the sealed persisted wrapper ONLY on complete equality. A decoded receipt
+    /// alone never restores confirmation, readiness, or authority.
+    func restoreAndVerify() async {
+        guard let source else {
+            persistenceMessage = "Reselect the source file before restoring."
+            return
+        }
+        guard let recordDigest = selectedSavedRecordDigest else {
+            persistenceMessage = "Select a saved manifest to restore first."
+            return
+        }
+        // Transactional precondition: Restore is permitted only from a clean, Stage-B-absent state, so
+        // no prior shadow/validated/confirmation can coexist with a restored one, and a failed restore
+        // leaves the previous transaction byte-for-byte and field-for-field unchanged.
+        guard phase == .awaitingSourceDecisions,
+              transportStaging == nil, manifestForm == nil, manifestDraft == nil,
+              preparedImport == nil, validatedPreparation == nil,
+              confirmedImport == nil, persistedConfirmation == nil else {
+            persistenceMessage = "Rebind or cancel the current review before restoring a saved manifest."
+            return
+        }
+
+        generation &+= 1
+        let requestGeneration = generation
+        let operationID = beginPersistenceOperation()
+        let sourceSHA = source.sourceSHA256
+        persistenceMessage = nil
+
+        // 1. Read the saved record as an UNTRUSTED bare receipt (from the store's own derived path) to
+        //    drive the replay. It carries no proof and removes no readiness blocker; standing is minted
+        //    only by the store's `restoreVerify` re-read in step 6.
+        let receipt: ConfirmedScientificImportReceipt
+        do {
+            receipt = try await manifestStore.readForReplay(sourceSHA256: sourceSHA, recordDigest: recordDigest)
+        } catch let error as ScientificImportManifestStoreError {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = Self.restoreStoreErrorMessage(for: error)
+            }
+            return
+        } catch {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "Could not read the saved manifest."
+            }
+            return
+        }
+        guard requestGeneration == generation, isCurrentPersistenceOperation(operationID) else {
+            finishPersistenceOperation(operationID)
+            return
+        }
+
+        // 2. Source-binding gate: the receipt must belong to this exact reselected source.
+        guard receipt.sourceTransactionBinding.sourceBytesSHA256 == sourceSHA,
+              Self.selection(receipt.sourceTransactionBinding.selection, matches: source.format) else {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "This saved manifest was recorded for a different source."
+            }
+            return
+        }
+
+        // 3. Resolve the saved worksheet + header decision into LOCAL values (no coordinator mutation).
+        let appliedHeaderRule = receipt.headerRule
+        let appliedDecision = Self.tabularHeaderDecision(appliedHeaderRule)
+        var localWorksheet: CanonicalXLSXWorksheetDescriptor?
+        if case .excelWorksheet(_, let sheetID, _, _) = receipt.sourceTransactionBinding.selection {
+            guard let worksheet = worksheets.first(where: { $0.sheetID == sheetID }) else {
+                completePersistence(operationID, requestGeneration) {
+                    self.persistenceMessage = "The saved worksheet is not present in this workbook."
+                }
+                return
+            }
+            localWorksheet = worksheet
+        }
+
+        // 4. Re-stage the reselected source into a LOCAL value.
+        let staging: ScientificImportTransportStaging
+        do {
+            staging = try await stageTransport(
+                source: source, headerDecision: appliedDecision, worksheet: localWorksheet
+            )
+        } catch {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "Could not re-stage the source for verification."
+            }
+            return
+        }
+        guard requestGeneration == generation, isCurrentPersistenceOperation(operationID) else {
+            finishPersistenceOperation(operationID)
+            return
+        }
+        guard staging.stagedImport.sourceTransactionBinding?.sourceBytesSHA256 == sourceSHA else {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "The re-staged table does not match the source snapshot."
+            }
+            return
+        }
+
+        // 5. Reconstruct the draft and run exactly one complete chain, off the main actor.
+        let stagedImport = staging.stagedImport
+        let outcome = await Task.detached(priority: .userInitiated) {
+            Self.replayRestore(receipt: receipt, stagedImport: stagedImport)
+        }.value
+        guard requestGeneration == generation, isCurrentPersistenceOperation(operationID) else {
+            finishPersistenceOperation(operationID)
+            return
+        }
+        guard case .confirmable(let confirmable) = outcome else {
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = outcome.failureMessage
+            }
+            return
+        }
+
+        // 6. Re-read the store's derived final record and match it against the replayed base to mint
+        //    standing. On any failure nothing else was mutated, so the previous clean transaction is
+        //    untouched.
+        let base = ScientificImportConfirmationBuilder.confirm(confirmable)
+        // Wrap the store call in a cancellable task the coordinator can signal from `cancel()`.
+        let store = manifestStore
+        let restoreTask = Task {
+            try await store.restoreVerify(
+                sourceSHA256: sourceSHA, recordDigest: recordDigest, baseConfirmation: base
+            )
+        }
+        setPersistenceCanceller(operationID) { restoreTask.cancel() }
+        let wrapper: PersistedConfirmedScientificImportManifest
+        do {
+            wrapper = try await restoreTask.value
+            clearPersistenceCanceller(operationID)
+        } catch let error as ScientificImportManifestStoreError {
+            clearPersistenceCanceller(operationID)
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = Self.restoreStoreErrorMessage(for: error)
+            }
+            return
+        } catch {
+            clearPersistenceCanceller(operationID)
+            completePersistence(operationID, requestGeneration) {
+                self.persistenceMessage = "Could not verify the saved manifest."
+            }
+            return
+        }
+        // Atomic commit: install the receipt's header + worksheet selections together with the restored
+        // base confirmation and persisted wrapper, so the Stage-A UI and the coordinator show one
+        // consistent restored transaction.
+        completePersistence(operationID, requestGeneration) {
+            if case .excelWorksheet(_, let sheetID, _, _) = receipt.sourceTransactionBinding.selection {
+                self.selectedWorksheetSheetID = sheetID
+            }
+            self.headerDecision = appliedDecision
+            self.confirmedImport = base
+            self.persistedConfirmation = wrapper
+            self.persistenceMessage =
+                "Restored and verified from the saved manifest. Analysis remains locked."
+        }
+    }
+
+    private enum RestoreChainOutcome: Sendable {
+        case confirmable(ConfirmableScientificImport)
+        case reconstructionFailed
+        case planIssues
+        case normalizationIssues
+        case validationRejected
+        case projectionFailed
+
+        var failureMessage: String {
+            switch self {
+            case .confirmable:
+                return ""
+            case .reconstructionFailed:
+                return "The saved decisions could not be rebuilt against the reselected source."
+            case .planIssues:
+                return "The saved decisions no longer resolve against the reselected source."
+            case .normalizationIssues:
+                return "The reselected source did not normalize to the saved shape."
+            case .validationRejected:
+                return "Independent validation rejected the reselected source."
+            case .projectionFailed:
+                return "The reselected source did not project to a canonical dataset."
+            }
+        }
+    }
+
+    nonisolated private static func replayRestore(
+        receipt: ConfirmedScientificImportReceipt,
+        stagedImport: StagedScientificImport
+    ) -> RestoreChainOutcome {
+        let draft: ScientificImportManifestDraft
+        do {
+            draft = try ConfirmedScientificImportManifestPersistence.reconstructDraft(
+                from: receipt, boundTo: stagedImport
+            )
+        } catch {
+            return .reconstructionFailed
+        }
+        do {
+            let plan = try ScientificImportPlanResolver.resolve(stagedImport: stagedImport, draft: draft)
+            let prepared = try ScientificImportNormalizer.normalize(resolvedPlan: plan)
+            switch PreparedScientificImportValidator.validateForCanonicalProjection(prepared) {
+            case .accepted(let validated):
+                do {
+                    return .confirmable(try CanonicalScientificImportProjector.projectConfirmable(validated))
+                } catch {
+                    return .projectionFailed
+                }
+            case .rejected:
+                return .validationRejected
+            }
+        } catch is ScientificImportPlanResolutionError {
+            return .planIssues
+        } catch {
+            return .normalizationIssues
+        }
+    }
+
+    // MARK: - Persistence boundary mappers and messages
+
+    private static func persistedHeaderRule(
+        _ decision: CanonicalTabularHeaderDecision
+    ) -> PersistedTabularHeaderRule {
+        switch decision {
+        case .firstRecordIsHeader: return .firstRecordIsHeader
+        case .headerless: return .headerless
+        }
+    }
+
+    private static func tabularHeaderDecision(
+        _ rule: PersistedTabularHeaderRule
+    ) -> CanonicalTabularHeaderDecision {
+        switch rule {
+        case .firstRecordIsHeader: return .firstRecordIsHeader
+        case .headerless: return .headerless
+        }
+    }
+
+    private static func selection(
+        _ selection: StagedSourceTransactionSelection,
+        matches format: ScientificSourceFormat
+    ) -> Bool {
+        switch (selection, format) {
+        case (.commaSeparatedValues, .csv): return true
+        case (.excelWorksheet, .xlsx): return true
+        default: return false
+        }
+    }
+
+    private static func saveErrorMessage(for error: ScientificImportManifestStoreError) -> String {
+        switch error {
+        case .durabilityUnavailable:
+            return "Durable storage is unavailable, so the manifest was not saved."
+        case .conflictingBytesAtTarget:
+            return "A different saved manifest already exists at this record path; the existing receipt was not overwritten."
+        case .candidateLimitExceeded(let maximum):
+            return "This source already has the maximum of \(maximum) saved manifests. Nothing was deleted."
+        case .oversizedOrNoncanonicalEncoding:
+            return "The confirmation record could not be encoded within the supported bounds; nothing was saved."
+        case .readbackMismatch:
+            // These failures can occur after a link is published (during the durability barrier), so
+            // promise only that no persistence standing was created — never that nothing was published.
+            return "The written manifest did not read back exactly; no persistence standing was created. Try again."
+        case .durabilitySyncFailed:
+            return "The store could not be synchronized durably; no persistence standing was created. Try again."
+        case .unsafePathObject:
+            return "A store path was not a safe regular file or directory; no persistence standing was created."
+        case .pathIdentityChanged:
+            return "A store path changed identity during the operation; no persistence standing was created. Try again."
+        case .temporaryCleanupFailed:
+            // A post-link cleanup failure leaves the written record VISIBLE and retryable — it is not yet
+            // guaranteed crash-durable (the directory barrier did not complete), and no standing was made.
+            return "The store could not be left clean; no persistence standing was created. Any written record remains visible and can be safely retried."
+        case .lockTimeout:
+            return "The saved-manifest store was busy and the operation timed out. Try again."
+        case .operationCancelled:
+            // Neutral about any post-publication record: a cancellation after the link is published
+            // leaves a visible record a later explicit retry can restore. Only the in-memory standing is
+            // guaranteed not created here.
+            return "The save was cancelled; no persistence standing was created. Any already-written record can be restored on a later retry."
+        case .invalidSourceSHA, .invalidRecordDigest:
+            return "The confirmation-record identifiers were invalid; nothing was saved."
+        case .writeFailed, .publishFailed:
+            return "The manifest could not be written to the store. Try again."
+        case .storeUnreadable:
+            return "The saved-manifest store could not be read."
+        case .discoveryBudgetExceeded:
+            return "The saved-manifest store for this source is too large to scan safely."
+        case .recordNotFound:
+            return "The saved manifest record was not found."
+        case .headerRuleDerivation(let derivation):
+            return Self.headerRuleDerivationCause(for: derivation)
+                + " Nothing was saved and no persistence standing was created."
+        case .read:
+            return "A saved manifest file could not be read."
+        case .verification(let verification):
+            return Self.verificationErrorMessage(for: verification)
+        }
+    }
+
+    private static func restoreStoreErrorMessage(for error: ScientificImportManifestStoreError) -> String {
+        switch error {
+        case .verification(let verification):
+            return Self.verificationErrorMessage(for: verification)
+        case .headerRuleDerivation(let derivation):
+            return Self.headerRuleDerivationCause(for: derivation)
+                + " Restore and verification stopped; no persistence standing was restored."
+        case .read(.decode):
+            return "The saved manifest is corrupt or unsupported and cannot be restored."
+        case .read(.notRegularFile):
+            return "The saved manifest path is not a regular file and was rejected."
+        case .read(.fileTooLarge):
+            return "The saved manifest exceeds the supported size and was rejected."
+        case .read:
+            return "The saved manifest file could not be read."
+        case .recordNotFound:
+            return "The selected saved manifest is no longer available for this source."
+        case .storeUnreadable, .discoveryBudgetExceeded:
+            return "The saved-manifest store could not be read."
+        case .lockTimeout:
+            return "The saved-manifest store was busy and the restore timed out. Try again."
+        case .unsafePathObject:
+            return "A store path was not a safe regular file; the saved manifest was rejected."
+        case .pathIdentityChanged:
+            return "A store path changed identity during verification; the restore stopped and no persistence standing was restored. Try again."
+        case .temporaryCleanupFailed:
+            return "The store could not be left clean during verification; the restore stopped and no persistence standing was restored. Try again."
+        case .operationCancelled:
+            return "The restore was cancelled; no persistence standing was restored."
+        case .durabilityUnavailable:
+            return "Durable storage is unavailable, so the manifest could not be restored."
+        default:
+            return "The saved manifest could not be read."
+        }
+    }
+
+    /// The neutral cause of a header-rule derivation failure, with no operation-specific outcome. Save
+    /// and restore callers append their own accurate suffix so a restore-time failure never claims the
+    /// save-only "nothing was saved".
+    private static func headerRuleDerivationCause(
+        for error: PersistedHeaderRuleDerivationError
+    ) -> String {
+        switch error {
+        case .noSourceColumns:
+            return "The validated source has no columns, so its header rule could not be determined."
+        case .mixedHeaderPresence:
+            return "The validated source mixes header-present and header-absent columns, which is not a valid header state."
+        }
+    }
+
+    private static func verificationErrorMessage(
+        for error: PersistedConfirmationVerificationError
+    ) -> String {
+        switch error {
+        case .sourceBindingMismatch:
+            return "Source-binding mismatch: the saved manifest does not belong to this exact source."
+        case .canonicalFingerprintMismatch:
+            return "Replay divergence: the reselected source reproduces a different scientific dataset."
+        case .confirmationRecordMismatch:
+            return "Confirmation-record mismatch: the scientific dataset matches, but a confirmed decision differs."
+        }
+    }
+
+    /// A deny-only, fail-closed analysis-readiness assessment, or `nil` when nothing is confirmed. It
+    /// is informational and never grants authority. A verified persisted wrapper removes only the
+    /// persistence blocker; a bare confirmation still reports it.
     var analysisReadiness: ScientificAnalysisReadinessAssessment? {
-        confirmedImport.map(ScientificAnalysisReadinessEvaluator.assess)
+        if let persistedConfirmation {
+            return ScientificAnalysisReadinessEvaluator.assess(persistedConfirmation)
+        }
+        return confirmedImport.map(ScientificAnalysisReadinessEvaluator.assess)
     }
 
     /// Discovers source facts for the user's current explicit column/group proposal. The Core
@@ -541,6 +1151,13 @@ final class ScientificImportCoordinator {
         preflightReport = nil
         preflightFormIssues = []
         failureMessage = nil
+        // Discovery and selection are source-specific; a new/cancelled source clears them. Stored
+        // receipts on disk are never deleted.
+        savedManifestSummaries = []
+        selectedSavedRecordDigest = nil
+        persistenceMessage = nil
+        activePersistenceOperationID = nil
+        activePersistenceCanceller = nil
     }
 
     private func invalidateBoundReview() {
@@ -569,6 +1186,8 @@ final class ScientificImportCoordinator {
         preparedImport = nil
         validatedPreparation = nil
         confirmedImport = nil
+        // Invalidate the in-memory persisted wrapper; stored receipt history on disk is never deleted.
+        persistedConfirmation = nil
         reviewOutcome = nil
         preflightReport = nil
         preflightFormIssues = []
@@ -580,5 +1199,6 @@ final class ScientificImportCoordinator {
     /// is the direct path for `bindSourceFacts` and `refreshPreflight`, which do not.
     private func retireConfirmation() {
         confirmedImport = nil
+        persistedConfirmation = nil
     }
 }

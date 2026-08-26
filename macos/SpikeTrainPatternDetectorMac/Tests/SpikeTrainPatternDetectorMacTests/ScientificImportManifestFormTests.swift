@@ -271,6 +271,41 @@ struct ScientificImportManifestFormTests {
         #expect(form.columns.allSatisfy { $0.duplicateDecision == nil })
     }
 
+    @Test("The explicit all-spike template replaces only the promised decisions and supports batch completion")
+    func explicitAllSpikeTemplateIsDeterministic() throws {
+        let staged = try makeStagedImport(headers: ["unit_A", "unit_B", "unit_C"])
+        var form = ScientificImportManifestForm(stagedImport: staged)
+        form.activityMode = .putativeSingleUnit
+        form.columns[0].semanticIDText = "manual_A"
+        form.columns[1].startsNewGroup = true
+        form.columns[1].groupSemanticIDText = "old_group"
+        form.columns[1].groupTimeBasis = .eventRelative
+        form.columns[1].eventOriginColumnText = "3"
+        form.columns[1].eventOriginDataRowText = "8"
+        form.columns[1].role = .eventDefinition
+        form.columns[1].eventTypeIDText = "stimulus"
+
+        form.configureAllColumnsAsSingleRecordingElapsedSpikeGroup()
+
+        #expect(form.columns.map(\.startsNewGroup) == [true, false, false])
+        #expect(form.columns.allSatisfy { $0.role == .spikeTrain })
+        #expect(form.columns[0].groupTimeBasis == .recordingElapsed)
+        #expect(form.columns.dropFirst().allSatisfy { $0.groupTimeBasis == nil })
+        #expect(form.columns.dropFirst().allSatisfy { $0.groupSemanticIDText.isEmpty })
+        #expect(form.columns.allSatisfy { $0.eventTypeIDText.isEmpty })
+        #expect(form.columns.allSatisfy { $0.eventOriginColumnText.isEmpty })
+        #expect(form.columns.allSatisfy { $0.eventOriginDataRowText.isEmpty })
+        #expect(form.columns[0].semanticIDText == "manual_A")
+
+        form.fillEmptyColumnSemanticIDsFromHeaders()
+        #expect(form.columns.map(\.semanticIDText) == ["manual_A", "unit_B", "unit_C"])
+
+        form.applyOrderDecisionToAllSpikeColumns(.stableAscendingSort)
+        form.applyDuplicateDecisionToAllSpikeColumns(.collapseExact)
+        #expect(form.columns.allSatisfy { $0.orderDecision == .stableAscendingSort })
+        #expect(form.columns.allSatisfy { $0.duplicateDecision == .collapseExact })
+    }
+
     @Test("Specified attribute units require an explicit nonblank symbol")
     func specifiedUnitRequiresSymbol() throws {
         let staged = try makeStagedImport(headers: ["unit_A"])

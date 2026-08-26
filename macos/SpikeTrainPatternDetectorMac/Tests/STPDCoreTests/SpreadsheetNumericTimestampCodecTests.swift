@@ -132,10 +132,38 @@ func spreadsheetNumericHalfMicrosecondAndOffGridValuesAreRejected() throws {
         == .noWholeMicrosecondRoundTrip)
 
     let oneMicrosecondInSeconds = try #require(Double("0.000001"))
-    #expect(spreadsheetTimestampError(String(oneMicrosecondInSeconds.nextUp))
+    #expect(spreadsheetTimestampError(String(oneMicrosecondInSeconds.nextUp.nextUp))
         == .noWholeMicrosecondRoundTrip)
-    #expect(spreadsheetTimestampError(String(oneMicrosecondInSeconds.nextDown))
+    #expect(spreadsheetTimestampError(String(oneMicrosecondInSeconds.nextDown.nextDown))
         == .noWholeMicrosecondRoundTrip)
+}
+
+@Test
+func spreadsheetNumericAcceptsUniqueOneULPExcelSerializationResidue() throws {
+    let cases: [(String, Int64)] = [
+        ("7.2794740000000004", 7_279_474),
+        ("4.9200990000000004", 4_920_099),
+        ("12.630579000000001", 12_630_579),
+        ("18.099634000000002", 18_099_634),
+        ("14.081067000000001", 14_081_067),
+    ]
+
+    for (rawLexeme, expectedMicroseconds) in cases {
+        #expect(try SpreadsheetNumericTimestampCodec.decode(
+            rawLexeme: rawLexeme,
+            sourceUnit: .seconds
+        ) == MicrosecondTick(microseconds: expectedMicroseconds))
+    }
+
+    let oneMicrosecondInSeconds = try #require(Double("0.000001"))
+    #expect(try SpreadsheetNumericTimestampCodec.decode(
+        rawLexeme: String(oneMicrosecondInSeconds.nextUp),
+        sourceUnit: .seconds
+    ) == MicrosecondTick(microseconds: 1))
+    #expect(try SpreadsheetNumericTimestampCodec.decode(
+        rawLexeme: String(oneMicrosecondInSeconds.nextDown),
+        sourceUnit: .seconds
+    ) == MicrosecondTick(microseconds: 1))
 }
 
 @Test

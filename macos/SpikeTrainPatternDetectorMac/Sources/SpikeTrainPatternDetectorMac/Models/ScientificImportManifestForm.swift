@@ -133,6 +133,51 @@ struct ScientificImportManifestForm: Sendable {
         }
     }
 
+    /// Explicit UI template for the common table shape in which every source column is one spike
+    /// train in the same recording-elapsed group. This is never called automatically: applying it
+    /// is a deliberate user gesture that replaces any existing role/group proposal while leaving
+    /// semantic IDs, timestamp-order decisions, and duplicate decisions for separate confirmation.
+    mutating func configureAllColumnsAsSingleRecordingElapsedSpikeGroup() {
+        for index in columns.indices {
+            columns[index].startsNewGroup = index == 0
+            columns[index].role = .spikeTrain
+            columns[index].eventTypeIDText = ""
+            if index == 0 {
+                columns[index].groupTimeBasis = .recordingElapsed
+                columns[index].eventOriginColumnText = ""
+                columns[index].eventOriginDataRowText = ""
+            } else {
+                columns[index].groupSemanticIDText = ""
+                columns[index].groupTimeBasis = nil
+                columns[index].eventOriginColumnText = ""
+                columns[index].eventOriginDataRowText = ""
+            }
+        }
+    }
+
+    /// Copies a present source header into an empty semantic-ID field. Existing user-entered IDs
+    /// are preserved, and header text is never installed without this explicit action.
+    mutating func fillEmptyColumnSemanticIDsFromHeaders() {
+        for index in columns.indices
+        where columns[index].semanticIDText.isEmpty {
+            if let header = columns[index].header, !header.isEmpty {
+                columns[index].semanticIDText = header
+            }
+        }
+    }
+
+    mutating func applyOrderDecisionToAllSpikeColumns(_ decision: TimestampOrderDecision) {
+        for index in columns.indices where columns[index].role == .spikeTrain {
+            columns[index].orderDecision = decision
+        }
+    }
+
+    mutating func applyDuplicateDecisionToAllSpikeColumns(_ decision: ExactDuplicateDecision) {
+        for index in columns.indices where columns[index].role == .spikeTrain {
+            columns[index].duplicateDecision = decision
+        }
+    }
+
     mutating func removeAttributes(ids: Set<UUID>) {
         attributes.removeAll { ids.contains($0.id) }
     }

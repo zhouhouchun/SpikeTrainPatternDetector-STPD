@@ -7,8 +7,9 @@ public enum ConfirmedImportTemporalScope: Hashable, Sendable {
     case singleRecordingSegmentBoundsUnavailable
 }
 
-/// Whether a confirmation record has been persisted. This slice is in-memory only; persistence is
-/// explicitly recorded as unavailable rather than pretended.
+/// Whether this bare, in-memory confirmation record itself carries persistence standing. It never
+/// does: durable standing is represented separately by `PersistedConfirmedScientificImportManifest`
+/// after the store completes its write, durability, readback, and verification barriers.
 public enum ConfirmationPersistenceAvailability: Hashable, Sendable {
     case unavailableInMemoryOnly
 }

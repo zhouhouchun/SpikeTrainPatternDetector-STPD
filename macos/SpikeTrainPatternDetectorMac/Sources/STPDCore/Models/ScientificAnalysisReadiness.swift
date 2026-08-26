@@ -64,9 +64,46 @@ public struct ScientificAnalysisReadinessAssessment: Sendable {
 /// not defined for that mode (a `not_evaluated` state, never "no pattern detected"). It never grants
 /// readiness.
 public enum ScientificAnalysisReadinessEvaluator {
+    /// A bare, in-memory base confirmation: the persistence blocker is always first, every contract
+    /// blocker follows.
     public static func assess(
         _ manifest: ConfirmedScientificImportManifest
     ) -> ScientificAnalysisReadinessAssessment {
+        ScientificAnalysisReadinessAssessment(
+            firstBlocker: .confirmedManifestPersistenceUnavailable,
+            additionalBlockers: contractBlockers(for: manifest)
+        )
+    }
+
+    /// A persisted-and-verified confirmation removes exactly one blocker
+    /// (`confirmedManifestPersistenceUnavailable`) and retains every other blocker unchanged. It never
+    /// grants readiness: observation-bounds, run-contract, detector-consumer, export, Trial/coverage,
+    /// and activity-mode blockers all remain, so the assessment stays deny-only and fail-closed.
+    public static func assess(
+        _ persisted: PersistedConfirmedScientificImportManifest
+    ) -> ScientificAnalysisReadinessAssessment {
+        let contract = contractBlockers(for: persisted.baseConfirmation)
+        guard let first = contract.first else {
+            // Unreachable in this slice: run/detector/export blockers are unconditional, so `contract`
+            // is never empty. Fail closed anyway — never fabricate readiness by returning no blocker.
+            return ScientificAnalysisReadinessAssessment(
+                firstBlocker: .confirmedManifestPersistenceUnavailable,
+                additionalBlockers: []
+            )
+        }
+        return ScientificAnalysisReadinessAssessment(
+            firstBlocker: first,
+            additionalBlockers: Array(contract.dropFirst())
+        )
+    }
+
+    /// Every deny-only blocker EXCEPT the persistence blocker, in canonical order. Persistence
+    /// standing is layered on by the caller: absent for a bare confirmation (persistence blocker
+    /// added as `firstBlocker`), satisfied for the sealed persisted wrapper (persistence blocker
+    /// omitted). This is the single shared source of the non-persistence blocker set.
+    private static func contractBlockers(
+        for manifest: ConfirmedScientificImportManifest
+    ) -> [ScientificAnalysisReadinessBlocker] {
         var additional: [ScientificAnalysisReadinessBlocker] = []
         let segment = manifest.recordingSegment
 
@@ -113,14 +150,6 @@ public enum ScientificAnalysisReadinessEvaluator {
             )
         }
 
-        // The persistence blocker is always first (this slice is in-memory only). The switch keeps
-        // the assessment fail-closed if a future persistence state is introduced.
-        switch manifest.persistence {
-        case .unavailableInMemoryOnly:
-            return ScientificAnalysisReadinessAssessment(
-                firstBlocker: .confirmedManifestPersistenceUnavailable,
-                additionalBlockers: additional
-            )
-        }
+        return additional
     }
 }
