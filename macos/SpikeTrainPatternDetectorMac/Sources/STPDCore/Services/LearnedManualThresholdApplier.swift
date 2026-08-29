@@ -81,7 +81,8 @@ public enum LearnedManualThresholdApplier {
     /// Write the proposal's learned values into `current` as soft anchors, preserving Hard families.
     public static func apply(
         proposal: LearnedThresholdProposal,
-        to current: ManualThresholdFieldState
+        to current: ManualThresholdFieldState,
+        selectingFamilies selectedFamilies: Set<String>? = nil
     ) -> LearnedThresholdApplyResult {
         var next = current
         var applied: [String] = []
@@ -92,11 +93,16 @@ public enum LearnedManualThresholdApplier {
             guard t.isActive, let value = t.valueSec else { return nil }
             return value * 1000
         }
+        func isSelected(_ family: String) -> Bool {
+            selectedFamilies?.contains(family) ?? true
+        }
 
         // Burst: seed upper + bridge upper.
         let burstSeed = ms(proposal.profile.burst.seedUpperISI)
         let burstBridge = ms(proposal.profile.burst.bridgeUpperISI)
-        if burstSeed != nil || burstBridge != nil {
+        if !isSelected("burst") {
+            // An explicit family selection is an application choice, not missing evidence.
+        } else if burstSeed != nil || burstBridge != nil {
             if current.burstMode == .hardGate {
                 skippedHard.append("burst")
             } else {
@@ -112,7 +118,9 @@ public enum LearnedManualThresholdApplier {
         // Tonic: lower + upper.
         let tonicLo = ms(proposal.profile.tonic.isiLower)
         let tonicHi = ms(proposal.profile.tonic.isiUpper)
-        if tonicLo != nil || tonicHi != nil {
+        if !isSelected("tonic") {
+            // Leave this family and its provenance untouched.
+        } else if tonicLo != nil || tonicHi != nil {
             if current.tonicMode == .hardGate {
                 skippedHard.append("tonic")
             } else {
@@ -128,7 +136,9 @@ public enum LearnedManualThresholdApplier {
         // HF-tonic: floor + upper.
         let hfLo = ms(proposal.profile.hfTonic.isiFloor)
         let hfHi = ms(proposal.profile.hfTonic.isiUpper)
-        if hfLo != nil || hfHi != nil {
+        if !isSelected("hf_tonic") {
+            // Leave this family and its provenance untouched.
+        } else if hfLo != nil || hfHi != nil {
             if current.hfTonicMode == .hardGate {
                 skippedHard.append("hf_tonic")
             } else {
@@ -142,7 +152,9 @@ public enum LearnedManualThresholdApplier {
         }
 
         // Pause: lower only.
-        if let pauseLo = ms(proposal.profile.pause.isiLower) {
+        if !isSelected("pause") {
+            // Leave this family and its provenance untouched.
+        } else if let pauseLo = ms(proposal.profile.pause.isiLower) {
             if current.pauseMode == .hardGate {
                 skippedHard.append("pause")
             } else {

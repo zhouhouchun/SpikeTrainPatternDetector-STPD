@@ -746,11 +746,16 @@ extension RasterDocument {
         )
     }
 
-    func applyLearnedThresholds() {
+    func applyLearnedThresholds(
+        selecting families: Set<ManualPatternLearningFamily>? = nil
+    ) {
         guard let proposal = learnedThresholdProposal,
               !proposal.isAllAutomatic else {
             lastLearnedApplyResult = nil
             return
+        }
+        let selectedKeys = families.map { selected in
+            Set(selected.compactMap(\.compatibleThresholdFamilyKey))
         }
         let previousState = currentManualThresholdFieldState
         let previousResult = lastLearnedApplyResult
@@ -759,7 +764,8 @@ extension RasterDocument {
             appliedManualPatternLearningProposalsByFamily
         let result = LearnedManualThresholdApplier.apply(
             proposal: proposal,
-            to: previousState
+            to: previousState,
+            selectingFamilies: selectedKeys
         )
         installManualThresholdFieldState(result.state)
         if result.didApplyAnything, let source = manualPatternLearningProposal {

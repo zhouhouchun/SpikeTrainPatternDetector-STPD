@@ -5,6 +5,8 @@ struct DetectorParametersView: View {
     @Bindable var document: RasterDocument
 
     @Environment(\.l10n) private var l10n
+    @State private var selectedLearningFamilies: Set<ManualPatternLearningFamily> = []
+    @State private var isLearningWarningConfirmationPresented = false
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
@@ -307,6 +309,10 @@ struct DetectorParametersView: View {
                         learnedFamilySummaryRow(summary)
                     }
                 }
+                Text(l10n.t("序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !learning.diagnostics.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
                         ForEach(Array(learning.diagnostics.enumerated()), id: \.offset) { _, item in
@@ -329,6 +335,10 @@ struct DetectorParametersView: View {
             }
 
             if let proposal, !proposal.isAllAutomatic {
+                Text(l10n.t("勾选本次要应用的模式家族；未勾选家族保持当前参数和溯源不变。"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(l10n.t("预览仅供查看，不影响检测，直到点击下方“应用学习到的阈值”。应用后请手动重新运行检测。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -349,8 +359,16 @@ struct DetectorParametersView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(alignment: .top, spacing: 10) {
-                    Button(l10n.t("应用学习到的阈值")) { document.applyLearnedThresholds() }
+                    Button(l10n.t("应用所选学习阈值")) {
+                        if let learning = document.manualPatternLearningProposal,
+                           !learning.warnings(relevantTo: selectedLearningFamilies).isEmpty {
+                            isLearningWarningConfirmationPresented = true
+                        } else {
+                            document.applyLearnedThresholds(selecting: selectedLearningFamilies)
+                        }
+                    }
                         .buttonStyle(.borderedProminent)
+                        .disabled(selectedLearningFamilies.isEmpty)
                     Text(l10n.t("不覆盖你已设为硬门控的家族。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -378,29 +396,95 @@ struct DetectorParametersView: View {
                       : l10n.t("参数已在应用后改变，为避免覆盖修改，回滚已锁定。"))
             }
         }
+        .onChange(
+            of: document.manualPatternLearningProposal?.proposalComputationDigest,
+            initial: true
+        ) { _, _ in
+            selectedLearningFamilies = Set(
+                document.manualPatternLearningProposal?.applicableFamilies ?? []
+            )
+        }
+        .confirmationDialog(
+            l10n.t("所选家族存在科学或跨序列一致性警告"),
+            isPresented: $isLearningWarningConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button(l10n.t("仍然应用所选家族")) {
+                document.applyLearnedThresholds(selecting: selectedLearningFamilies)
+            }
+            Button(l10n.t("取消"), role: .cancel) {}
+        } message: {
+            Text(l10n.t("这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。"))
+        }
     }
 
     private func learnedFamilySummaryRow(
         _ summary: ManualPatternFamilyLearningSummary
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(learningFamilyTitle(summary.family))
-                .font(.caption.weight(.semibold))
-                .frame(width: 92, alignment: .leading)
-            Text(String(format: l10n.t("标记 %d / 可用 %d 段 · 序列 %d / %d"),
-                        summary.segmentCount, summary.usableSegmentCount,
-                        summary.usableTrainCount, summary.trainCount))
-                .foregroundStyle(.secondary)
-            if let center = summary.isiMedianMicroseconds.trainBalancedMedian {
-                Text(String(format: l10n.t("中心 %.3f ms"), center / 1_000))
+        let isApplicable = document.manualPatternLearningProposal?
+            .applicableFamilies.contains(summary.family) == true
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if isApplicable {
+                    Toggle("", isOn: learningFamilySelectionBinding(summary.family))
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                        .help(l10n.t("选择是否将该家族的学习值应用为软锚点。"))
+                } else {
+                    Color.clear.frame(width: 14, height: 14)
+                }
+                Text(learningFamilyTitle(summary.family))
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 92, alignment: .leading)
+                Text(String(format: l10n.t("标记 %d / 可用 %d 段 · 序列 %d / %d"),
+                            summary.segmentCount, summary.usableSegmentCount,
+                            summary.usableTrainCount, summary.trainCount))
                     .foregroundStyle(.secondary)
+                if let center = summary.isiMedianMicroseconds.trainBalancedMedian {
+                    Text(String(format: l10n.t("中心 %.3f ms"), center / 1_000))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 6)
+                Text(learningStandingTitle(summary.standing))
+                    .foregroundStyle(summary.standing == .insufficient ? .secondary : STPDAppTheme.accent)
             }
-            Spacer(minLength: 6)
-            Text(learningStandingTitle(summary.standing))
-                .foregroundStyle(summary.standing == .insufficient ? .secondary : STPDAppTheme.accent)
+            HStack(spacing: 10) {
+                Color.clear.frame(width: 22, height: 1)
+                if let minimum = summary.isiMedianMicroseconds.minimumTrainMedian,
+                   let maximum = summary.isiMedianMicroseconds.maximumTrainMedian {
+                    Text(String(
+                        format: l10n.t("序列中位数范围 %.3f–%.3f ms"),
+                        minimum / 1_000,
+                        maximum / 1_000
+                    ))
+                }
+                if summary.validation.heldOutTrainCount > 0 {
+                    Text(String(
+                        format: l10n.t("留一序列命中 %d/%d"),
+                        summary.validation.insideExpectedBandCount,
+                        summary.validation.heldOutTrainCount
+                    ))
+                }
+            }
+            .foregroundStyle(.secondary)
         }
         .font(.caption2)
-        .lineLimit(1)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func learningFamilySelectionBinding(
+        _ family: ManualPatternLearningFamily
+    ) -> Binding<Bool> {
+        Binding(
+            get: { selectedLearningFamilies.contains(family) },
+            set: { selected in
+                if selected {
+                    selectedLearningFamilies.insert(family)
+                } else {
+                    selectedLearningFamilies.remove(family)
+                }
+            }
+        )
     }
 
     private func learningFamilyTitle(_ family: ManualPatternLearningFamily) -> String {
@@ -418,7 +502,7 @@ struct DetectorParametersView: View {
         case .insufficient: return l10n.t("证据不足")
         case .exploratorySingleTrain: return l10n.t("单序列探索")
         case .provisionalTwoTrains: return l10n.t("双序列暂定")
-        case .supportedMultiTrain: return l10n.t("多序列支持")
+        case .supportedMultiTrain: return l10n.t("多序列覆盖")
         }
     }
 

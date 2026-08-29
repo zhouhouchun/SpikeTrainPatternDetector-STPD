@@ -289,6 +289,8 @@ func enReturnsI18N2BTranslations() {
         // Phase 1F: learned-threshold wording polish
         ("从手动标注学习（预览）", "Learned from manual annotations (preview)"),
         ("应用学习到的阈值", "Apply learned thresholds"),
+        ("应用所选学习阈值", "Apply selected learned thresholds"),
+        ("多序列覆盖", "Multi-train coverage"),
         ("不覆盖你已设为硬门控的家族。", "Does not overwrite families you set to Hard."),
         // ISI timeline
         ("布局", "Layout"),
@@ -550,6 +552,16 @@ func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
             "生成学习预览",
             "Generate learning preview",
             "Сформировать предпросмотр"
+        ),
+        (
+            "应用所选学习阈值",
+            "Apply selected learned thresholds",
+            "Применить выбранные обученные пороги"
+        ),
+        (
+            "多序列覆盖",
+            "Multi-train coverage",
+            "Охват нескольких последовательностей"
         ),
         (
             "撤销上一次学习阈值应用",

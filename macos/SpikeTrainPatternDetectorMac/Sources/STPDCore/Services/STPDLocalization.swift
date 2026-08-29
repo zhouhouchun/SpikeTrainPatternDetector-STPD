@@ -955,8 +955,20 @@ public enum STPDLocalization {
         "正在生成学习预览…": "Generating learning preview…",
         "生成学习预览": "Generate learning preview",
         "重新生成预览": "Regenerate preview",
+        "应用所选学习阈值": "Apply selected learned thresholds",
+        "仍然应用所选家族": "Apply selected families anyway",
+        "所选家族存在科学或跨序列一致性警告":
+            "Selected families have scientific or cross-train consistency warnings",
+        "这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。":
+            "These warnings do not remove evidence, but the suggestions may be unstable or inconsistent with the expected pattern order. Confirm before applying.",
+        "勾选本次要应用的模式家族；未勾选家族保持当前参数和溯源不变。":
+            "Select the pattern families to apply now; unselected families keep their current parameters and provenance.",
+        "选择是否将该家族的学习值应用为软锚点。":
+            "Choose whether to apply this family's learned values as soft anchors.",
         "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
             "Each labeled segment votes once, then medians are taken within each train and trains are weighted equally; raw ISIs are never pooled.",
+        "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
+            "Train coverage describes consistency across spike trains in this dataset only; it is not independent neuron, session, or animal replication and does not establish external generalization.",
         "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
             "HFS ISI, duration, and spike count are report-only until the detector has compatible fields.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
@@ -971,10 +983,13 @@ public enum STPDLocalization {
         "标记 %d / 可用 %d 段 · 序列 %d / %d":
             "Labeled %d / usable %d segments · trains %d / %d",
         "中心 %.3f ms": "Center %.3f ms",
+        "序列中位数范围 %.3f–%.3f ms": "Train-median range %.3f–%.3f ms",
+        "留一序列命中 %d/%d": "Leave-one-train-out hits %d/%d",
         "爆发家族": "Burst family",
         "单序列探索": "Single-train exploratory",
         "双序列暂定": "Two-train provisional",
         "多序列支持": "Multi-train supported",
+        "多序列覆盖": "Multi-train coverage",
         "可用片段不足，未生成该家族阈值。": "Insufficient usable segments; no threshold was generated for this family.",
         "仅覆盖一条序列，结果属于探索性建议。": "Only one train is covered; this is an exploratory suggestion.",
         "留一序列检查只有部分一致，请结合预览复核。": "Leave-one-train-out checks are only partly consistent; review the preview.",
@@ -1242,8 +1257,20 @@ public enum STPDLocalization {
         "正在生成学习预览…": "Формируется предпросмотр обучения…",
         "生成学习预览": "Сформировать предпросмотр",
         "重新生成预览": "Сформировать заново",
+        "应用所选学习阈值": "Применить выбранные обученные пороги",
+        "仍然应用所选家族": "Всё равно применить выбранные семейства",
+        "所选家族存在科学或跨序列一致性警告":
+            "Для выбранных семейств есть научные предупреждения или предупреждения о согласованности между последовательностями",
+        "这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。":
+            "Предупреждения не удаляют данные, но предложения могут быть нестабильны или не соответствовать ожидаемому порядку паттернов. Подтвердите применение.",
+        "勾选本次要应用的模式家族；未勾选家族保持当前参数和溯源不变。":
+            "Выберите семейства паттернов для применения; параметры и происхождение невыбранных семейств не изменятся.",
+        "选择是否将该家族的学习值应用为软锚点。":
+            "Выберите, применять ли обученные значения этого семейства как мягкие ориентиры.",
         "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
             "Каждый сегмент даёт один голос; затем берётся медиана внутри каждой последовательности, а последовательности получают равный вес. Все ISI не объединяются.",
+        "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
+            "Охват последовательностей отражает только согласованность между spike train в этом наборе данных; это не независимые повторы по нейронам, сеансам или животным и не доказательство внешней обобщаемости.",
         "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
             "ISI, длительность и число спайков HFS только отображаются и не записываются в пороги без совместимых полей детектора.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
@@ -1255,11 +1282,14 @@ public enum STPDLocalization {
         "参数已在应用后改变，为避免覆盖修改，回滚已锁定。": "Параметры изменены после применения; откат заблокирован для защиты правок.",
         "标记 %d / 可用 %d 段 · 序列 %d / %d": "Размечено %d / пригодно %d сегм. · последовательности %d / %d",
         "中心 %.3f ms": "Центр %.3f мс",
+        "序列中位数范围 %.3f–%.3f ms": "Диапазон медиан последовательностей %.3f–%.3f мс",
+        "留一序列命中 %d/%d": "Совпадения при исключении одной последовательности: %d/%d",
         "爆发家族": "Семейство пачек",
         "证据不足": "Недостаточно данных",
         "单序列探索": "Исследовательски: 1 последовательность",
         "双序列暂定": "Предварительно: 2 последовательности",
         "多序列支持": "Поддержано несколькими последовательностями",
+        "多序列覆盖": "Охват нескольких последовательностей",
         "可用片段不足，未生成该家族阈值。": "Недостаточно пригодных сегментов; порог не сформирован.",
         "仅覆盖一条序列，结果属于探索性建议。": "Охвачена одна последовательность; предложение исследовательское.",
         "留一序列检查只有部分一致，请结合预览复核。": "Проверка с исключением одной последовательности согласуется частично; проверьте предпросмотр.",

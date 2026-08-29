@@ -79,6 +79,28 @@ struct ManualPatternLearningWorkflowTests {
         #expect(document.classicAnchorDetectionRun == nil)
     }
 
+    @Test("Explicit family selection applies only the chosen compatible family")
+    func selectiveFamilyApplicationIsNarrowAndAuditable() throws {
+        let document = RasterDocument()
+        let proposal = try makeBurstAndTonicProposal()
+        document.manualPatternLearningProposal = proposal
+
+        document.applyLearnedThresholds(selecting: [.tonic])
+
+        #expect(document.manualBurstMode == .automatic)
+        #expect(document.manualBurstSeedMaxISIMs == 0)
+        #expect(document.manualBurstBridgeMaxISIMs == 0)
+        #expect(document.manualTonicMode == .softAnchor)
+        #expect(document.manualTonicMinISIMs > 0)
+        #expect(document.manualTonicMaxISIMs > document.manualTonicMinISIMs)
+        #expect(document.lastLearnedApplyResult?.appliedFamilies == ["tonic"])
+        #expect(document.lastLearnedApplyResult?.noValueFamilies.isEmpty == true)
+        #expect(document.activeLearnedThresholdProvenanceByKey.keys.allSatisfy {
+            $0.hasPrefix("tonic.")
+        })
+        #expect(document.classicAnchorDetectionRun == nil)
+    }
+
     @Test("Rollback refuses to overwrite a later manual parameter edit")
     func rollbackDoesNotOverwriteLaterManualEdit() throws {
         let document = RasterDocument()
@@ -178,6 +200,42 @@ struct ManualPatternLearningWorkflowTests {
             draft: CanonicalManualISILabelDraft(
                 canonicalFingerprint: context.fingerprint,
                 decisions: decisions
+            ),
+            minimumValidISIMicroseconds: 900
+        )
+        return ManualPatternLearningProposalBuilder.build(
+            from: ManualPatternSegmentFeatureExtractor.extract(from: snapshot)
+        )
+    }
+
+    private func makeBurstAndTonicProposal() throws -> ManualPatternLearningProposal {
+        let context = try makeContext(intervals: [
+            10_000, 11_000, 90_000, 12_000, 13_000, 90_000,
+            40_000, 42_000, 44_000, 46_000, 48_000, 100_000,
+            38_000, 40_000, 42_000, 44_000, 46_000,
+        ])
+        let burst = [1, 2, 4, 5].map { index in
+            CanonicalManualISILabelDecision(
+                trainID: context.trainID,
+                isiIndex: index,
+                track: .event,
+                label: .burst
+            )
+        }
+        let tonic = [7, 8, 9, 10, 11, 13, 14, 15, 16, 17].map { index in
+            CanonicalManualISILabelDecision(
+                trainID: context.trainID,
+                isiIndex: index,
+                track: .state,
+                label: .tonic
+            )
+        }
+        let snapshot = try ManualLearningEvidenceSnapshotBuilder.build(
+            dataset: context.dataset,
+            fingerprint: context.fingerprint,
+            draft: CanonicalManualISILabelDraft(
+                canonicalFingerprint: context.fingerprint,
+                decisions: burst + tonic
             ),
             minimumValidISIMicroseconds: 900
         )

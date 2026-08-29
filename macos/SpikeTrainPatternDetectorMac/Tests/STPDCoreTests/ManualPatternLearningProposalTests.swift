@@ -75,6 +75,7 @@ struct ManualPatternLearningProposalTests {
         #expect(result.diagnostics.contains {
             $0.code == .hfsHasNoCompatibleThresholdField
         })
+        #expect(result.applicableFamilies == [.burstFamily, .tonic, .pause])
         #expect(result.hasApplicableThresholds)
     }
 
@@ -153,6 +154,13 @@ struct ManualPatternLearningProposalTests {
         #expect(result.compatibleThresholdProposal.contributions.contains {
             $0.family == "tonic"
         })
+        #expect(result.warnings(relevantTo: [.burstFamily]).contains {
+            $0.code == .expectedBurstTonicOrderNotObserved
+        })
+        #expect(result.warnings(relevantTo: [.tonic]).contains {
+            $0.code == .expectedBurstTonicOrderNotObserved
+        })
+        #expect(result.warnings(relevantTo: [.pause]).isEmpty)
     }
 
     @Test("Proposal identity is deterministic and bound to feature source")

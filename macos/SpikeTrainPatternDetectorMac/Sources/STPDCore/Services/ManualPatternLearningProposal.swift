@@ -9,6 +9,18 @@ public enum ManualPatternLearningFamily: String, CaseIterable, Hashable, Sendabl
     case highFrequencyTonic = "high_frequency_tonic"
     case highFrequencySpiking = "high_frequency_spiking"
     case pause
+
+    /// Compatibility key used by the existing manual-threshold profile. HFS remains report-only
+    /// because that profile currently exposes no scientifically compatible ISI field for it.
+    public var compatibleThresholdFamilyKey: String? {
+        switch self {
+        case .burstFamily: "burst"
+        case .tonic: "tonic"
+        case .highFrequencyTonic: "hf_tonic"
+        case .highFrequencySpiking: nil
+        case .pause: "pause"
+        }
+    }
 }
 
 /// Evidence authority for a family proposal. These names describe observational coverage, not
@@ -58,6 +70,26 @@ public struct ManualPatternLearningDiagnostic: Hashable, Sendable {
         self.code = code
         self.severity = severity
         self.family = family
+    }
+
+    /// Families whose interpretation is affected by this diagnostic. This supports selective UI
+    /// acknowledgement without turning a soft scientific warning into an automatic veto.
+    public var affectedFamilies: Set<ManualPatternLearningFamily> {
+        if let family { return [family] }
+        switch code {
+        case .expectedBurstTonicOrderNotObserved:
+            return [.burstFamily, .tonic]
+        case .expectedTonicPauseOrderNotObserved:
+            return [.tonic, .pause]
+        case .expectedHFSBelowTonicNotObserved:
+            return [.highFrequencySpiking, .tonic]
+        case .expectedHFTonicAboveBurstNotObserved:
+            return [.highFrequencyTonic, .burstFamily]
+        case .insufficientFamilyEvidence, .singleTrainOnly,
+             .crossTrainValidationMixed, .crossTrainValidationFailed,
+             .hfsHasNoCompatibleThresholdField:
+            return []
+        }
     }
 }
 
@@ -151,6 +183,26 @@ public struct ManualPatternLearningProposal: Hashable, Sendable {
 
     public var hasApplicableThresholds: Bool {
         !compatibleThresholdProposal.isAllAutomatic
+    }
+
+    /// Families that have at least one compatible field in this exact proposal. The order is stable
+    /// and follows the scientific family declaration rather than dictionary iteration.
+    public var applicableFamilies: [ManualPatternLearningFamily] {
+        let keys = Set(compatibleThresholdProposal.contributions.map(\.family))
+        return ManualPatternLearningFamily.allCases.filter {
+            $0.compatibleThresholdFamilyKey.map(keys.contains) == true
+        }
+    }
+
+    /// Warning-only evidence relevant to the families the user intends to apply. The result never
+    /// deletes evidence or changes a proposal; it only supports an explicit acknowledgement step.
+    public func warnings(
+        relevantTo selectedFamilies: Set<ManualPatternLearningFamily>
+    ) -> [ManualPatternLearningDiagnostic] {
+        diagnostics.filter {
+            $0.severity == .warning
+                && !$0.affectedFamilies.isDisjoint(with: selectedFamilies)
+        }
     }
 }
 
