@@ -395,6 +395,8 @@ struct DetectorParametersView: View {
                       ? l10n.t("恢复应用前的阈值；不会自动运行检测器。")
                       : l10n.t("参数已在应用后改变，为避免覆盖修改，回滚已锁定。"))
             }
+
+            manualLearningHoldoutSection
         }
         .onChange(
             of: document.manualPatternLearningProposal?.proposalComputationDigest,
@@ -424,6 +426,162 @@ struct DetectorParametersView: View {
                 Text(l10n.t("这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。"))
             }
         }
+    }
+
+    @ViewBuilder
+    private var manualLearningHoldoutSection: some View {
+        let trainIDs = document.manualLearningAvailableTrainIDs
+        Divider().padding(.top, 2)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(l10n.t("按 train 留出验证"))
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Text(l10n.t("基线检测 vs 仅由校准 train 学到的阈值"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 10)
+                if document.isManualLearningHoldoutValidating {
+                    Text(l10n.t("正在运行两次留出检测…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button(document.manualLearningHoldoutReport == nil
+                           ? l10n.t("运行留出验证")
+                           : l10n.t("重新运行留出验证")) {
+                        document.runManualLearningHoldoutValidation()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!document.canRunManualLearningHoldoutValidation)
+                }
+            }
+
+            Text(l10n.t("明确勾选留出 train；其余 train 用于一次性校准。留出标签只用于评价，不进入学习。"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if trainIDs.count >= 2 {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(alignment: .center, spacing: 12) {
+                        Text(l10n.t("留出："))
+                            .font(.caption.weight(.semibold))
+                        ForEach(trainIDs, id: \.self) { trainID in
+                            Toggle(trainID, isOn: manualLearningHeldOutBinding(trainID))
+                                .toggleStyle(.checkbox)
+                                .font(.caption)
+                                .disabled(document.isManualLearningHoldoutValidating)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                }
+                Text(String(
+                    format: l10n.t("校准 %d 条 · 留出 %d 条"),
+                    document.manualLearningCalibrationTrainIDs.count,
+                    document.manualLearningHeldOutTrainIDs.count
+                ))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            } else {
+                Text(l10n.t("至少需要两条规范 spike train 才能进行 train 级留出验证。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if document.isManualLearningHoldoutValidating {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                Text(l10n.t("正在校准 train 上学习，并在留出 train 上分别运行未学习基线和学习后检测；人工留出标签不会反馈到检测器。"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let error = document.manualLearningHoldoutErrorMessage {
+                Text(l10n.t(error))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if document.manualLearningHoldoutReportIsStale {
+                Text(l10n.t("检测参数已改变，当前留出报告已过期；请重新运行。"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+
+            if let report = document.manualLearningHoldoutReport {
+                let assessed = report.comparisons.filter { $0.baseline.assessedISICount > 0 }
+                Text(String(
+                    format: l10n.t("报告：校准 %d 条 · 留出 %d 条 · 已评价家族 %d 个"),
+                    report.calibrationTrainIDs.count,
+                    report.heldOutTrainIDs.count,
+                    report.assessedFamilyCount
+                ))
+                .font(.caption.weight(.semibold))
+                if assessed.isEmpty {
+                    Text(l10n.t("留出 train 没有可评价的已审核模式标签；空白行没有被当作阴性。"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(assessed, id: \.family) { comparison in
+                            manualLearningHoldoutRow(comparison)
+                        }
+                    }
+                }
+                Text(l10n.t("不自动给出单一通过结论：F1、分段 IoU、边界误差和错误拆分/合并需要共同审阅。"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func manualLearningHeldOutBinding(_ trainID: String) -> Binding<Bool> {
+        Binding(
+            get: { document.manualLearningHeldOutTrainIDs.contains(trainID) },
+            set: { document.setManualLearningHeldOut($0, trainID: trainID) }
+        )
+    }
+
+    private func manualLearningHoldoutRow(
+        _ comparison: ManualLearningHoldoutFamilyComparison
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(learningFamilyTitle(comparison.family))
+                .font(.caption.weight(.semibold))
+                .frame(width: 92, alignment: .leading)
+            Text(String(format: l10n.t("已审核 ISI %d"), comparison.baseline.assessedISICount))
+            Text("F1 " + metricValue(comparison.baseline.f1)
+                 + " → " + metricValue(comparison.learned.f1))
+            Text("Δ " + signedMetricValue(comparison.f1Delta))
+                .foregroundStyle(deltaTint(comparison.f1Delta))
+            Text("IoU Δ " + signedMetricValue(comparison.meanBestSegmentIoUDelta))
+            Text(String(
+                format: l10n.t("拆分 Δ %+d · 合并 Δ %+d"),
+                comparison.falseSplitDelta,
+                comparison.falseMergeDelta
+            ))
+            Spacer(minLength: 6)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+
+    private func metricValue(_ value: Double?) -> String {
+        value.map { String(format: "%.3f", $0) } ?? "—"
+    }
+
+    private func signedMetricValue(_ value: Double?) -> String {
+        value.map { String(format: "%+.3f", $0) } ?? "—"
+    }
+
+    private func deltaTint(_ value: Double?) -> Color {
+        guard let value else { return .secondary }
+        if value > 0 { return STPDAppTheme.accent }
+        if value < 0 { return .orange }
+        return .secondary
     }
 
     private func learnedFamilySummaryRow(

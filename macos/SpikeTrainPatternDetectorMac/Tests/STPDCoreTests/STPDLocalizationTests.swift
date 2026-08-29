@@ -593,6 +593,26 @@ func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
             "Applied the selected manually learned thresholds; re-run detection.",
             "Применены выбранные пороги, обученные по ручной разметке; повторно запустите детектор."
         ),
+        (
+            "按 train 留出验证",
+            "Train-held-out validation",
+            "Проверка с отложенными spike train"
+        ),
+        (
+            "运行留出验证",
+            "Run held-out validation",
+            "Запустить отложенную проверку"
+        ),
+        (
+            "留出 train 没有可评价的已审核模式标签；空白行没有被当作阴性。",
+            "The held-out trains have no reviewed pattern labels that can be assessed; blank rows were not treated as negatives.",
+            "В отложенных train нет проверенных меток паттернов для оценки; пустые строки не считались отрицательными."
+        ),
+        (
+            "train 留出验证完成；结果仅供比较，未改变检测器。",
+            "Train-held-out validation completed; the comparison did not change the detector.",
+            "Проверка с отложенными train завершена; сравнение не изменило детектор."
+        ),
     ]
 
     for (source, english, russian) in cases {

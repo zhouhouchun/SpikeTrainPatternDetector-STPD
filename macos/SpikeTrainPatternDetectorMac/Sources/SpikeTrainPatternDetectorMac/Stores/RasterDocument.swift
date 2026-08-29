@@ -348,6 +348,15 @@ final class RasterDocument {
     var isManualPatternLearning = false
     var manualPatternLearningErrorMessage: String?
     @ObservationIgnored var manualPatternLearningGeneration = 0
+    /// Explicit train-level validation never chooses a split silently. The user selects held-out
+    /// trains; every remaining canonical train is calibration evidence for that one comparison.
+    var manualLearningHeldOutTrainIDs: Set<String> = []
+    var manualLearningHoldoutReport: ManualLearningHoldoutValidationReport?
+    var manualLearningHoldoutErrorMessage: String?
+    var isManualLearningHoldoutValidating = false
+    @ObservationIgnored var manualLearningHoldoutGeneration = 0
+    @ObservationIgnored var manualLearningHoldoutConfigurationSnapshot:
+        ManualLearningHoldoutValidationConfiguration?
     /// The proposal whose compatible values were last explicitly applied. It is retained even when
     /// later annotation edits invalidate the preview, so a subsequent detector run keeps the exact
     /// provenance of the values currently installed in the parameter fields.

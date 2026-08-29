@@ -31,6 +31,11 @@ private enum ManualPatternLearningBuildOutcome: Sendable {
     case failure(String)
 }
 
+private enum ManualLearningHoldoutBuildOutcome: Sendable {
+    case success(ManualLearningHoldoutValidationReport)
+    case failure(String)
+}
+
 enum ManualPatternLearningBuildError: Error, Equatable, LocalizedError {
     case canonicalSourceRequired
     case sourceIdentityMismatch
@@ -580,6 +585,158 @@ extension RasterDocument {
             && persisted.canonicalFingerprint == draft.canonicalFingerprint
     }
 
+    var manualLearningAvailableTrainIDs: [String] {
+        canonicalManualDataset?.spikeTrains
+            .map(\.semanticID.semanticID.canonicalText)
+            .sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) } ?? []
+    }
+
+    var manualLearningCalibrationTrainIDs: [String] {
+        manualLearningAvailableTrainIDs.filter {
+            !manualLearningHeldOutTrainIDs.contains($0)
+        }
+    }
+
+    var canRunManualLearningHoldoutValidation: Bool {
+        guard !isManualLearningHoldoutValidating,
+              let persisted = scientificImportCoordinator.persistedConfirmation,
+              let draft = canonicalManualISILabelDraft,
+              canonicalManualDataset != nil,
+              draft.canonicalFingerprint == persisted.canonicalFingerprint else { return false }
+        let available = Set(manualLearningAvailableTrainIDs)
+        let heldOut = manualLearningHeldOutTrainIDs.intersection(available)
+        return !heldOut.isEmpty && !available.subtracting(heldOut).isEmpty
+    }
+
+    var manualLearningHoldoutReportIsStale: Bool {
+        guard manualLearningHoldoutReport != nil,
+              let snapshot = manualLearningHoldoutConfigurationSnapshot else { return false }
+        return snapshot != manualLearningHoldoutValidationConfiguration
+    }
+
+    func setManualLearningHeldOut(_ heldOut: Bool, trainID: String) {
+        guard manualLearningAvailableTrainIDs.contains(trainID) else { return }
+        if heldOut {
+            manualLearningHeldOutTrainIDs.insert(trainID)
+        } else {
+            manualLearningHeldOutTrainIDs.remove(trainID)
+        }
+        invalidateManualLearningHoldoutReport(preservingSelection: true)
+    }
+
+    func runManualLearningHoldoutValidation() {
+        guard !isManualLearningHoldoutValidating,
+              let persisted = scientificImportCoordinator.persistedConfirmation,
+              let dataset = canonicalManualDataset,
+              let draft = canonicalManualISILabelDraft else {
+            manualLearningHoldoutErrorMessage = ManualPatternLearningBuildError
+                .canonicalSourceRequired.localizedDescription
+            return
+        }
+        let fingerprint = persisted.canonicalFingerprint
+        guard draft.canonicalFingerprint == fingerprint else {
+            manualLearningHoldoutErrorMessage = ManualPatternLearningBuildError
+                .sourceIdentityMismatch.localizedDescription
+            return
+        }
+
+        let trainByName = Dictionary(uniqueKeysWithValues: dataset.spikeTrains.map {
+            ($0.semanticID.semanticID.canonicalText, $0.semanticID)
+        })
+        let heldOutNames = manualLearningHeldOutTrainIDs.intersection(trainByName.keys)
+        let calibrationNames = Set(trainByName.keys).subtracting(heldOutNames)
+        guard !heldOutNames.isEmpty, !calibrationNames.isEmpty else {
+            manualLearningHoldoutErrorMessage =
+                "请至少明确留出一条 spike train，并保留至少一条校准 train。"
+            return
+        }
+        let split = ManualLearningHoldoutSplit(
+            calibrationTrainIDs: calibrationNames.compactMap { trainByName[$0] },
+            heldOutTrainIDs: heldOutNames.compactMap { trainByName[$0] }
+        )
+        let configuration = manualLearningHoldoutValidationConfiguration
+
+        manualLearningHoldoutGeneration &+= 1
+        let generation = manualLearningHoldoutGeneration
+        manualLearningHoldoutReport = nil
+        manualLearningHoldoutConfigurationSnapshot = nil
+        manualLearningHoldoutErrorMessage = nil
+        isManualLearningHoldoutValidating = true
+        statusMessage = "正在校准 train 上学习，并在留出 train 上运行基线与学习后检测…"
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await Task.detached(priority: .userInitiated) {
+                () -> ManualLearningHoldoutBuildOutcome in
+                do {
+                    return .success(try ManualLearningHoldoutValidator.validate(
+                        dataset: dataset,
+                        fingerprint: fingerprint,
+                        draft: draft,
+                        split: split,
+                        configuration: configuration
+                    ))
+                } catch {
+                    return .failure(error.localizedDescription)
+                }
+            }.value
+
+            guard self.manualLearningHoldoutGeneration == generation else { return }
+            self.isManualLearningHoldoutValidating = false
+            guard self.scientificImportCoordinator.persistedConfirmation?
+                    .canonicalFingerprint == fingerprint,
+                  self.canonicalManualDataset == dataset,
+                  self.canonicalManualISILabelDraft == draft,
+                  self.manualLearningHeldOutTrainIDs.intersection(trainByName.keys)
+                    == heldOutNames,
+                  self.manualLearningHoldoutValidationConfiguration == configuration else {
+                self.manualLearningHoldoutReport = nil
+                self.manualLearningHoldoutConfigurationSnapshot = nil
+                self.manualLearningHoldoutErrorMessage =
+                    "验证期间数据、人工标记、train 分工或检测参数已改变；请重新运行。"
+                self.statusMessage = "train 留出验证已取消。"
+                return
+            }
+            switch outcome {
+            case .success(let report):
+                self.manualLearningHoldoutReport = report
+                self.manualLearningHoldoutConfigurationSnapshot = configuration
+                self.manualLearningHoldoutErrorMessage = nil
+                self.statusMessage = "train 留出验证完成；结果仅供比较，未改变检测器。"
+            case .failure(let message):
+                self.manualLearningHoldoutReport = nil
+                self.manualLearningHoldoutConfigurationSnapshot = nil
+                self.manualLearningHoldoutErrorMessage = message
+                self.statusMessage = "train 留出验证失败。"
+            }
+        }
+    }
+
+    private var manualLearningHoldoutValidationConfiguration:
+        ManualLearningHoldoutValidationConfiguration {
+        ManualLearningHoldoutValidationConfiguration(
+            bandSettings: adaptiveDetectorBandSettings,
+            qualitySettings: qualitySettings,
+            refractoryAction: .warnOnly,
+            stateTuning: stateDetectorTuning,
+            detectorParameters: detectorParameterSettings,
+            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization
+        )
+    }
+
+    private func invalidateManualLearningHoldoutReport(preservingSelection: Bool) {
+        manualLearningHoldoutGeneration &+= 1
+        manualLearningHoldoutReport = nil
+        manualLearningHoldoutConfigurationSnapshot = nil
+        manualLearningHoldoutErrorMessage = nil
+        isManualLearningHoldoutValidating = false
+        if preservingSelection {
+            manualLearningHeldOutTrainIDs.formIntersection(manualLearningAvailableTrainIDs)
+        } else {
+            manualLearningHeldOutTrainIDs.removeAll()
+        }
+    }
+
     /// Convert the user-facing millisecond QC boundary without silently rounding a fractional
     /// microsecond. The tolerance only absorbs binary floating representation of values such as
     /// `0.9 ms`; it never accepts a scientifically different half-microsecond value.
@@ -690,6 +847,7 @@ extension RasterDocument {
         manualPatternLearningProposal = nil
         manualPatternLearningErrorMessage = nil
         isManualPatternLearning = false
+        invalidateManualLearningHoldoutReport(preservingSelection: true)
     }
 
     var learnedThresholdExplanations: [LearnedThresholdFieldExplanation] {

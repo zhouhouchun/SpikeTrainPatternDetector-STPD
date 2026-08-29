@@ -191,6 +191,67 @@ struct ManualPatternLearningWorkflowTests {
         #expect(document.classicAnchorDetectionRun == nil)
     }
 
+    @Test("Held-out train roles are explicit, canonical, and never accept unknown trains")
+    func heldOutTrainRoleSelectionIsExplicit() throws {
+        let unitA = ScientificSpikeTrainID(
+            try ScientificSemanticID(validating: "unit_a")
+        )
+        let unitB = ScientificSpikeTrainID(
+            try ScientificSemanticID(validating: "unit_b")
+        )
+        let dataset = CanonicalScientificDataset(
+            recordingSegment: ConfirmedRecordingSegment(
+                semanticID: ScientificRecordingSegmentID(
+                    try ScientificSemanticID(validating: "recording_holdout")
+                ),
+                regime: .continuousUntrialed,
+                importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+                observationBounds: .unknownOrUnavailable
+            ),
+            activityMode: .putativeSingleUnit,
+            spikeTrains: [
+                CanonicalSpikeTrain(
+                    semanticID: unitB,
+                    rawTimestamps: [0, 10_000, 20_000].map(
+                        MicrosecondTick.init(microseconds:)
+                    )
+                ),
+                CanonicalSpikeTrain(
+                    semanticID: unitA,
+                    rawTimestamps: [0, 20_000, 40_000].map(
+                        MicrosecondTick.init(microseconds:)
+                    )
+                ),
+            ],
+            eventScopeGroups: [CanonicalEventScopeGroup(
+                semanticID: ScientificEventScopeGroupID(
+                    try ScientificSemanticID(validating: "group_holdout")
+                ),
+                timeBasis: .recordingElapsed,
+                spikeTrainReferences: [unitA, unitB],
+                eventDefinitions: []
+            )],
+            scientificAttributeDefinitions: []
+        )
+        let document = RasterDocument()
+        document.canonicalManualDataset = dataset
+
+        #expect(document.manualLearningAvailableTrainIDs == ["unit_a", "unit_b"])
+        #expect(document.manualLearningCalibrationTrainIDs == ["unit_a", "unit_b"])
+
+        document.setManualLearningHeldOut(true, trainID: "unit_b")
+
+        #expect(document.manualLearningHeldOutTrainIDs == ["unit_b"])
+        #expect(document.manualLearningCalibrationTrainIDs == ["unit_a"])
+
+        document.setManualLearningHeldOut(true, trainID: "not_in_dataset")
+        #expect(document.manualLearningHeldOutTrainIDs == ["unit_b"])
+
+        document.setManualLearningHeldOut(false, trainID: "unit_b")
+        #expect(document.manualLearningHeldOutTrainIDs.isEmpty)
+        #expect(document.manualLearningCalibrationTrainIDs == ["unit_a", "unit_b"])
+    }
+
     private func makeBurstProposal() throws -> ManualPatternLearningProposal {
         let context = try makeContext()
         let decisions = [1, 2, 4, 5].map { index in
