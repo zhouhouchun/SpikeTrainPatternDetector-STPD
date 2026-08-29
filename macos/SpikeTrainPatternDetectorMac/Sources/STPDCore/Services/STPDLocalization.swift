@@ -952,6 +952,42 @@ public enum STPDLocalization {
         "应用": "Apply",
         "将所选的重复时间戳策略应用于当前数据集。": "Apply the selected duplicate timestamp policy to the current dataset.",
         "参考": "Reference",
+        "正在生成学习预览…": "Generating learning preview…",
+        "生成学习预览": "Generate learning preview",
+        "重新生成预览": "Regenerate preview",
+        "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
+            "Each labeled segment votes once, then medians are taken within each train and trains are weighted equally; raw ISIs are never pooled.",
+        "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
+            "HFS ISI, duration, and spike count are report-only until the detector has compatible fields.",
+        "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
+            "Generate an identity-bound learning preview first; generation does not change the detector.",
+        "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
+            "The current labels remain auditable but are insufficient for compatible learned thresholds.",
+        "撤销上一次学习阈值应用": "Undo last learned-threshold application",
+        "恢复应用前的阈值；不会自动运行检测器。":
+            "Restore the thresholds from before application; the detector will not run automatically.",
+        "参数已在应用后改变，为避免覆盖修改，回滚已锁定。":
+            "Parameters changed after application; rollback is locked to protect those edits.",
+        "标记 %d / 可用 %d 段 · 序列 %d / %d":
+            "Labeled %d / usable %d segments · trains %d / %d",
+        "中心 %.3f ms": "Center %.3f ms",
+        "爆发家族": "Burst family",
+        "单序列探索": "Single-train exploratory",
+        "双序列暂定": "Two-train provisional",
+        "多序列支持": "Multi-train supported",
+        "可用片段不足，未生成该家族阈值。": "Insufficient usable segments; no threshold was generated for this family.",
+        "仅覆盖一条序列，结果属于探索性建议。": "Only one train is covered; this is an exploratory suggestion.",
+        "留一序列检查只有部分一致，请结合预览复核。": "Leave-one-train-out checks are only partly consistent; review the preview.",
+        "留一序列检查不一致；建议补充标记或检查异质性。": "Leave-one-train-out checks are inconsistent; add labels or inspect heterogeneity.",
+        "未观察到预期的 Burst–Tonic 稳健中心顺序；证据仍被保留。": "The expected Burst–Tonic robust-center order was not observed; evidence is retained.",
+        "未观察到预期的 Tonic–Pause 稳健中心顺序；证据仍被保留。": "The expected Tonic–Pause robust-center order was not observed; evidence is retained.",
+        "HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。": "The HFS robust center is not on the smaller-ISI side of Tonic.",
+        "HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。": "The HF-tonic robust center is not separated above the smaller Burst-ISI region.",
+        "HFS 特征仅报告，尚未写入检测器。": "HFS features are report-only and have not been written to the detector.",
+        "请先确认科学导入并进入规范人工 ISI 工作区。": "Confirm the scientific import and enter the canonical manual-ISI workspace first.",
+        "当前人工标记草稿与规范数据集身份不一致。": "The manual-label draft does not match the canonical dataset identity.",
+        "绝对无效 ISI 上界必须是有限的非负数。": "The absolutely-invalid ISI boundary must be finite and nonnegative.",
+        "绝对无效 ISI 上界不能精确表示为整数微秒；请调整输入精度。": "The absolutely-invalid ISI boundary is not exactly representable in integer microseconds; adjust its precision.",
     ]
 
     // MARK: - Russian dictionary
@@ -1201,7 +1237,42 @@ public enum STPDLocalization {
         "状态、事件与其它标记分轨显示；不进行颜色插值。":
             "Состояния, события и другие метки показаны на отдельных дорожках; интерполяция цветов не применяется.",
         "手工标记在同一轨道内覆盖自动显示，但不会删除自动检测记录。":
-            "Ручные метки перекрывают автоматическое отображение на той же дорожке, не удаляя запись детектора."
+            "Ручные метки перекрывают автоматическое отображение на той же дорожке, не удаляя запись детектора.",
+        "从手动标注学习（预览）": "Обучение по ручным меткам (предпросмотр)",
+        "正在生成学习预览…": "Формируется предпросмотр обучения…",
+        "生成学习预览": "Сформировать предпросмотр",
+        "重新生成预览": "Сформировать заново",
+        "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
+            "Каждый сегмент даёт один голос; затем берётся медиана внутри каждой последовательности, а последовательности получают равный вес. Все ISI не объединяются.",
+        "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
+            "ISI, длительность и число спайков HFS только отображаются и не записываются в пороги без совместимых полей детектора.",
+        "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
+            "Сначала сформируйте предпросмотр, привязанный к данным; это не изменяет детектор.",
+        "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
+            "Метки доступны для аудита, но их недостаточно для совместимых обученных порогов.",
+        "撤销上一次学习阈值应用": "Отменить последнее применение обученных порогов",
+        "恢复应用前的阈值；不会自动运行检测器。": "Восстановить прежние пороги; детектор автоматически не запускается.",
+        "参数已在应用后改变，为避免覆盖修改，回滚已锁定。": "Параметры изменены после применения; откат заблокирован для защиты правок.",
+        "标记 %d / 可用 %d 段 · 序列 %d / %d": "Размечено %d / пригодно %d сегм. · последовательности %d / %d",
+        "中心 %.3f ms": "Центр %.3f мс",
+        "爆发家族": "Семейство пачек",
+        "证据不足": "Недостаточно данных",
+        "单序列探索": "Исследовательски: 1 последовательность",
+        "双序列暂定": "Предварительно: 2 последовательности",
+        "多序列支持": "Поддержано несколькими последовательностями",
+        "可用片段不足，未生成该家族阈值。": "Недостаточно пригодных сегментов; порог не сформирован.",
+        "仅覆盖一条序列，结果属于探索性建议。": "Охвачена одна последовательность; предложение исследовательское.",
+        "留一序列检查只有部分一致，请结合预览复核。": "Проверка с исключением одной последовательности согласуется частично; проверьте предпросмотр.",
+        "留一序列检查不一致；建议补充标记或检查异质性。": "Проверка с исключением одной последовательности не согласуется; добавьте метки или оцените неоднородность.",
+        "未观察到预期的 Burst–Tonic 稳健中心顺序；证据仍被保留。": "Ожидаемый порядок устойчивых центров пачек и тоника не наблюдается; данные сохранены.",
+        "未观察到预期的 Tonic–Pause 稳健中心顺序；证据仍被保留。": "Ожидаемый порядок устойчивых центров тоника и паузы не наблюдается; данные сохранены.",
+        "HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。": "Устойчивый центр HFS не находится со стороны меньших ISI относительно тоника.",
+        "HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。": "Центр высокочастотного тоника не отделён от области меньших ISI пачек.",
+        "HFS 特征仅报告，尚未写入检测器。": "Признаки HFS только отображаются и не записаны в детектор.",
+        "请先确认科学导入并进入规范人工 ISI 工作区。": "Сначала подтвердите научный импорт и откройте каноническую область ручной разметки ISI.",
+        "当前人工标记草稿与规范数据集身份不一致。": "Черновик ручной разметки не соответствует каноническому набору данных.",
+        "绝对无效 ISI 上界必须是有限的非负数。": "Граница абсолютно недопустимого ISI должна быть конечной и неотрицательной.",
+        "绝对无效 ISI 上界不能精确表示为整数微秒；请调整输入精度。": "Граница абсолютно недопустимого ISI не представима точно в целых микросекундах; измените точность."
     ]
 
     // MARK: - Phrase dictionary (ordered, longest/most-specific first; substring substitution).

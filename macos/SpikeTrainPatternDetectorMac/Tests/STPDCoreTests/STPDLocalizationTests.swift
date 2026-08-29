@@ -542,3 +542,35 @@ func activityModeTerminologyUsesTheApprovedSingleSource() {
         #expect(STPDLocalization.text(source, language: .en) == english)
     }
 }
+
+@Test
+func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
+    let cases: [(String, String, String)] = [
+        (
+            "生成学习预览",
+            "Generate learning preview",
+            "Сформировать предпросмотр"
+        ),
+        (
+            "撤销上一次学习阈值应用",
+            "Undo last learned-threshold application",
+            "Отменить последнее применение обученных порогов"
+        ),
+        (
+            "单序列探索",
+            "Single-train exploratory",
+            "Исследовательски: 1 последовательность"
+        ),
+        (
+            "HFS 特征仅报告，尚未写入检测器。",
+            "HFS features are report-only and have not been written to the detector.",
+            "Признаки HFS только отображаются и не записаны в детектор."
+        ),
+    ]
+
+    for (source, english, russian) in cases {
+        #expect(STPDLocalization.text(source, language: .zh) == source)
+        #expect(STPDLocalization.text(source, language: .en) == english)
+        #expect(STPDLocalization.text(source, language: .ru) == russian)
+    }
+}

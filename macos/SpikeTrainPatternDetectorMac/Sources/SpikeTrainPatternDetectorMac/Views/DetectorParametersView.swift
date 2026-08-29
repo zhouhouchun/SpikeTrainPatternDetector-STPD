@@ -260,24 +260,79 @@ struct DetectorParametersView: View {
         }
     }
 
-    // MARK: - Phase 1B: learned-from-annotations preview + explicit Apply (soft anchors only)
+    // MARK: - Learned-from-annotations preview and explicit application
 
     @ViewBuilder
     private var learnedThresholdsSection: some View {
         let proposal = document.learnedThresholdProposal
         Divider().padding(.top, 2)
         VStack(alignment: .leading, spacing: 8) {
-            Text(l10n.t("从手动标注学习（预览）"))
-                .font(.callout.weight(.bold))
+            HStack(alignment: .center, spacing: 10) {
+                Text(l10n.t("从手动标注学习（预览）"))
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if document.isManualPatternLearning {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(l10n.t("正在生成学习预览…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button(document.manualPatternLearningProposal == nil
+                           ? l10n.t("生成学习预览")
+                           : l10n.t("重新生成预览")) {
+                        document.generateManualPatternLearningProposal()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!document.canGenerateManualPatternLearningProposal)
+                }
+            }
+
+            Text(l10n.t("每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。"))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let error = document.manualPatternLearningErrorMessage {
+                Text(l10n.t(error))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let learning = document.manualPatternLearningProposal {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(learning.summaries, id: \.family) { summary in
+                        learnedFamilySummaryRow(summary)
+                    }
+                }
+                if !learning.diagnostics.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(learning.diagnostics.enumerated()), id: \.offset) { _, item in
+                            Label {
+                                Text(learningDiagnosticText(item))
+                            } icon: {
+                                Image(systemName: item.severity == .warning
+                                      ? "exclamationmark.triangle.fill"
+                                      : "info.circle")
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(item.severity == .warning ? .orange : .secondary)
+                        }
+                    }
+                }
+                Text(l10n.t("HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let proposal, !proposal.isAllAutomatic {
-                // Req 1: preview does not affect detection until Apply; Apply writes Soft anchors; rerun manually.
                 Text(l10n.t("预览仅供查看，不影响检测，直到点击下方“应用学习到的阈值”。应用后请手动重新运行检测。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                // Req 2: Soft-anchor semantics, stated for ALL families (not just Burst).
                 Text(l10n.t("学习值以软锚点写入：仅放宽 / 建议，不是上限，也不会排除高于或低于该值的 ISI。要按阈值收窄区间，请改用硬门控。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -301,16 +356,98 @@ struct DetectorParametersView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let result = document.lastLearnedApplyResult {
-                    learnedApplyResultNote(result)
-                }
-            } else {
-                Text(l10n.t("暂无可用的学习阈值——请添加更多手动标注（达到各家族的最少样本数）。"))
+            } else if !document.isManualPatternLearning {
+                Text(document.manualPatternLearningProposal == nil
+                     ? l10n.t("请先生成身份绑定的学习预览；生成本身不会改变检测器。")
+                     : l10n.t("当前标记可供审计，但尚不足以生成兼容的学习阈值。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let result = document.lastLearnedApplyResult {
+                learnedApplyResultNote(result)
+            }
+            if document.manualLearnedThresholdRollback != nil {
+                Button(l10n.t("撤销上一次学习阈值应用")) {
+                    document.undoLastLearnedThresholdApplication()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!document.canUndoLastLearnedThresholdApplication)
+                .help(document.canUndoLastLearnedThresholdApplication
+                      ? l10n.t("恢复应用前的阈值；不会自动运行检测器。")
+                      : l10n.t("参数已在应用后改变，为避免覆盖修改，回滚已锁定。"))
+            }
         }
+    }
+
+    private func learnedFamilySummaryRow(
+        _ summary: ManualPatternFamilyLearningSummary
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(learningFamilyTitle(summary.family))
+                .font(.caption.weight(.semibold))
+                .frame(width: 92, alignment: .leading)
+            Text(String(format: l10n.t("标记 %d / 可用 %d 段 · 序列 %d / %d"),
+                        summary.segmentCount, summary.usableSegmentCount,
+                        summary.usableTrainCount, summary.trainCount))
+                .foregroundStyle(.secondary)
+            if let center = summary.isiMedianMicroseconds.trainBalancedMedian {
+                Text(String(format: l10n.t("中心 %.3f ms"), center / 1_000))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 6)
+            Text(learningStandingTitle(summary.standing))
+                .foregroundStyle(summary.standing == .insufficient ? .secondary : STPDAppTheme.accent)
+        }
+        .font(.caption2)
+        .lineLimit(1)
+    }
+
+    private func learningFamilyTitle(_ family: ManualPatternLearningFamily) -> String {
+        switch family {
+        case .burstFamily: return l10n.t("爆发家族")
+        case .tonic: return l10n.t("强直发放")
+        case .highFrequencyTonic: return l10n.t("高频强直发放")
+        case .highFrequencySpiking: return "HFS"
+        case .pause: return l10n.t("暂停")
+        }
+    }
+
+    private func learningStandingTitle(_ value: ManualPatternLearningStanding) -> String {
+        switch value {
+        case .insufficient: return l10n.t("证据不足")
+        case .exploratorySingleTrain: return l10n.t("单序列探索")
+        case .provisionalTwoTrains: return l10n.t("双序列暂定")
+        case .supportedMultiTrain: return l10n.t("多序列支持")
+        }
+    }
+
+    private func learningDiagnosticText(
+        _ item: ManualPatternLearningDiagnostic
+    ) -> String {
+        let family = item.family.map { learningFamilyTitle($0) + "：" } ?? ""
+        let detail: String
+        switch item.code {
+        case .insufficientFamilyEvidence:
+            detail = l10n.t("可用片段不足，未生成该家族阈值。")
+        case .singleTrainOnly:
+            detail = l10n.t("仅覆盖一条序列，结果属于探索性建议。")
+        case .crossTrainValidationMixed:
+            detail = l10n.t("留一序列检查只有部分一致，请结合预览复核。")
+        case .crossTrainValidationFailed:
+            detail = l10n.t("留一序列检查不一致；建议补充标记或检查异质性。")
+        case .expectedBurstTonicOrderNotObserved:
+            detail = l10n.t("未观察到预期的 Burst–Tonic 稳健中心顺序；证据仍被保留。")
+        case .expectedTonicPauseOrderNotObserved:
+            detail = l10n.t("未观察到预期的 Tonic–Pause 稳健中心顺序；证据仍被保留。")
+        case .expectedHFSBelowTonicNotObserved:
+            detail = l10n.t("HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。")
+        case .expectedHFTonicAboveBurstNotObserved:
+            detail = l10n.t("HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。")
+        case .hfsHasNoCompatibleThresholdField:
+            detail = l10n.t("HFS 特征仅报告，尚未写入检测器。")
+        }
+        return family + detail
     }
 
     private func explanationRow(_ explanation: LearnedThresholdFieldExplanation) -> some View {

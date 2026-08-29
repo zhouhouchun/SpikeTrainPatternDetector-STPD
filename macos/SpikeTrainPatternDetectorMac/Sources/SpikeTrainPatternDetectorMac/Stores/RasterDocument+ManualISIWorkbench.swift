@@ -26,6 +26,31 @@ private enum CanonicalManualISIDraftLoadOutcome: Sendable {
     case failure(String)
 }
 
+private enum ManualPatternLearningBuildOutcome: Sendable {
+    case success(ManualPatternLearningProposal)
+    case failure(String)
+}
+
+enum ManualPatternLearningBuildError: Error, Equatable, LocalizedError {
+    case canonicalSourceRequired
+    case sourceIdentityMismatch
+    case invalidArtifactThreshold
+    case artifactThresholdNotRepresentableInMicroseconds
+
+    var errorDescription: String? {
+        switch self {
+        case .canonicalSourceRequired:
+            return "请先确认科学导入并进入规范人工 ISI 工作区。"
+        case .sourceIdentityMismatch:
+            return "当前人工标记草稿与规范数据集身份不一致。"
+        case .invalidArtifactThreshold:
+            return "绝对无效 ISI 上界必须是有限的非负数。"
+        case .artifactThresholdNotRepresentableInMicroseconds:
+            return "绝对无效 ISI 上界不能精确表示为整数微秒；请调整输入精度。"
+        }
+    }
+}
+
 enum CanonicalManualWorkbenchError: Error, LocalizedError {
     case noPersistedConfirmation
     case activityModeNotSupported
@@ -95,7 +120,13 @@ extension RasterDocument {
             }
             let matchingDraft = canonicalManualISILabelDraft?.canonicalFingerprint
                 == shadow.fingerprint
-            if !matchingDraft { manualISIUndoStack.removeAll() }
+            if !matchingDraft {
+                manualISIUndoStack.removeAll()
+                invalidateManualPatternLearningPreview()
+                appliedManualPatternLearningProposal = nil
+                appliedManualPatternLearningProposalsByFamily = [:]
+                manualLearnedThresholdRollback = nil
+            }
             let retainedDraft = matchingDraft
                 ? canonicalManualISILabelDraft
                 : CanonicalManualISILabelDraft(canonicalFingerprint: shadow.fingerprint)
@@ -126,6 +157,7 @@ extension RasterDocument {
             canonicalManualDataset = nil
             canonicalManualISILabelDraft = nil
             confirmedCanonicalManualLabels = nil
+            invalidateManualPatternLearningPreview()
             statusMessage = "无法进入人工 ISI 分析。"
             lastErrorMessage = error.localizedDescription
             return false
@@ -174,6 +206,7 @@ extension RasterDocument {
         recordManualISIUndo(.canonical(draft))
         canonicalManualISILabelDraft = updated
         confirmedCanonicalManualLabels = nil
+        invalidateManualPatternLearningPreview()
         statusMessage = "已将 \(label.displayNameZH) 应用于 \(isiIndices.count) 个 ISI。"
         lastErrorMessage = nil
         return true
@@ -199,6 +232,7 @@ extension RasterDocument {
         recordManualISIUndo(.canonical(draft))
         canonicalManualISILabelDraft = updated
         confirmedCanonicalManualLabels = nil
+        invalidateManualPatternLearningPreview()
         statusMessage = "已清除 \(isiIndices.count) 个 ISI 上的\(track.displayNameZH)标记。"
         lastErrorMessage = nil
     }
@@ -333,6 +367,7 @@ extension RasterDocument {
                 self.recordManualISIUndo(.canonical(existingDraft))
                 self.canonicalManualISILabelDraft = replacement
                 self.confirmedCanonicalManualLabels = nil
+                self.invalidateManualPatternLearningPreview()
                 self.statusMessage = "已导入人工 ISI 草稿：\(imported.labeledISIIndexCount) 个已标记 ISI。"
                 self.lastErrorMessage = nil
             }
@@ -482,8 +517,9 @@ extension RasterDocument {
         return dataset.trains.contains { $0.timestampsSec.count >= 2 }
     }
 
-    /// Audit-only statistics derived from the current compatible manual ranges. The summary does
-    /// not affect detection until the reviewer explicitly applies its learned proposal.
+    /// Legacy audit statistics retained for backward-compatible reports. The active learning UI
+    /// uses the explicit canonical proposal below and never derives thresholds from this pooled
+    /// legacy projection.
     var manualCalibrationSummary: ManualAnnotationCalibrationSummary? {
         guard let dataset else { return nil }
         return ManualAnnotationCalibrationSummarizer.summarize(
@@ -494,11 +530,10 @@ extension RasterDocument {
     }
 
     var learnedThresholdProposal: LearnedThresholdProposal? {
-        guard let summary = manualCalibrationSummary else { return nil }
-        return LearnedManualThresholdBuilder.build(from: summary)
+        manualPatternLearningProposal?.compatibleThresholdProposal
     }
 
-    private var currentManualThresholdFieldState: ManualThresholdFieldState {
+    var currentManualThresholdFieldState: ManualThresholdFieldState {
         ManualThresholdFieldState(
             burstMode: manualBurstMode,
             burstSeedMaxISIMs: manualBurstSeedMaxISIMs,
@@ -512,6 +547,146 @@ extension RasterDocument {
             pauseMode: manualPauseMode,
             pauseMinISIMs: manualPauseMinISIMs
         )
+    }
+
+    var activeLearnedThresholdProvenanceByKey: [String: String] {
+        var result: [String: String] = [:]
+        let current = currentManualThresholdFieldState
+        for family in appliedManualPatternLearningProposalsByFamily.keys.sorted() {
+            guard let source = appliedManualPatternLearningProposalsByFamily[family] else {
+                continue
+            }
+            let prefix = family + "."
+            let notes = LearnedManualThresholdApplier.learnedProvenanceByKey(
+                proposal: source.compatibleThresholdProposal,
+                current: current
+            )
+            for (key, note) in notes where key.hasPrefix(prefix) {
+                result[key] = source.identityBoundProvenanceNote(note)
+            }
+        }
+        return result
+    }
+
+    var canGenerateManualPatternLearningProposal: Bool {
+        guard !isManualPatternLearning,
+              let persisted = scientificImportCoordinator.persistedConfirmation,
+              let dataset = canonicalManualDataset,
+              let draft = canonicalManualISILabelDraft else { return false }
+        return !dataset.spikeTrains.isEmpty
+            && persisted.canonicalFingerprint == draft.canonicalFingerprint
+    }
+
+    /// Convert the user-facing millisecond QC boundary without silently rounding a fractional
+    /// microsecond. The tolerance only absorbs binary floating representation of values such as
+    /// `0.9 ms`; it never accepts a scientifically different half-microsecond value.
+    static func exactArtifactThresholdMicroseconds(
+        milliseconds: Double
+    ) throws -> Int64 {
+        guard milliseconds.isFinite, milliseconds >= 0 else {
+            throw ManualPatternLearningBuildError.invalidArtifactThreshold
+        }
+        let scaled = milliseconds * 1_000
+        guard scaled.isFinite,
+              scaled >= 0,
+              scaled <= Double(Int64.max) else {
+            throw ManualPatternLearningBuildError.invalidArtifactThreshold
+        }
+        let rounded = scaled.rounded()
+        let tolerance = max(1e-9, abs(scaled) * 1e-12)
+        guard abs(scaled - rounded) <= tolerance else {
+            throw ManualPatternLearningBuildError
+                .artifactThresholdNotRepresentableInMicroseconds
+        }
+        return Int64(rounded)
+    }
+
+    func generateManualPatternLearningProposal() {
+        guard !isManualPatternLearning,
+              let persisted = scientificImportCoordinator.persistedConfirmation,
+              let dataset = canonicalManualDataset,
+              let draft = canonicalManualISILabelDraft else {
+            manualPatternLearningErrorMessage = ManualPatternLearningBuildError
+                .canonicalSourceRequired.localizedDescription
+            return
+        }
+        let fingerprint = persisted.canonicalFingerprint
+        guard draft.canonicalFingerprint == fingerprint else {
+            manualPatternLearningErrorMessage = ManualPatternLearningBuildError
+                .sourceIdentityMismatch.localizedDescription
+            return
+        }
+        let minimumValidISI: Int64
+        do {
+            minimumValidISI = try Self.exactArtifactThresholdMicroseconds(
+                milliseconds: artifactThresholdMs
+            )
+        } catch {
+            manualPatternLearningErrorMessage = error.localizedDescription
+            return
+        }
+
+        manualPatternLearningGeneration &+= 1
+        let generation = manualPatternLearningGeneration
+        manualPatternLearningProposal = nil
+        manualPatternLearningErrorMessage = nil
+        isManualPatternLearning = true
+        statusMessage = "正在从规范人工标记生成参数学习预览…"
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await Task.detached(priority: .userInitiated) {
+                () -> ManualPatternLearningBuildOutcome in
+                do {
+                    let snapshot = try ManualLearningEvidenceSnapshotBuilder.build(
+                        dataset: dataset,
+                        fingerprint: fingerprint,
+                        draft: draft,
+                        minimumValidISIMicroseconds: minimumValidISI
+                    )
+                    let features = ManualPatternSegmentFeatureExtractor.extract(
+                        from: snapshot
+                    )
+                    return .success(
+                        ManualPatternLearningProposalBuilder.build(from: features)
+                    )
+                } catch {
+                    return .failure(error.localizedDescription)
+                }
+            }.value
+
+            guard self.manualPatternLearningGeneration == generation else { return }
+            self.isManualPatternLearning = false
+            guard self.scientificImportCoordinator.persistedConfirmation?
+                    .canonicalFingerprint == fingerprint,
+                  self.canonicalManualDataset == dataset,
+                  self.canonicalManualISILabelDraft == draft else {
+                self.manualPatternLearningProposal = nil
+                self.manualPatternLearningErrorMessage =
+                    "生成期间数据集或人工标记已改变；请重新生成预览。"
+                self.statusMessage = "参数学习预览已取消。"
+                return
+            }
+            switch outcome {
+            case .success(let proposal):
+                self.manualPatternLearningProposal = proposal
+                self.manualPatternLearningErrorMessage = nil
+                self.statusMessage = proposal.hasApplicableThresholds
+                    ? "已生成参数学习预览；尚未改变检测器。"
+                    : "已完成参数学习检查，但当前证据不足以生成兼容阈值。"
+            case .failure(let message):
+                self.manualPatternLearningProposal = nil
+                self.manualPatternLearningErrorMessage = message
+                self.statusMessage = "参数学习预览生成失败。"
+            }
+        }
+    }
+
+    func invalidateManualPatternLearningPreview() {
+        manualPatternLearningGeneration &+= 1
+        manualPatternLearningProposal = nil
+        manualPatternLearningErrorMessage = nil
+        isManualPatternLearning = false
     }
 
     var learnedThresholdExplanations: [LearnedThresholdFieldExplanation] {
@@ -577,11 +752,60 @@ extension RasterDocument {
             lastLearnedApplyResult = nil
             return
         }
+        let previousState = currentManualThresholdFieldState
+        let previousResult = lastLearnedApplyResult
+        let previousAppliedProposal = appliedManualPatternLearningProposal
+        let previousAppliedProposalsByFamily =
+            appliedManualPatternLearningProposalsByFamily
         let result = LearnedManualThresholdApplier.apply(
             proposal: proposal,
-            to: currentManualThresholdFieldState
+            to: previousState
         )
-        let state = result.state
+        installManualThresholdFieldState(result.state)
+        if result.didApplyAnything, let source = manualPatternLearningProposal {
+            appliedManualPatternLearningProposal = source
+            for family in result.appliedFamilies {
+                appliedManualPatternLearningProposalsByFamily[family] = source
+            }
+            manualLearnedThresholdRollback = ManualLearnedThresholdRollback(
+                previousState: previousState,
+                previousApplyResult: previousResult,
+                previousAppliedProposal: previousAppliedProposal,
+                previousAppliedProposalsByFamily: previousAppliedProposalsByFamily,
+                appliedState: result.state
+            )
+        }
+        lastLearnedApplyResult = result
+        statusMessage = result.didApplyAnything
+            ? "已将人工标注学习值作为 Soft 辅助阈值写入；请重新运行检测。"
+            : "没有可应用的人工学习阈值。"
+    }
+
+    var canUndoLastLearnedThresholdApplication: Bool {
+        guard let rollback = manualLearnedThresholdRollback else { return false }
+        return currentManualThresholdFieldState == rollback.appliedState
+    }
+
+    func undoLastLearnedThresholdApplication() {
+        guard let rollback = manualLearnedThresholdRollback else {
+            statusMessage = "当前没有可撤销的学习阈值应用。"
+            return
+        }
+        guard currentManualThresholdFieldState == rollback.appliedState else {
+            statusMessage = "学习阈值应用后参数已被手动修改；为避免覆盖修改，未执行回滚。"
+            return
+        }
+        installManualThresholdFieldState(rollback.previousState)
+        lastLearnedApplyResult = rollback.previousApplyResult
+        appliedManualPatternLearningProposal = rollback.previousAppliedProposal
+        appliedManualPatternLearningProposalsByFamily =
+            rollback.previousAppliedProposalsByFamily
+        manualLearnedThresholdRollback = nil
+        statusMessage = "已撤销上一次学习阈值应用；检测器未自动运行。"
+        lastErrorMessage = nil
+    }
+
+    private func installManualThresholdFieldState(_ state: ManualThresholdFieldState) {
         manualBurstMode = state.burstMode
         manualBurstSeedMaxISIMs = state.burstSeedMaxISIMs
         manualBurstBridgeMaxISIMs = state.burstBridgeMaxISIMs
@@ -593,10 +817,6 @@ extension RasterDocument {
         manualHFTonicMaxISIMs = state.hfTonicMaxISIMs
         manualPauseMode = state.pauseMode
         manualPauseMinISIMs = state.pauseMinISIMs
-        lastLearnedApplyResult = result
-        statusMessage = result.didApplyAnything
-            ? "已将人工标注学习值作为 Soft 辅助阈值写入；请重新运行检测。"
-            : "没有可应用的人工学习阈值。"
     }
 
     func resetManualThresholdFields() {
@@ -619,6 +839,9 @@ extension RasterDocument {
         manualPauseMode = defaults.pauseMode
         manualPauseMinISIMs = defaults.pauseMinISIMs
         manualThresholdScopeKind = .allTrains
+        appliedManualPatternLearningProposal = nil
+        appliedManualPatternLearningProposalsByFamily = [:]
+        manualLearnedThresholdRollback = nil
         lastLearnedApplyResult = nil
     }
 
@@ -806,6 +1029,7 @@ extension RasterDocument {
             }
             canonicalManualISILabelDraft = draft
             confirmedCanonicalManualLabels = nil
+            invalidateManualPatternLearningPreview()
         case .local(let annotations):
             manualAnnotationsByTrain = annotations
             saveManualAnnotations()

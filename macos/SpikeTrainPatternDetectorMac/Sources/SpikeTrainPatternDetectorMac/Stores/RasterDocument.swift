@@ -128,6 +128,14 @@ struct ISIManualThresholdLine: Hashable {
     var isHardGate: Bool
 }
 
+struct ManualLearnedThresholdRollback: Hashable {
+    let previousState: ManualThresholdFieldState
+    let previousApplyResult: LearnedThresholdApplyResult?
+    let previousAppliedProposal: ManualPatternLearningProposal?
+    let previousAppliedProposalsByFamily: [String: ManualPatternLearningProposal]
+    let appliedState: ManualThresholdFieldState
+}
+
 @MainActor
 @Observable
 final class RasterDocument {
@@ -151,7 +159,15 @@ final class RasterDocument {
     var rawCSVHasHeader = true
     var duplicateTimestampPolicy: DuplicateTimestampPolicy = .errorKeep
     var qcDisplayUnit: QualityDisplayUnit = .milliseconds
-    var artifactThresholdMs = 0.9
+    var artifactThresholdMs = 0.9 {
+        didSet {
+            guard artifactThresholdMs != oldValue else { return }
+            // The learning snapshot classifies direct support against this exact boundary. A
+            // changed boundary therefore invalidates both an in-flight build and any unapplied
+            // preview; it never silently reuses or recomputes the old evidence.
+            invalidateManualPatternLearningPreview()
+        }
+    }
     var refractorySuspectThresholdMs = 1.0
     var artifactThresholdUnit: QualityDisplayUnit = .milliseconds
     var refractorySuspectThresholdUnit: QualityDisplayUnit = .milliseconds
@@ -327,6 +343,18 @@ final class RasterDocument {
     var manualPauseMode: ThresholdMode = .automatic
     var manualPauseMinISIMs = 0.0
     var manualThresholdScopeKind: ManualThresholdScopeKind = .allTrains
+    /// Explicitly generated, identity-bound preview. It never changes detector fields by itself.
+    var manualPatternLearningProposal: ManualPatternLearningProposal?
+    var isManualPatternLearning = false
+    var manualPatternLearningErrorMessage: String?
+    @ObservationIgnored var manualPatternLearningGeneration = 0
+    /// The proposal whose compatible values were last explicitly applied. It is retained even when
+    /// later annotation edits invalidate the preview, so a subsequent detector run keeps the exact
+    /// provenance of the values currently installed in the parameter fields.
+    var appliedManualPatternLearningProposal: ManualPatternLearningProposal?
+    /// Per-family sources preserve provenance when later proposals update only a subset of fields.
+    var appliedManualPatternLearningProposalsByFamily: [String: ManualPatternLearningProposal] = [:]
+    var manualLearnedThresholdRollback: ManualLearnedThresholdRollback?
     var lastLearnedApplyResult: LearnedThresholdApplyResult?
     var isDetectorRunning = false
     private var detectorRunGeneration = 0
@@ -495,7 +523,7 @@ final class RasterDocument {
                 ? ManualSpikeCountThreshold(mode: .hardGate, value: value)
                 : .automatic
         }
-        return ManualThresholdProfile(
+        var profile = ManualThresholdProfile(
             burst: BurstManualThresholds(
                 seedUpperISI: isi(manualBurstSeedMaxISIMs, mode: manualBurstMode),
                 bridgeUpperISI: isi(manualBurstBridgeMaxISIMs, mode: manualBurstMode),
@@ -519,6 +547,8 @@ final class RasterDocument {
                 isiLower: isi(manualPauseMinISIMs, mode: manualPauseMode)
             )
         )
+        profile.learnedProvenanceByKey = activeLearnedThresholdProvenanceByKey
+        return profile
     }
 
     var currentDetectionInputsSignature: DetectionInputsSignature? {
@@ -1635,6 +1665,10 @@ final class RasterDocument {
         canonicalManualDataset = nil
         canonicalManualISILabelDraft = nil
         confirmedCanonicalManualLabels = nil
+        invalidateManualPatternLearningPreview()
+        appliedManualPatternLearningProposal = nil
+        appliedManualPatternLearningProposalsByFamily = [:]
+        manualLearnedThresholdRollback = nil
         approvedManualAnnotationImports = []
         detectorLastRunDate = nil
         lastDetectionInputsSignature = nil
