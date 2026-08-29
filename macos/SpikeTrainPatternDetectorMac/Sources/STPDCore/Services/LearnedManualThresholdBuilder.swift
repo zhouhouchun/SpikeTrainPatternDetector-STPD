@@ -31,12 +31,34 @@ import Foundation
 // independent neurons, sessions, or biological replication because those identifiers are not yet modeled.
 
 /// One learned threshold field, with the calibration evidence and statistic it came from.
+public enum LearnedThresholdValue: Hashable, Sendable {
+    case seconds(Double)
+    case spikeCount(Int)
+
+    public var seconds: Double? {
+        guard case .seconds(let value) = self else { return nil }
+        return value
+    }
+
+    public var spikeCount: Int? {
+        guard case .spikeCount(let value) = self else { return nil }
+        return value
+    }
+
+    public var canonicalTokens: [String] {
+        switch self {
+        case .seconds(let value): ["seconds", String(value)]
+        case .spikeCount(let value): ["spike_count", String(value)]
+        }
+    }
+}
+
 public struct LearnedThresholdContribution: Hashable, Sendable {
-    public let family: String        // "burst" | "tonic" | "hf_tonic" | "pause"
+    public let family: String        // "burst" | "hfs" | "tonic" | "hf_tonic" | "pause"
     public let field: String         // resolved-threshold key tail, e.g. "seed_upper_sec", "isi_lower_sec"
     public let sourceLabel: String   // calibration row label, e.g. "burst_family", "tonic", "pause"
     public let statistic: String     // "q90" | "q95" | "q10"
-    public let valueSec: Double
+    public let value: LearnedThresholdValue
     public let mode: ThresholdMode
     public let evidenceRunCount: Int
     /// Compatibility spelling. This is a resolved evidence-run count, not a serialized-mark count.
@@ -59,13 +81,33 @@ public struct LearnedThresholdContribution: Hashable, Sendable {
         self.field = field
         self.sourceLabel = sourceLabel
         self.statistic = statistic
-        self.valueSec = valueSec
+        self.value = .seconds(valueSec)
         self.mode = mode
         self.evidenceRunCount = annotationCount
         self.trainCount = trainCount
         self.coveredISICount = coveredISICount
         self.supportScore = confidence
     }
+
+    public init(
+        family: String, field: String, sourceLabel: String, statistic: String, valueCount: Int,
+        mode: ThresholdMode, annotationCount: Int, trainCount: Int, coveredISICount: Int,
+        confidence: Double
+    ) {
+        self.family = family
+        self.field = field
+        self.sourceLabel = sourceLabel
+        self.statistic = statistic
+        self.value = .spikeCount(valueCount)
+        self.mode = mode
+        self.evidenceRunCount = annotationCount
+        self.trainCount = trainCount
+        self.coveredISICount = coveredISICount
+        self.supportScore = confidence
+    }
+
+    public var valueSec: Double? { value.seconds }
+    public var valueCount: Int? { value.spikeCount }
 }
 
 /// A calibration row that was considered but did not yield a learned threshold, with why.
@@ -74,7 +116,7 @@ public struct LearnedThresholdSkip: Hashable, Sendable {
         case negativeVetoLabel = "negative_veto_label"     // not_burst etc. — never learned
         case notUsableMinCount = "not_usable_min_count"    // below the per-label minimum evidence count
         case supersededByBurstFamily = "superseded_by_burst_family" // individual burst/long_burst (use the family row)
-        case noMappableField = "no_mappable_field"         // HFS / other — no Phase-1A ManualThresholdProfile field
+        case noMappableField = "no_mappable_field"         // source row lacks the features needed by a compatible field
         case missingQuantile = "missing_quantile"          // usable row but the needed percentile was absent
     }
     public let sourceLabel: String
@@ -86,7 +128,8 @@ public struct LearnedThresholdSkip: Hashable, Sendable {
     }
 }
 
-/// The learned proposal: a soft `ManualThresholdProfile` plus the provenance explaining it. Not applied.
+/// The learned proposal plus the provenance explaining it. Ordinary ISI fields are soft anchors;
+/// the canonical learning path may also carry explicitly confirmed HFS minimum-support gates. Not applied.
 public struct LearnedThresholdProposal: Hashable, Sendable {
     public let profile: ManualThresholdProfile
     public let contributions: [LearnedThresholdContribution]
@@ -215,7 +258,9 @@ public enum LearnedManualThresholdBuilder {
                 skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .supersededByBurstFamily))
 
             default:
-                // HFS (no ISI field in 1A), `other`, and any future label have no mappable Phase-1A field.
+                // This legacy pooled calibration summary has ISI quantiles but no per-segment HFS
+                // count/duration features. Canonical HFS learning therefore lives only in
+                // `ManualPatternLearningProposalBuilder`; `other` and future labels are also unmapped.
                 skipped.append(LearnedThresholdSkip(sourceLabel: row.label, reason: .noMappableField))
             }
         }

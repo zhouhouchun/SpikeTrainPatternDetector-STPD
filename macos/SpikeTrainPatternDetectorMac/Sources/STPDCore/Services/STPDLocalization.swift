@@ -965,12 +965,16 @@ public enum STPDLocalization {
             "Select the pattern families to apply now; unselected families keep their current parameters and provenance.",
         "选择是否将该家族的学习值应用为软锚点。":
             "Choose whether to apply this family's learned values as soft anchors.",
+        "选择是否应用 HFS 的保守最低支持门槛；应用前需要确认。":
+            "Choose whether to apply the conservative HFS minimum-support gates; confirmation is required.",
         "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
             "Each labeled segment votes once, then medians are taken within each train and trains are weighted equally; raw ISIs are never pooled.",
         "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
             "Train coverage describes consistency across spike trains in this dataset only; it is not independent neuron, session, or animal replication and does not establish external generalization.",
-        "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
-            "HFS ISI, duration, and spike count are report-only until the detector has compatible fields.",
+        "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。":
+            "The HFS ISI distribution remains descriptive; minimum spike count and duration are suggested only with sufficient evidence and require user confirmation.",
+        "Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。":
+            "Burst, Tonic, HF-tonic, and Pause are applied as soft anchors. HFS minimum spike count and duration are conservative lower gates that reject candidates with insufficient support, so confirmation is required.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
             "Generate an identity-bound learning preview first; generation does not change the detector.",
         "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
@@ -998,7 +1002,17 @@ public enum STPDLocalization {
         "未观察到预期的 Tonic–Pause 稳健中心顺序；证据仍被保留。": "The expected Tonic–Pause robust-center order was not observed; evidence is retained.",
         "HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。": "The HFS robust center is not on the smaller-ISI side of Tonic.",
         "HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。": "The HF-tonic robust center is not separated above the smaller Burst-ISI region.",
-        "HFS 特征仅报告，尚未写入检测器。": "HFS features are report-only and have not been written to the detector.",
+        "HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。":
+            "HFS suggestions are candidate-screening lower gates, not ordinary soft anchors; apply only after confirming that the labeled segments represent HFS states.",
+        "HFS 最少 spike 数": "HFS minimum spike count",
+        "HFS 最短持续时间": "HFS minimum duration",
+        "%d 个 spike": "%d spikes",
+        "已应用 HFS 保守最低支持门槛；重新运行检测以更新自动结果。":
+            "Applied the conservative HFS minimum-support gates; re-run detection to update automatic results.",
+        "已写入所选人工学习阈值；请重新运行检测。":
+            "Applied the selected manually learned thresholds; re-run detection.",
+        "没有可应用的人工学习阈值。":
+            "No manually learned thresholds are available to apply.",
         "请先确认科学导入并进入规范人工 ISI 工作区。": "Confirm the scientific import and enter the canonical manual-ISI workspace first.",
         "当前人工标记草稿与规范数据集身份不一致。": "The manual-label draft does not match the canonical dataset identity.",
         "绝对无效 ISI 上界必须是有限的非负数。": "The absolutely-invalid ISI boundary must be finite and nonnegative.",
@@ -1267,12 +1281,16 @@ public enum STPDLocalization {
             "Выберите семейства паттернов для применения; параметры и происхождение невыбранных семейств не изменятся.",
         "选择是否将该家族的学习值应用为软锚点。":
             "Выберите, применять ли обученные значения этого семейства как мягкие ориентиры.",
+        "选择是否应用 HFS 的保守最低支持门槛；应用前需要确认。":
+            "Выберите, применять ли консервативные минимальные критерии поддержки HFS; требуется подтверждение.",
         "每个标记片段先投一票，再在每条序列内取中位数，最后让各序列等权参与；绝不把所有 ISI 混池。":
             "Каждый сегмент даёт один голос; затем берётся медиана внутри каждой последовательности, а последовательности получают равный вес. Все ISI не объединяются.",
         "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
             "Охват последовательностей отражает только согласованность между spike train в этом наборе данных; это не независимые повторы по нейронам, сеансам или животным и не доказательство внешней обобщаемости.",
-        "HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。":
-            "ISI, длительность и число спайков HFS только отображаются и не записываются в пороги без совместимых полей детектора.",
+        "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。":
+            "Распределение ISI HFS остаётся описательным; минимальное число спайков и длительность предлагаются только при достаточных данных и требуют подтверждения.",
+        "Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。":
+            "Пачки, тоник, высокочастотный тоник и пауза применяются как мягкие ориентиры. Минимальные число спайков и длительность HFS являются консервативными нижними критериями и исключают кандидатов с недостаточной поддержкой, поэтому требуется подтверждение.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
             "Сначала сформируйте предпросмотр, привязанный к данным; это не изменяет детектор.",
         "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
@@ -1298,7 +1316,17 @@ public enum STPDLocalization {
         "未观察到预期的 Tonic–Pause 稳健中心顺序；证据仍被保留。": "Ожидаемый порядок устойчивых центров тоника и паузы не наблюдается; данные сохранены.",
         "HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。": "Устойчивый центр HFS не находится со стороны меньших ISI относительно тоника.",
         "HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。": "Центр высокочастотного тоника не отделён от области меньших ISI пачек.",
-        "HFS 特征仅报告，尚未写入检测器。": "Признаки HFS только отображаются и не записаны в детектор.",
+        "HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。":
+            "Предлагаемые значения HFS — это нижние критерии отбора кандидатов, а не обычные мягкие ориентиры; применяйте их только после подтверждения, что размеченные сегменты представляют состояния HFS.",
+        "HFS 最少 spike 数": "Минимальное число спайков HFS",
+        "HFS 最短持续时间": "Минимальная длительность HFS",
+        "%d 个 spike": "%d спайков",
+        "已应用 HFS 保守最低支持门槛；重新运行检测以更新自动结果。":
+            "Применены консервативные минимальные критерии поддержки HFS; повторно запустите детектор для обновления результатов.",
+        "已写入所选人工学习阈值；请重新运行检测。":
+            "Применены выбранные пороги, обученные по ручной разметке; повторно запустите детектор.",
+        "没有可应用的人工学习阈值。":
+            "Нет доступных для применения порогов, обученных по ручной разметке.",
         "请先确认科学导入并进入规范人工 ISI 工作区。": "Сначала подтвердите научный импорт и откройте каноническую область ручной разметки ISI.",
         "当前人工标记草稿与规范数据集身份不一致。": "Черновик ручной разметки не соответствует каноническому набору данных.",
         "绝对无效 ISI 上界必须是有限的非负数。": "Граница абсолютно недопустимого ISI должна быть конечной и неотрицательной.",

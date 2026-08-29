@@ -3,7 +3,8 @@ import STPDCore
 import Testing
 
 // Phase 1B: LearnedManualThresholdApplier writes a learned proposal into the flat manual-threshold field
-// state as SOFT anchors, preserving any Hard family. Pure transform — this is the document apply logic.
+// state as soft anchors, except for explicitly confirmed HFS minimum-support gates. Existing user Hard
+// families remain protected. Pure transform — this is the document apply logic.
 
 private func soft(_ valueSec: Double) -> ManualISIThreshold { ManualISIThreshold(mode: .softAnchor, valueSec: valueSec) }
 
@@ -62,14 +63,14 @@ func applyReportsNoValueFamiliesAndLeavesThemAutomatic() {
     let r = LearnedManualThresholdApplier.apply(proposal: p, to: ManualThresholdFieldState())
 
     #expect(r.appliedFamilies == ["tonic"])
-    #expect(r.noValueFamilies == ["burst", "hf_tonic", "pause"])
+    #expect(r.noValueFamilies == ["burst", "hfs", "hf_tonic", "pause"])
     #expect(r.state.burstMode == .automatic && r.state.hfTonicMode == .automatic && r.state.pauseMode == .automatic)
 }
 
-// MARK: - Apply never sets Hard mode.
+// MARK: - Non-HFS learned families never set Hard mode.
 
 @Test
-func applyNeverSetsHardMode() {
+func applyNeverSetsHardModeForNonHFSFamilies() {
     let p = proposal(ManualThresholdProfile(
         burst: BurstManualThresholds(seedUpperISI: soft(0.030), bridgeUpperISI: soft(0.045)),
         hfTonic: HFTonicManualThresholds(isiFloor: soft(0.02), isiUpper: soft(0.05)),
@@ -88,7 +89,7 @@ func applyAllAutomaticProposalIsNoOp() {
     let r = LearnedManualThresholdApplier.apply(proposal: proposal(.automatic), to: existing)
     #expect(r.state == existing)
     #expect(r.appliedFamilies.isEmpty)
-    #expect(r.noValueFamilies == ["burst", "tonic", "hf_tonic", "pause"])
+    #expect(r.noValueFamilies == ["burst", "hfs", "tonic", "hf_tonic", "pause"])
     #expect(!r.didApplyAnything)
 }
 
@@ -131,5 +132,35 @@ func builderThenApplierEndToEnd() {
     #expect(r.state.burstMode == .softAnchor && r.state.burstSeedMaxISIMs == 30 && r.state.burstBridgeMaxISIMs == 45)
     #expect(r.state.tonicMode == .softAnchor && r.state.tonicMinISIMs == 300 && r.state.tonicMaxISIMs == 550)
     #expect(r.appliedFamilies == ["burst", "tonic"])
-    #expect(r.noValueFamilies == ["hf_tonic", "pause"])
+    #expect(r.noValueFamilies == ["hfs", "hf_tonic", "pause"])
+}
+
+@Test
+func hfsLearningWritesConfirmedMinimumSupportGatesAndPreservesUserHardValues() {
+    let learned = proposal(ManualThresholdProfile(
+        hfs: HFSManualThresholds(
+            minSpikes: .init(mode: .hardGate, value: 36),
+            minDurationSec: .init(mode: .hardGate, valueSec: 0.240)
+        )
+    ))
+    let applied = LearnedManualThresholdApplier.apply(
+        proposal: learned,
+        to: ManualThresholdFieldState()
+    )
+    #expect(applied.appliedFamilies == ["hfs"])
+    #expect(applied.state.hfsMode == .hardGate)
+    #expect(applied.state.hfsMinSpikes == 36)
+    #expect(applied.state.hfsMinDurationMs == 240)
+
+    let protected = LearnedManualThresholdApplier.apply(
+        proposal: learned,
+        to: ManualThresholdFieldState(
+            hfsMode: .hardGate,
+            hfsMinSpikes: 50,
+            hfsMinDurationMs: 500
+        )
+    )
+    #expect(protected.skippedHardFamilies == ["hfs"])
+    #expect(protected.state.hfsMinSpikes == 50)
+    #expect(protected.state.hfsMinDurationMs == 500)
 }

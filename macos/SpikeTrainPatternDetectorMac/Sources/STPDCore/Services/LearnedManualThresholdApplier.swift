@@ -4,12 +4,12 @@ import Foundation
 //
 // Pure, testable transform that mirrors the `RasterDocument` flat manual-threshold fields (per family:
 // a `ThresholdMode` + millisecond ISI values). It writes a `LearnedThresholdProposal` (Phase 1A) into
-// that state as SOFT anchors, while PRESERVING any family the user has already set to Hard (those are
-// left untouched and reported as skipped). It never sets Hard mode and never runs the detector — the
-// document layer just copies the returned state back into its observable fields.
+// that state as SOFT anchors, except for HFS minimum-support count/duration, which are explicit
+// conservative lower gates. Any family the user has already set to Hard is preserved and reported as
+// skipped. It never runs the detector — the document layer only copies the returned field state.
 //
-// Phase-1B learnable families: burst (seed/bridge upper), tonic (lower/upper), hf-tonic (floor/upper),
-// pause (lower). HFS and all spike counts are not learned in 1A/1B, so they are not touched here.
+// Learnable families: burst (seed/bridge upper), HFS (minimum independent-support spikes/duration),
+// tonic (lower/upper), hf-tonic (floor/upper), and pause (lower).
 
 /// The subset of `RasterDocument`'s flat manual-threshold fields that Phase 1B can learn into. Millisecond
 /// ISI values, `0` meaning unset, plus the per-family mode (matches the document's field semantics).
@@ -17,6 +17,9 @@ public struct ManualThresholdFieldState: Hashable, Sendable {
     public var burstMode: ThresholdMode
     public var burstSeedMaxISIMs: Double
     public var burstBridgeMaxISIMs: Double
+    public var hfsMode: ThresholdMode
+    public var hfsMinSpikes: Int
+    public var hfsMinDurationMs: Double
     public var tonicMode: ThresholdMode
     public var tonicMinISIMs: Double
     public var tonicMaxISIMs: Double
@@ -28,6 +31,7 @@ public struct ManualThresholdFieldState: Hashable, Sendable {
 
     public init(
         burstMode: ThresholdMode = .automatic, burstSeedMaxISIMs: Double = 0, burstBridgeMaxISIMs: Double = 0,
+        hfsMode: ThresholdMode = .automatic, hfsMinSpikes: Int = 0, hfsMinDurationMs: Double = 0,
         tonicMode: ThresholdMode = .automatic, tonicMinISIMs: Double = 0, tonicMaxISIMs: Double = 0,
         hfTonicMode: ThresholdMode = .automatic, hfTonicMinISIMs: Double = 0, hfTonicMaxISIMs: Double = 0,
         pauseMode: ThresholdMode = .automatic, pauseMinISIMs: Double = 0
@@ -35,6 +39,9 @@ public struct ManualThresholdFieldState: Hashable, Sendable {
         self.burstMode = burstMode
         self.burstSeedMaxISIMs = burstSeedMaxISIMs
         self.burstBridgeMaxISIMs = burstBridgeMaxISIMs
+        self.hfsMode = hfsMode
+        self.hfsMinSpikes = hfsMinSpikes
+        self.hfsMinDurationMs = hfsMinDurationMs
         self.tonicMode = tonicMode
         self.tonicMinISIMs = tonicMinISIMs
         self.tonicMaxISIMs = tonicMaxISIMs
@@ -49,7 +56,8 @@ public struct ManualThresholdFieldState: Hashable, Sendable {
 public struct LearnedThresholdApplyResult: Hashable, Sendable {
     /// The new field state to write back (unchanged for skipped/no-value families).
     public let state: ManualThresholdFieldState
-    /// Families written as soft anchors ("burst", "tonic", "hf_tonic", "pause").
+    /// Families written by this application. HFS is written as a confirmed lower support gate;
+    /// the other families are written as soft anchors.
     public let appliedFamilies: [String]
     /// Families that had a learned value but were left untouched because the user already set them to Hard.
     public let skippedHardFamilies: [String]
@@ -78,7 +86,8 @@ public struct LearnedThresholdApplyResult: Hashable, Sendable {
 }
 
 public enum LearnedManualThresholdApplier {
-    /// Write the proposal's learned values into `current` as soft anchors, preserving Hard families.
+    /// Write the proposal's learned values into `current`, preserving existing user Hard families.
+    /// Non-HFS fields are soft anchors; HFS minimum-support fields are confirmed hard lower gates.
     public static func apply(
         proposal: LearnedThresholdProposal,
         to current: ManualThresholdFieldState,
@@ -113,6 +122,25 @@ public enum LearnedManualThresholdApplier {
             }
         } else {
             noValue.append("burst")
+        }
+
+        // HFS: learned state-size evidence is not an ISI band. It becomes a confirmed minimum
+        // support gate only after the caller has presented the HFS warning and the user applies it.
+        let hfsMinSpikes = proposal.profile.hfs.minSpikes.value
+        let hfsMinDuration = ms(proposal.profile.hfs.minDurationSec)
+        if !isSelected("hfs") {
+            // Leave this family and its provenance untouched.
+        } else if hfsMinSpikes != nil || hfsMinDuration != nil {
+            if current.hfsMode == .hardGate {
+                skippedHard.append("hfs")
+            } else {
+                if let hfsMinSpikes { next.hfsMinSpikes = hfsMinSpikes }
+                if let hfsMinDuration { next.hfsMinDurationMs = hfsMinDuration }
+                next.hfsMode = .hardGate
+                applied.append("hfs")
+            }
+        } else {
+            noValue.append("hfs")
         }
 
         // Tonic: lower + upper.
@@ -187,13 +215,18 @@ public enum LearnedManualThresholdApplier {
         current: ManualThresholdFieldState
     ) -> [LearnedThresholdFieldExplanation] {
         proposal.contributions.map { contribution in
-            let (mode, valueMs) = currentState(family: contribution.family, field: contribution.field, in: current)
-            let learnedMs = contribution.valueSec * 1000
+            let (mode, currentValue) = currentState(
+                family: contribution.family,
+                field: contribution.field,
+                in: current
+            )
+            let learnedValue = contribution.value
             let change: LearnedThresholdFieldExplanation.Change
-            if mode == .hardGate {
-                change = .skippedHard
-            } else if mode == .softAnchor, let valueMs, abs(valueMs - learnedMs) < 1e-6 {
+            if mode == contribution.mode,
+               valuesEqual(currentValue, learnedValue) {
                 change = .noChange
+            } else if mode == .hardGate {
+                change = .skippedHard
             } else if mode == .automatic {
                 change = .applied
             } else {
@@ -203,9 +236,9 @@ public enum LearnedManualThresholdApplier {
                 family: contribution.family,
                 field: contribution.field,
                 currentMode: mode,
-                currentValueMs: (mode == .automatic) ? nil : valueMs,
-                learnedMode: .softAnchor,
-                learnedValueMs: learnedMs,
+                currentValue: (mode == .automatic) ? nil : currentValue,
+                learnedMode: contribution.mode,
+                learnedValue: learnedValue,
                 change: change,
                 contribution: contribution
             )
@@ -213,17 +246,16 @@ public enum LearnedManualThresholdApplier {
     }
 
     /// Phase 1D: map of resolved-threshold key (`<family>.<field>`) → learned provenance note, for fields whose
-    /// CURRENT manual state is an active SOFT anchor equal to the learned value (the learned values currently in
-    /// effect). Hard families, manually-changed values, and unlearned fields are excluded — so it can be threaded
-    /// into the detector run to tag only the candidates a learned threshold actually shaped. Empty for an
-    /// all-automatic proposal or when nothing learned is in effect.
+    /// CURRENT manual state has the same active mode and value as the learned proposal. This includes
+    /// ordinary soft anchors and confirmed HFS hard support gates. User-hard values, manually changed
+    /// values, and unlearned fields are excluded, so only thresholds actually in effect are tagged.
     public static func learnedProvenanceByKey(
         proposal: LearnedThresholdProposal,
         current: ManualThresholdFieldState
     ) -> [String: String] {
         var map: [String: String] = [:]
         for explanation in explain(proposal: proposal, current: current) {
-            guard explanation.currentMode == .softAnchor,
+            guard explanation.currentMode == explanation.learnedMode,
                   explanation.change == .noChange,
                   let contribution = explanation.contribution else { continue }
             map[resolvedProvenanceKey(family: explanation.family, field: explanation.field)] = contribution.provenanceNote
@@ -238,16 +270,42 @@ public enum LearnedManualThresholdApplier {
 
     private static func currentState(
         family: String, field: String, in s: ManualThresholdFieldState
-    ) -> (ThresholdMode, Double?) {
+    ) -> (ThresholdMode, LearnedThresholdValue?) {
         switch (family, field) {
-        case ("burst", "seed_upper_sec"): return (s.burstMode, s.burstSeedMaxISIMs)
-        case ("burst", "bridge_upper_sec"): return (s.burstMode, s.burstBridgeMaxISIMs)
-        case ("tonic", "isi_lower_sec"): return (s.tonicMode, s.tonicMinISIMs)
-        case ("tonic", "isi_upper_sec"): return (s.tonicMode, s.tonicMaxISIMs)
-        case ("hf_tonic", "isi_floor_sec"): return (s.hfTonicMode, s.hfTonicMinISIMs)
-        case ("hf_tonic", "isi_upper_sec"): return (s.hfTonicMode, s.hfTonicMaxISIMs)
-        case ("pause", "isi_lower_sec"): return (s.pauseMode, s.pauseMinISIMs)
+        case ("burst", "seed_upper_sec"):
+            return (s.burstMode, .seconds(s.burstSeedMaxISIMs / 1_000))
+        case ("burst", "bridge_upper_sec"):
+            return (s.burstMode, .seconds(s.burstBridgeMaxISIMs / 1_000))
+        case ("hfs", "min_spikes"):
+            return (s.hfsMode, .spikeCount(s.hfsMinSpikes))
+        case ("hfs", "min_duration_sec"):
+            return (s.hfsMode, .seconds(s.hfsMinDurationMs / 1_000))
+        case ("tonic", "isi_lower_sec"):
+            return (s.tonicMode, .seconds(s.tonicMinISIMs / 1_000))
+        case ("tonic", "isi_upper_sec"):
+            return (s.tonicMode, .seconds(s.tonicMaxISIMs / 1_000))
+        case ("hf_tonic", "isi_floor_sec"):
+            return (s.hfTonicMode, .seconds(s.hfTonicMinISIMs / 1_000))
+        case ("hf_tonic", "isi_upper_sec"):
+            return (s.hfTonicMode, .seconds(s.hfTonicMaxISIMs / 1_000))
+        case ("pause", "isi_lower_sec"):
+            return (s.pauseMode, .seconds(s.pauseMinISIMs / 1_000))
         default: return (.automatic, nil)
+        }
+    }
+
+    private static func valuesEqual(
+        _ lhs: LearnedThresholdValue?,
+        _ rhs: LearnedThresholdValue
+    ) -> Bool {
+        guard let lhs else { return false }
+        switch (lhs, rhs) {
+        case (.seconds(let left), .seconds(let right)):
+            return abs(left - right) < 1e-9
+        case (.spikeCount(let left), .spikeCount(let right)):
+            return left == right
+        default:
+            return false
         }
     }
 }
@@ -290,35 +348,40 @@ public extension LearnedManualThresholdApplier {
 /// Phase 1C: a compact "current → learned" explanation for one proposed manual-threshold field.
 public struct LearnedThresholdFieldExplanation: Hashable, Sendable {
     public enum Change: String, Hashable, Sendable {
-        case applied = "applied"        // current Auto → learned Soft (a new value)
-        case changed = "changed"        // current Soft → a different learned Soft value
+        case applied = "applied"        // current Auto → learned value (a new value)
+        case changed = "changed"        // current active value → a different learned value
         case noChange = "no_change"     // current already equals the learned value
         case skippedHard = "skipped_hard" // current family is Hard → not overwritten
     }
     public let family: String
     public let field: String
     public let currentMode: ThresholdMode
-    public let currentValueMs: Double?       // nil when the current family is automatic (inactive)
-    public let learnedMode: ThresholdMode?   // .softAnchor for a learned field
-    public let learnedValueMs: Double?
+    public let currentValue: LearnedThresholdValue?
+    public let learnedMode: ThresholdMode?
+    public let learnedValue: LearnedThresholdValue?
     public let change: Change
     public let contribution: LearnedThresholdContribution?
 
     public init(
-        family: String, field: String, currentMode: ThresholdMode, currentValueMs: Double?,
-        learnedMode: ThresholdMode?, learnedValueMs: Double?, change: Change,
+        family: String, field: String, currentMode: ThresholdMode,
+        currentValue: LearnedThresholdValue?, learnedMode: ThresholdMode?,
+        learnedValue: LearnedThresholdValue?, change: Change,
         contribution: LearnedThresholdContribution?
     ) {
         self.family = family
         self.field = field
         self.currentMode = currentMode
-        self.currentValueMs = currentValueMs
+        self.currentValue = currentValue
         self.learnedMode = learnedMode
-        self.learnedValueMs = learnedValueMs
+        self.learnedValue = learnedValue
         self.change = change
         self.contribution = contribution
     }
 
     /// True when applying would change this field (applied or changed).
     public var isChange: Bool { change == .applied || change == .changed }
+
+    /// Compatibility accessors for existing ISI-duration UI/tests. Count-valued fields return nil.
+    public var currentValueMs: Double? { currentValue?.seconds.map { $0 * 1_000 } }
+    public var learnedValueMs: Double? { learnedValue?.seconds.map { $0 * 1_000 } }
 }

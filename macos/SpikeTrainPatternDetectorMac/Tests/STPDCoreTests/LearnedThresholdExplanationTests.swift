@@ -29,6 +29,33 @@ private func builtProposal(_ rows: [ManualAnnotationCalibrationLabelSummary]) ->
     LearnedManualThresholdBuilder.build(from: ManualAnnotationCalibrationSummary(rows: rows, skippedAnnotationCount: 0))
 }
 
+private func learnedHFSProposal() -> LearnedThresholdProposal {
+    LearnedThresholdProposal(
+        profile: ManualThresholdProfile(
+            hfs: HFSManualThresholds(
+                minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 36),
+                minDurationSec: ManualISIThreshold(mode: .hardGate, valueSec: 0.240)
+            )
+        ),
+        contributions: [
+            LearnedThresholdContribution(
+                family: "hfs", field: "min_spikes", sourceLabel: "high_frequency_spiking",
+                statistic: "minimum_train_median_direct_support_spike_count", valueCount: 36,
+                mode: .hardGate, annotationCount: 4, trainCount: 2,
+                coveredISICount: 120, confidence: 0.25
+            ),
+            LearnedThresholdContribution(
+                family: "hfs", field: "min_duration_sec", sourceLabel: "high_frequency_spiking",
+                statistic: "minimum_train_median_direct_support_duration", valueSec: 0.240,
+                mode: .hardGate, annotationCount: 4, trainCount: 2,
+                coveredISICount: 120, confidence: 0.25
+            ),
+        ],
+        skipped: [],
+        mode: .softAnchor
+    )
+}
+
 // MARK: - current Auto → learned Soft is reported as applied (a change).
 
 @Test
@@ -120,4 +147,44 @@ func hardSkippedFamilyProducesNoProvenanceNote() {
     )
     #expect(result.skippedHardFamilies == ["burst"])
     #expect(result.appliedProvenanceNotes.isEmpty)
+}
+
+@Test
+func learnedHFSExplanationsKeepCountAndDurationTypesAndProduceActiveProvenance() {
+    let proposal = learnedHFSProposal()
+    let automatic = LearnedManualThresholdApplier.explain(
+        proposal: proposal,
+        current: ManualThresholdFieldState()
+    )
+    let count = automatic.first { $0.field == "min_spikes" }
+    let duration = automatic.first { $0.field == "min_duration_sec" }
+
+    #expect(count?.change == .applied)
+    #expect(count?.learnedMode == .hardGate)
+    #expect(count?.learnedValue == .spikeCount(36))
+    #expect(count?.learnedValueMs == nil)
+    #expect(duration?.learnedValue == .seconds(0.240))
+    #expect(duration?.learnedValueMs == 240)
+
+    let applied = ManualThresholdFieldState(
+        hfsMode: .hardGate,
+        hfsMinSpikes: 36,
+        hfsMinDurationMs: 240
+    )
+    let active = LearnedManualThresholdApplier.learnedProvenanceByKey(
+        proposal: proposal,
+        current: applied
+    )
+    #expect(active.keys.sorted() == ["hfs.min_duration_sec", "hfs.min_spikes"])
+    #expect(active["hfs.min_spikes"]?.contains("stat=minimum_train_median_direct_support_spike_count") == true)
+
+    let edited = ManualThresholdFieldState(
+        hfsMode: .hardGate,
+        hfsMinSpikes: 37,
+        hfsMinDurationMs: 240
+    )
+    #expect(LearnedManualThresholdApplier.learnedProvenanceByKey(
+        proposal: proposal,
+        current: edited
+    ).keys.sorted() == ["hfs.min_duration_sec"])
 }

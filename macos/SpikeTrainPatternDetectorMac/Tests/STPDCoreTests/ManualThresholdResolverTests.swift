@@ -168,3 +168,36 @@ func resolverHardSpikeCountReplacesAndSoftCountIsTreatedAsAutomatic() throws {
     #expect(softResolved.tonic.minSpikes == 5)    // soft count -> automatic (no forcing)
     #expect(!softResolved.appliedManualThreshold)
 }
+
+@Test
+func learnedHFSMinimumsAreNarrowOnlyWhileExplicitUserCountStillReplaces() throws {
+    var learned = ManualThresholdProfile(
+        hfs: HFSManualThresholds(
+            minSpikes: .init(mode: .hardGate, value: 20),
+            minDurationSec: .init(mode: .hardGate, valueSec: 0.25)
+        )
+    )
+    learned.learnedProvenanceByKey = [
+        "hfs.min_spikes": "learned",
+        "hfs.min_duration_sec": "learned",
+    ]
+    let learnedResolved = ManualThresholdResolver.resolve(
+        profile: learned,
+        adaptive: baselineAdaptive()
+    )
+    // A learned short example cannot relax the adaptive 30-spike floor. Duration may only rise.
+    #expect(learnedResolved.hfs.minSpikes == 30)
+    #expect(learnedResolved.hfs.minDurationSec == 0.25)
+
+    let explicit = ManualThresholdProfile(
+        hfs: HFSManualThresholds(
+            minSpikes: .init(mode: .hardGate, value: 20),
+            minDurationSec: .automatic
+        )
+    )
+    let explicitResolved = ManualThresholdResolver.resolve(
+        profile: explicit,
+        adaptive: baselineAdaptive()
+    )
+    #expect(explicitResolved.hfs.minSpikes == 20)
+}

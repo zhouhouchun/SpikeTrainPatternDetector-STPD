@@ -55,6 +55,40 @@ struct ManualPatternLearningWorkflowTests {
         #expect(document.classicAnchorDetectionRun == nil)
     }
 
+    @Test("Confirmed HFS learning applies typed lower gates with provenance and rollback")
+    func hfsApplyAndRollbackPreserveAuthorityBoundary() throws {
+        let document = RasterDocument()
+        let proposal = try makeHFSProposal()
+        document.manualPatternLearningProposal = proposal
+
+        #expect(proposal.applicableFamilies == [.highFrequencySpiking])
+        #expect(document.manualHFSMode == .automatic)
+        #expect(document.classicAnchorDetectionRun == nil)
+
+        document.applyLearnedThresholds(selecting: [.highFrequencySpiking])
+
+        #expect(document.manualHFSMode == .hardGate)
+        #expect(document.manualHFSMinSpikes == 7)
+        #expect(document.manualHFSMinDurationMs == 55.5)
+        #expect(document.lastLearnedApplyResult?.appliedFamilies == ["hfs"])
+        #expect(document.activeLearnedThresholdProvenanceByKey.keys.sorted()
+                == ["hfs.min_duration_sec", "hfs.min_spikes"])
+        #expect(document.activeLearnedThresholdProvenanceByKey.values.allSatisfy {
+            $0.contains("source_identity=\(proposal.sourceIdentityDigest)")
+                && $0.contains("proposal_digest=\(proposal.proposalComputationDigest)")
+        })
+        #expect(document.canUndoLastLearnedThresholdApplication)
+        #expect(document.classicAnchorDetectionRun == nil)
+
+        document.undoLastLearnedThresholdApplication()
+
+        #expect(document.manualHFSMode == .automatic)
+        #expect(document.manualHFSMinSpikes == 0)
+        #expect(document.manualHFSMinDurationMs == 0)
+        #expect(document.activeLearnedThresholdProvenanceByKey.isEmpty)
+        #expect(document.classicAnchorDetectionRun == nil)
+    }
+
     @Test("Applying a later partial proposal preserves provenance for untouched families")
     func partialApplicationsPreserveLayeredProvenance() throws {
         let document = RasterDocument()
@@ -236,6 +270,84 @@ struct ManualPatternLearningWorkflowTests {
             draft: CanonicalManualISILabelDraft(
                 canonicalFingerprint: context.fingerprint,
                 decisions: burst + tonic
+            ),
+            minimumValidISIMicroseconds: 900
+        )
+        return ManualPatternLearningProposalBuilder.build(
+            from: ManualPatternSegmentFeatureExtractor.extract(from: snapshot)
+        )
+    }
+
+    private func makeHFSProposal() throws -> ManualPatternLearningProposal {
+        let trainA = ScientificSpikeTrainID(
+            try ScientificSemanticID(validating: "unit_hfs_a")
+        )
+        let trainB = ScientificSpikeTrainID(
+            try ScientificSemanticID(validating: "unit_hfs_b")
+        )
+        func timestamps(_ intervals: [Int64]) -> [MicrosecondTick] {
+            intervals.reduce(into: [Int64(0)]) { ticks, interval in
+                ticks.append(ticks[ticks.count - 1] + interval)
+            }.map(MicrosecondTick.init(microseconds:))
+        }
+        let dataset = CanonicalScientificDataset(
+            recordingSegment: ConfirmedRecordingSegment(
+                semanticID: ScientificRecordingSegmentID(
+                    try ScientificSemanticID(validating: "recording_hfs")
+                ),
+                regime: .continuousUntrialed,
+                importedExcerptCoverage: .allSpikeTrainsFullImportedExcerpt,
+                observationBounds: .unknownOrUnavailable
+            ),
+            activityMode: .putativeSingleUnit,
+            spikeTrains: [
+                CanonicalSpikeTrain(
+                    semanticID: trainA,
+                    rawTimestamps: timestamps([
+                        8_000, 8_000, 8_000, 8_000, 8_000, 8_000,
+                        100_000,
+                        9_000, 9_000, 9_000, 9_000, 9_000, 9_000, 9_000,
+                    ])
+                ),
+                CanonicalSpikeTrain(
+                    semanticID: trainB,
+                    rawTimestamps: timestamps([
+                        10_000, 10_000, 10_000, 10_000,
+                        10_000, 10_000, 10_000, 10_000,
+                    ])
+                ),
+            ],
+            eventScopeGroups: [CanonicalEventScopeGroup(
+                semanticID: ScientificEventScopeGroupID(
+                    try ScientificSemanticID(validating: "group_hfs")
+                ),
+                timeBasis: .recordingElapsed,
+                spikeTrainReferences: [trainA, trainB],
+                eventDefinitions: []
+            )],
+            scientificAttributeDefinitions: []
+        )
+        let fingerprint = try CanonicalScientificDatasetFingerprinter.fingerprint(dataset)
+        let decisions = [
+            (trainA, 1...6),
+            (trainA, 8...14),
+            (trainB, 1...8),
+        ].flatMap { trainID, range in
+            range.map { index in
+                CanonicalManualISILabelDecision(
+                    trainID: trainID,
+                    isiIndex: index,
+                    track: .state,
+                    label: .highFrequencySpiking
+                )
+            }
+        }
+        let snapshot = try ManualLearningEvidenceSnapshotBuilder.build(
+            dataset: dataset,
+            fingerprint: fingerprint,
+            draft: CanonicalManualISILabelDraft(
+                canonicalFingerprint: fingerprint,
+                decisions: decisions
             ),
             minimumValidISIMicroseconds: 900
         )

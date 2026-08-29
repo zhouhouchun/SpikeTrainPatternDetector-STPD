@@ -113,21 +113,33 @@ private func digest(_ run: ClassicAnchorDetectionRun, _ trainID: String) -> [Str
 }
 
 @Test func p9_droppingHardGatesKeepsSoftAndAutomatic() {
-    // Unit-level: droppingHardGates demotes ONLY hard gates; soft anchors / automatic / learned provenance are kept,
-    // and a profile with no hard gates is returned unchanged.
+    // Unit-level: droppingHardGates demotes ONLY hard gates. Soft anchors and their learned
+    // provenance remain global; learned provenance attached to an HFS hard gate must be removed
+    // with that out-of-scope gate.
     let mixed = ManualThresholdProfile(
         burst: BurstManualThresholds(
             seedUpperISI: ManualISIThreshold(mode: .hardGate, valueSec: 0.02),
             bridgeUpperISI: ManualISIThreshold(mode: .softAnchor, valueSec: 0.05),
             minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 10)),
+        hfs: HFSManualThresholds(
+            minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 40),
+            minDurationSec: ManualISIThreshold(mode: .hardGate, valueSec: 0.25)),
         pause: PauseManualThresholds(isiLower: ManualISIThreshold(mode: .softAnchor, valueSec: 0.5)),
-        learnedProvenanceByKey: ["burst.bridge_upper_sec": "learned"])
+        learnedProvenanceByKey: [
+            "burst.bridge_upper_sec": "learned_soft",
+            "hfs.min_spikes": "learned_hfs_count",
+            "hfs.min_duration_sec": "learned_hfs_duration",
+        ])
     let dropped = mixed.droppingHardGates()
     #expect(dropped.burst.seedUpperISI.mode == .automatic)              // hard gate dropped
     #expect(dropped.burst.minSpikes.mode == .automatic)                 // hard count dropped
     #expect(dropped.burst.bridgeUpperISI == mixed.burst.bridgeUpperISI) // soft anchor kept
     #expect(dropped.pause.isiLower == mixed.pause.isiLower)             // soft anchor kept
-    #expect(dropped.learnedProvenanceByKey == mixed.learnedProvenanceByKey)
+    #expect(dropped.hfs.minSpikes.mode == .automatic)
+    #expect(dropped.hfs.minDurationSec.mode == .automatic)
+    #expect(dropped.learnedProvenanceByKey == [
+        "burst.bridge_upper_sec": "learned_soft",
+    ])
     // A soft-only / automatic profile is unchanged.
     let softOnly = ManualThresholdProfile(
         pause: PauseManualThresholds(isiLower: ManualISIThreshold(mode: .softAnchor, valueSec: 0.5)))

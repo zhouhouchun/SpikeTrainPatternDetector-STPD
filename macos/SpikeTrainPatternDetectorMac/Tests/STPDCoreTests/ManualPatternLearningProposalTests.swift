@@ -32,8 +32,8 @@ struct ManualPatternLearningProposalTests {
         #expect(burst.validation.standing == .failed)
     }
 
-    @Test("Compatible proposal maps only supported soft-anchor fields")
-    func mapsSafeFieldsAndKeepsHFSReportOnly() throws {
+    @Test("Single-train HFS evidence remains report-only")
+    func mapsSafeFieldsAndKeepsSingleTrainHFSReportOnly() throws {
         let context = try makeContext(intervalsByTrain: [
             "unit_a": [
                 8_000, 10_000, 90_000,
@@ -72,11 +72,62 @@ struct ManualPatternLearningProposalTests {
         #expect(hfs.standing == .exploratorySingleTrain)
         #expect(hfs.directDurationMicroseconds.trainBalancedMedian != nil)
         #expect(hfs.directSpikeCount.trainBalancedMedian == 5)
-        #expect(result.diagnostics.contains {
-            $0.code == .hfsHasNoCompatibleThresholdField
+        #expect(!result.diagnostics.contains {
+            $0.code == .hfsMinimumSupportGatesRequireConfirmation
         })
         #expect(result.applicableFamilies == [.burstFamily, .tonic, .pause])
         #expect(result.hasApplicableThresholds)
+    }
+
+    @Test("Cross-train HFS evidence proposes confirmed conservative support minima")
+    func hfsMinimumSupportLearningIsBoundedAndAuditable() throws {
+        let context = try makeContext(intervalsByTrain: [
+            "unit_a": [
+                8_000, 8_000, 8_000, 8_000, 8_000, 8_000,
+                100_000,
+                9_000, 9_000, 9_000, 9_000, 9_000, 9_000, 9_000,
+            ],
+            "unit_b": [
+                10_000, 10_000, 10_000, 10_000,
+                10_000, 10_000, 10_000, 10_000,
+            ],
+        ])
+        let decisions = try labels(
+            context: context,
+            specifications: [
+                ("unit_a", 1...6, .state, .highFrequencySpiking),
+                ("unit_a", 8...14, .state, .highFrequencySpiking),
+                ("unit_b", 1...8, .state, .highFrequencySpiking),
+            ]
+        )
+        let result = try proposal(context: context, decisions: decisions)
+        let hfs = try #require(result.summaries.first {
+            $0.family == .highFrequencySpiking
+        })
+        let profile = result.compatibleThresholdProposal.profile.hfs
+
+        #expect(hfs.usableSegmentCount == 3)
+        #expect(hfs.usableTrainCount == 2)
+        #expect(hfs.directSupportISICount == 21)
+        #expect(profile.minSpikes.mode == .hardGate)
+        #expect(profile.minSpikes.value == 7)
+        #expect(profile.minDurationSec.mode == .hardGate)
+        #expect(profile.minDurationSec.valueSec == 0.0555)
+        #expect(result.compatibleThresholdProposal.contributions.contains {
+            $0.family == "hfs" && $0.field == "min_spikes" && $0.valueCount == 7
+        })
+        #expect(result.compatibleThresholdProposal.contributions.contains {
+            $0.family == "hfs" && $0.field == "min_duration_sec"
+                && $0.valueSec == 0.0555
+        })
+        #expect(result.diagnostics.contains {
+            $0.code == .hfsMinimumSupportGatesRequireConfirmation
+                && $0.severity == .warning
+        })
+        #expect(result.applicableFamilies == [.highFrequencySpiking])
+        #expect(result.warnings(relevantTo: [.highFrequencySpiking]).contains {
+            $0.code == .hfsMinimumSupportGatesRequireConfirmation
+        })
     }
 
     @Test("Insufficient evidence is visible and never manufactures a threshold")
@@ -179,9 +230,9 @@ struct ManualPatternLearningProposalTests {
         let second = try proposal(context: context, decisions: decisions.reversed())
 
         #expect(first == second)
-        #expect(first.schemaContractDigest == "f60245c66a7bbc119c5b881b0d2e9751591cd1250c1da9da5b69028e49329257")
-        #expect(first.sourceIdentityDigest == "ee88448a3bfca400302b10f01b212c0b6c379f9374429f886f578c5b002edf92")
-        #expect(first.proposalComputationDigest == "e0a18f72003d7a0e513150641ab1001710f6ab32deab4d3f3134a85435f992bb")
+        #expect(first.schemaContractDigest == "5799e6c3df8081b13a3dc07c73916105495185356239c9ca4b8182c80aefb198")
+        #expect(first.sourceIdentityDigest == "c217912774030d94faec637338fb72b446b69f11fb8d1c2dc8188e22e4eeb748")
+        #expect(first.proposalComputationDigest == "a4ec3c31e4937a403dd5d74a4854d5f1ae476ca0d7d8b1669fe69e40292e82e3")
         #expect(first.sourceIdentityDigest.count == 64)
         #expect(first.proposalComputationDigest.count == 64)
     }

@@ -328,7 +328,7 @@ struct DetectorParametersView: View {
                         }
                     }
                 }
-                Text(l10n.t("HFS 的 ISI、持续时间和 spike 数目前只报告；在检测器具备相容字段前不会自动写入阈值。"))
+                Text(l10n.t("HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -343,7 +343,7 @@ struct DetectorParametersView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(l10n.t("学习值以软锚点写入：仅放宽 / 建议，不是上限，也不会排除高于或低于该值的 ISI。要按阈值收窄区间，请改用硬门控。"))
+                Text(l10n.t("Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -414,7 +414,15 @@ struct DetectorParametersView: View {
             }
             Button(l10n.t("取消"), role: .cancel) {}
         } message: {
-            Text(l10n.t("这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。"))
+            if selectedLearningFamilies.contains(.highFrequencySpiking) {
+                Text(
+                    l10n.t("HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。")
+                    + " "
+                    + l10n.t("这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。")
+                )
+            } else {
+                Text(l10n.t("这些警告不会删除证据，但表示建议可能不稳定或与预期模式顺序不一致。请确认后再应用。"))
+            }
         }
     }
 
@@ -429,7 +437,9 @@ struct DetectorParametersView: View {
                     Toggle("", isOn: learningFamilySelectionBinding(summary.family))
                         .labelsHidden()
                         .toggleStyle(.checkbox)
-                        .help(l10n.t("选择是否将该家族的学习值应用为软锚点。"))
+                        .help(summary.family == .highFrequencySpiking
+                              ? l10n.t("选择是否应用 HFS 的保守最低支持门槛；应用前需要确认。")
+                              : l10n.t("选择是否将该家族的学习值应用为软锚点。"))
                 } else {
                     Color.clear.frame(width: 14, height: 14)
                 }
@@ -528,8 +538,8 @@ struct DetectorParametersView: View {
             detail = l10n.t("HFS 稳健中心未位于 Tonic 的较小 ISI 一侧。")
         case .expectedHFTonicAboveBurstNotObserved:
             detail = l10n.t("HF tonic 稳健中心未与 Burst 的较小 ISI 区间分离。")
-        case .hfsHasNoCompatibleThresholdField:
-            detail = l10n.t("HFS 特征仅报告，尚未写入检测器。")
+        case .hfsMinimumSupportGatesRequireConfirmation:
+            detail = l10n.t("HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。")
         }
         return family + detail
     }
@@ -560,7 +570,8 @@ struct DetectorParametersView: View {
 
     /// Compact "current → learned" copy for one proposed field.
     private func currentToLearnedText(_ explanation: LearnedThresholdFieldExplanation) -> String {
-        let learned = String(format: "%@ %.0f ms", thresholdModeLabel(explanation.learnedMode ?? .softAnchor), explanation.learnedValueMs ?? 0)
+        let learned = thresholdModeLabel(explanation.learnedMode ?? .softAnchor)
+            + " " + learnedValueText(explanation.learnedValue)
         switch explanation.change {
         case .skippedHard:
             return l10n.t("跳过：当前为硬门控")
@@ -569,10 +580,20 @@ struct DetectorParametersView: View {
         case .applied:
             return thresholdModeLabel(.automatic) + " → " + learned
         case .changed:
-            let current = explanation.currentValueMs
-                .map { String(format: "%@ %.0f ms", thresholdModeLabel(explanation.currentMode), $0) }
+            let current = explanation.currentValue
+                .map { thresholdModeLabel(explanation.currentMode) + " " + learnedValueText($0) }
                 ?? thresholdModeLabel(explanation.currentMode)
             return current + " → " + learned
+        }
+    }
+
+    private func learnedValueText(_ value: LearnedThresholdValue?) -> String {
+        guard let value else { return "—" }
+        switch value {
+        case .seconds(let seconds):
+            return String(format: "%.0f ms", seconds * 1_000)
+        case .spikeCount(let count):
+            return String(format: l10n.t("%d 个 spike"), count)
         }
     }
 
@@ -580,6 +601,8 @@ struct DetectorParametersView: View {
         switch (family, field) {
         case ("burst", "seed_upper_sec"): return l10n.t("爆发种子上界")
         case ("burst", "bridge_upper_sec"): return l10n.t("爆发桥接上界")
+        case ("hfs", "min_spikes"): return l10n.t("HFS 最少 spike 数")
+        case ("hfs", "min_duration_sec"): return l10n.t("HFS 最短持续时间")
         case ("tonic", "isi_lower_sec"): return l10n.t("强直下界")
         case ("tonic", "isi_upper_sec"): return l10n.t("强直上界")
         case ("hf_tonic", "isi_floor_sec"): return l10n.t("高频强直下界")
@@ -595,9 +618,6 @@ struct DetectorParametersView: View {
         if !insufficient.isEmpty {
             parts.append(l10n.t("样本不足：") + insufficient.joined(separator: ", "))
         }
-        if skips.contains(where: { $0.reason == .noMappableField }) {
-            parts.append(l10n.t("HFS 暂不学习"))
-        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -605,11 +625,20 @@ struct DetectorParametersView: View {
     private func learnedApplyResultNote(_ result: LearnedThresholdApplyResult) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             if !result.appliedFamilies.isEmpty {
-                Text(l10n.t("已应用（软锚点）：") + result.appliedFamilies.joined(separator: ", ") + "。"
+                let softFamilies = result.appliedFamilies.filter { $0 != "hfs" }
+                if !softFamilies.isEmpty {
+                    Text(l10n.t("已应用（软锚点）：") + softFamilies.joined(separator: ", ") + "。"
                      + l10n.t("重新运行检测以更新自动结果。"))
-                    .font(.caption2)
-                    .foregroundStyle(STPDAppTheme.accent)
-                    .fixedSize(horizontal: false, vertical: true)
+                        .font(.caption2)
+                        .foregroundStyle(STPDAppTheme.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if result.appliedFamilies.contains("hfs") {
+                    Text(l10n.t("已应用 HFS 保守最低支持门槛；重新运行检测以更新自动结果。"))
+                        .font(.caption2)
+                        .foregroundStyle(STPDAppTheme.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !result.skippedHardFamilies.isEmpty {
                 Text(l10n.t("跳过（已为硬门控）：") + result.skippedHardFamilies.joined(separator: ", "))

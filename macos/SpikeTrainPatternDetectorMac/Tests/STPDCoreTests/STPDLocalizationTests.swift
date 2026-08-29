@@ -574,9 +574,24 @@ func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
             "Исследовательски: 1 последовательность"
         ),
         (
-            "HFS 特征仅报告，尚未写入检测器。",
-            "HFS features are report-only and have not been written to the detector.",
-            "Признаки HFS только отображаются и не записаны в детектор."
+            "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。",
+            "The HFS ISI distribution remains descriptive; minimum spike count and duration are suggested only with sufficient evidence and require user confirmation.",
+            "Распределение ISI HFS остаётся описательным; минимальное число спайков и длительность предлагаются только при достаточных данных и требуют подтверждения."
+        ),
+        (
+            "HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。",
+            "HFS suggestions are candidate-screening lower gates, not ordinary soft anchors; apply only after confirming that the labeled segments represent HFS states.",
+            "Предлагаемые значения HFS — это нижние критерии отбора кандидатов, а не обычные мягкие ориентиры; применяйте их только после подтверждения, что размеченные сегменты представляют состояния HFS."
+        ),
+        (
+            "HFS 最少 spike 数",
+            "HFS minimum spike count",
+            "Минимальное число спайков HFS"
+        ),
+        (
+            "已写入所选人工学习阈值；请重新运行检测。",
+            "Applied the selected manually learned thresholds; re-run detection.",
+            "Применены выбранные пороги, обученные по ручной разметке; повторно запустите детектор."
         ),
     ]
 

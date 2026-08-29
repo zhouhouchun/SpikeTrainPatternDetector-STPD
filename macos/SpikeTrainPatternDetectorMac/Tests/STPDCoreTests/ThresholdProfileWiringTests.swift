@@ -183,6 +183,48 @@ func hfsHardMinSpikesConstrainsHFSCandidatesAndCarriesProvenance() throws {
     #expect(kept.contains { $0.decisionPath.contains("resolved_threshold[hfs.") })
 }
 
+@Test
+func learnedHFSMinimumCannotBypassLongBurstSeparationInvariant() throws {
+    let data = dataset([hfsTrain])
+    let tuning = StatePatternDetectorTuning(highFrequencySpikingMinSpikes: 5)
+    var learned = ManualThresholdProfile(
+        hfs: HFSManualThresholds(
+            minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 5)
+        )
+    )
+    learned.learnedProvenanceByKey = [
+        "hfs.min_spikes": "learned_from_manual_annotations(test)"
+    ]
+    let learnedRun = ClassicAnchorDetectionPipeline.run(
+        dataset: data,
+        bandSettings: bandSettings,
+        stateTuning: tuning,
+        manualThresholdProfile: learned
+    )
+    let learnedEvidence = try #require(learnedRun.resolvedThresholdEvidence.first)
+    let learnedMin = try #require(learnedEvidence.effectiveProfile.hfs.minSpikes)
+    let longBurstMax = try #require(learnedEvidence.effectiveProfile.burst.longMaxSpikes)
+
+    #expect(learnedMin > longBurstMax)
+    #expect(learnedEvidence.learnedProvenanceByKey["hfs.min_spikes"] != nil)
+
+    // An explicitly typed user hard gate keeps the established replacement semantics. This control
+    // proves that the extra separation clamp is specific to provenance-bound learned HFS minima.
+    let explicit = ManualThresholdProfile(
+        hfs: HFSManualThresholds(
+            minSpikes: ManualSpikeCountThreshold(mode: .hardGate, value: 5)
+        )
+    )
+    let explicitRun = ClassicAnchorDetectionPipeline.run(
+        dataset: data,
+        bandSettings: bandSettings,
+        stateTuning: tuning,
+        manualThresholdProfile: explicit
+    )
+    let explicitEvidence = try #require(explicitRun.resolvedThresholdEvidence.first)
+    #expect(explicitEvidence.effectiveProfile.hfs.minSpikes == 5)
+}
+
 // MARK: - 6. Pause hard min ISI affects pause candidates and carries provenance.
 
 @Test

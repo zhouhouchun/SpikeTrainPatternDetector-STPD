@@ -538,6 +538,9 @@ extension RasterDocument {
             burstMode: manualBurstMode,
             burstSeedMaxISIMs: manualBurstSeedMaxISIMs,
             burstBridgeMaxISIMs: manualBurstBridgeMaxISIMs,
+            hfsMode: manualHFSMode,
+            hfsMinSpikes: manualHFSMinSpikes,
+            hfsMinDurationMs: manualHFSMinDurationMs,
             tonicMode: manualTonicMode,
             tonicMinISIMs: manualTonicMinISIMs,
             tonicMaxISIMs: manualTonicMaxISIMs,
@@ -783,7 +786,7 @@ extension RasterDocument {
         }
         lastLearnedApplyResult = result
         statusMessage = result.didApplyAnything
-            ? "已将人工标注学习值作为 Soft 辅助阈值写入；请重新运行检测。"
+            ? "已写入所选人工学习阈值；请重新运行检测。"
             : "没有可应用的人工学习阈值。"
     }
 
@@ -815,6 +818,9 @@ extension RasterDocument {
         manualBurstMode = state.burstMode
         manualBurstSeedMaxISIMs = state.burstSeedMaxISIMs
         manualBurstBridgeMaxISIMs = state.burstBridgeMaxISIMs
+        manualHFSMode = state.hfsMode
+        manualHFSMinSpikes = state.hfsMinSpikes
+        manualHFSMinDurationMs = state.hfsMinDurationMs
         manualTonicMode = state.tonicMode
         manualTonicMinISIMs = state.tonicMinISIMs
         manualTonicMaxISIMs = state.tonicMaxISIMs

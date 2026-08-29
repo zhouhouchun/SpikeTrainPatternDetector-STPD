@@ -10,14 +10,15 @@ public enum ManualPatternLearningFamily: String, CaseIterable, Hashable, Sendabl
     case highFrequencySpiking = "high_frequency_spiking"
     case pause
 
-    /// Compatibility key used by the existing manual-threshold profile. HFS remains report-only
-    /// because that profile currently exposes no scientifically compatible ISI field for it.
+    /// Compatibility key used by the existing manual-threshold profile. HFS maps only to its
+    /// minimum independent-support spike count and duration; its ISI distribution remains
+    /// descriptive and cannot silently become an absolute HFS band.
     public var compatibleThresholdFamilyKey: String? {
         switch self {
         case .burstFamily: "burst"
         case .tonic: "tonic"
         case .highFrequencyTonic: "hf_tonic"
-        case .highFrequencySpiking: nil
+        case .highFrequencySpiking: "hfs"
         case .pause: "pause"
         }
     }
@@ -49,7 +50,8 @@ public enum ManualPatternLearningDiagnosticCode: String, CaseIterable, Hashable,
     case expectedTonicPauseOrderNotObserved = "expected_tonic_pause_order_not_observed"
     case expectedHFSBelowTonicNotObserved = "expected_hfs_below_tonic_not_observed"
     case expectedHFTonicAboveBurstNotObserved = "expected_hf_tonic_above_burst_not_observed"
-    case hfsHasNoCompatibleThresholdField = "hfs_has_no_compatible_threshold_field"
+    case hfsMinimumSupportGatesRequireConfirmation =
+        "hfs_minimum_support_gates_require_confirmation"
 }
 
 public enum ManualPatternLearningDiagnosticSeverity: String, CaseIterable, Hashable, Sendable {
@@ -85,9 +87,10 @@ public struct ManualPatternLearningDiagnostic: Hashable, Sendable {
             return [.highFrequencySpiking, .tonic]
         case .expectedHFTonicAboveBurstNotObserved:
             return [.highFrequencyTonic, .burstFamily]
+        case .hfsMinimumSupportGatesRequireConfirmation:
+            return [.highFrequencySpiking]
         case .insufficientFamilyEvidence, .singleTrainOnly,
-             .crossTrainValidationMixed, .crossTrainValidationFailed,
-             .hfsHasNoCompatibleThresholdField:
+             .crossTrainValidationMixed, .crossTrainValidationFailed:
             return []
         }
     }
@@ -166,8 +169,8 @@ public struct ManualPatternFamilyLearningSummary: Hashable, Sendable {
 }
 
 /// Identity-bound preview. `compatibleThresholdProposal` contains only fields already supported by
-/// the detector's safe soft-anchor contract. Report-only evidence (notably HFS size/duration/ISI)
-/// remains visible but cannot silently acquire detector authority.
+/// the detector contract. ISI bands remain soft anchors. HFS contributes only explicitly confirmed,
+/// conservative minimum-support gates; its ISI distribution stays report-only.
 public struct ManualPatternLearningProposal: Hashable, Sendable {
     public let schemaContractID: String
     public let schemaContractDigest: String
@@ -210,8 +213,10 @@ public enum ManualPatternLearningProposalBuilder {
     public static let schemaContractID =
         "manual_pattern_train_balanced_learning_proposal"
 
-    /// Build a report and a compatible soft-anchor proposal. The feature table is already bound to
-    /// its evidence snapshot, so this stage never re-reads mutable annotations or detector output.
+    /// Build a report and compatible threshold proposal. Ordinary bands are soft anchors; sufficiently
+    /// supported HFS examples can propose conservative minimum-support gates. The feature table is
+    /// already bound to its evidence snapshot, so this stage never re-reads mutable annotations or
+    /// detector output.
     public static func build(
         from table: ManualPatternFeatureTable
     ) -> ManualPatternLearningProposal {
@@ -272,8 +277,11 @@ public enum ManualPatternLearningProposalBuilder {
             "tonic_q10_q90_to_lower_upper_soft_anchor",
             "high_frequency_tonic_q10_q90_to_floor_upper_soft_anchor",
             "pause_q10_to_lower_soft_anchor",
-            "hfs_isi_duration_and_spike_count_are_report_only_until_a_compatible_field_exists",
-            "counts_and_regularity_are_report_only_not_hard_gates",
+            "hfs_isi_distribution_is_report_only",
+            "hfs_minimum_support_uses_minimum_of_per_train_medians",
+            "hfs_minimum_support_requires_three_segments_two_trains_and_fifteen_direct_isis",
+            "hfs_learned_minima_are_narrow_only_and_require_explicit_confirmation",
+            "non_hfs_counts_and_regularity_are_report_only_not_hard_gates",
             "leave_one_train_out_validation_is_diagnostic_not_authority",
             "validation:non_pause:heldout_segment_median_within_other_train_balanced_q10_q90",
             "validation:pause:heldout_segment_median_at_or_above_other_train_balanced_q10",
@@ -284,7 +292,7 @@ public enum ManualPatternLearningProposalBuilder {
             "diagnostic:single_train_only:standing==exploratory_single_train:information",
             "diagnostic:cross_train_validation_mixed:validation==mixed:warning",
             "diagnostic:cross_train_validation_failed:validation==failed:warning",
-            "diagnostic:hfs_no_compatible_field:family==high_frequency_spiking_and_standing!=insufficient:information",
+            "diagnostic:hfs_minimum_support_gates:applicable_hfs:warning",
             "diagnostic:burst_tonic_order:burst_center>=tonic_center:warning",
             "diagnostic:tonic_pause_order:tonic_center>=pause_center:warning",
             "diagnostic:hfs_tonic_order:hfs_center>=tonic_center:warning",
@@ -303,6 +311,8 @@ public enum ManualPatternLearningProposalBuilder {
             "mapping:tonic:isi_upper_sec:train_balanced_median_segment_q90",
             "mapping:hf_tonic:isi_floor_sec:train_balanced_median_segment_q10",
             "mapping:hf_tonic:isi_upper_sec:train_balanced_median_segment_q90",
+            "mapping:hfs:min_spikes:minimum_train_median_direct_support_spike_count",
+            "mapping:hfs:min_duration_sec:minimum_train_median_direct_support_duration",
             "mapping:pause:isi_lower_sec:train_balanced_median_segment_q10",
         ]
     }
@@ -508,10 +518,10 @@ public enum ManualPatternLearningProposalBuilder {
             break
         }
         if summary.family == .highFrequencySpiking,
-           summary.standing != .insufficient {
+           hasHFSMinimumGateEvidence(summary) {
             result.append(.init(
-                code: .hfsHasNoCompatibleThresholdField,
-                severity: .information,
+                code: .hfsMinimumSupportGatesRequireConfirmation,
+                severity: .warning,
                 family: summary.family
             ))
         }
@@ -560,6 +570,7 @@ public enum ManualPatternLearningProposalBuilder {
         var burst = BurstManualThresholds()
         var tonic = TonicManualThresholds()
         var hfTonic = HFTonicManualThresholds()
+        var hfs = HFSManualThresholds()
         var pause = PauseManualThresholds()
         var contributions: [LearnedThresholdContribution] = []
         var skipped: [LearnedThresholdSkip] = []
@@ -589,6 +600,29 @@ public enum ManualPatternLearningProposalBuilder {
                 statistic: "train_balanced_median_segment_\(statistic)",
                 valueSec: microseconds / 1_000_000,
                 mode: .softAnchor,
+                annotationCount: summary.usableSegmentCount,
+                trainCount: summary.usableTrainCount,
+                coveredISICount: summary.directSupportISICount,
+                confidence: support
+            ))
+        }
+
+        func addCount(
+            family: ManualPatternLearningFamily,
+            field: String,
+            statistic: String,
+            value: Int,
+            summary: ManualPatternFamilyLearningSummary
+        ) {
+            let n = min(summary.usableSegmentCount, summary.usableTrainCount)
+            let support = n == 0 ? 0 : Double(n) / Double(n + 6)
+            contributions.append(LearnedThresholdContribution(
+                family: contributionFamily(family),
+                field: field,
+                sourceLabel: family.rawValue,
+                statistic: statistic,
+                valueCount: value,
+                mode: .hardGate,
                 annotationCount: summary.usableSegmentCount,
                 trainCount: summary.usableTrainCount,
                 coveredISICount: summary.directSupportISICount,
@@ -631,6 +665,50 @@ public enum ManualPatternLearningProposalBuilder {
                 reason: .notUsableMinCount
             ))
         }
+        if let summary = byFamily[.highFrequencySpiking],
+           hasHFSMinimumGateEvidence(summary),
+           let minimumTrainMedianSpikeCount = summary.directSpikeCount.minimumTrainMedian,
+           minimumTrainMedianSpikeCount.isFinite,
+           let minimumTrainMedianDuration = summary.directDurationMicroseconds.minimumTrainMedian,
+           minimumTrainMedianDuration.isFinite,
+           minimumTrainMedianDuration > 0 {
+            let learnedMinSpikes = max(5, Int(floor(minimumTrainMedianSpikeCount)))
+            let learnedMinDurationSec = minimumTrainMedianDuration / 1_000_000
+            let n = min(summary.usableSegmentCount, summary.usableTrainCount)
+            let support = n == 0 ? 0 : Double(n) / Double(n + 6)
+            hfs.minSpikes = ManualSpikeCountThreshold(
+                mode: .hardGate,
+                value: learnedMinSpikes
+            )
+            hfs.minDurationSec = ManualISIThreshold(
+                mode: .hardGate,
+                valueSec: learnedMinDurationSec
+            )
+            addCount(
+                family: .highFrequencySpiking,
+                field: "min_spikes",
+                statistic: "minimum_train_median_direct_support_spike_count",
+                value: learnedMinSpikes,
+                summary: summary
+            )
+            contributions.append(LearnedThresholdContribution(
+                family: contributionFamily(.highFrequencySpiking),
+                field: "min_duration_sec",
+                sourceLabel: ManualPatternLearningFamily.highFrequencySpiking.rawValue,
+                statistic: "minimum_train_median_direct_support_duration",
+                valueSec: learnedMinDurationSec,
+                mode: .hardGate,
+                annotationCount: summary.usableSegmentCount,
+                trainCount: summary.usableTrainCount,
+                coveredISICount: summary.directSupportISICount,
+                confidence: support
+            ))
+        } else {
+            skipped.append(.init(
+                sourceLabel: ManualPatternLearningFamily.highFrequencySpiking.rawValue,
+                reason: .notUsableMinCount
+            ))
+        }
         if let summary = byFamily[.pause], summary.standing != .insufficient {
             pause.isiLower = threshold(summary.isiQ10Microseconds.trainBalancedMedian)
             add(family: .pause, field: "isi_lower_sec", statistic: "q10",
@@ -639,14 +717,10 @@ public enum ManualPatternLearningProposalBuilder {
             skipped.append(.init(sourceLabel: ManualPatternLearningFamily.pause.rawValue,
                                  reason: .notUsableMinCount))
         }
-        skipped.append(.init(
-            sourceLabel: ManualPatternLearningFamily.highFrequencySpiking.rawValue,
-            reason: .noMappableField
-        ))
         return LearnedThresholdProposal(
             profile: ManualThresholdProfile(
                 burst: burst,
-                hfs: HFSManualThresholds(),
+                hfs: hfs,
                 hfTonic: hfTonic,
                 tonic: tonic,
                 pause: pause
@@ -665,6 +739,23 @@ public enum ManualPatternLearningProposalBuilder {
         case .tonic: return "tonic"
         case .pause: return "pause"
         }
+    }
+
+    /// HFS minima are candidate-rejecting support gates, not descriptive ISI anchors. Require
+    /// multiple representative contiguous manual segments across at least two trains before they can
+    /// be proposed.
+    /// The user must still confirm application in the UI.
+    private static func hasHFSMinimumGateEvidence(
+        _ summary: ManualPatternFamilyLearningSummary
+    ) -> Bool {
+        summary.standing != .insufficient
+            && summary.usableSegmentCount >= 3
+            && summary.usableTrainCount >= 2
+            && summary.directSupportISICount >= 15
+            && summary.directSpikeCount.contributingSegmentCount >= 3
+            && summary.directSpikeCount.contributingTrainCount >= 2
+            && summary.directDurationMicroseconds.contributingSegmentCount >= 3
+            && summary.directDurationMicroseconds.contributingTrainCount >= 2
     }
 
     private static func median(_ values: [Double]) -> Double? {
@@ -753,7 +844,9 @@ public enum ManualPatternLearningProposalBuilder {
         for item in value.contributions {
             tokens += [
                 "contribution", item.family, item.field, item.sourceLabel,
-                item.statistic, String(item.valueSec), item.mode.rawValue,
+                item.statistic,
+            ] + item.value.canonicalTokens + [
+                item.mode.rawValue,
                 String(item.evidenceRunCount), String(item.trainCount),
                 String(item.coveredISICount), String(item.supportScore),
             ]

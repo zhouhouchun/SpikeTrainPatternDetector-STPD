@@ -2509,7 +2509,9 @@ public enum ClassicAnchorDetectionPipeline {
         // Preserve the existing invariant that HFS min spikes sits above the long-burst ceiling
         // (the pipeline normally bumps it to longMaxSpikes + 1) UNLESS the user explicitly
         // hard-gated HFS min spikes, in which case their value is respected verbatim.
-        if !hasHardGate(resolved, keys: ["hfs.min_spikes"]) {
+        let hfsMinSpikesWasLearned =
+            profile.learnedProvenanceByKey["hfs.min_spikes"] != nil
+        if !hasHardGate(resolved, keys: ["hfs.min_spikes"]) || hfsMinSpikesWasLearned {
             newState.highFrequencySpikingMinSpikes = max(
                 newState.highFrequencySpikingMinSpikes,
                 newClassic.longMaxSpikes + 1

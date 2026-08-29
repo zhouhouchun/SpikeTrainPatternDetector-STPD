@@ -40,8 +40,9 @@ public struct ManualISIThreshold: Hashable, Sendable {
 }
 
 /// An optional user spike-count threshold with its mode. Spike counts support only `automatic`
-/// (unchanged) and `hardGate` (replace the effective count). A `softAnchor` count would imply
-/// forcing/relaxing candidate creation, which Phase 1 forbids, so it is treated as `automatic`.
+/// (unchanged) and `hardGate`. An explicit user hard gate replaces the effective count; a confirmed
+/// learned HFS minimum is resolved narrow-only against the adaptive count. A `softAnchor` count would
+/// imply forcing/relaxing candidate creation, so it is treated as `automatic`.
 public struct ManualSpikeCountThreshold: Hashable, Sendable {
     public var mode: ThresholdMode
     public var value: Int?
@@ -148,10 +149,10 @@ public struct ManualThresholdProfile: Hashable, Sendable {
     public var hfTonic: HFTonicManualThresholds
     public var tonic: TonicManualThresholds
     public var pause: PauseManualThresholds
-    /// Phase 1D: optional learned-provenance notes for fields whose soft-anchor value came from manual
-    /// annotations, keyed by `<family>.<field>` (e.g. `burst.seed_upper_sec`). Purely additive metadata —
-    /// it carries the provenance note into the detector run so candidates can record where a learned
-    /// threshold came from; it never changes any resolved value or `isAllAutomatic`.
+    /// Optional learned-provenance notes for fields derived from manual annotations, keyed by
+    /// `<family>.<field>` (e.g. `burst.seed_upper_sec`). Most learned fields are soft anchors; HFS
+    /// minimum-support fields are explicitly confirmed narrow-only gates. The notes carry identity
+    /// into detector audit output and let the resolver preserve the stricter HFS safety semantics.
     public var learnedProvenanceByKey: [String: String]
 
     public init(
@@ -190,11 +191,18 @@ public struct ManualThresholdProfile: Hashable, Sendable {
     }
 
     /// P9: the profile as seen by a train OUTSIDE the manual hard-threshold scope (`ManualThresholdScope`). Every HARD
-    /// gate is demoted to `.automatic` (ignored for that train); soft anchors, automatic fields, and learned (soft)
-    /// provenance are preserved — soft anchors remain global. A profile with no hard gates is returned unchanged, so
-    /// scope never affects a soft-only / automatic profile.
+    /// gate is demoted to `.automatic` (ignored for that train); soft anchors and their provenance remain global.
+    /// Provenance for learned HFS hard gates is removed with those gates so an out-of-scope train cannot be falsely
+    /// reported as having used them. A profile with no hard gates is returned unchanged.
     public func droppingHardGates() -> ManualThresholdProfile {
-        ManualThresholdProfile(
+        var scopedProvenance = learnedProvenanceByKey
+        if hfs.minSpikes.mode == .hardGate {
+            scopedProvenance.removeValue(forKey: "hfs.min_spikes")
+        }
+        if hfs.minDurationSec.mode == .hardGate {
+            scopedProvenance.removeValue(forKey: "hfs.min_duration_sec")
+        }
+        return ManualThresholdProfile(
             burst: BurstManualThresholds(
                 seedLowerISI: burst.seedLowerISI.droppingHardGate(),
                 seedUpperISI: burst.seedUpperISI.droppingHardGate(),
@@ -216,7 +224,7 @@ public struct ManualThresholdProfile: Hashable, Sendable {
                 isiUpper: tonic.isiUpper.droppingHardGate()),
             pause: PauseManualThresholds(
                 isiLower: pause.isiLower.droppingHardGate()),
-            learnedProvenanceByKey: learnedProvenanceByKey)
+            learnedProvenanceByKey: scopedProvenance)
     }
 }
 

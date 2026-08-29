@@ -12,8 +12,9 @@ import Foundation
 ///   `incompatible_user_bound` rather than silently widening biology or emitting an empty band.
 /// - `softAnchor` (ISI): UNION/expand — a lower bound may fall (`min`), an upper bound may rise
 ///   (`max`). A soft anchor only shifts the band; it never forces a candidate to exist.
-/// - Spike counts: `hardGate` replaces the effective count; `softAnchor` is treated as `automatic`
-///   (a soft count would imply forcing/relaxing candidate creation, which Phase 1 forbids).
+/// - Spike counts: an explicit user `hardGate` replaces the effective count. A provenance-bound,
+///   learned HFS minimum can only raise the adaptive count (`max`); `softAnchor` is treated as
+///   `automatic` because a soft count would imply forcing/relaxing candidate creation.
 ///
 /// Physiological safeguard: the HF-tonic floor is not allowed to silently fall below the (effective)
 /// burst seed upper. In pure-automatic the adaptive floor is preserved exactly; when a manual change
@@ -37,7 +38,14 @@ public enum ManualThresholdResolver {
         let burstLongMax = resolveSpikeCount("burst.long_max_spikes", profile.burst.longMaxSpikes, adaptive.burstLongMaxSpikes, &provenance)
 
         // HFS (min spikes / min duration only — no ISI band gate in Phase 1).
-        let hfsMinSpikes = resolveSpikeCount("hfs.min_spikes", profile.hfs.minSpikes, adaptive.hfsMinSpikes, &provenance)
+        let learnedHFSMinSpikes = profile.learnedProvenanceByKey["hfs.min_spikes"] != nil
+        let hfsMinSpikes = resolveHFSSpikeCount(
+            "hfs.min_spikes",
+            profile.hfs.minSpikes,
+            adaptive.hfsMinSpikes,
+            learnedNarrowOnly: learnedHFSMinSpikes,
+            &provenance
+        )
         let hfsMinDuration = resolveISILower("hfs.min_duration_sec", profile.hfs.minDurationSec, adaptive.hfsMinDurationSec, &provenance)
 
         // HF tonic.
@@ -263,5 +271,39 @@ public enum ManualThresholdResolver {
         }
         provenance.append(.init(key: key, mode: .hardGate, source: .userHardGate, adaptiveValue: Double(adaptive), userValue: Double(user), effectiveValue: Double(user)))
         return ResolvedCount(value: user, source: .userHardGate)
+    }
+
+    /// An explicit user HFS hard gate retains the established replacement semantics. A learned HFS
+    /// minimum is different: it is derived from observational examples and may only narrow the
+    /// adaptive detector (`max`), never relax it. This prevents a short manual example from silently
+    /// converting Burst-like packets into HFS.
+    private static func resolveHFSSpikeCount(
+        _ key: String,
+        _ threshold: ManualSpikeCountThreshold,
+        _ adaptive: Int,
+        learnedNarrowOnly: Bool,
+        _ provenance: inout [ResolvedThreshold]
+    ) -> ResolvedCount {
+        guard threshold.isHardGate, let user = threshold.value else {
+            provenance.append(.init(
+                key: key,
+                mode: .automatic,
+                source: .adaptive,
+                adaptiveValue: Double(adaptive),
+                userValue: threshold.value.map(Double.init),
+                effectiveValue: Double(adaptive)
+            ))
+            return ResolvedCount(value: adaptive, source: .adaptive)
+        }
+        let effective = learnedNarrowOnly ? max(adaptive, user) : user
+        provenance.append(.init(
+            key: key,
+            mode: .hardGate,
+            source: .userHardGate,
+            adaptiveValue: Double(adaptive),
+            userValue: Double(user),
+            effectiveValue: Double(effective)
+        ))
+        return ResolvedCount(value: effective, source: .userHardGate)
     }
 }
