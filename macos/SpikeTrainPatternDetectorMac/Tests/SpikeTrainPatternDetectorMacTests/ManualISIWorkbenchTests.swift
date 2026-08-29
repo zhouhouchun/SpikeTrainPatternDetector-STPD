@@ -7,6 +7,54 @@ import Testing
 @Suite("Manual ISI workbench")
 @MainActor
 struct ManualISIWorkbenchTests {
+    @Test("Threshold assistant keeps a separate editable draft for each pattern")
+    func thresholdAssistantDraftsDoNotLeakAcrossPatterns() {
+        var drafts = ManualISIThresholdPatternDrafts()
+
+        drafts[.burst].minimumISIMilliseconds = "1"
+        drafts[.burst].maximumISIMilliseconds = "20"
+        drafts[.burst].minimumSpikes = "4"
+        drafts[.burst].maximumSpikes = "12"
+
+        #expect(drafts[.pause].minimumISIMilliseconds.isEmpty)
+        #expect(drafts[.pause].maximumISIMilliseconds.isEmpty)
+        #expect(drafts[.tonic].minimumISIMilliseconds.isEmpty)
+        #expect(drafts[.tonic].maximumISIMilliseconds.isEmpty)
+
+        drafts[.pause].minimumISIMilliseconds = "90"
+        drafts[.pause].maximumISIMilliseconds = "500"
+        drafts[.tonic].minimumISIMilliseconds = "25"
+        drafts[.tonic].maximumISIMilliseconds = "80"
+
+        #expect(drafts[.burst].minimumISIMilliseconds == "1")
+        #expect(drafts[.burst].maximumISIMilliseconds == "20")
+        #expect(drafts[.burst].minimumSpikes == "4")
+        #expect(drafts[.burst].maximumSpikes == "12")
+        #expect(drafts[.pause].minimumISIMilliseconds == "90")
+        #expect(drafts[.pause].maximumISIMilliseconds == "500")
+        #expect(drafts[.tonic].minimumISIMilliseconds == "25")
+        #expect(drafts[.tonic].maximumISIMilliseconds == "80")
+    }
+
+    @Test("Changing the Tonic metric mutates only the Tonic draft")
+    func tonicMetricDefaultsStayScopedToTonicDraft() {
+        var drafts = ManualISIThresholdPatternDrafts()
+        drafts[.burst].minimumSpikes = "4"
+        drafts[.burst].maximumSpikes = "10"
+        drafts[.pause].minimumISIMilliseconds = "120"
+
+        drafts.selectTonicMetric(.mm)
+
+        #expect(drafts[.tonic].tonicMetric == .mm)
+        #expect(drafts[.tonic].minimumSpikes == "3")
+        #expect(drafts[.tonic].maximumSpikes == "5")
+        #expect(drafts[.tonic].tonicMetricMinimum == "1")
+        #expect(drafts[.tonic].tonicMetricMaximum.isEmpty)
+        #expect(drafts[.burst].minimumSpikes == "4")
+        #expect(drafts[.burst].maximumSpikes == "10")
+        #expect(drafts[.pause].minimumISIMilliseconds == "120")
+    }
+
     @Test("Manual workbench track and pattern labels follow the active UI language")
     func manualWorkbenchLabelsFollowActiveLanguage() {
         let english = STPDLocalizer(language: .en)

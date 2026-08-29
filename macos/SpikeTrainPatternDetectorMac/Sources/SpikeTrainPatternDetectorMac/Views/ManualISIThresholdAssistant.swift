@@ -15,15 +15,7 @@ struct ManualISIThresholdAssistant: View {
 
     @State private var isExpanded = false
     @State private var pattern: ManualISIThresholdPattern = .burst
-    @State private var minimumISIMilliseconds = ""
-    @State private var maximumISIMilliseconds = ""
-    @State private var burstMinimumSpikes = "3"
-    @State private var burstMaximumSpikes = "15"
-    @State private var tonicMinimumSpikes = "6"
-    @State private var tonicMaximumSpikes = ""
-    @State private var tonicMetric: ManualISITonicMetric = .cv2
-    @State private var tonicMetricMinimum = "0"
-    @State private var tonicMetricMaximum = "0.30"
+    @State private var patternDrafts = ManualISIThresholdPatternDrafts()
     @State private var applicationFeedback: ApplicationFeedback?
 
     var body: some View {
@@ -64,16 +56,16 @@ struct ManualISIThresholdAssistant: View {
 
                 rangeFields(
                     title: l10n.t("ISI 闭区间"),
-                    lower: $minimumISIMilliseconds,
-                    upper: $maximumISIMilliseconds,
+                    lower: activePatternDraft.minimumISIMilliseconds,
+                    upper: activePatternDraft.maximumISIMilliseconds,
                     unit: "ms"
                 )
 
                 if pattern == .burst {
                     integerRangeFields(
                         title: l10n.t("Spike 数闭区间"),
-                        lower: $burstMinimumSpikes,
-                        upper: $burstMaximumSpikes
+                        lower: patternDraft(for: .burst).minimumSpikes,
+                        upper: patternDraft(for: .burst).maximumSpikes
                     )
                 }
 
@@ -91,7 +83,7 @@ struct ManualISIThresholdAssistant: View {
                     Text(l10n.t("指标"))
                         .foregroundStyle(.secondary)
                         .frame(width: 82, alignment: .leading)
-                    Picker(l10n.t("指标"), selection: $tonicMetric) {
+                    Picker(l10n.t("指标"), selection: tonicMetricBinding) {
                         ForEach(ManualISITonicMetric.allCases, id: \.self) {
                             Text($0.displayName).tag($0)
                         }
@@ -100,39 +92,25 @@ struct ManualISIThresholdAssistant: View {
                     .frame(width: 84, alignment: .leading)
                     rangeFields(
                         title: l10n.t("指标闭区间"),
-                        lower: $tonicMetricMinimum,
-                        upper: $tonicMetricMaximum,
+                        lower: patternDraft(for: .tonic).tonicMetricMinimum,
+                        upper: patternDraft(for: .tonic).tonicMetricMaximum,
                         unit: ""
                     )
                     integerRangeFields(
                         title: l10n.t("Spike 数"),
-                        lower: $tonicMinimumSpikes,
-                        upper: $tonicMaximumSpikes,
+                        lower: patternDraft(for: .tonic).minimumSpikes,
+                        upper: patternDraft(for: .tonic).maximumSpikes,
                         upperPlaceholder: l10n.t("不限"),
                         upperWidth: 112
                     )
                     Spacer(minLength: 0)
                 }
 
-                Text(l10n.t(tonicMetric == .mm
+                Text(l10n.t(patternDrafts[.tonic].tonicMetric == .mm
                     ? "MM = 候选段内最大 ISI / 最小 ISI；仅用于 3–5 个 spike 的短 Tonic 初标。"
                     : "CV/CV2/LV 仅用于至少 5 个 ISI（6 个 spike）的 Tonic 初标；3–5 个 spike 请改用 MM。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        }
-        .onChange(of: tonicMetric) { _, metric in
-            switch metric {
-            case .mm:
-                tonicMinimumSpikes = "3"
-                tonicMaximumSpikes = "5"
-                tonicMetricMinimum = "1"
-                tonicMetricMaximum = ""
-            case .cv, .cv2, .lv:
-                tonicMinimumSpikes = "6"
-                tonicMaximumSpikes = ""
-                tonicMetricMinimum = "0"
-                tonicMetricMaximum = "0.30"
             }
         }
     }
@@ -156,7 +134,7 @@ struct ManualISIThresholdAssistant: View {
                     }
                     if pattern == .tonic,
                        let values = result.metricValueRange {
-                        Text("\(tonicMetric.displayName) \(format(values.lowerBound))–\(format(values.upperBound))")
+                        Text("\(patternDrafts[.tonic].tonicMetric.displayName) \(format(values.lowerBound))–\(format(values.upperBound))")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -255,9 +233,30 @@ struct ManualISIThresholdAssistant: View {
             .frame(width: width)
     }
 
+    private var activePatternDraft: Binding<ManualISIThresholdPatternDraft> {
+        patternDraft(for: pattern)
+    }
+
+    private func patternDraft(
+        for pattern: ManualISIThresholdPattern
+    ) -> Binding<ManualISIThresholdPatternDraft> {
+        Binding(
+            get: { patternDrafts[pattern] },
+            set: { patternDrafts[pattern] = $0 }
+        )
+    }
+
+    private var tonicMetricBinding: Binding<ManualISITonicMetric> {
+        Binding(
+            get: { patternDrafts[.tonic].tonicMetric },
+            set: { patternDrafts.selectTonicMetric($0) }
+        )
+    }
+
     private var proposalResult: ManualISIThresholdProposalResult {
-        guard let lowerMS = nonnegativeDouble(minimumISIMilliseconds),
-              let upperMS = nonnegativeDouble(maximumISIMilliseconds),
+        let draft = patternDrafts[pattern]
+        guard let lowerMS = nonnegativeDouble(draft.minimumISIMilliseconds),
+              let upperMS = nonnegativeDouble(draft.maximumISIMilliseconds),
               lowerMS <= upperMS else {
             return .error(l10n.t("请输入有效的 ISI 闭区间上下限。"))
         }
@@ -266,8 +265,8 @@ struct ManualISIThresholdAssistant: View {
         let maximumSpikes: Int?
         switch pattern {
         case .burst:
-            guard let minimum = positiveInt(burstMinimumSpikes),
-                  let maximum = positiveInt(burstMaximumSpikes),
+            guard let minimum = positiveInt(draft.minimumSpikes),
+                  let maximum = positiveInt(draft.maximumSpikes),
                   minimum <= maximum else {
                 return .error(l10n.t("请输入有效的 Burst spike 数闭区间。"))
             }
@@ -277,24 +276,24 @@ struct ManualISIThresholdAssistant: View {
             minimumSpikes = 2
             maximumSpikes = 2
         case .tonic:
-            guard let minimum = positiveInt(tonicMinimumSpikes) else {
+            guard let minimum = positiveInt(draft.minimumSpikes) else {
                 return .error(l10n.t("请输入有效的 Tonic spike 数和指标闭区间。"))
             }
-            let maximum = tonicMaximumSpikes.trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty ? nil : positiveInt(tonicMaximumSpikes)
+            let maximum = draft.maximumSpikes.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty ? nil : positiveInt(draft.maximumSpikes)
             let validSpikeRange: Bool
-            switch tonicMetric {
+            switch draft.tonicMetric {
             case .mm:
                 validSpikeRange = minimum >= 3 && maximum.map { $0 >= minimum && $0 <= 5 } == true
             case .cv, .cv2, .lv:
                 validSpikeRange = minimum >= 6 && (maximum.map { $0 >= minimum } ?? true)
             }
             guard validSpikeRange,
-                  let metricLower = nonnegativeDouble(tonicMetricMinimum),
-                  let metricUpper = nonnegativeDouble(tonicMetricMaximum),
-                  tonicMetric != .mm || metricLower >= 1,
+                  let metricLower = nonnegativeDouble(draft.tonicMetricMinimum),
+                  let metricUpper = nonnegativeDouble(draft.tonicMetricMaximum),
+                  draft.tonicMetric != .mm || metricLower >= 1,
                   metricLower <= metricUpper else {
-                return .error(tonicMetric == .mm
+                return .error(draft.tonicMetric == .mm
                     ? l10n.t("MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。")
                     : l10n.t("基于 CV/CV2/LV 的 Tonic 初标至少需要 6 个 spike。"))
             }
@@ -304,8 +303,8 @@ struct ManualISIThresholdAssistant: View {
 
         let metricRange: ManualISIThresholdClosedRange?
         if pattern == .tonic,
-           let metricLower = nonnegativeDouble(tonicMetricMinimum),
-           let metricUpper = nonnegativeDouble(tonicMetricMaximum) {
+           let metricLower = nonnegativeDouble(draft.tonicMetricMinimum),
+           let metricUpper = nonnegativeDouble(draft.tonicMetricMaximum) {
             metricRange = ManualISIThresholdClosedRange(
                 lowerBound: metricLower,
                 upperBound: metricUpper
@@ -322,7 +321,7 @@ struct ManualISIThresholdAssistant: View {
             ),
             minimumSpikeCount: minimumSpikes,
             maximumSpikeCount: maximumSpikes,
-            tonicMetric: pattern == .tonic ? tonicMetric : nil,
+            tonicMetric: pattern == .tonic ? draft.tonicMetric : nil,
             tonicMetricRange: metricRange
         )
         let samples = rows.map {
