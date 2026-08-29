@@ -254,24 +254,24 @@ public extension LearnedThresholdContribution {
         )
     }
 
-    /// Phase 1F: compact, explicitly-labelled evidence summary for the preview UI, e.g.
-    /// `n=8 · trains=3 · confidence=0.33`. The `confidence` spelling is retained for output compatibility,
-    /// but its value is the train-clustered support score described above. These keys are technical tokens
-    /// (like the provenance note), not localized.
+    /// Compact evidence summary for the preview UI. This is deliberately labelled `support`, not
+    /// `confidence`: it is an observational coverage score, not inferential confidence.
     var evidenceSummary: String {
-        String(format: "n=%d · trains=%d · confidence=%.2f", annotationCount, trainCount, confidence)
+        String(format: "n=%d · trains=%d · support=%.2f", annotationCount, trainCount, supportScore)
     }
 }
 
 public extension LearnedManualThresholdApplier {
-    /// Phase 1F: display-only normalization of a machine provenance note — shows `label=burst` instead of the
-    /// internal calibration source label `label=burst_family`. The machine note threaded into candidate
-    /// decisionPath / the CSV `resolved_thresholds` column is unchanged (only the on-screen preview is normalized).
+    /// Display-only normalization of a machine provenance note. The persisted machine note keeps its
+    /// compatibility keys; the UI calls the observational score `support` to avoid implying statistical
+    /// confidence.
     static func displayProvenanceNote(_ machineNote: String) -> String {
-        machineNote.replacingOccurrences(
-            of: "label=\(ManualAnnotationCalibrationSummarizer.familyBurst)",
-            with: "label=burst"
-        )
+        machineNote
+            .replacingOccurrences(
+                of: "label=\(ManualAnnotationCalibrationSummarizer.familyBurst)",
+                with: "label=burst"
+            )
+            .replacingOccurrences(of: "confidence=", with: "support=")
     }
 }
 
