@@ -135,6 +135,51 @@ struct ManualPatternLearningWorkflowTests {
         #expect(document.classicAnchorDetectionRun == nil)
     }
 
+    @Test("Holdout admission applies only admitted calibration fields, never the full-data preview")
+    func holdoutAdmissionUsesTheCalibrationProposal() throws {
+        let document = RasterDocument()
+        let calibrationProposal = try makeBurstProposal()
+        document.manualPatternLearningProposal = try makeTonicProposal()
+        document.manualLearningHoldoutReport = ManualLearningHoldoutValidationReport(
+            schemaContractID: ManualLearningHoldoutValidator.schemaContractID,
+            schemaContractDigest: ManualLearningHoldoutValidator.schemaContractDigest,
+            admissionContractDigest: ManualLearningHoldoutValidator.admissionContractDigest,
+            sourceDatasetDigest: "dataset",
+            heldOutEvidenceDigest: "held_out_evidence",
+            heldOutEvaluationDigest: "held_out_evaluation",
+            calibrationTrainIDs: ["calibration_a", "calibration_b"],
+            heldOutTrainIDs: ["held_out"],
+            excludedTrainIDs: [],
+            calibrationProposal: calibrationProposal,
+            baselineSettingsDigest: "baseline",
+            baselineSettingsEntries: [],
+            comparisons: [],
+            admissions: [ManualLearningFamilyAdmission(
+                family: .burstFamily,
+                disposition: .eligibleForExplicitApplication,
+                reasons: [.observedImprovementWithoutMeasuredRegression]
+            )],
+            reportDigest: "report"
+        )
+        #expect(document.manualLearningHoldoutReportIsStale)
+        document.applyHoldoutAdmittedThresholds(selecting: [.burstFamily])
+        #expect(document.manualBurstMode == .automatic)
+
+        document.manualLearningHoldoutConfigurationSnapshot =
+            document.manualLearningHoldoutValidationConfiguration
+
+        document.applyHoldoutAdmittedThresholds(selecting: [.burstFamily, .tonic])
+        #expect(document.manualBurstMode == .automatic)
+
+        document.applyHoldoutAdmittedThresholds(selecting: [.burstFamily])
+
+        #expect(document.manualBurstMode == .softAnchor)
+        #expect(document.manualTonicMode == .automatic)
+        #expect(document.lastLearnedApplyResult?.appliedFamilies == ["burst"])
+        #expect(document.appliedManualPatternLearningProposal == calibrationProposal)
+        #expect(document.classicAnchorDetectionRun == nil)
+    }
+
     @Test("Rollback refuses to overwrite a later manual parameter edit")
     func rollbackDoesNotOverwriteLaterManualEdit() throws {
         let document = RasterDocument()

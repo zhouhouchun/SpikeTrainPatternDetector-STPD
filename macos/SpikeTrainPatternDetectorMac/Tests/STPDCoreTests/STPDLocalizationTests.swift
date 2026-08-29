@@ -613,6 +613,51 @@ func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
             "Train-held-out validation completed; the comparison did not change the detector.",
             "Проверка с отложенными train завершена; сравнение не изменило детектор."
         ),
+        (
+            "可经确认应用",
+            "Eligible for explicit application",
+            "Можно применить после подтверждения"
+        ),
+        (
+            "留出集没有显式阴性对照",
+            "No explicit negative controls in the held-out set",
+            "В отложенном наборе нет явного отрицательного контроля"
+        ),
+        (
+            "导出验证报告",
+            "Export validation report",
+            "Экспортировать отчёт проверки"
+        ),
+        (
+            "应用所选准入家族",
+            "Apply selected admitted families",
+            "Применить выбранные допущенные семейства"
+        ),
+        (
+            "留出 train 未完成整条几何复核",
+            "At least one held-out train lacks a complete whole-train geometry review",
+            "Хотя бы для одной отложенной train не завершена геометрическая проверка всей последовательности"
+        ),
+        (
+            "至少一条留出 train 出现指标退化",
+            "At least one held-out train has a measured regression",
+            "Хотя бы на одной отложенной train наблюдается ухудшение метрик"
+        ),
+        (
+            "应用后的参数与已验证配置不一致；已安全回滚。",
+            "The applied parameters did not match the validated profile and were safely rolled back.",
+            "Применённые параметры не совпали с проверенным профилем и были безопасно отменены."
+        ),
+        (
+            "当前没有有效的留出验证报告。",
+            "There is no valid held-out validation report.",
+            "Нет действительного отчёта отложенной проверки."
+        ),
+        (
+            "Could not create the XLSX report.",
+            "Could not create the XLSX report.",
+            "Не удалось создать отчёт XLSX."
+        ),
     ]
 
     for (source, english, russian) in cases {

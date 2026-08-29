@@ -94,6 +94,42 @@ func manualISIResultPartitioningRequiresTrainID() {
 }
 
 @Test
+func rectangularReportWorkbookPreservesOneTextSheetWithoutTrainPartitioning() throws {
+    let table = ManualISIExportTable(
+        headers: ["report_digest", "family", "metric", "held_out_train_id_json"],
+        rows: [
+            ["abc123", "burst_family", "0.8125", "\"=held|γ\""],
+            ["abc123", "high_frequency_spiking", "", "\"ordinary\""],
+        ]
+    )
+    let data = try RectangularTableXLSXExporter.data(
+        table: table,
+        worksheetName: "Holdout/validation:report"
+    )
+    let inspection = try CanonicalXLSXWorkbookInspector.inspect(
+        data: data,
+        limits: .supportedDatasetEnvelope
+    )
+
+    #expect(inspection.worksheets.map(\.name) == ["Holdout_validation_report"])
+    let sheet = try stagedWorksheet(inspection, at: 0)
+    #expect(sheet.columns.map(\.header) == table.headers.map(Optional.some))
+    #expect(sheet.columns[0].cells == [
+        .text(rawText: "abc123"),
+        .text(rawText: "abc123"),
+    ])
+    #expect(sheet.columns[1].cells == [
+        .text(rawText: "burst_family"),
+        .text(rawText: "high_frequency_spiking"),
+    ])
+    #expect(sheet.columns[3].cells == [
+        .text(rawText: "\"=held|γ\""),
+        .text(rawText: "\"ordinary\""),
+    ])
+    #expect(table.csv().contains("\"\"\"=held|γ\"\"\""))
+}
+
+@Test
 func manualISIDraftWorkbookRoundTripsAcrossTrainSheets() throws {
     let headers = CanonicalManualISIDraftCSVExporter.headers
     let draftSchemaDigest = CanonicalManualISIDraftCSVExporter.schemaContractDigest

@@ -609,9 +609,57 @@ extension RasterDocument {
     }
 
     var manualLearningHoldoutReportIsStale: Bool {
-        guard manualLearningHoldoutReport != nil,
-              let snapshot = manualLearningHoldoutConfigurationSnapshot else { return false }
+        guard manualLearningHoldoutReport != nil else { return false }
+        guard let snapshot = manualLearningHoldoutConfigurationSnapshot else { return true }
         return snapshot != manualLearningHoldoutValidationConfiguration
+    }
+
+    var canExportManualLearningHoldoutReport: Bool {
+        manualLearningHoldoutReport != nil
+            && !manualLearningHoldoutReportIsStale
+            && !isManualLearningHoldoutValidating
+    }
+
+    var manualLearningExplicitlyApplicableFamilies: Set<ManualPatternLearningFamily> {
+        guard !manualLearningHoldoutReportIsStale,
+              let report = manualLearningHoldoutReport else { return [] }
+        return Set(report.explicitlyApplicableFamilies)
+    }
+
+    func exportManualLearningHoldoutReportWithPanel(localizer: STPDLocalizer) {
+        guard canExportManualLearningHoldoutReport,
+              let report = manualLearningHoldoutReport else {
+            statusMessage = localizer.t("当前没有可导出的有效留出验证报告。")
+            return
+        }
+        do {
+            let selection = ManualLearningHoldoutReportExportPanel.chooseDestination(
+                suggestedStem: "manual_learning_holdout_\(report.reportDigest.prefix(12))",
+                message: localizer.t("导出身份绑定的逐模式留出验证报告。CSV 与 XLSX 内容完全一致；报告不会改变检测器参数。"),
+                formatLabel: localizer.t("导出格式"),
+                csvTitle: localizer.t("CSV — 单表验证报告"),
+                xlsxTitle: localizer.t("XLSX — 单工作表验证报告")
+            )
+            guard let selection else { return }
+            guard manualLearningHoldoutReport?.reportDigest == report.reportDigest,
+                  !manualLearningHoldoutReportIsStale else {
+                statusMessage = localizer.t("留出验证报告导出已取消。")
+                lastErrorMessage = localizer.t("保存期间报告或检测参数发生变化；请重新运行验证。")
+                return
+            }
+            try ManualLearningHoldoutReportExportPanel.write(
+                report: report,
+                selection: selection
+            )
+            statusMessage = String(
+                format: localizer.t("已导出留出验证报告：%@"),
+                selection.destination.lastPathComponent
+            )
+            lastErrorMessage = nil
+        } catch {
+            statusMessage = localizer.t("留出验证报告导出失败。")
+            lastErrorMessage = error.localizedDescription
+        }
     }
 
     func setManualLearningHeldOut(_ heldOut: Bool, trainID: String) {
@@ -712,7 +760,7 @@ extension RasterDocument {
         }
     }
 
-    private var manualLearningHoldoutValidationConfiguration:
+    var manualLearningHoldoutValidationConfiguration:
         ManualLearningHoldoutValidationConfiguration {
         ManualLearningHoldoutValidationConfiguration(
             bandSettings: adaptiveDetectorBandSettings,
@@ -720,7 +768,9 @@ extension RasterDocument {
             refractoryAction: .warnOnly,
             stateTuning: stateDetectorTuning,
             detectorParameters: detectorParameterSettings,
-            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization
+            useAdaptiveV2Canonicalization: useAdaptiveV2Canonicalization,
+            baselineManualThresholdProfile: manualThresholdProfile,
+            manualThresholdScope: manualThresholdScope
         )
     }
 
@@ -910,8 +960,55 @@ extension RasterDocument {
     func applyLearnedThresholds(
         selecting families: Set<ManualPatternLearningFamily>? = nil
     ) {
-        guard let proposal = learnedThresholdProposal,
-              !proposal.isAllAutomatic else {
+        guard let source = manualPatternLearningProposal else {
+            lastLearnedApplyResult = nil
+            return
+        }
+        applyLearnedThresholds(from: source, selecting: families)
+    }
+
+    func applyHoldoutAdmittedThresholds(
+        selecting families: Set<ManualPatternLearningFamily>
+    ) {
+        guard !manualLearningHoldoutReportIsStale,
+              let report = manualLearningHoldoutReport else {
+            statusMessage = "当前没有有效的留出验证报告。"
+            return
+        }
+        let admitted = Set(report.explicitlyApplicableFamilies)
+        let selected = families.intersection(admitted)
+        guard families.count == 1,
+              selected == families,
+              let family = selected.first else {
+            statusMessage = "没有选择可明确应用的留出验证家族。"
+            return
+        }
+        guard let expectedProfile = ManualLearningHoldoutProfileComposer.applying(
+            family: family,
+            proposal: report.calibrationProposal,
+            to: manualThresholdProfile
+        ) else {
+            statusMessage = "当前参数无法组成已验证的单家族应用配置；请重新运行留出验证。"
+            return
+        }
+        applyLearnedThresholds(from: report.calibrationProposal, selecting: [family])
+        guard lastLearnedApplyResult?.didApplyAnything == true,
+              manualThresholdProfile == expectedProfile else {
+            if canUndoLastLearnedThresholdApplication {
+                undoLastLearnedThresholdApplication()
+            }
+            statusMessage = "应用后的参数与已验证配置不一致；已安全回滚。"
+            return
+        }
+        statusMessage = "已应用一个经留出验证的家族；如需应用另一家族，请先重新运行验证。"
+    }
+
+    private func applyLearnedThresholds(
+        from source: ManualPatternLearningProposal,
+        selecting families: Set<ManualPatternLearningFamily>? = nil
+    ) {
+        let proposal = source.compatibleThresholdProposal
+        guard !proposal.isAllAutomatic else {
             lastLearnedApplyResult = nil
             return
         }
@@ -929,7 +1026,7 @@ extension RasterDocument {
             selectingFamilies: selectedKeys
         )
         installManualThresholdFieldState(result.state)
-        if result.didApplyAnything, let source = manualPatternLearningProposal {
+        if result.didApplyAnything {
             appliedManualPatternLearningProposal = source
             for family in result.appliedFamilies {
                 appliedManualPatternLearningProposalsByFamily[family] = source

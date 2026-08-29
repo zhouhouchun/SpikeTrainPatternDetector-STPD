@@ -7,6 +7,8 @@ struct DetectorParametersView: View {
     @Environment(\.l10n) private var l10n
     @State private var selectedLearningFamilies: Set<ManualPatternLearningFamily> = []
     @State private var isLearningWarningConfirmationPresented = false
+    @State private var selectedHoldoutAdmissionFamilies: Set<ManualPatternLearningFamily> = []
+    @State private var isHoldoutAdmissionWarningConfirmationPresented = false
 
     var body: some View {
         ScrollView([.vertical, .horizontal]) {
@@ -442,7 +444,7 @@ struct DetectorParametersView: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 10)
                 if document.isManualLearningHoldoutValidating {
-                    Text(l10n.t("正在运行两次留出检测…"))
+                    Text(l10n.t("正在运行基线和逐家族留出检测…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -491,7 +493,7 @@ struct DetectorParametersView: View {
             if document.isManualLearningHoldoutValidating {
                 ProgressView()
                     .progressViewStyle(.linear)
-                Text(l10n.t("正在校准 train 上学习，并在留出 train 上分别运行未学习基线和学习后检测；人工留出标签不会反馈到检测器。"))
+                Text(l10n.t("当前参数作为基线；每个学习家族在留出 train 上单独运行，人工留出标签不会反馈到检测器。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -523,10 +525,16 @@ struct DetectorParametersView: View {
                     Text(l10n.t("留出 train 没有可评价的已审核模式标签；空白行没有被当作阴性。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(assessed, id: \.family) { comparison in
-                            manualLearningHoldoutRow(comparison)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(report.comparisons, id: \.family) { comparison in
+                        if let admission = report.admissions.first(where: {
+                            $0.family == comparison.family
+                        }) {
+                            manualLearningHoldoutRow(
+                                comparison,
+                                admission: admission
+                            )
                         }
                     }
                 }
@@ -534,7 +542,58 @@ struct DetectorParametersView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button(l10n.t("导出验证报告")) {
+                        document.exportManualLearningHoldoutReportWithPanel(
+                            localizer: l10n
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!document.canExportManualLearningHoldoutReport)
+
+                    Button(l10n.t("应用所选准入家族")) {
+                        let warnings = report.calibrationProposal.warnings(
+                            relevantTo: selectedHoldoutAdmissionFamilies
+                        )
+                        if warnings.isEmpty {
+                            document.applyHoldoutAdmittedThresholds(
+                                selecting: selectedHoldoutAdmissionFamilies
+                            )
+                        } else {
+                            isHoldoutAdmissionWarningConfirmationPresented = true
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        selectedHoldoutAdmissionFamilies.count != 1
+                            || document.manualLearningHoldoutReportIsStale
+                    )
+                    Text(l10n.t("每次只应用一个单独验证的家族；应用后必须重新运行留出验证，才能继续应用其他家族。"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+        }
+        .onChange(of: document.manualLearningHoldoutReport?.reportDigest, initial: true) {
+            _, _ in
+            selectedHoldoutAdmissionFamilies = Set(
+                document.manualLearningExplicitlyApplicableFamilies.prefix(1)
+            )
+        }
+        .confirmationDialog(
+            l10n.t("所选准入家族仍包含需要确认的科学警告"),
+            isPresented: $isHoldoutAdmissionWarningConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button(l10n.t("确认应用所选准入家族")) {
+                document.applyHoldoutAdmittedThresholds(
+                    selecting: selectedHoldoutAdmissionFamilies
+                )
+            }
+            Button(l10n.t("取消"), role: .cancel) {}
+        } message: {
+            Text(l10n.t("准入只表示本次 train 留出比较中没有已测退化且观察到改善，不等于外部生物学验证。请确认后再写入参数。"))
         }
     }
 
@@ -546,27 +605,118 @@ struct DetectorParametersView: View {
     }
 
     private func manualLearningHoldoutRow(
-        _ comparison: ManualLearningHoldoutFamilyComparison
+        _ comparison: ManualLearningHoldoutFamilyComparison,
+        admission: ManualLearningFamilyAdmission
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(learningFamilyTitle(comparison.family))
-                .font(.caption.weight(.semibold))
-                .frame(width: 92, alignment: .leading)
-            Text(String(format: l10n.t("已审核 ISI %d"), comparison.baseline.assessedISICount))
-            Text("F1 " + metricValue(comparison.baseline.f1)
-                 + " → " + metricValue(comparison.learned.f1))
-            Text("Δ " + signedMetricValue(comparison.f1Delta))
-                .foregroundStyle(deltaTint(comparison.f1Delta))
-            Text("IoU Δ " + signedMetricValue(comparison.meanBestSegmentIoUDelta))
-            Text(String(
-                format: l10n.t("拆分 Δ %+d · 合并 Δ %+d"),
-                comparison.falseSplitDelta,
-                comparison.falseMergeDelta
-            ))
-            Spacer(minLength: 6)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if admission.disposition == .eligibleForExplicitApplication {
+                    Toggle("", isOn: holdoutAdmissionSelectionBinding(comparison.family))
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                } else {
+                    Color.clear.frame(width: 14, height: 14)
+                }
+                Text(learningFamilyTitle(comparison.family))
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 92, alignment: .leading)
+                Text(manualLearningAdmissionTitle(admission.disposition))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(admissionTint(admission.disposition))
+                Text(String(
+                    format: l10n.t("已审核 ISI %d · train %d"),
+                    comparison.baseline.assessedISICount,
+                    comparison.assessedTrainCount
+                ))
+                Text(String(
+                    format: l10n.t("几何完整 %d/%d"),
+                    comparison.geometryCompleteTrainCount,
+                    comparison.assessedTrainCount
+                ))
+                Text("F1 " + metricValue(comparison.baseline.f1)
+                     + " → " + metricValue(comparison.learned.f1))
+                Text("Δ " + signedMetricValue(comparison.f1Delta))
+                    .foregroundStyle(deltaTint(comparison.f1Delta))
+                Text("IoU Δ " + signedMetricValue(comparison.meanBestSegmentIoUDelta))
+                Text(String(
+                    format: l10n.t("FP Δ %+d · FN Δ %+d · 拆分 Δ %+d · 合并 Δ %+d"),
+                    comparison.falsePositiveDelta,
+                    comparison.falseNegativeDelta,
+                    comparison.falseSplitDelta,
+                    comparison.falseMergeDelta
+                ))
+                Spacer(minLength: 6)
+            }
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 22, height: 1)
+                Text(admission.reasons.map(manualLearningAdmissionReasonTitle)
+                    .joined(separator: l10n.t("；")))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
+    }
+
+    private func holdoutAdmissionSelectionBinding(
+        _ family: ManualPatternLearningFamily
+    ) -> Binding<Bool> {
+        Binding(
+            get: { selectedHoldoutAdmissionFamilies.contains(family) },
+            set: { selected in
+                if selected {
+                    selectedHoldoutAdmissionFamilies = [family]
+                } else {
+                    selectedHoldoutAdmissionFamilies.remove(family)
+                }
+            }
+        )
+    }
+
+    private func manualLearningAdmissionTitle(
+        _ disposition: ManualLearningAdmissionDisposition
+    ) -> String {
+        switch disposition {
+        case .insufficientEvidence: l10n.t("证据不足")
+        case .reportOnly: l10n.t("仅报告")
+        case .eligibleForExplicitApplication: l10n.t("可经确认应用")
+        }
+    }
+
+    private func admissionTint(_ disposition: ManualLearningAdmissionDisposition) -> Color {
+        switch disposition {
+        case .insufficientEvidence: .secondary
+        case .reportOnly: .orange
+        case .eligibleForExplicitApplication: STPDAppTheme.accent
+        }
+    }
+
+    private func manualLearningAdmissionReasonTitle(
+        _ reason: ManualLearningAdmissionReason
+    ) -> String {
+        switch reason {
+        case .noCompatibleThreshold: l10n.t("没有可写入的兼容阈值")
+        case .calibrationEvidenceBelowTwoTrains: l10n.t("校准证据少于两条 train")
+        case .calibrationCrossTrainValidationUnavailable: l10n.t("校准内部跨 train 验证不可用")
+        case .calibrationCrossTrainValidationNotPassed: l10n.t("校准内部跨 train 验证未一致通过")
+        case .noReviewedHeldOutISIs: l10n.t("留出集没有已审核 ISI")
+        case .noHeldOutPositiveSupport: l10n.t("留出集没有该家族阳性支持")
+        case .noHeldOutExplicitNegativeSupport: l10n.t("留出集没有显式阴性对照")
+        case .heldOutGeometryReviewIncomplete: l10n.t("留出 train 未完成整条几何复核")
+        case .oneOrMoreHeldOutTrainsRegressed: l10n.t("至少一条留出 train 出现指标退化")
+        case .f1Regressed: l10n.t("F1 下降")
+        case .segmentIoURegressed: l10n.t("分段 IoU 下降")
+        case .boundaryErrorIncreased: l10n.t("边界误差增加")
+        case .falsePositivesIncreased: l10n.t("假阳性增加")
+        case .falseNegativesIncreased: l10n.t("假阴性增加")
+        case .falseSplitsIncreased: l10n.t("错误拆分增加")
+        case .falseMergesIncreased: l10n.t("错误合并增加")
+        case .noObservedImprovement: l10n.t("未观察到指标改善")
+        case .observedImprovementWithoutMeasuredRegression:
+            l10n.t("至少一项指标改善，且无已测指标退化")
+        }
     }
 
     private func metricValue(_ value: Double?) -> String {

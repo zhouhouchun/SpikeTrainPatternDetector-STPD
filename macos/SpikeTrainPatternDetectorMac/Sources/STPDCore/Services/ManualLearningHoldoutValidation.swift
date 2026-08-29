@@ -65,13 +65,19 @@ public enum ManualLearningHoldoutValidationError: Error, Equatable, Sendable, Lo
 /// Detector settings frozen for both arms of one holdout comparison. The only intentional
 /// difference between the two runs is the manual-threshold profile: automatic versus the proposal
 /// learned exclusively from calibration trains.
-public struct ManualLearningHoldoutValidationConfiguration: Hashable, Sendable {
+public struct ManualLearningHoldoutValidationConfiguration: Equatable, Sendable {
     public let bandSettings: TrainAdaptiveBandSettings
     public let qualitySettings: SpikeQualitySettings
     public let refractoryAction: ClassicAnchorRefractoryAction
     public let stateTuning: StatePatternDetectorTuning
     public let detectorParameters: PatternDetectionParameterSettings
     public let useAdaptiveV2Canonicalization: Bool
+    /// The exact manual profile already active when validation starts. Every family-specific
+    /// learned arm retains all unrelated fields from this baseline.
+    public let baselineManualThresholdProfile: ManualThresholdProfile
+    /// The exact resolved scope used by both baseline and learned arms. This is material for HFS
+    /// because its learned minimum-support fields are hard gates.
+    public let manualThresholdScope: ManualThresholdScope
 
     public init(
         bandSettings: TrainAdaptiveBandSettings = TrainAdaptiveBandSettings(),
@@ -79,7 +85,9 @@ public struct ManualLearningHoldoutValidationConfiguration: Hashable, Sendable {
         refractoryAction: ClassicAnchorRefractoryAction = .warnOnly,
         stateTuning: StatePatternDetectorTuning = StatePatternDetectorTuning(),
         detectorParameters: PatternDetectionParameterSettings = .defaults,
-        useAdaptiveV2Canonicalization: Bool = false
+        useAdaptiveV2Canonicalization: Bool = false,
+        baselineManualThresholdProfile: ManualThresholdProfile = .automatic,
+        manualThresholdScope: ManualThresholdScope = .allTrains
     ) {
         self.bandSettings = bandSettings
         self.qualitySettings = qualitySettings
@@ -87,6 +95,8 @@ public struct ManualLearningHoldoutValidationConfiguration: Hashable, Sendable {
         self.stateTuning = stateTuning
         self.detectorParameters = detectorParameters
         self.useAdaptiveV2Canonicalization = useAdaptiveV2Canonicalization
+        self.baselineManualThresholdProfile = baselineManualThresholdProfile
+        self.manualThresholdScope = manualThresholdScope
     }
 
     func exactMinimumValidISIMicroseconds() throws -> Int64 {
@@ -147,12 +157,86 @@ public struct ManualLearningDetectorMetrics: Hashable, Sendable {
     public let meanMatchedBoundaryErrorISI: Double?
     public let falseSplitCount: Int
     public let falseMergeCount: Int
+
+    public init(
+        assessedISICount: Int,
+        truthPositiveISICount: Int,
+        predictedPositiveISICount: Int,
+        truePositiveISICount: Int,
+        falsePositiveISICount: Int,
+        falseNegativeISICount: Int,
+        trueNegativeISICount: Int,
+        precision: Double?,
+        recall: Double?,
+        f1: Double?,
+        truthSegmentCount: Int,
+        predictedSegmentCount: Int,
+        meanBestSegmentIoU: Double?,
+        meanMatchedBoundaryErrorISI: Double?,
+        falseSplitCount: Int,
+        falseMergeCount: Int
+    ) {
+        self.assessedISICount = assessedISICount
+        self.truthPositiveISICount = truthPositiveISICount
+        self.predictedPositiveISICount = predictedPositiveISICount
+        self.truePositiveISICount = truePositiveISICount
+        self.falsePositiveISICount = falsePositiveISICount
+        self.falseNegativeISICount = falseNegativeISICount
+        self.trueNegativeISICount = trueNegativeISICount
+        self.precision = precision
+        self.recall = recall
+        self.f1 = f1
+        self.truthSegmentCount = truthSegmentCount
+        self.predictedSegmentCount = predictedSegmentCount
+        self.meanBestSegmentIoU = meanBestSegmentIoU
+        self.meanMatchedBoundaryErrorISI = meanMatchedBoundaryErrorISI
+        self.falseSplitCount = falseSplitCount
+        self.falseMergeCount = falseMergeCount
+    }
 }
 
 public struct ManualLearningHoldoutFamilyComparison: Hashable, Sendable {
     public let family: ManualPatternLearningFamily
+    /// True only when validation actually materialized a one-family detector intervention.
+    public let hasCompatibleIntervention: Bool
+    public let assessedTrainCount: Int
+    public let truthPositiveTrainCount: Int
+    public let explicitNegativeTrainCount: Int
+    public let geometryCompleteTrainCount: Int
+    public let heldOutEvaluationDigest: String
+    public let learnedSettingsDigest: String
+    public let learnedSettingsEntries: [DetectionSettingEntry]
+    public let trainComparisons: [ManualLearningHoldoutTrainComparison]
     public let baseline: ManualLearningDetectorMetrics
     public let learned: ManualLearningDetectorMetrics
+
+    public init(
+        family: ManualPatternLearningFamily,
+        hasCompatibleIntervention: Bool = false,
+        assessedTrainCount: Int,
+        truthPositiveTrainCount: Int,
+        explicitNegativeTrainCount: Int,
+        geometryCompleteTrainCount: Int,
+        heldOutEvaluationDigest: String,
+        learnedSettingsDigest: String = "",
+        learnedSettingsEntries: [DetectionSettingEntry] = [],
+        trainComparisons: [ManualLearningHoldoutTrainComparison],
+        baseline: ManualLearningDetectorMetrics,
+        learned: ManualLearningDetectorMetrics
+    ) {
+        self.family = family
+        self.hasCompatibleIntervention = hasCompatibleIntervention
+        self.assessedTrainCount = assessedTrainCount
+        self.truthPositiveTrainCount = truthPositiveTrainCount
+        self.explicitNegativeTrainCount = explicitNegativeTrainCount
+        self.geometryCompleteTrainCount = geometryCompleteTrainCount
+        self.heldOutEvaluationDigest = heldOutEvaluationDigest
+        self.learnedSettingsDigest = learnedSettingsDigest
+        self.learnedSettingsEntries = learnedSettingsEntries
+        self.trainComparisons = trainComparisons
+        self.baseline = baseline
+        self.learned = learned
+    }
 
     public var f1Delta: Double? {
         guard let baseline = baseline.f1, let learned = learned.f1 else { return nil }
@@ -165,24 +249,299 @@ public struct ManualLearningHoldoutFamilyComparison: Hashable, Sendable {
         return learned - baseline
     }
 
+    public var meanMatchedBoundaryErrorDelta: Double? {
+        guard let baseline = baseline.meanMatchedBoundaryErrorISI,
+              let learned = learned.meanMatchedBoundaryErrorISI else { return nil }
+        return learned - baseline
+    }
+
+    public var falsePositiveDelta: Int {
+        learned.falsePositiveISICount - baseline.falsePositiveISICount
+    }
+
+    public var falseNegativeDelta: Int {
+        learned.falseNegativeISICount - baseline.falseNegativeISICount
+    }
+
     public var falseSplitDelta: Int { learned.falseSplitCount - baseline.falseSplitCount }
     public var falseMergeDelta: Int { learned.falseMergeCount - baseline.falseMergeCount }
 }
 
+/// A held-out train is the independent evaluation unit. Admission checks every one of these rows;
+/// family-level pooling is retained only as a descriptive summary and cannot hide a local regression.
+public struct ManualLearningHoldoutTrainComparison: Hashable, Sendable {
+    public let trainID: String
+    public let geometryIsComplete: Bool
+    public let baseline: ManualLearningDetectorMetrics
+    public let learned: ManualLearningDetectorMetrics
+
+    public init(
+        trainID: String,
+        geometryIsComplete: Bool,
+        baseline: ManualLearningDetectorMetrics,
+        learned: ManualLearningDetectorMetrics
+    ) {
+        self.trainID = trainID
+        self.geometryIsComplete = geometryIsComplete
+        self.baseline = baseline
+        self.learned = learned
+    }
+
+    public var f1Delta: Double? {
+        guard let baseline = baseline.f1, let learned = learned.f1 else { return nil }
+        return learned - baseline
+    }
+    public var meanBestSegmentIoUDelta: Double? {
+        guard let baseline = baseline.meanBestSegmentIoU,
+              let learned = learned.meanBestSegmentIoU else { return nil }
+        return learned - baseline
+    }
+    public var meanMatchedBoundaryErrorDelta: Double? {
+        guard let baseline = baseline.meanMatchedBoundaryErrorISI,
+              let learned = learned.meanMatchedBoundaryErrorISI else { return nil }
+        return learned - baseline
+    }
+    public var falsePositiveDelta: Int {
+        learned.falsePositiveISICount - baseline.falsePositiveISICount
+    }
+    public var falseNegativeDelta: Int {
+        learned.falseNegativeISICount - baseline.falseNegativeISICount
+    }
+    public var falseSplitDelta: Int { learned.falseSplitCount - baseline.falseSplitCount }
+    public var falseMergeDelta: Int { learned.falseMergeCount - baseline.falseMergeCount }
+}
+
+/// This is a conservative workflow disposition, not a biological truth label or a statistical
+/// significance claim. Only the last state permits an explicit user-confirmed parameter write.
+public enum ManualLearningAdmissionDisposition: String, CaseIterable, Hashable, Sendable {
+    case insufficientEvidence = "insufficient_evidence"
+    case reportOnly = "report_only"
+    case eligibleForExplicitApplication = "eligible_for_explicit_application"
+}
+
+public enum ManualLearningAdmissionReason: String, CaseIterable, Hashable, Sendable {
+    case noCompatibleThreshold = "no_compatible_threshold"
+    case calibrationEvidenceBelowTwoTrains = "calibration_evidence_below_two_trains"
+    case calibrationCrossTrainValidationUnavailable =
+        "calibration_cross_train_validation_unavailable"
+    case calibrationCrossTrainValidationNotPassed =
+        "calibration_cross_train_validation_not_passed"
+    case noReviewedHeldOutISIs = "no_reviewed_held_out_isis"
+    case noHeldOutPositiveSupport = "no_held_out_positive_support"
+    case noHeldOutExplicitNegativeSupport = "no_held_out_explicit_negative_support"
+    case heldOutGeometryReviewIncomplete = "held_out_geometry_review_incomplete"
+    case oneOrMoreHeldOutTrainsRegressed = "one_or_more_held_out_trains_regressed"
+    case f1Regressed = "f1_regressed"
+    case segmentIoURegressed = "segment_iou_regressed"
+    case boundaryErrorIncreased = "boundary_error_increased"
+    case falsePositivesIncreased = "false_positives_increased"
+    case falseNegativesIncreased = "false_negatives_increased"
+    case falseSplitsIncreased = "false_splits_increased"
+    case falseMergesIncreased = "false_merges_increased"
+    case noObservedImprovement = "no_observed_improvement"
+    case observedImprovementWithoutMeasuredRegression =
+        "observed_improvement_without_measured_regression"
+}
+
+public struct ManualLearningFamilyAdmission: Hashable, Sendable {
+    public let family: ManualPatternLearningFamily
+    public let disposition: ManualLearningAdmissionDisposition
+    public let reasons: [ManualLearningAdmissionReason]
+
+    public init(
+        family: ManualPatternLearningFamily,
+        disposition: ManualLearningAdmissionDisposition,
+        reasons: [ManualLearningAdmissionReason]
+    ) {
+        self.family = family
+        self.disposition = disposition
+        self.reasons = reasons
+    }
+}
+
 public struct ManualLearningHoldoutValidationReport: Hashable, Sendable {
     public let schemaContractID: String
+    public let schemaContractDigest: String
+    public let admissionContractDigest: String
     public let sourceDatasetDigest: String
+    public let heldOutEvidenceDigest: String
+    public let heldOutEvaluationDigest: String
     public let calibrationTrainIDs: [String]
     public let heldOutTrainIDs: [String]
     public let excludedTrainIDs: [String]
     public let calibrationProposal: ManualPatternLearningProposal
     public let baselineSettingsDigest: String
-    public let learnedSettingsDigest: String
+    public let baselineSettingsEntries: [DetectionSettingEntry]
     public let comparisons: [ManualLearningHoldoutFamilyComparison]
+    public let admissions: [ManualLearningFamilyAdmission]
     public let reportDigest: String
+
+    init(
+        schemaContractID: String,
+        schemaContractDigest: String,
+        admissionContractDigest: String,
+        sourceDatasetDigest: String,
+        heldOutEvidenceDigest: String,
+        heldOutEvaluationDigest: String,
+        calibrationTrainIDs: [String],
+        heldOutTrainIDs: [String],
+        excludedTrainIDs: [String],
+        calibrationProposal: ManualPatternLearningProposal,
+        baselineSettingsDigest: String,
+        baselineSettingsEntries: [DetectionSettingEntry],
+        comparisons: [ManualLearningHoldoutFamilyComparison],
+        admissions: [ManualLearningFamilyAdmission],
+        reportDigest: String
+    ) {
+        self.schemaContractID = schemaContractID
+        self.schemaContractDigest = schemaContractDigest
+        self.admissionContractDigest = admissionContractDigest
+        self.sourceDatasetDigest = sourceDatasetDigest
+        self.heldOutEvidenceDigest = heldOutEvidenceDigest
+        self.heldOutEvaluationDigest = heldOutEvaluationDigest
+        self.calibrationTrainIDs = calibrationTrainIDs
+        self.heldOutTrainIDs = heldOutTrainIDs
+        self.excludedTrainIDs = excludedTrainIDs
+        self.calibrationProposal = calibrationProposal
+        self.baselineSettingsDigest = baselineSettingsDigest
+        self.baselineSettingsEntries = baselineSettingsEntries
+        self.comparisons = comparisons
+        self.admissions = admissions
+        self.reportDigest = reportDigest
+    }
 
     public var assessedFamilyCount: Int {
         comparisons.lazy.filter { $0.baseline.assessedISICount > 0 }.count
+    }
+
+    public var explicitlyApplicableFamilies: [ManualPatternLearningFamily] {
+        admissions.compactMap {
+            $0.disposition == .eligibleForExplicitApplication ? $0.family : nil
+        }
+    }
+}
+
+/// Deterministic, intentionally conservative admission policy. It does not optimize a weighted
+/// score and therefore cannot hide a precision/recall or geometry trade-off behind one number.
+public enum ManualLearningAdmissionEvaluator {
+    private static let tolerance = 1e-12
+
+    public static func assess(
+        comparison: ManualLearningHoldoutFamilyComparison,
+        calibrationSummary: ManualPatternFamilyLearningSummary?
+    ) -> ManualLearningFamilyAdmission {
+        var insufficient: [ManualLearningAdmissionReason] = []
+        if !comparison.hasCompatibleIntervention {
+            insufficient.append(.noCompatibleThreshold)
+        }
+        guard let calibrationSummary else {
+            insufficient.append(.calibrationEvidenceBelowTwoTrains)
+            return admission(comparison.family, .insufficientEvidence, insufficient)
+        }
+        switch calibrationSummary.standing {
+        case .insufficient, .exploratorySingleTrain:
+            insufficient.append(.calibrationEvidenceBelowTwoTrains)
+        case .provisionalTwoTrains, .supportedMultiTrain:
+            break
+        }
+        if comparison.baseline.assessedISICount == 0 {
+            insufficient.append(.noReviewedHeldOutISIs)
+        }
+        if comparison.baseline.truthPositiveISICount == 0 {
+            insufficient.append(.noHeldOutPositiveSupport)
+        }
+        let explicitNegativeCount = comparison.baseline.assessedISICount
+            - comparison.baseline.truthPositiveISICount
+        if explicitNegativeCount == 0 {
+            insufficient.append(.noHeldOutExplicitNegativeSupport)
+        }
+        if calibrationSummary.validation.standing == .unavailable {
+            insufficient.append(.calibrationCrossTrainValidationUnavailable)
+        }
+        if !insufficient.isEmpty {
+            return admission(comparison.family, .insufficientEvidence, insufficient)
+        }
+
+        var reportOnly: [ManualLearningAdmissionReason] = []
+        if calibrationSummary.validation.standing != .passed {
+            reportOnly.append(.calibrationCrossTrainValidationNotPassed)
+        }
+        if comparison.geometryCompleteTrainCount != comparison.assessedTrainCount {
+            reportOnly.append(.heldOutGeometryReviewIncomplete)
+        }
+        if comparison.trainComparisons.contains(where: hasMeasuredRegression) {
+            reportOnly.append(.oneOrMoreHeldOutTrainsRegressed)
+        }
+        if let delta = comparison.f1Delta, delta < -tolerance {
+            reportOnly.append(.f1Regressed)
+        }
+        if let delta = comparison.meanBestSegmentIoUDelta, delta < -tolerance {
+            reportOnly.append(.segmentIoURegressed)
+        }
+        if let delta = comparison.meanMatchedBoundaryErrorDelta, delta > tolerance {
+            reportOnly.append(.boundaryErrorIncreased)
+        }
+        if comparison.falsePositiveDelta > 0 {
+            reportOnly.append(.falsePositivesIncreased)
+        }
+        if comparison.falseNegativeDelta > 0 {
+            reportOnly.append(.falseNegativesIncreased)
+        }
+        if comparison.falseSplitDelta > 0 {
+            reportOnly.append(.falseSplitsIncreased)
+        }
+        if comparison.falseMergeDelta > 0 {
+            reportOnly.append(.falseMergesIncreased)
+        }
+        if !reportOnly.isEmpty {
+            return admission(comparison.family, .reportOnly, reportOnly)
+        }
+
+        let improved = comparison.trainComparisons.contains(where: hasMeasuredImprovement)
+        guard improved else {
+            return admission(comparison.family, .reportOnly, [.noObservedImprovement])
+        }
+        return admission(
+            comparison.family,
+            .eligibleForExplicitApplication,
+            [.observedImprovementWithoutMeasuredRegression]
+        )
+    }
+
+    private static func admission(
+        _ family: ManualPatternLearningFamily,
+        _ disposition: ManualLearningAdmissionDisposition,
+        _ reasons: [ManualLearningAdmissionReason]
+    ) -> ManualLearningFamilyAdmission {
+        ManualLearningFamilyAdmission(
+            family: family,
+            disposition: disposition,
+            reasons: Array(Set(reasons)).sorted { $0.rawValue < $1.rawValue }
+        )
+    }
+
+    private static func hasMeasuredRegression(
+        _ comparison: ManualLearningHoldoutTrainComparison
+    ) -> Bool {
+        (comparison.f1Delta.map { $0 < -tolerance } ?? false)
+            || (comparison.meanBestSegmentIoUDelta.map { $0 < -tolerance } ?? false)
+            || (comparison.meanMatchedBoundaryErrorDelta.map { $0 > tolerance } ?? false)
+            || comparison.falsePositiveDelta > 0
+            || comparison.falseNegativeDelta > 0
+            || comparison.falseSplitDelta > 0
+            || comparison.falseMergeDelta > 0
+    }
+
+    private static func hasMeasuredImprovement(
+        _ comparison: ManualLearningHoldoutTrainComparison
+    ) -> Bool {
+        (comparison.f1Delta.map { $0 > tolerance } ?? false)
+            || (comparison.meanBestSegmentIoUDelta.map { $0 > tolerance } ?? false)
+            || (comparison.meanMatchedBoundaryErrorDelta.map { $0 < -tolerance } ?? false)
+            || comparison.falsePositiveDelta < 0
+            || comparison.falseNegativeDelta < 0
+            || comparison.falseSplitDelta < 0
+            || comparison.falseMergeDelta < 0
     }
 }
 
@@ -192,20 +551,74 @@ public struct ManualLearningHoldoutValidationReport: Hashable, Sendable {
 public enum ManualLearningHoldoutMetricCalculator {
     public static func compare(
         family: ManualPatternLearningFamily,
-        points: [ManualLearningHoldoutEvaluationPoint]
+        points: [ManualLearningHoldoutEvaluationPoint],
+        heldOutTrainIDs: Set<String>? = nil,
+        geometryCompleteTrainIDs: Set<String>? = nil,
+        hasCompatibleIntervention: Bool = false,
+        learnedSettingsDigest: String = "",
+        learnedSettingsEntries: [DetectionSettingEntry] = []
     ) -> ManualLearningHoldoutFamilyComparison {
-        ManualLearningHoldoutFamilyComparison(
+        let canonical = canonicalPoints(points)
+        let assessedTrainIDs = Set(canonical.map(\.trainID))
+        let evaluationTrainIDs = heldOutTrainIDs ?? assessedTrainIDs
+        let complete = geometryCompleteTrainIDs ?? assessedTrainIDs
+        let grouped = Dictionary(grouping: canonical, by: \.trainID)
+        let trainComparisons = evaluationTrainIDs.sorted {
+            $0.utf8.lexicographicallyPrecedes($1.utf8)
+        }.map { trainID in
+            let trainPoints = grouped[trainID, default: []]
+            let geometryPoints = complete.contains(trainID) ? trainPoints : []
+            return ManualLearningHoldoutTrainComparison(
+                trainID: trainID,
+                geometryIsComplete: complete.contains(trainID),
+                baseline: metrics(
+                    points: trainPoints,
+                    geometryPoints: geometryPoints,
+                    prediction: \.baselinePredictedPositive
+                ),
+                learned: metrics(
+                    points: trainPoints,
+                    geometryPoints: geometryPoints,
+                    prediction: \.learnedPredictedPositive
+                )
+            )
+        }
+        let aggregateGeometryPoints = canonical.filter { complete.contains($0.trainID) }
+        return ManualLearningHoldoutFamilyComparison(
             family: family,
-            baseline: metrics(points: points, prediction: \.baselinePredictedPositive),
-            learned: metrics(points: points, prediction: \.learnedPredictedPositive)
+            hasCompatibleIntervention: hasCompatibleIntervention,
+            assessedTrainCount: assessedTrainIDs.count,
+            truthPositiveTrainCount: Set(canonical.lazy.filter(\.truthIsPositive).map(\.trainID)).count,
+            explicitNegativeTrainCount: Set(canonical.lazy.filter { !$0.truthIsPositive }.map(\.trainID)).count,
+            geometryCompleteTrainCount: assessedTrainIDs.intersection(complete).count,
+            heldOutEvaluationDigest: evaluationDigest(
+                family: family,
+                heldOutTrainIDs: evaluationTrainIDs,
+                points: canonical
+            ),
+            learnedSettingsDigest: learnedSettingsDigest,
+            learnedSettingsEntries: learnedSettingsEntries,
+            trainComparisons: trainComparisons,
+            baseline: metrics(
+                points: canonical,
+                geometryPoints: aggregateGeometryPoints,
+                prediction: \.baselinePredictedPositive
+            ),
+            learned: metrics(
+                points: canonical,
+                geometryPoints: aggregateGeometryPoints,
+                prediction: \.learnedPredictedPositive
+            )
         )
     }
 
     private static func metrics(
         points: [ManualLearningHoldoutEvaluationPoint],
+        geometryPoints: [ManualLearningHoldoutEvaluationPoint],
         prediction: KeyPath<ManualLearningHoldoutEvaluationPoint, Bool>
     ) -> ManualLearningDetectorMetrics {
         let unique = canonicalPoints(points)
+        let geometryUnique = canonicalPoints(geometryPoints)
         let truthPositive = unique.filter(\.truthIsPositive)
         let predictedPositive = unique.filter { $0[keyPath: prediction] }
         let truePositive = unique.filter {
@@ -230,8 +643,8 @@ public enum ManualLearningHoldoutMetricCalculator {
             ? nil
             : Double(2 * truePositive) / Double(f1Denominator)
 
-        let truthSegments = segments(unique.filter(\.truthIsPositive))
-        let predictedSegments = segments(unique.filter { $0[keyPath: prediction] })
+        let truthSegments = segments(geometryUnique.filter(\.truthIsPositive))
+        let predictedSegments = segments(geometryUnique.filter { $0[keyPath: prediction] })
         let geometry = segmentGeometry(truth: truthSegments, predicted: predictedSegments)
 
         return ManualLearningDetectorMetrics(
@@ -285,6 +698,30 @@ public enum ManualLearningHoldoutMetricCalculator {
             }
             return $0.isiIndex < $1.isiIndex
         }
+    }
+
+    private static func evaluationDigest(
+        family: ManualPatternLearningFamily,
+        heldOutTrainIDs: Set<String>,
+        points: [ManualLearningHoldoutEvaluationPoint]
+    ) -> String {
+        ManualLearningDigest.hex(tokens: [
+            "manual_learning_holdout_evaluation_points_v2",
+            family.rawValue,
+            String(heldOutTrainIDs.count),
+        ] + heldOutTrainIDs.sorted {
+            $0.utf8.lexicographicallyPrecedes($1.utf8)
+        }.map { "held_out_train:\($0)" } + [
+            String(points.count),
+        ] + points.flatMap {
+            [
+                $0.trainID,
+                String($0.isiIndex),
+                $0.truthIsPositive ? "truth:positive" : "truth:negative",
+                $0.baselinePredictedPositive ? "baseline:positive" : "baseline:negative",
+                $0.learnedPredictedPositive ? "learned:positive" : "learned:negative",
+            ]
+        })
     }
 
     private static func segments(
@@ -365,11 +802,117 @@ public enum ManualLearningHoldoutMetricCalculator {
     }
 }
 
+/// Compose the exact one-family intervention evaluated by holdout validation. Unrelated current
+/// manual fields and their provenance remain active, while an existing hard setting in the same
+/// family is never overwritten. The app uses this same composition contract before application.
+public enum ManualLearningHoldoutProfileComposer {
+    public static func applying(
+        family: ManualPatternLearningFamily,
+        proposal: ManualPatternLearningProposal,
+        to baseline: ManualThresholdProfile
+    ) -> ManualThresholdProfile? {
+        guard let familyKey = family.compatibleThresholdFamilyKey,
+              proposal.compatibleThresholdProposal.contributions.contains(where: {
+                  $0.family == familyKey
+              }) else { return nil }
+
+        var result = baseline
+        switch family {
+        case .burstFamily:
+            guard !containsHardMode([
+                baseline.burst.seedLowerISI.mode,
+                baseline.burst.seedUpperISI.mode,
+                baseline.burst.bridgeUpperISI.mode,
+                baseline.burst.minSpikes.mode,
+                baseline.burst.classicMaxSpikes.mode,
+                baseline.burst.longMinSpikes.mode,
+                baseline.burst.longMaxSpikes.mode,
+            ]) else { return nil }
+            result.burst = proposal.compatibleThresholdProposal.profile.burst
+        case .highFrequencySpiking:
+            guard !containsHardMode([
+                baseline.hfs.minSpikes.mode,
+                baseline.hfs.minDurationSec.mode,
+            ]) else { return nil }
+            result.hfs = proposal.compatibleThresholdProposal.profile.hfs
+        case .highFrequencyTonic:
+            guard !containsHardMode([
+                baseline.hfTonic.minSpikes.mode,
+                baseline.hfTonic.isiFloor.mode,
+                baseline.hfTonic.isiUpper.mode,
+            ]) else { return nil }
+            result.hfTonic = proposal.compatibleThresholdProposal.profile.hfTonic
+        case .tonic:
+            guard !containsHardMode([
+                baseline.tonic.minSpikes.mode,
+                baseline.tonic.isiLower.mode,
+                baseline.tonic.isiUpper.mode,
+            ]) else { return nil }
+            result.tonic = proposal.compatibleThresholdProposal.profile.tonic
+        case .pause:
+            guard !containsHardMode([baseline.pause.isiLower.mode]) else { return nil }
+            result.pause = proposal.compatibleThresholdProposal.profile.pause
+        }
+
+        var provenance = baseline.learnedProvenanceByKey.filter {
+            !$0.key.hasPrefix(familyKey + ".")
+        }
+        for contribution in proposal.compatibleThresholdProposal.contributions
+            where contribution.family == familyKey {
+            let key = LearnedManualThresholdApplier.resolvedProvenanceKey(
+                family: contribution.family,
+                field: contribution.field
+            )
+            provenance[key] = proposal.identityBoundProvenanceNote(
+                contribution.provenanceNote
+            )
+        }
+        result.learnedProvenanceByKey = provenance
+        return result
+    }
+
+    private static func containsHardMode(_ values: [ThresholdMode]) -> Bool {
+        values.contains(.hardGate)
+    }
+}
+
 /// End-to-end, label-leakage-safe validation. It learns once from calibration trains, runs the
 /// detector twice on held-out raw timestamps, and compares only manually reviewed held-out rows.
 /// Neither detector output is fed back into feature extraction or threshold learning.
 public enum ManualLearningHoldoutValidator {
-    public static let schemaContractID = "manual_learning_train_holdout_validation_v1"
+    public static let schemaContractID = "manual_learning_train_holdout_validation_v3"
+    public static let schemaContractDigest = ManualLearningDigest.hex(tokens: [
+        schemaContractID,
+        "split_unit:whole_scientific_spike_train",
+        "calibration_only:manual_learning_evidence_snapshot",
+        "held_out_only:detector_evaluation",
+        "baseline:exact_current_manual_profile_and_resolved_scope",
+        "intervention:one_family_at_a_time",
+        "support_metrics:reviewed_rows_only",
+        "geometry:complete_reviewed_train_only",
+        "evaluation_unit:held_out_train",
+        "report_train_matrix:every_family_x_every_held_out_train",
+        "compatible_intervention:materialized_validation_fact",
+        "single_train_id_export:formula_safe_json_scalar",
+        "report_identity:raw_held_out_decisions_plus_evaluation_points",
+    ])
+    public static let admissionContractDigest = ManualLearningDigest.hex(tokens: [
+        "manual_learning_admission_contract_v2",
+        "floating_tolerance:1e-12",
+        "truth_event:burst_family|pause",
+        "truth_state:tonic|high_frequency_tonic|high_frequency_spiking",
+        "truth_other:explicit_negative_all_families",
+        "blank:unassessed_never_negative",
+        "requires:compatible_one_family_intervention",
+        "requires:calibration_standing>=provisional_two_trains",
+        "requires:calibration_cross_train_validation=passed",
+        "requires:held_out_positive_and_explicit_negative_support",
+        "requires:complete_geometry_review_for_every_assessed_train",
+        "blocks:any_per_train_or_aggregate_f1_iou_boundary_fp_fn_split_merge_regression",
+        "requires:at_least_one_per_train_measured_improvement",
+        "dispositions:insufficient_evidence|report_only|eligible_for_explicit_application",
+        "application:single_family_then_revalidate",
+    ] + ManualLearningAdmissionReason.allCases.map { "reason:\($0.rawValue)" })
 
     public static func validate(
         dataset: CanonicalScientificDataset,
@@ -444,18 +987,33 @@ public enum ManualLearningHoldoutValidator {
 
         let baseline = runDetector(
             dataset: detectorDataset,
-            manualThresholdProfile: .automatic,
+            manualThresholdProfile: configuration.baselineManualThresholdProfile,
             configuration: configuration,
             buildCommit: "manual_learning_holdout_validation"
         )
-        let learned = runDetector(
-            dataset: detectorDataset,
-            manualThresholdProfile: proposal.compatibleThresholdProposal.profile,
-            configuration: configuration,
-            buildCommit: "manual_learning_holdout_validation"
-        )
-
-        let comparisons = ManualPatternLearningFamily.allCases.map { family in
+        let baselineSnapshot = baseline.invocationSettingsSnapshot
+        let heldOutTrainNames = Set(heldOutCanonical.spikeTrains.map {
+            $0.semanticID.semanticID.canonicalText
+        })
+        let allRowIndicesByTrain = Dictionary(grouping: heldOutRows, by: {
+            $0.trainID.semanticID.canonicalText
+        }).mapValues { Set($0.map(\.isiIndex)) }
+        var comparisons: [ManualLearningHoldoutFamilyComparison] = []
+        comparisons.reserveCapacity(ManualPatternLearningFamily.allCases.count)
+        for family in ManualPatternLearningFamily.allCases {
+            let intervention = ManualLearningHoldoutProfileComposer.applying(
+                family: family,
+                proposal: proposal,
+                to: configuration.baselineManualThresholdProfile
+            )
+            let learned = intervention.map {
+                runDetector(
+                    dataset: detectorDataset,
+                    manualThresholdProfile: $0,
+                    configuration: configuration,
+                    buildCommit: "manual_learning_holdout_validation"
+                )
+            } ?? baseline
             let baselineSupport = predictedSupport(
                 family: family,
                 run: baseline,
@@ -480,7 +1038,34 @@ public enum ManualLearningHoldoutValidator {
                     learnedPredictedPositive: learnedSupport.contains(key)
                 )
             }
-            return ManualLearningHoldoutMetricCalculator.compare(family: family, points: points)
+            let assessedByTrain = Dictionary(grouping: points, by: \.trainID)
+            let geometryCompleteTrainIDs = Set(assessedByTrain.compactMap {
+                trainID, trainPoints -> String? in
+                let assessed = Set(trainPoints.map(\.isiIndex))
+                guard let all = allRowIndicesByTrain[trainID], assessed == all else {
+                    return nil
+                }
+                return trainID
+            })
+            let learnedSnapshot = learned.invocationSettingsSnapshot
+            comparisons.append(ManualLearningHoldoutMetricCalculator.compare(
+                family: family,
+                points: points,
+                heldOutTrainIDs: heldOutTrainNames,
+                geometryCompleteTrainIDs: geometryCompleteTrainIDs,
+                hasCompatibleIntervention: intervention != nil,
+                learnedSettingsDigest: learnedSnapshot?.digest ?? "",
+                learnedSettingsEntries: learnedSnapshot?.entries ?? []
+            ))
+        }
+        let summaryByFamily = Dictionary(uniqueKeysWithValues: proposal.summaries.map {
+            ($0.family, $0)
+        })
+        let admissions = comparisons.map { comparison in
+            ManualLearningAdmissionEvaluator.assess(
+                comparison: comparison,
+                calibrationSummary: summaryByFamily[comparison.family]
+            )
         }
 
         let assigned = calibrationSet.union(heldOutSet)
@@ -488,30 +1073,47 @@ public enum ManualLearningHoldoutValidator {
         let calibrationNames = split.calibrationTrainIDs.map(semanticText)
         let heldOutNames = split.heldOutTrainIDs.map(semanticText)
         let excludedNames = excluded.map(semanticText)
-        let baselineDigest = baseline.invocationSettingsSnapshot?.digest ?? ""
-        let learnedDigest = learned.invocationSettingsSnapshot?.digest ?? ""
+        let baselineDigest = baselineSnapshot?.digest ?? ""
+        let heldOutEvidenceDigest = heldOutDecisionDigest(
+            fingerprint: heldOutFingerprint,
+            decisions: heldOutDraft.decisions
+        )
+        let heldOutEvaluationDigest = ManualLearningDigest.hex(tokens: [
+            "manual_learning_holdout_all_family_evaluation_v1",
+        ] + comparisons.flatMap {
+            [$0.family.rawValue, $0.heldOutEvaluationDigest]
+        })
         let digest = ManualLearningDigest.hex(tokens: [
             schemaContractID,
+            schemaContractDigest,
+            admissionContractDigest,
             fingerprint.datasetDigest,
+            heldOutEvidenceDigest,
+            heldOutEvaluationDigest,
             proposal.sourceIdentityDigest,
             proposal.proposalComputationDigest,
             baselineDigest,
-            learnedDigest,
         ] + calibrationNames.map { "calibration:\($0)" }
             + heldOutNames.map { "held_out:\($0)" }
             + excludedNames.map { "excluded:\($0)" }
-            + comparisons.flatMap(comparisonTokens))
+            + comparisons.flatMap(comparisonTokens)
+            + admissions.flatMap(admissionTokens))
 
         return ManualLearningHoldoutValidationReport(
             schemaContractID: schemaContractID,
+            schemaContractDigest: schemaContractDigest,
+            admissionContractDigest: admissionContractDigest,
             sourceDatasetDigest: fingerprint.datasetDigest,
+            heldOutEvidenceDigest: heldOutEvidenceDigest,
+            heldOutEvaluationDigest: heldOutEvaluationDigest,
             calibrationTrainIDs: calibrationNames,
             heldOutTrainIDs: heldOutNames,
             excludedTrainIDs: excludedNames,
             calibrationProposal: proposal,
             baselineSettingsDigest: baselineDigest,
-            learnedSettingsDigest: learnedDigest,
+            baselineSettingsEntries: baselineSnapshot?.entries ?? [],
             comparisons: comparisons,
+            admissions: admissions,
             reportDigest: digest
         )
     }
@@ -536,7 +1138,7 @@ public enum ManualLearningHoldoutValidator {
             detectorParameters: configuration.detectorParameters,
             manualThresholdProfile: manualThresholdProfile,
             useAdaptiveV2Canonicalization: configuration.useAdaptiveV2Canonicalization,
-            manualThresholdScope: .allTrains,
+            manualThresholdScope: configuration.manualThresholdScope,
             buildCommit: buildCommit
         )
     }
@@ -659,12 +1261,60 @@ public enum ManualLearningHoldoutValidator {
         )
     }
 
+    private static func heldOutDecisionDigest(
+        fingerprint: CanonicalScientificDatasetFingerprint,
+        decisions: [CanonicalManualISILabelDecision]
+    ) -> String {
+        ManualLearningDigest.hex(tokens: [
+            "manual_learning_holdout_raw_decisions_v1",
+            fingerprint.schemaContractID,
+            fingerprint.schemaContractDigest,
+            fingerprint.datasetDigest,
+            String(decisions.count),
+        ] + decisions.flatMap {
+            [
+                $0.trainID.semanticID.canonicalText,
+                String($0.isiIndex),
+                $0.track.rawValue,
+                $0.label.rawValue,
+            ]
+        })
+    }
+
     private static func comparisonTokens(
         _ comparison: ManualLearningHoldoutFamilyComparison
     ) -> [String] {
-        ["family", comparison.family.rawValue]
+        [
+            "family", comparison.family.rawValue,
+            "has_compatible_intervention",
+            comparison.hasCompatibleIntervention ? "true" : "false",
+            "assessed_train_count", String(comparison.assessedTrainCount),
+            "truth_positive_train_count", String(comparison.truthPositiveTrainCount),
+            "explicit_negative_train_count", String(comparison.explicitNegativeTrainCount),
+            "geometry_complete_train_count", String(comparison.geometryCompleteTrainCount),
+            "held_out_evaluation_digest", comparison.heldOutEvaluationDigest,
+            "learned_settings_digest", comparison.learnedSettingsDigest,
+        ]
             + metricTokens("baseline", comparison.baseline)
             + metricTokens("learned", comparison.learned)
+            + comparison.trainComparisons.flatMap(trainComparisonTokens)
+    }
+
+    private static func trainComparisonTokens(
+        _ comparison: ManualLearningHoldoutTrainComparison
+    ) -> [String] {
+        [
+            "held_out_train", comparison.trainID,
+            "geometry_complete", comparison.geometryIsComplete ? "true" : "false",
+        ] + metricTokens("train_baseline", comparison.baseline)
+            + metricTokens("train_learned", comparison.learned)
+    }
+
+    private static func admissionTokens(
+        _ admission: ManualLearningFamilyAdmission
+    ) -> [String] {
+        ["admission", admission.family.rawValue, admission.disposition.rawValue]
+            + admission.reasons.map(\.rawValue)
     }
 
     private static func metricTokens(
