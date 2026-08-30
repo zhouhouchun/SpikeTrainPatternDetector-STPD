@@ -330,7 +330,7 @@ struct DetectorParametersView: View {
                         }
                     }
                 }
-                Text(l10n.t("HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。"))
+                Text(l10n.t("HFS 的 ISI 分布仍仅作描述；最少 spike 数和最短持续时间属于候选排除门槛，只能在按 train 留出验证通过后应用。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -345,7 +345,7 @@ struct DetectorParametersView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(l10n.t("Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。"))
+                Text(l10n.t("Burst、Tonic、HF tonic 与 Pause 可从预览写入软锚点。HFS 的最少 spike 数和最短持续时间会排除候选，必须改由下方按 train 留出验证准入。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -405,7 +405,7 @@ struct DetectorParametersView: View {
             initial: true
         ) { _, _ in
             selectedLearningFamilies = Set(
-                document.manualPatternLearningProposal?.applicableFamilies ?? []
+                document.manualPatternLearningProposal?.directPreviewApplicationFamilies ?? []
             )
         }
         .confirmationDialog(
@@ -738,7 +738,7 @@ struct DetectorParametersView: View {
         _ summary: ManualPatternFamilyLearningSummary
     ) -> some View {
         let isApplicable = document.manualPatternLearningProposal?
-            .applicableFamilies.contains(summary.family) == true
+            .directPreviewApplicationFamilies.contains(summary.family) == true
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if isApplicable {

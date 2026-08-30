@@ -55,17 +55,34 @@ struct ManualPatternLearningWorkflowTests {
         #expect(document.classicAnchorDetectionRun == nil)
     }
 
-    @Test("Confirmed HFS learning applies typed lower gates with provenance and rollback")
-    func hfsApplyAndRollbackPreserveAuthorityBoundary() throws {
+    @Test("HFS rejecting gates cannot bypass held-out admission")
+    func hfsPreviewApplicationIsBlockedUntilHeldOutAdmission() throws {
         let document = RasterDocument()
         let proposal = try makeHFSProposal()
         document.manualPatternLearningProposal = proposal
 
         #expect(proposal.applicableFamilies == [.highFrequencySpiking])
+        #expect(proposal.directPreviewApplicationFamilies.isEmpty)
         #expect(document.manualHFSMode == .automatic)
         #expect(document.classicAnchorDetectionRun == nil)
 
         document.applyLearnedThresholds(selecting: [.highFrequencySpiking])
+
+        #expect(document.manualHFSMode == .automatic)
+        #expect(document.manualHFSMinSpikes == 0)
+        #expect(document.manualHFSMinDurationMs == 0)
+        #expect(document.lastLearnedApplyResult == nil)
+        #expect(document.activeLearnedThresholdProvenanceByKey.isEmpty)
+        #expect(document.statusMessage.contains("留出验证"))
+        #expect(document.classicAnchorDetectionRun == nil)
+
+        document.manualLearningHoldoutReport = admittedReport(
+            proposal: proposal,
+            family: .highFrequencySpiking
+        )
+        document.manualLearningHoldoutConfigurationSnapshot =
+            document.manualLearningHoldoutValidationConfiguration
+        document.applyHoldoutAdmittedThresholds(selecting: [.highFrequencySpiking])
 
         #expect(document.manualHFSMode == .hardGate)
         #expect(document.manualHFSMinSpikes == 7)
@@ -459,6 +476,33 @@ struct ManualPatternLearningWorkflowTests {
         )
         return ManualPatternLearningProposalBuilder.build(
             from: ManualPatternSegmentFeatureExtractor.extract(from: snapshot)
+        )
+    }
+
+    private func admittedReport(
+        proposal: ManualPatternLearningProposal,
+        family: ManualPatternLearningFamily
+    ) -> ManualLearningHoldoutValidationReport {
+        ManualLearningHoldoutValidationReport(
+            schemaContractID: ManualLearningHoldoutValidator.schemaContractID,
+            schemaContractDigest: ManualLearningHoldoutValidator.schemaContractDigest,
+            admissionContractDigest: ManualLearningHoldoutValidator.admissionContractDigest,
+            sourceDatasetDigest: "dataset",
+            heldOutEvidenceDigest: "held_out_evidence",
+            heldOutEvaluationDigest: "held_out_evaluation",
+            calibrationTrainIDs: ["calibration_a", "calibration_b"],
+            heldOutTrainIDs: ["held_out"],
+            excludedTrainIDs: [],
+            calibrationProposal: proposal,
+            baselineSettingsDigest: "baseline",
+            baselineSettingsEntries: [],
+            comparisons: [],
+            admissions: [ManualLearningFamilyAdmission(
+                family: family,
+                disposition: .eligibleForExplicitApplication,
+                reasons: [.observedImprovementWithoutMeasuredRegression]
+            )],
+            reportDigest: "report"
         )
     }
 

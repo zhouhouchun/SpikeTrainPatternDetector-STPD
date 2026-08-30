@@ -197,6 +197,14 @@ public struct ManualPatternLearningProposal: Hashable, Sendable {
         }
     }
 
+    /// Families that may be written directly from the exploratory preview. HFS is deliberately
+    /// excluded: its current compatible fields are candidate-rejecting minimum-support gates, so
+    /// positive examples alone cannot show that applying them is safe. HFS remains fully visible in
+    /// the feature report and may be applied only through a train-held-out admission.
+    public var directPreviewApplicationFamilies: [ManualPatternLearningFamily] {
+        applicableFamilies.filter { $0 != .highFrequencySpiking }
+    }
+
     /// Warning-only evidence relevant to the families the user intends to apply. The result never
     /// deletes evidence or changes a proposal; it only supports an explicit acknowledgement step.
     public func warnings(

@@ -574,9 +574,14 @@ func manualPatternLearningWorkflowTranslatesInEnglishAndRussian() {
             "Исследовательски: 1 последовательность"
         ),
         (
-            "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。",
-            "The HFS ISI distribution remains descriptive; minimum spike count and duration are suggested only with sufficient evidence and require user confirmation.",
-            "Распределение ISI HFS остаётся описательным; минимальное число спайков и длительность предлагаются только при достаточных данных и требуют подтверждения."
+            "HFS 的 ISI 分布仍仅作描述；最少 spike 数和最短持续时间属于候选排除门槛，只能在按 train 留出验证通过后应用。",
+            "The HFS ISI distribution remains descriptive. Minimum spike count and duration are candidate-rejecting gates and may be applied only after train-held-out validation passes.",
+            "Распределение ISI HFS остаётся описательным. Минимальное число спайков и длительность являются критериями, исключающими кандидатов, и могут применяться только после успешной проверки с исключением целых spike train."
+        ),
+        (
+            "HFS 的候选排除门槛必须先通过按 train 留出验证，不能从普通预览直接应用。",
+            "HFS candidate-rejecting gates must first pass train-held-out validation and cannot be applied directly from the ordinary preview.",
+            "Критерии HFS, исключающие кандидатов, должны сначала пройти проверку с исключением целых spike train и не могут применяться напрямую из обычного предпросмотра."
         ),
         (
             "HFS 建议值是候选筛选下限，而非普通软锚点；仅在确认标记片段可代表 HFS 状态后应用。",

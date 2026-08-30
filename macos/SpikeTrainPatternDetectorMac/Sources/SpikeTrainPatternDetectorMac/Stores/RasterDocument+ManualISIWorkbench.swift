@@ -964,7 +964,16 @@ extension RasterDocument {
             lastLearnedApplyResult = nil
             return
         }
-        applyLearnedThresholds(from: source, selecting: families)
+        let directlyApplicable = Set(source.directPreviewApplicationFamilies)
+        let selected = (families ?? directlyApplicable).intersection(directlyApplicable)
+        guard !selected.isEmpty else {
+            lastLearnedApplyResult = nil
+            statusMessage = families?.contains(.highFrequencySpiking) == true
+                ? "HFS 的候选排除门槛必须先通过按 train 留出验证，不能从普通预览直接应用。"
+                : "没有可从普通预览直接应用的学习阈值。"
+            return
+        }
+        applyLearnedThresholds(from: source, selecting: selected)
     }
 
     func applyHoldoutAdmittedThresholds(

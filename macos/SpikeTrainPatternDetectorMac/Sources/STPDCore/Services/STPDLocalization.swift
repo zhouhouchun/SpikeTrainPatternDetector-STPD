@@ -971,10 +971,14 @@ public enum STPDLocalization {
             "Each labeled segment votes once, then medians are taken within each train and trains are weighted equally; raw ISIs are never pooled.",
         "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
             "Train coverage describes consistency across spike trains in this dataset only; it is not independent neuron, session, or animal replication and does not establish external generalization.",
-        "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。":
-            "The HFS ISI distribution remains descriptive; minimum spike count and duration are suggested only with sufficient evidence and require user confirmation.",
-        "Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。":
-            "Burst, Tonic, HF-tonic, and Pause are applied as soft anchors. HFS minimum spike count and duration are conservative lower gates that reject candidates with insufficient support, so confirmation is required.",
+        "HFS 的 ISI 分布仍仅作描述；最少 spike 数和最短持续时间属于候选排除门槛，只能在按 train 留出验证通过后应用。":
+            "The HFS ISI distribution remains descriptive. Minimum spike count and duration are candidate-rejecting gates and may be applied only after train-held-out validation passes.",
+        "Burst、Tonic、HF tonic 与 Pause 可从预览写入软锚点。HFS 的最少 spike 数和最短持续时间会排除候选，必须改由下方按 train 留出验证准入。":
+            "Burst, Tonic, HF-tonic, and Pause may be applied from the preview as soft anchors. HFS minimum spike count and duration reject candidates and therefore require admission by the train-held-out validation below.",
+        "HFS 的候选排除门槛必须先通过按 train 留出验证，不能从普通预览直接应用。":
+            "HFS candidate-rejecting gates must first pass train-held-out validation and cannot be applied directly from the ordinary preview.",
+        "没有可从普通预览直接应用的学习阈值。":
+            "There are no learned thresholds that may be applied directly from the ordinary preview.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
             "Generate an identity-bound learning preview first; generation does not change the detector.",
         "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
@@ -1365,10 +1369,14 @@ public enum STPDLocalization {
             "Каждый сегмент даёт один голос; затем берётся медиана внутри каждой последовательности, а последовательности получают равный вес. Все ISI не объединяются.",
         "序列覆盖只表示当前数据集内多条 spike train 的一致性；不等于独立神经元、记录会话或动物重复，也不能直接证明外部泛化。":
             "Охват последовательностей отражает только согласованность между spike train в этом наборе данных; это не независимые повторы по нейронам, сеансам или животным и не доказательство внешней обобщаемости.",
-        "HFS 的 ISI 分布仍仅作描述；只有证据充分时才建议最少 spike 数和最短持续时间，并必须由用户确认。":
-            "Распределение ISI HFS остаётся описательным; минимальное число спайков и длительность предлагаются только при достаточных данных и требуют подтверждения.",
-        "Burst、Tonic、HF tonic 与 Pause 以软锚点写入。HFS 的最少 spike 数和最短持续时间是保守下限，会排除支持不足的候选，因此应用前必须确认。":
-            "Пачки, тоник, высокочастотный тоник и пауза применяются как мягкие ориентиры. Минимальные число спайков и длительность HFS являются консервативными нижними критериями и исключают кандидатов с недостаточной поддержкой, поэтому требуется подтверждение.",
+        "HFS 的 ISI 分布仍仅作描述；最少 spike 数和最短持续时间属于候选排除门槛，只能在按 train 留出验证通过后应用。":
+            "Распределение ISI HFS остаётся описательным. Минимальное число спайков и длительность являются критериями, исключающими кандидатов, и могут применяться только после успешной проверки с исключением целых spike train.",
+        "Burst、Tonic、HF tonic 与 Pause 可从预览写入软锚点。HFS 的最少 spike 数和最短持续时间会排除候选，必须改由下方按 train 留出验证准入。":
+            "Пачки, тоник, высокочастотный тоник и пауза могут применяться из предпросмотра как мягкие ориентиры. Минимальное число спайков и длительность HFS исключают кандидатов, поэтому их применение допускается только после расположенной ниже проверки с исключением целых spike train.",
+        "HFS 的候选排除门槛必须先通过按 train 留出验证，不能从普通预览直接应用。":
+            "Критерии HFS, исключающие кандидатов, должны сначала пройти проверку с исключением целых spike train и не могут применяться напрямую из обычного предпросмотра.",
+        "没有可从普通预览直接应用的学习阈值。":
+            "Нет обученных порогов, которые можно напрямую применить из обычного предпросмотра.",
         "请先生成身份绑定的学习预览；生成本身不会改变检测器。":
             "Сначала сформируйте предпросмотр, привязанный к данным; это не изменяет детектор.",
         "当前标记可供审计，但尚不足以生成兼容的学习阈值。":
