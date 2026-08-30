@@ -393,11 +393,14 @@ override group-local time-basis/origin incompatibility — without an explicit c
 cross-group ISIs, synchronization, population binning, timestamp concatenation, and absolute-time
 overlays remain prohibited.
 
-The segment carries four explicitly user-confirmed fields, all unresolved until confirmed (never
-silently defaulted):
+The segment carries four explicitly user-confirmed fields. The UI pre-fills the segment semantic ID
+with the import filename stem (excluding `.csv` / `.xlsx`) as an editable suggestion; the user may
+replace or paste text before confirmation, and only the exact value present in the confirmed manifest
+becomes authoritative. The other three fields remain unresolved until confirmed:
 
-- an explicit **segment semantic ID** (enters scientific identity; a suggestion is never silently
-  accepted);
+- an explicit **segment semantic ID** (enters scientific identity; accepting or editing the visible
+  filename-stem suggestion is part of confirming the manifest, while transport filename and extension
+  remain provenance rather than independent identity fields);
 - **recording regime**: `continuous_untrialed`, `trialized`, or `unknown_or_uncertain`. A contiguous
   excerpt of a continuous recording is `continuous_untrialed`; concatenated or explicitly
   trial-bounded material is never silently called continuous;

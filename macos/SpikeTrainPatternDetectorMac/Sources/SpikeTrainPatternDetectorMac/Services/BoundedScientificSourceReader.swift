@@ -14,6 +14,16 @@ struct BoundedScientificSource: Equatable, Sendable {
     let byteCount: Int
     let sourceSHA256: String
 
+    /// Editable UI suggestion for the dataset-global recording-segment semantic ID. The transport
+    /// extension is deliberately excluded so equivalent `recording.csv` and `recording.xlsx`
+    /// sources begin with the same suggestion. This value is never written into canonical identity
+    /// by the reader; it enters identity only if the user leaves or edits it and confirms the
+    /// scientific import manifest.
+    var suggestedRecordingSegmentIDText: String {
+        let stem = (displayName as NSString).deletingPathExtension
+        return stem.isEmpty ? displayName : stem
+    }
+
     fileprivate init(format: ScientificSourceFormat, snapshot: Data, displayName: String) {
         let ownedSnapshot = Data(snapshot)
         self.format = format

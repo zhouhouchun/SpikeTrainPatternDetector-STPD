@@ -18,6 +18,7 @@ struct BoundedScientificSourceReaderTests {
 
             #expect(source.format == .csv)
             #expect(source.displayName == "boundary.csv")
+            #expect(source.suggestedRecordingSegmentIDText == "boundary")
             #expect(source.byteCount == BoundedScientificSourceReader.maximumByteCount)
             #expect(source.snapshot == original)
         }
@@ -79,10 +80,23 @@ struct BoundedScientificSourceReaderTests {
 
             #expect(source.format == .xlsx)
             #expect(source.displayName == "WORKBOOK.XLSX")
+            #expect(source.suggestedRecordingSegmentIDText == "WORKBOOK")
             #expect(source.byteCount == original.count)
             #expect(source.snapshot == original)
             #expect(source.sourceSHA256 == "ba7816bf8f01cfea414140de5dae2223"
                 + "b00361a396177a9cb410ff61f20015ad")
+        }
+    }
+
+    @Test("The editable segment-ID suggestion removes only the transport extension")
+    func segmentIDSuggestionPreservesTheFilenameStem() throws {
+        try withTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("Patient.2026 session.csv")
+            try Data("unit_a\n1.000000\n".utf8).write(to: url)
+
+            let source = try BoundedScientificSourceReader.read(from: url)
+
+            #expect(source.suggestedRecordingSegmentIDText == "Patient.2026 session")
         }
     }
 

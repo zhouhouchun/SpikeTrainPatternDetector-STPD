@@ -381,7 +381,10 @@ final class ScientificImportCoordinator {
             }
 
             transportStaging = staging
-            manifestForm = ScientificImportManifestForm(stagedImport: staging.stagedImport)
+            manifestForm = ScientificImportManifestForm(
+                stagedImport: staging.stagedImport,
+                suggestedRecordingSegmentIDText: source.suggestedRecordingSegmentIDText
+            )
             phase = .reviewingScientificMeaning
         } catch {
             guard requestGeneration == generation else { return }

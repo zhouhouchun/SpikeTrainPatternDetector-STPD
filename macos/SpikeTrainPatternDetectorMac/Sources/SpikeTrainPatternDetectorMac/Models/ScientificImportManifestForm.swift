@@ -93,9 +93,10 @@ struct ScientificImportManifestForm: Sendable {
     let sourceBinding: ScientificImportDraftSourceBinding
     var sourceTimeUnit: SpikeTimeUnit?
     var activityMode: ScientificDatasetActivityMode?
-    /// The single dataset-global RecordingSegment decisions. All start unresolved (blank text /
-    /// nil / unconfirmed); none is silently defaulted.
-    var recordingSegmentIDText: String = ""
+    /// The single dataset-global RecordingSegment decisions. The ID may begin with an explicit,
+    /// source-name-derived UI suggestion supplied by the coordinator; it remains freely editable
+    /// and is validated verbatim. The remaining decisions start unresolved.
+    var recordingSegmentIDText: String
     var recordingRegime: ScientificRecordingRegime?
     var importedExcerptCoverage: ImportedExcerptCoverage?
     /// The user must explicitly confirm that exact acquisition bounds are unknown/unavailable; until
@@ -104,10 +105,14 @@ struct ScientificImportManifestForm: Sendable {
     var columns: [ScientificImportColumnDecisionForm]
     var attributes: [ScientificImportAttributeDecisionForm] = []
 
-    init(stagedImport: StagedScientificImport) {
+    init(
+        stagedImport: StagedScientificImport,
+        suggestedRecordingSegmentIDText: String = ""
+    ) {
         sourceBinding = ScientificImportDraftSourceBinding(stagedImport: stagedImport)
         sourceTimeUnit = nil
         activityMode = nil
+        recordingSegmentIDText = suggestedRecordingSegmentIDText
         columns = stagedImport.columns.enumerated().map { offset, column in
             ScientificImportColumnDecisionForm(column: column, isFirst: offset == 0)
         }

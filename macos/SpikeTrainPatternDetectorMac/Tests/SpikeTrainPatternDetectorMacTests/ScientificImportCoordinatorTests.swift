@@ -41,7 +41,11 @@ struct ScientificImportCoordinatorTests {
             #expect(coordinator.stagedImport?.dataRowCount == 1)
             #expect(coordinator.manifestForm?.sourceTimeUnit == nil)
             #expect(coordinator.manifestForm?.activityMode == nil)
+            #expect(coordinator.manifestForm?.recordingSegmentIDText == "source")
             #expect(coordinator.manifestForm?.columns.allSatisfy { $0.role == nil } == true)
+
+            coordinator.manifestForm?.recordingSegmentIDText = "pasted_or_edited_segment"
+            #expect(coordinator.manifestForm?.recordingSegmentIDText == "pasted_or_edited_segment")
         }
     }
 

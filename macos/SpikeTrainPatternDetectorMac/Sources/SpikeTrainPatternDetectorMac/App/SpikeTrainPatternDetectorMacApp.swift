@@ -208,6 +208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             keyEquivalent: "r"
         ).target = self
 
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        editMenuItem.submenu = Self.makeStandardEditMenu()
+
         // Temporary Debug menu — runtime inspection of the distribution-first foundation (D1-D3).
         let debugMenuItem = NSMenuItem()
         mainMenu.addItem(debugMenuItem)
@@ -220,6 +224,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ).target = self
 
         NSApp.mainMenu = mainMenu
+    }
+
+    /// Restores the standard macOS text-editing commands for SwiftUI text fields hosted by this
+    /// AppKit-owned application. A nil target intentionally routes every action through the active
+    /// window's first-responder chain; the menu never owns or duplicates field values.
+    static func makeStandardEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(responderItem("Undo", action: Selector(("undo:")), key: "z"))
+        menu.addItem(responderItem(
+            "Redo",
+            action: Selector(("redo:")),
+            key: "z",
+            modifiers: [.command, .shift]
+        ))
+        menu.addItem(.separator())
+        menu.addItem(responderItem("Cut", action: #selector(NSText.cut(_:)), key: "x"))
+        menu.addItem(responderItem("Copy", action: #selector(NSText.copy(_:)), key: "c"))
+        menu.addItem(responderItem("Paste", action: #selector(NSText.paste(_:)), key: "v"))
+        menu.addItem(.separator())
+        menu.addItem(responderItem("Select All", action: #selector(NSText.selectAll(_:)), key: "a"))
+        return menu
+    }
+
+    private static func responderItem(
+        _ title: String,
+        action: Selector,
+        key: String,
+        modifiers: NSEvent.ModifierFlags = [.command]
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.target = nil
+        return item
     }
 }
 

@@ -244,10 +244,10 @@ struct ScientificImportSheet: View {
 
                 TextField("记录片段 ID", text: recordingSegmentIDBinding, prompt: Text("输入并确认稳定的片段标识符"))
                     .frame(maxWidth: 360, alignment: .leading)
-                Text("这是承载科学身份的稳定记录片段标识符，会进入数据集的科学身份。系统不会静默设置默认值、删改或生成；非空但无效的标识符会被拒绝，而不会被改写。")
+                Text("这是承载科学身份的稳定记录片段标识符。界面默认填入导入文件名（不含 .csv/.xlsx），您可以直接编辑或从外部复制粘贴；最终以确认时界面中的完整文字为准。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("例如可输入 Grechishnikova_STN_2017。此处不会根据文件名自动填写，必须由您明确确认。")
+                Text("文件名只提供可编辑的初始建议，不会被静默清理或改写；非空但无效的标识符会被拒绝。CSV 与 XLSX 扩展名不进入该建议。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -418,6 +418,7 @@ struct ScientificImportSheet: View {
                             text: columnTextBinding(firstColumnID, \.groupSemanticIDText)
                         )
                         .frame(maxWidth: 360)
+                        .help("支持键盘输入、右键粘贴以及 Command-V 粘贴。")
                     }
                 }
 
@@ -968,6 +969,7 @@ struct ScientificImportSheet: View {
                     HStack(spacing: 12) {
                         TextField("分组语义 ID", text: columnTextBinding(id, \.groupSemanticIDText))
                             .frame(width: 220)
+                            .help("支持键盘输入、右键粘贴以及 Command-V 粘贴。")
                         Picker("时间基准", selection: columnOptionalBinding(id, \.groupTimeBasis)) {
                             Text("未确定").tag(nil as ScientificImportTimeBasisChoice?)
                             Text("记录经过时间").tag(
