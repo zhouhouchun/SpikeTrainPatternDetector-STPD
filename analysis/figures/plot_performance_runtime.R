@@ -85,7 +85,10 @@ p_profile <- ggplot2::ggplot(
   ggplot2::aes(x = profile_label, y = elapsed_seconds, colour = profile_label)
 ) +
   ggplot2::geom_boxplot(width = 0.42, outlier.shape = NA, linewidth = 0.45) +
-  ggplot2::geom_point(size = 2.0, position = ggplot2::position_jitter(width = 0.045)) +
+  ggplot2::geom_point(
+    size = 2.0,
+    position = ggplot2::position_jitter(width = 0.045, seed = 20260831L)
+  ) +
   ggplot2::scale_colour_manual(values = c("Core" = "#4477AA", "App default" = "#CC6677")) +
   ggplot2::labs(x = NULL, y = "Elapsed time (s)") +
   theme_stpd()

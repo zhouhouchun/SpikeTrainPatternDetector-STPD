@@ -11,17 +11,30 @@ interpreted as the same estimand.
 current zero-manual-example STPD run against exactly the same truth rows,
 eligibility masks and event matcher. Synthetic v2.3 holdout results are kept
 separate at 1x, 4x and 10x and bootstrapped by `Template_ID`; GPe, STN and GPi
-results use the frozen reference-eligible trains and recording-group
-bootstrap. No truth label is used to choose a detector threshold.
+results require `event_reference_eligible == TRUE` in each frozen automatic
+`reference_profile.csv` and are bootstrapped by its recording `Group_ID`.
+All trains from a sampled cluster remain together, and pooled counts are
+recomputed within every replicate. No truth label is used to choose a detector
+threshold.
 
 Primary outputs include ISI-support precision/recall/F1 and event
 precision/recall/F1 at IoU 0.10, 0.25 and 0.50, with fragmentation and merge
-diagnostics. Run the frozen 1,000-replicate analysis with:
+diagnostics. Both support and event precision/recall/F1 have percentile
+cluster-bootstrap 95% intervals. `analysis_scope.csv` records the eligibility
+rule, score mask, cluster unit, train count and cluster count for every
+estimand/scale. Run the frozen 1,000-replicate analysis with:
 
 ```sh
 Rscript evaluation/method_comparison/run_three_method_burst_accuracy.R 1000
 Rscript evaluation/method_comparison/build_three_method_burst_accuracy_figure.R
+Rscript evaluation/method_comparison/validate_three_method_burst_accuracy.R
 ```
+
+The unified script consumes the article-default per-train count files produced
+by `run_meanisi_logisi_burst_comparison.R`. In a clean public checkout, run that
+prerequisite first. The frozen public snapshots are under
+`results/method_comparison/`; fresh runs are written under
+`test-results/method_comparison/`.
 
 ## Direct truth-referenced performance
 

@@ -10,8 +10,13 @@ file_arg <- grep("^--file=", command, value = TRUE)
 if (length(file_arg) != 1L) stop("Unable to resolve script path.", call. = FALSE)
 script_path <- normalizePath(sub("^--file=", "", file_arg), mustWork = TRUE)
 repo <- normalizePath(file.path(dirname(script_path), "..", ".."), mustWork = TRUE)
-out_dir <- file.path(repo, "test-results", "method_comparison",
-                     "three_method_truth_accuracy_current")
+out_dir <- path.expand(Sys.getenv(
+  "STPD_THREE_METHOD_RESULT_DIR",
+  unset = file.path(repo, "test-results", "method_comparison",
+                    "three_method_truth_accuracy_current")
+))
+if (!dir.exists(out_dir)) stop("Three-method result directory is unavailable.",
+                               call. = FALSE)
 
 ci <- read.csv(file.path(out_dir, "cluster_bootstrap_95ci.csv"),
                check.names = FALSE, stringsAsFactors = FALSE)
@@ -75,12 +80,27 @@ ggplot2::ggsave(
 caption <- paste(
   "Truth-referenced Burst detection by Mean-ISI, LogISI/newBD, and STPD.",
   "Points show pooled ISI-support precision, recall, and F1; bars show 95%",
-  "cluster-bootstrap intervals (synthetic: Template_ID; real: train; 1,000",
+  "cluster-bootstrap intervals (synthetic: Template_ID; real: Group_ID; 1,000",
   "replicates). Synthetic v2.3 holdout projections are reported separately",
   "at 1x, 4x, and 10x. Real GPe, STN, and GPi panels use the same frozen",
   "reference-eligible trains and truth masks for all methods. All three",
   "detectors are label-blind in this zero-example comparison."
 )
 writeLines(caption, file.path(out_dir, "figure_caption.md"), useBytes = TRUE)
+
+manifest_path <- file.path(out_dir, "manifest_checksums.csv")
+if (file.exists(manifest_path)) {
+  manifest_files <- list.files(out_dir, full.names = TRUE)
+  manifest_files <- manifest_files[basename(manifest_files) !=
+                                     "manifest_checksums.csv"]
+  manifest <- data.frame(
+    file = basename(manifest_files),
+    sha256 = vapply(
+      manifest_files, digest::digest, character(1), algo = "sha256",
+      serialize = FALSE, file = TRUE
+    ), stringsAsFactors = FALSE
+  )
+  write.csv(manifest, manifest_path, row.names = FALSE)
+}
 
 message("Three-method figure written to: ", out_dir)

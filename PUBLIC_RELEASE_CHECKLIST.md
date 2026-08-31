@@ -4,7 +4,7 @@
 - [x] Detector source, package metadata, tests, and evaluation scripts included.
 - [x] Synthetic v2.2.0 and v2.3.0 generator source, inputs, truth, and QC included.
 - [x] GPe/STN/GPi manual-label workbooks structurally audited and published under region-only filenames after repository-owner clearance.
-- [x] Compact real and synthetic validation result tables included.
+- [x] Compact real validation tables and final `2026-08-30_tonic_state_repair_final_01` synthetic tables included; compact Stage C manifests authenticate only the published tables.
 - [x] Reproducible runtime benchmark, workload table, environment metadata, and R figures included.
 - [x] Every distributed scientific figure mapped to an R generation script.
 - [x] Generated binary objects and files larger than GitHub's 100 MB limit excluded.
@@ -13,6 +13,10 @@
 - [x] Freeze real-data annotation bytes and eligibility; publish region-only workbook names without `draft` or personal surnames.
 - [x] Record the manuscript source and ethics/consent basis in `data/real/SOURCE_AND_LICENSE.md`.
 - [x] Record repository-owner public-release authorization and the absence of a separate unrelated-redistribution/commercial-reuse licence.
-- [x] Run the full R regression suite on the final source snapshot (141 files, 999 test blocks, 0 failures/errors/warnings; 1 optional fresh-baseline test skipped by design).
-- [x] Run the public-bundle scanner and verify the SHA-256 manifest.
-- [x] Push the scanned public release to `https://github.com/zhouhouchun/SpikeTrainPatternDetector-STPD` without rewriting existing history.
+- [x] Run the full R regression suite on the manifest-identified source snapshot (`bc9392c725c676ba77075433606ff9ef865ac2ff31e3b04b3b135815e06e7813`; 141 files, 999 test blocks, 0 failures/errors/warnings; 1 optional fresh-baseline test skipped by design).
+- [x] Verify that public commit `9741a81d84f29e8ebfaf8ec4e890a3124588fbcc` reconstructs all `128/128` frozen algorithm files from the authoritative manifest.
+- [x] Preserve the immutable historical `v1.2.2` tag at `3c5ce65b4f97472a91d3e7f17fc26515fd00e7ce`; it predates and does not identify the reviewer-validation revision.
+- [x] Rebuild the full public-bundle SHA-256 manifest and rerun the scanner after the reviewer-evidence corrections.
+- [x] Push the initial scanned public snapshot to `https://github.com/zhouhouchun/SpikeTrainPatternDetector-STPD` without rewriting existing history.
+- [x] Designate `v1.2.2-rev1` as the immutable reviewer-validation tag for the attested commit; do not repoint `v1.2.2`.
+- [x] Push the attested reviewer-validation commit and `v1.2.2-rev1` tag to GitHub.

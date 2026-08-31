@@ -1,4 +1,16 @@
-# Spike Train Pattern Detector 1.2.1
+# Spike Train Pattern Detector 1.2.2 reviewer-validation revision
+
+This maintenance revision packages the frozen reviewer-response evidence
+without changing the detector source identity recorded by the authoritative
+128-file algorithm manifest.
+
+- Public commit `9741a81d84f29e8ebfaf8ec4e890a3124588fbcc` reconstructs all 128 frozen source files byte-for-byte.
+- Compact v2.2.0 and v2.3.0 synthetic tables and the v2.3.0 summary figure use the final `2026-08-30_tonic_state_repair_final_01` scoring run.
+- The unified automatic Mean-ISI, LogISI/newBD, and STPD comparison now resamples biological recordings by `Group_ID`, retains `Template_ID` clustering for synthetic data, and reports event precision/recall/F1 cluster-bootstrap intervals at IoU 0.10, 0.25, and 0.50.
+- Region-only GPe/STN/GPi annotation workbooks and the completed source, ethics, and redistribution record are included.
+- The historical `v1.2.2` tag remains immutable at `3c5ce65b4f97472a91d3e7f17fc26515fd00e7ce` and predates this revision. The corrected evidence tree is designated `v1.2.2-rev1`; this revision tag is created only after the attested commit and is never repointed.
+
+# Historical release notes: Spike Train Pattern Detector 1.2.1
 
 ## Schema-first parameter YAML
 

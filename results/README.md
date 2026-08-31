@@ -20,10 +20,23 @@ summary files.
 ## Synthetic validation
 
 `results/synthetic_validation/v2.2.0/` and `v2.3.0/` contain the frozen scoring
-tables for the paired 1x, 4x, and 10x benchmark projections. Report ISI-support
+tables from the final `2026-08-30_tonic_state_repair_final_01` scoring run for
+the paired 1x, 4x, and 10x benchmark projections. Each directory's
+`stage_c_manifest.csv` lists and authenticates only the compact tables included
+in the public release. Report ISI-support
 metrics, episode metrics across IoU thresholds, boundary errors,
 fragmentation, and prediction merging together; no single score is sufficient
 to characterize an event detector.
+
+## Burst method comparison
+
+`results/method_comparison/three_method_truth_accuracy_current/` contains the
+unified automatic Mean-ISI, LogISI/newBD, and STPD comparison. The three
+methods use identical eligible records, truth masks, and event matching.
+Biological recordings are resampled by recording `Group_ID`; synthetic data
+are resampled by `Template_ID`. ISI-support and event precision, recall, and F1
+all include 1,000-replicate cluster-bootstrap intervals, and
+`analysis_scope.csv` records the exact train and cluster counts.
 
 ## Computational performance
 

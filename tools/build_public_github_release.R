@@ -131,14 +131,57 @@ copy_file(
   file.path(source_root, "publication", "RELEASE_CHECKLIST.md"),
   file.path(output_root, "PUBLIC_RELEASE_CHECKLIST.md")
 )
+reviewer_release_docs <- c(
+  "REVIEWER_RESPONSE_EVIDENCE_MATRIX.md",
+  "REVIEWER_RESPONSE_EVIDENCE_MATRIX.csv",
+  "REVIEWER_1_VERBATIM.md",
+  "REVIEWER_2_VERBATIM.md",
+  "REVIEWER_3_VERBATIM.md",
+  "REVIEWER_3_RESPONSE_AND_GAP_AUDIT.md"
+)
+reviewer_release_dir <- file.path(output_root, "docs", "reviewer_response")
 copy_selected(
   file.path(source_root, "publication"),
-  file.path(output_root, "docs", "reviewer_response"),
-  c(
-    "REVIEWER_RESPONSE_EVIDENCE_MATRIX.md",
-    "REVIEWER_RESPONSE_EVIDENCE_MATRIX.csv"
-  )
+  reviewer_release_dir,
+  reviewer_release_docs
 )
+
+# The maintainer evidence matrix uses source-repository paths. Rewrite only the
+# released copies so every cited path resolves inside the public repository.
+public_path_replacements <- c(
+  "publication/FINAL_ALGORITHM_FREEZE.md" =
+    "results/release_freeze/FINAL_ALGORITHM_FREEZE.md",
+  "publication/REAL_DATA_ANNOTATION_FREEZE.md" =
+    "data/real/ANNOTATION_FREEZE.md",
+  "publication/RELEASE_CHECKLIST.md" = "PUBLIC_RELEASE_CHECKLIST.md",
+  "publication/DATA_README.md" = "data/README.md",
+  "test-results/clean_synthetic_validation/runs/2026-08-30_tonic_state_repair_final_01/" =
+    "results/synthetic_validation/",
+  "test-results/clean_synthetic_validation/" = "results/synthetic_validation/",
+  "test-results/multi_region_three_regime_20260831/" =
+    "results/real_validation/",
+  "test-results/method_comparison/" = "results/method_comparison/",
+  "test-results/performance_benchmark_20260831/" = "results/performance/",
+  "test-results/release_freeze_final/regression_final/" =
+    "results/release_freeze/regression/",
+  "test-results/" = "results/",
+  "publication/" = "docs/reviewer_response/"
+)
+for (name in c(
+  "REVIEWER_RESPONSE_EVIDENCE_MATRIX.md",
+  "REVIEWER_RESPONSE_EVIDENCE_MATRIX.csv",
+  "REVIEWER_3_RESPONSE_AND_GAP_AUDIT.md"
+)) {
+  path <- file.path(reviewer_release_dir, name)
+  text <- readLines(path, warn = FALSE, encoding = "UTF-8")
+  for (source_path in names(public_path_replacements)) {
+    text <- gsub(
+      source_path, public_path_replacements[[source_path]], text,
+      fixed = TRUE
+    )
+  }
+  writeLines(text, path, useBytes = TRUE)
+}
 copy_selected(
   file.path(source_root, "publication"),
   file.path(output_root, "results", "release_freeze"),
@@ -211,34 +254,74 @@ copy_selected(
   file.path(output_root, "results", "method_comparison",
             "three_method_truth_accuracy_current"),
   c(
-    "RESULTS.md", "protocol.csv", "support_metrics.csv", "event_metrics.csv",
-    "cluster_bootstrap_95ci.csv", "validation_checks.csv",
+    "RESULTS.md", "protocol.csv", "analysis_scope.csv",
+    "support_metrics.csv", "event_metrics.csv",
+    "cluster_bootstrap_95ci.csv", "event_cluster_bootstrap_95ci.csv",
+    "validation_checks.csv",
     "three_method_burst_accuracy.pdf", "three_method_burst_accuracy.png",
     "figure_caption.md"
   )
 )
 
+synthetic_final_run <- "2026-08-30_tonic_state_repair_final_01"
 synthetic_stage_c <- c(
   "v2.2.0" = file.path(
     source_root, "test-results", "clean_synthetic_validation", "runs",
-    "2026-08-30_v2_2_v2_3_gate1b", "stpd_aug30_v220_stage_c"
+    synthetic_final_run, "v220_stage_c"
   ),
   "v2.3.0" = file.path(
     source_root, "test-results", "clean_synthetic_validation", "runs",
-    "2026-08-30_v2_2_v2_3_gate1b", "stpd_aug30_v230_stage_c"
+    synthetic_final_run, "v230_stage_c"
   )
 )
 synthetic_result_files <- c(
   "primary_observed_metrics.csv", "template_cluster_bootstrap_95ci.csv",
   "fragmentation_merge_summary.csv", "boundary_errors_iou_050.csv",
-  "pause_subtype_summary.csv", "hfs_predicted_subtypes_descriptive.csv",
-  "stage_c_manifest.csv"
+  "pause_subtype_summary.csv", "hfs_predicted_subtypes_descriptive.csv"
 )
 for (version in names(synthetic_stage_c)) {
+  source_stage_c <- synthetic_stage_c[[version]]
+  public_stage_c <- file.path(
+    output_root, "results", "synthetic_validation", version
+  )
   copy_selected(
-    synthetic_stage_c[[version]],
-    file.path(output_root, "results", "synthetic_validation", version),
+    source_stage_c,
+    public_stage_c,
     synthetic_result_files
+  )
+
+  source_manifest_path <- file.path(source_stage_c, "stage_c_manifest.csv")
+  source_manifest <- utils::read.csv(
+    source_manifest_path, check.names = FALSE, stringsAsFactors = FALSE
+  )
+  compact_manifest <- source_manifest[
+    match(synthetic_result_files, source_manifest$File_Name),
+    , drop = FALSE
+  ]
+  if (anyNA(compact_manifest$File_Name) ||
+      !identical(compact_manifest$File_Name, synthetic_result_files)) {
+    stop(
+      "Final synthetic Stage C manifest does not cover the public compact files: ",
+      source_manifest_path,
+      call. = FALSE
+    )
+  }
+  actual_sha256 <- vapply(
+    file.path(source_stage_c, compact_manifest$File_Name),
+    function(path) digest::digest(file = path, algo = "sha256"),
+    character(1)
+  )
+  if (!identical(unname(actual_sha256), compact_manifest$SHA256)) {
+    stop(
+      "Final synthetic Stage C manifest hash verification failed: ",
+      source_manifest_path,
+      call. = FALSE
+    )
+  }
+  utils::write.csv(
+    compact_manifest,
+    file.path(public_stage_c, "stage_c_manifest.csv"),
+    row.names = FALSE
   )
 }
 
@@ -276,8 +359,11 @@ all_info <- file.info(file.path(output_root, all_relative))
 identifying_filename_terms <- c("Bagdasaryan", "Grechishnikova", "Kurmanaeva")
 identifying_filename_hits <- all_relative[vapply(
   all_relative,
-  function(path) any(grepl(identifying_filename_terms, basename(path),
-                           ignore.case = TRUE)),
+  function(path) any(vapply(
+    identifying_filename_terms,
+    function(term) grepl(term, basename(path), ignore.case = TRUE),
+    logical(1)
+  )),
   logical(1)
 )]
 if (length(identifying_filename_hits)) {

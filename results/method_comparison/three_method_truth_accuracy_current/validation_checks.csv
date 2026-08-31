@@ -4,4 +4,9 @@
 "support_identities",TRUE
 "event_identities",TRUE
 "metric_bounds",TRUE
-"bootstrap_complete",TRUE
+"real_eligibility_exact",TRUE
+"cluster_assignment_consistent",TRUE
+"support_bootstrap_complete",TRUE
+"event_bootstrap_complete",TRUE
+"bootstrap_units",TRUE
+"bootstrap_observed_values",TRUE

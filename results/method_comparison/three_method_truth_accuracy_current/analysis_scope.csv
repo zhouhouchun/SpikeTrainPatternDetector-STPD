@@ -1,0 +1,10 @@
+"dataset","region","estimand","scale","eligibility_rule","score_mask","cluster_unit","train_n","cluster_n"
+"synthetic_v2.3_holdout","synthetic","strict_mechanism","4x","v2.3.0 Split == holdout","all holdout ISIs","Template_ID",15,15
+"synthetic_v2.3_holdout","synthetic","observable_phenotype_primary","4x","v2.3.0 Split == holdout","Phenotype_Label != ambiguous_burst_like","Template_ID",15,15
+"synthetic_v2.3_holdout","synthetic","strict_mechanism","10x","v2.3.0 Split == holdout","all holdout ISIs","Template_ID",15,15
+"synthetic_v2.3_holdout","synthetic","observable_phenotype_primary","10x","v2.3.0 Split == holdout","Phenotype_Label != ambiguous_burst_like","Template_ID",15,15
+"synthetic_v2.3_holdout","synthetic","strict_mechanism","1x","v2.3.0 Split == holdout","all holdout ISIs","Template_ID",15,15
+"synthetic_v2.3_holdout","synthetic","observable_phenotype_primary","1x","v2.3.0 Split == holdout","Phenotype_Label != ambiguous_burst_like","Template_ID",15,15
+"real_GPe","GPe","reviewed_manual_reference","observed","event_reference_eligible == TRUE in automatic/reference_profile.csv","review_status == manually_labeled","Group_ID",13,13
+"real_STN","STN","reviewed_manual_reference","observed","event_reference_eligible == TRUE in automatic/reference_profile.csv","review_status == manually_labeled","Group_ID",23,13
+"real_GPi","GPi","reviewed_manual_reference","observed","event_reference_eligible == TRUE in automatic/reference_profile.csv","review_status == manually_labeled","Group_ID",21,13

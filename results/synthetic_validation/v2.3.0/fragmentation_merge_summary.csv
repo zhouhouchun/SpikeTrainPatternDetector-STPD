@@ -1,7 +1,7 @@
 "Estimand","Variant","Kind","Batch_ID","Scale_Factor","Target","Error","Excess_N"
 "mechanism","strict_raw","prediction_merge","Batch_C",1,"broad_hfs",0.0535714285714286,0.0714285714285715
 "mechanism","strict_raw","truth_fragmentation","Batch_C",1,"broad_hfs",0.0222222222222222,0.111111111111111
-"mechanism","strict_raw","prediction_merge","Batch_A",4,"broad_hfs",0.0535714285714286,0.0714285714285714
+"mechanism","strict_raw","prediction_merge","Batch_A",4,"broad_hfs",0.0535714285714286,0.0714285714285715
 "mechanism","strict_raw","truth_fragmentation","Batch_A",4,"broad_hfs",0.0222222222222222,0.111111111111111
 "mechanism","strict_raw","prediction_merge","Batch_B",10,"broad_hfs",0.0588235294117647,0.0784313725490196
 "mechanism","strict_raw","truth_fragmentation","Batch_B",10,"broad_hfs",0,0

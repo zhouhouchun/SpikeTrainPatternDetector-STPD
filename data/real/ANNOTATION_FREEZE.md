@@ -20,7 +20,10 @@ trains remain in the workbooks for provenance but do not enter the reported
 accuracy denominators. Blank pattern cells retain the prespecified `other`
 interpretation where applicable.
 
-This is a scientific-byte and eligibility freeze, not a redistribution
-authorization. Publication/source citations, ethics wording, original-data
-licences, derived-label licence, and redistribution permission must still be
-completed in `data/real/SOURCE_AND_LICENSE.md` before a public GitHub push.
+This document is a scientific-byte and eligibility freeze; authorization is
+recorded separately. The companion source, ethics, and redistribution record,
+published as `data/real/SOURCE_AND_LICENSE.md`, records repository-owner
+clearance on 2026-08-31 for public release of these exact region-named
+workbooks. Public availability does not grant a separate licence for unrelated
+redistribution or commercial reuse; consult that record for the applicable
+source, consent, ethics, and reuse statements.
