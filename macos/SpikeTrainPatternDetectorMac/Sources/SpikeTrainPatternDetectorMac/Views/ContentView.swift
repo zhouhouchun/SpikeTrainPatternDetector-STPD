@@ -92,7 +92,6 @@ struct ContentView: View {
         }
         .frame(minWidth: 980, minHeight: 640)
         .background(Color(nsColor: .windowBackgroundColor))
-        .environment(\.l10n, localizer)
         .delayedBackgroundProgress(longRunningOperationMessage)
         .tint(STPDAppTheme.accent)
         .accentColor(STPDAppTheme.accent)
@@ -123,6 +122,7 @@ struct ContentView: View {
         ) {
             ScientificImportSheet(
                 coordinator: document.scientificImportCoordinator,
+                l10n: localizer,
                 onClose: { document.dismissScientificImportReview() },
                 onProceedToManualAnalysis: {
                     _ = document.prepareCanonicalManualWorkbench()
@@ -130,7 +130,13 @@ struct ContentView: View {
                     document.dismissScientificImportReview()
                 }
             )
+            // Presentation content is hosted outside the modified view subtree. Inject the
+            // current app language explicitly so the sheet never falls back to Chinese.
+            .environment(\.l10n, localizer)
         }
+        // Keep the language environment outside presentation modifiers so every modal surface
+        // inherits live language changes as well as the main window content.
+        .environment(\.l10n, localizer)
     }
 }
 

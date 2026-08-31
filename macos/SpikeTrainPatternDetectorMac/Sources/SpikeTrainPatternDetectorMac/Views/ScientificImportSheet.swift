@@ -35,10 +35,9 @@ private enum ScientificImportReviewStep: String, CaseIterable, Identifiable {
 
 struct ScientificImportSheet: View {
     @Bindable var coordinator: ScientificImportCoordinator
+    let l10n: STPDLocalizer
     let onClose: () -> Void
     let onProceedToManualAnalysis: () -> Void
-
-    @Environment(\.l10n) private var l10n
 
     @State private var selectedStep: ScientificImportReviewStep = .source
     @State private var selectedAttributeIDs: Set<UUID> = []
