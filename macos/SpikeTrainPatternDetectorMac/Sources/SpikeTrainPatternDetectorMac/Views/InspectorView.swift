@@ -79,7 +79,7 @@ struct InspectorView: View {
     private func header(candidate: ClassicAnchorCandidate) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(l10n.language == .zh ? "事件检查器" : "Event Inspector")
+                Text(inspectorText("Event Inspector"))
                     .font(.headline)
                 Spacer()
                 statusBadge(document.reviewStatus(for: candidate.id))
@@ -111,7 +111,7 @@ struct InspectorView: View {
                 ForEach(lines.indices, id: \.self) { index in
                     let line = lines[index]
                     GridRow {
-                        Text(line.label)
+                        Text(inspectorText(line.label))
                             .foregroundStyle(.secondary)
                         Text(line.value)
                             .foregroundStyle(line.isFailure ? Color.orange : Color.primary)
@@ -122,9 +122,9 @@ struct InspectorView: View {
                 }
                 if review != .unreviewed {
                     GridRow {
-                        Text(l10n.language == .zh ? "审核" : "Review")
+                        Text(inspectorText("Review"))
                             .foregroundStyle(.secondary)
-                        Text("\(review.title) (manual override)")
+                        Text("\(inspectorText(review.title)) \(inspectorText("(manual override)"))")
                             .foregroundStyle(.primary)
                     }
                     .font(.caption)
@@ -132,7 +132,7 @@ struct InspectorView: View {
             }
 
             if let manual {
-                Text("Manual \(manual.familyName) gate: \(manual.modeTitle) — \(manual.effect)")
+                Text(localizedManualGate(manual))
                     .font(.caption2)
                     .foregroundStyle(manual.mode == .hardGate ? Color.orange : STPDAppTheme.accent)
                     .fixedSize(horizontal: false, vertical: true)
@@ -187,7 +187,7 @@ struct InspectorView: View {
         let status = document.reviewStatus(for: candidateID)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(l10n.language == .zh ? "人工审核" : "Manual review")
+                Text(inspectorText("Manual review"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -201,7 +201,7 @@ struct InspectorView: View {
                 reviewButton(.rejected, candidateID: candidateID).frame(maxWidth: .infinity)
             }
 
-            Text(status.inspectorDescription)
+            Text(inspectorText(status.inspectorDescription))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -236,11 +236,11 @@ struct InspectorView: View {
             Button {
                 document.createManualAnnotationFromFocusedCandidate()
             } label: {
-                Label(l10n.language == .zh ? "按候选范围创建人工标记" : "Manual label from candidate", systemImage: "hand.draw")
+                Label(inspectorText("Manual label from candidate"), systemImage: "hand.draw")
             }
             .liquidGlassButtonStyle()
             .disabled(!document.canCreateManualAnnotationFromFocusedCandidate)
-            .help("Author a positive manual annotation over this candidate's interval (does not change review status).")
+            .help(inspectorText("Author a positive manual annotation over this candidate's interval (does not change review status)."))
         }
         .padding(12)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -254,16 +254,14 @@ struct InspectorView: View {
             // review does not show a large empty gray panel.
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(l10n.language == .zh ? "人工标记" : "Manual annotations")
+                    Text(inspectorText("Manual annotations"))
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                     Text("0")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                Text(l10n.language == .zh
-                    ? "尚无标记。请在时间戳图顶部开启手工标记并在同一行拖动，或按当前候选范围创建。"
-                    : "None yet. Enable Annotate mode in the raster header and drag on a train, or create one from a focused candidate.")
+                Text(inspectorText("None yet. Enable Annotate mode in the raster header and drag on a train, or create one from a focused candidate."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -279,7 +277,7 @@ struct InspectorView: View {
         let recent = Array(annotations.suffix(12).reversed())
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(l10n.language == .zh ? "人工标记" : "Manual annotations")
+                Text(inspectorText("Manual annotations"))
                     .font(.headline)
                 Spacer()
                 Text("\(annotations.count)")
@@ -293,7 +291,7 @@ struct InspectorView: View {
                 }
             }
             if annotations.count > recent.count {
-                Text("Showing \(recent.count) of \(annotations.count). Export CSV for the full list.")
+                Text(localizedAnnotationCount(shown: recent.count, total: annotations.count))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -312,11 +310,11 @@ struct InspectorView: View {
         Divider()
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(l10n.language == .zh ? "人工标记校准预览" : "Manual calibration preview")
+                Text(inspectorText("Manual calibration preview"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(l10n.language == .zh ? "未应用" : "not applied")
+                Text(inspectorText("not applied"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -324,7 +322,7 @@ struct InspectorView: View {
             ForEach(summary.rows.filter(\.isPositive), id: \.label) { row in
                 calibrationRow(row)
             }
-            Text("Preview/audit only — these manual-derived values are not applied to the detector (source: manual_annotations).")
+            Text(inspectorText("Preview/audit only — these manual-derived values are not applied to the detector (source: manual_annotations)."))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -357,7 +355,7 @@ struct InspectorView: View {
     private func manualAnnotationRow(_ annotation: ManualAnnotation) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(annotation.label.displayName)
+                Text(l10n.t(annotation.label.displayName))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(annotation.polarity == .negative ? Color.secondary : Color.primary)
                 Text("\(annotation.trainID) · \(time(annotation.normalizedStartSec))–\(time(annotation.normalizedEndSec))")
@@ -373,7 +371,7 @@ struct InspectorView: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .help("Delete this manual annotation")
+            .help(inspectorText("Delete this manual annotation"))
         }
     }
 
@@ -383,28 +381,29 @@ struct InspectorView: View {
     private var reviewQueuePositionText: String {
         let summary = document.reviewQueueSummary()
         let position = document.activeReviewChannelPosition()
-        let channel = document.activeReviewChannel.title
+        let channel = l10n.t(document.activeReviewChannel.title)
+        let open = inspectorText("open")
         if position.current > 0 {
-            return "\(channel) · #\(position.current)/\(position.total) · \(summary.open) open"
+            return "\(channel) · #\(position.current)/\(position.total) · \(summary.open) \(open)"
         }
-        return "\(channel) · \(summary.open) open / \(summary.total)"
+        return "\(channel) · \(summary.open) \(open) / \(summary.total)"
     }
 
     private func reviewNavigationControls(candidate: ClassicAnchorCandidate) -> some View {
         let batchCount = document.batchAcceptTargetCount()
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Channel")
+                Text(inspectorText("Channel"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Picker("", selection: $document.activeReviewChannel) {
                     ForEach(ClassicAnchorReviewChannel.allCases) { channel in
-                        Text(channel.title).tag(channel)
+                        Text(l10n.t(channel.title)).tag(channel)
                     }
                 }
                 .labelsHidden()
                 .frame(width: 150)
-                .help("Limit previous/next navigation and batch accept to one detector pattern family.")
+                .help(inspectorText("Limit previous/next navigation and batch accept to one detector pattern family."))
             }
 
             Text(reviewQueuePositionText)
@@ -416,7 +415,7 @@ struct InspectorView: View {
                 document.batchAcceptCurrentTrainAndChannel()
             } label: {
                 Label(
-                    "Accept remaining \(batchCount) \(document.activeReviewChannel.title) in \(candidate.trainName)",
+                    localizedBatchAcceptTitle(batchCount: batchCount, candidate: candidate),
                     systemImage: "checkmark.circle.fill"
                 )
                 .lineLimit(1)
@@ -424,7 +423,7 @@ struct InspectorView: View {
             }
             .liquidGlassButtonStyle()
             .disabled(batchCount == 0)
-            .help("Accept all unreviewed / needs-review structures in this train for the active channel. Never changes rejected or already-accepted reviews, and never touches manual annotations or detector output.")
+            .help(inspectorText("Accept all unreviewed / needs-review structures in this train for the active channel. Never changes rejected or already-accepted reviews, and never touches manual annotations or detector output."))
         }
     }
 
@@ -433,7 +432,7 @@ struct InspectorView: View {
         return Button {
             document.setReviewStatusAndAdvance(status, for: candidateID)
         } label: {
-            Label(status.shortTitle, systemImage: status.systemImage)
+            Label(inspectorText(status.shortTitle), systemImage: status.systemImage)
                 .lineLimit(1)
         }
         .liquidGlassButtonStyle(prominent: isSelected)
@@ -451,7 +450,7 @@ struct InspectorView: View {
             Image(systemName: systemImage)
         }
         .liquidGlassToolbarButtonStyle()
-        .help(help)
+        .help(inspectorText(help))
     }
 
     private func eventSummary(
@@ -509,7 +508,7 @@ struct InspectorView: View {
                     metricRow("Local compression", number(evidence.localCompressionRatio))
                 }
 
-                Text("Diagnostic only — these ISI boundary metrics do not affect detection.")
+                Text(inspectorText("Diagnostic only — these ISI boundary metrics do not affect detection."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -548,7 +547,7 @@ struct InspectorView: View {
                     metricRow("Recommendation", audit.auditRecommendation)
                 }
 
-                Text("Diagnostic only — eventness does not affect detection, labels, or boundaries.")
+                Text(inspectorText("Diagnostic only — eventness does not affect detection, labels, or boundaries."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -786,7 +785,7 @@ struct InspectorView: View {
                     metricRow("Reason", audit.reason)
                 }
 
-                Text("Diagnostic only — near-miss review never creates candidates or changes detection.")
+                Text(inspectorText("Diagnostic only — near-miss review never creates candidates or changes detection."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -909,9 +908,7 @@ struct InspectorView: View {
     private var emptyEventInspector: some View {
         // No focused candidate: show a single compact hint instead of a large empty gray panel. The manual
         // annotations section below remains the inspector's primary content when nothing is under review.
-        Text(l10n.language == .zh
-            ? "请选择一个结构候选以检查时间戳、检测指标和人工审核状态；也可在时间戳图上单击一个 ISI 固定其诊断信息。"
-            : "Select a structural candidate to inspect timestamps, detection metrics, and manual review state. Click an ISI on the raster to pin its diagnostic.")
+        Text(inspectorText("Select a structural candidate to inspect timestamps, detection metrics, and manual review state. Click an ISI on the raster to pin its diagnostic."))
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -924,7 +921,7 @@ struct InspectorView: View {
             HStack(alignment: .firstTextBaseline) {
                 sectionTitle("Pinned ISI")
                 Spacer()
-                Button(l10n.language == .zh ? "清除" : "Clear") { document.clearPinnedISIDiagnostic() }
+                Button(inspectorText("Clear")) { document.clearPinnedISIDiagnostic() }
                     .buttonStyle(.plain)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(STPDAppTheme.accent)
@@ -990,11 +987,11 @@ struct InspectorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
             HStack(alignment: .firstTextBaseline) {
-                Text(l10n.language == .zh ? "自上次重新检测后" : "Since last rerun")
+                Text(inspectorText("Since last rerun"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(comparison.anyChange ? "Changed" : "No change")
+                Text(inspectorText(comparison.anyChange ? "Changed" : "No change"))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(comparison.anyChange ? Color.orange : Color.secondary)
             }
@@ -1021,7 +1018,7 @@ struct InspectorView: View {
 
     private func comparisonRow(_ label: String, _ before: String, _ after: String, _ changed: Bool) -> some View {
         GridRow {
-            Text(label)
+            Text(inspectorText(label))
                 .foregroundStyle(.secondary)
             HStack(spacing: 4) {
                 Text(before)
@@ -1044,15 +1041,13 @@ struct InspectorView: View {
             Image(systemName: "pin.fill")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Text(l10n.language == .zh
-                ? "已保留固定的 ISI #\(pinned.isiIndex) · \(pinned.trainName)"
-                : "Pinned ISI #\(pinned.isiIndex) · \(pinned.trainName) retained")
+            Text(localizedRetainedPinnedISI(pinned))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 4)
-            Button(l10n.language == .zh ? "清除" : "Clear") { document.clearPinnedISIDiagnostic() }
+            Button(inspectorText("Clear")) { document.clearPinnedISIDiagnostic() }
                 .buttonStyle(.plain)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(STPDAppTheme.accent)
@@ -1074,7 +1069,7 @@ struct InspectorView: View {
     }
 
     private func statusBadge(_ status: ClassicAnchorReviewStatus) -> some View {
-        Label(status.title, systemImage: status.systemImage)
+        Label(inspectorText(status.title), systemImage: status.systemImage)
             .font(.caption.weight(.semibold))
             .foregroundStyle(status.tint)
             .padding(.horizontal, 8)
@@ -1099,11 +1094,94 @@ struct InspectorView: View {
 
     /// Display-only localization. Detector tokens, IDs, decisions, and exported values remain unchanged.
     private func inspectorText(_ text: String) -> String {
-        guard l10n.language == .zh else { return text }
-        return Self.inspectorChinese[text] ?? text
+        Self.localizedInspectorText(text, language: l10n.language)
     }
 
-    private static let inspectorChinese: [String: String] = [
+    static func localizedInspectorText(_ text: String, language: STPDLanguage) -> String {
+        switch language {
+        case .zh:
+            return inspectorChinese[text] ?? text
+        case .en:
+            return text
+        case .ru:
+            return inspectorRussian[text] ?? text
+        }
+    }
+
+    private func localizedAnnotationCount(shown: Int, total: Int) -> String {
+        switch l10n.language {
+        case .zh: "显示最近 \(shown)/\(total) 条；完整列表请导出 CSV。"
+        case .en: "Showing \(shown) of \(total). Export CSV for the full list."
+        case .ru: "Показано \(shown) из \(total). Полный список доступен в экспорте CSV."
+        }
+    }
+
+    private func localizedRetainedPinnedISI(_ pinned: PinnedISIDiagnostic) -> String {
+        switch l10n.language {
+        case .zh: "已保留固定的 ISI #\(pinned.isiIndex) · \(pinned.trainName)"
+        case .en: "Pinned ISI #\(pinned.isiIndex) · \(pinned.trainName) retained"
+        case .ru: "Закреплённый ISI #\(pinned.isiIndex) · \(pinned.trainName) сохранён"
+        }
+    }
+
+    private func localizedBatchAcceptTitle(batchCount: Int, candidate: ClassicAnchorCandidate) -> String {
+        let channel = l10n.t(document.activeReviewChannel.title)
+        return switch l10n.language {
+        case .zh: "接受 \(candidate.trainName) 中余下的 \(batchCount) 个 \(channel)"
+        case .en: "Accept remaining \(batchCount) \(channel) in \(candidate.trainName)"
+        case .ru: "Принять оставшиеся \(batchCount) \(channel) в \(candidate.trainName)"
+        }
+    }
+
+    private func localizedManualGate(
+        _ manual: (mode: ThresholdMode, familyName: String, modeTitle: String, effect: String)
+    ) -> String {
+        switch l10n.language {
+        case .zh:
+            return "人工 \(l10n.t(manual.familyName)) 门控：\(inspectorText(manual.modeTitle)) — \(inspectorText(manual.effect))"
+        case .en:
+            return "Manual \(manual.familyName) gate: \(manual.modeTitle) — \(manual.effect)"
+        case .ru:
+            return "Ручной фильтр \(l10n.t(manual.familyName)): \(inspectorText(manual.modeTitle)) — \(inspectorText(manual.effect))"
+        }
+    }
+
+    static let inspectorChinese: [String: String] = [
+        "Event Inspector": "事件检查器",
+        "Review": "审核",
+        "Manual label from candidate": "按候选范围创建人工标记",
+        "Author a positive manual annotation over this candidate's interval (does not change review status).": "在该候选区间创建正向人工标记；不会更改审核状态。",
+        "Manual annotations": "人工标记",
+        "None yet. Enable Annotate mode in the raster header and drag on a train, or create one from a focused candidate.": "尚无标记。请在时间戳图顶部开启手工标记并在同一行拖动，或按当前候选范围创建。",
+        "Manual calibration preview": "人工标记校准预览",
+        "not applied": "未应用",
+        "Preview/audit only — these manual-derived values are not applied to the detector (source: manual_annotations).": "仅用于预览/审计；这些人工标记导出的数值尚未应用于检测器（来源：manual_annotations）。",
+        "Delete this manual annotation": "删除这条人工标记",
+        "Channel": "通道",
+        "Limit previous/next navigation and batch accept to one detector pattern family.": "将上一项/下一项导航和批量接受限制在一个检测器模式家族内。",
+        "Accept all unreviewed / needs-review structures in this train for the active channel. Never changes rejected or already-accepted reviews, and never touches manual annotations or detector output.": "接受当前通道中该序列全部未审核或待复核结构；不会更改已拒绝或已接受的结果，也不会修改人工标记或检测器输出。",
+        "Center the raster on this structure": "将该结构居中显示在光栅图中",
+        "Exit review": "退出审核",
+        "Clear review status (set unreviewed)": "清除审核状态（设为未审核）",
+        "Previous structure in the review queue (does not change review status).": "审核队列中的上一个结构（不更改审核状态）。",
+        "Next structure in the review queue (does not change review status).": "审核队列中的下一个结构（不更改审核状态）。",
+        "Diagnostic only — these ISI boundary metrics do not affect detection.": "仅用于诊断；这些 ISI 边界指标不影响检测。",
+        "Diagnostic only — eventness does not affect detection, labels, or boundaries.": "仅用于诊断；事件性不影响检测、标签或边界。",
+        "Diagnostic only — near-miss review never creates candidates or changes detection.": "仅用于诊断；近阈值复核不会创建候选或改变检测。",
+        "Select a structural candidate to inspect timestamps, detection metrics, and manual review state. Click an ISI on the raster to pin its diagnostic.": "请选择一个结构候选以检查时间戳、检测指标和人工审核状态；也可在时间戳图上单击一个 ISI 固定其诊断信息。",
+        "Clear": "清除",
+        "Since last rerun": "自上次重新检测后",
+        "Changed": "已改变",
+        "No change": "无变化",
+        "Label": "标签",
+        "Selected": "已选择",
+        "ISI band": "ISI 区间",
+        "(manual override)": "（人工覆盖）",
+        "open": "待处理",
+        "Soft": "软约束", "Hard": "硬门控",
+        "widens / anchors the band (never narrows)": "扩展或锚定区间（绝不收窄）",
+        "seed / bridge admission ceiling (above adaptive recovers moderate ISI; below constrains)": "种子/桥接准入上限（高于自适应阈值时恢复中等 ISI，低于时施加约束）",
+        "constrains the band (narrow-only)": "约束区间（只能收窄）",
         "Why this label": "为何得到此标签",
         "Event metrics": "事件指标",
         "ISI boundary evidence": "ISI 边界证据",
@@ -1130,6 +1208,119 @@ struct InspectorView: View {
         "Seed band": "种子区间", "Vs band": "相对区间",
         "Yes": "是", "No": "否", "None": "无", "Required": "需要",
         "Recommended": "建议复核", "Other": "其他",
+    ]
+
+    static let inspectorRussian: [String: String] = [
+        "Event Inspector": "Инспектор событий",
+        "Review": "Проверка",
+        "Manual review": "Ручная проверка",
+        "Manual label from candidate": "Ручная метка по кандидату",
+        "Author a positive manual annotation over this candidate's interval (does not change review status).": "Создать положительную ручную метку на интервале кандидата; статус проверки не изменяется.",
+        "Manual annotations": "Ручные метки",
+        "None yet. Enable Annotate mode in the raster header and drag on a train, or create one from a focused candidate.": "Меток пока нет. Включите ручную разметку в заголовке растра и протяните по одной последовательности либо создайте метку из выбранного кандидата.",
+        "Manual calibration preview": "Предпросмотр калибровки по ручным меткам",
+        "not applied": "не применено",
+        "Preview/audit only — these manual-derived values are not applied to the detector (source: manual_annotations).": "Только предпросмотр и аудит: значения из ручных меток не применены к детектору (источник: manual_annotations).",
+        "Delete this manual annotation": "Удалить эту ручную метку",
+        "Channel": "Канал",
+        "Limit previous/next navigation and batch accept to one detector pattern family.": "Ограничить переходы и пакетное принятие одним семейством паттернов детектора.",
+        "Accept all unreviewed / needs-review structures in this train for the active channel. Never changes rejected or already-accepted reviews, and never touches manual annotations or detector output.": "Принять все непроверенные и требующие проверки структуры этой последовательности в активном канале. Отклонённые и уже принятые решения, ручные метки и вывод детектора не изменяются.",
+        "Center the raster on this structure": "Центрировать эту структуру на растре",
+        "Exit review": "Выйти из проверки",
+        "Clear review status (set unreviewed)": "Сбросить статус проверки",
+        "Previous structure in the review queue (does not change review status).": "Предыдущая структура в очереди проверки; статус не изменяется.",
+        "Next structure in the review queue (does not change review status).": "Следующая структура в очереди проверки; статус не изменяется.",
+        "Diagnostic only — these ISI boundary metrics do not affect detection.": "Только диагностика: эти метрики границ ISI не влияют на детекцию.",
+        "Diagnostic only — eventness does not affect detection, labels, or boundaries.": "Только диагностика: событийность не влияет на детекцию, метки или границы.",
+        "Diagnostic only — near-miss review never creates candidates or changes detection.": "Только диагностика: проверка близости к порогу не создаёт кандидатов и не изменяет детекцию.",
+        "Select a structural candidate to inspect timestamps, detection metrics, and manual review state. Click an ISI on the raster to pin its diagnostic.": "Выберите структурного кандидата, чтобы проверить временные метки, метрики детекции и состояние ручной проверки. Щёлкните по ISI на растре, чтобы закрепить его диагностику.",
+        "Clear": "Очистить",
+        "Since last rerun": "После последнего перезапуска",
+        "Changed": "Изменено",
+        "No change": "Без изменений",
+        "Label": "Метка",
+        "Selected": "Выбран",
+        "ISI band": "Диапазон ISI",
+        "(manual override)": "(ручное решение)",
+        "open": "открыто",
+        "Soft": "Мягкий", "Hard": "Жёсткий",
+        "widens / anchors the band (never narrows)": "расширяет или закрепляет диапазон, но никогда не сужает",
+        "seed / bridge admission ceiling (above adaptive recovers moderate ISI; below constrains)": "верхняя граница допуска затравок и мостов; выше адаптивный порог возвращает умеренные ISI, ниже — ограничивает",
+        "constrains the band (narrow-only)": "ограничивает диапазон, разрешая только сужение",
+        "Why this label": "Почему присвоена эта метка",
+        "Event metrics": "Метрики события",
+        "ISI boundary evidence": "Свидетельства границ ISI",
+        "Eventness audit": "Аудит событийности",
+        "Near-miss review": "Проверка близости к порогу",
+        "Candidate audit": "Аудит кандидата",
+        "HFS-burst arbitration": "Арбитраж HFS–пачка",
+        "Decision path": "Путь решения",
+        "Pinned ISI": "Закреплённый ISI",
+        "Raw start": "Исходное начало", "Raw end": "Исходный конец",
+        "Aligned start": "Выровненное начало", "Aligned end": "Выровненный конец",
+        "Duration": "Длительность", "Spike span": "Диапазон спайков", "ISI span": "Диапазон ISI",
+        "Spikes": "Спайки", "Band": "Диапазон", "Pre gap": "Интервал до", "Post gap": "Интервал после",
+        "Edge contrast": "Контраст границы", "Score": "Оценка", "Refractory": "Рефрактерность",
+        "Auto selected": "Автоматически выбран", "Selection": "Выбор",
+        "Gate": "Фильтр", "Action": "Действие", "Why": "Причина", "Failure": "Причина отказа",
+        "Track": "Дорожка", "Family": "Семейство", "Subtype": "Подтип", "Final class": "Итоговый класс",
+        "Event track": "Дорожка события", "Algorithm audit": "Аудит алгоритма", "Algorithm review": "Проверка алгоритма",
+        "Confidence": "Уверенность", "Uncertainty": "Неопределённость", "Review evidence": "Свидетельство проверки",
+        "Review strength": "Сила свидетельства", "Review summary": "Итог проверки",
+        "Layer": "Слой", "Class": "Класс", "Diagnostic": "Диагностика",
+        "Train": "Спайковая последовательность", "ISI index": "Индекс ISI", "Left": "Левая метка", "Right": "Правая метка",
+        "Auto label": "Автоматическая метка", "Reviewed": "Статус проверки", "In candidate": "В составе кандидата",
+        "Seed band": "Затравочный диапазон", "Vs band": "Относительно диапазона",
+        "Yes": "Да", "No": "Нет", "None": "Нет", "Required": "Требуется",
+        "Recommended": "Рекомендуется", "Other": "Другое",
+        "Edge contrast min": "Минимальный контраст границы",
+        "Edge contrast geom": "Геометрический контраст границы",
+        "Pre edge ratio": "Отношение до границы",
+        "Post edge ratio": "Отношение после границы",
+        "Flank count": "Число флангов",
+        "Core-q percentile": "Процентиль core-q",
+        "Percentile reliable": "Надёжный процентиль",
+        "Local median ISI": "Локальная медиана ISI",
+        "Local compression": "Локальное сжатие",
+        "Eventness score": "Оценка событийности",
+        "Eventness zone": "Зона событийности",
+        "Regularity score": "Оценка регулярности",
+        "Edge component": "Компонент границы",
+        "Context component": "Компонент контекста",
+        "Context contrast": "Контраст контекста",
+        "Return to baseline": "Возврат к базовой линии",
+        "Distant context median": "Медиана дальнего контекста",
+        "Medium review": "Проверка средней уверенности",
+        "Recommendation": "Рекомендация",
+        "Near miss": "Близко к порогу",
+        "Best category": "Лучшая категория",
+        "Parameter": "Параметр",
+        "Direction": "Направление",
+        "Threshold": "Порог",
+        "Candidate value": "Значение кандидата",
+        "Relative change": "Относительное изменение",
+        "Failed gates": "Непройденные фильтры",
+        "Near-miss score": "Оценка близости к порогу",
+        "Reason": "Причина",
+        "Possible burst structure": "Возможная структура пачки",
+        "Long burst status": "Статус длинной пачки",
+        "Suppressed original": "Исходная подавленная метка",
+        "Suppressor": "Подавляющий кандидат",
+        "HFS selected": "HFS выбран",
+        "HFS status": "Статус HFS",
+        "Packets": "Пакеты",
+        "Packet coverage": "Покрытие пакетами",
+        "Pause-like breaks": "Пауза-подобные разрывы",
+        "Seed fraction": "Доля затравок",
+        "Bridge fraction": "Доля мостов",
+        "Final/reviewed": "Итог / проверка",
+        "Candidate": "Кандидат",
+        "未审核": "Не проверено", "已接受": "Принято", "已拒绝": "Отклонено", "待复核": "Требует проверки",
+        "未处理": "Не обработано", "接受": "Принять", "拒绝": "Отклонить", "复核": "Проверить",
+        "尚未为此候选保存人工决定。": "Для этого кандидата ещё не сохранено ручное решение.",
+        "已保存为接受。该人工决定会持久化并纳入事件导出。": "Сохранено решение «принять»; оно будет сохранено и включено в экспорт событий.",
+        "已保存为拒绝。该候选会从最终标签和默认事件导出中移除，但仍保留在审计表中，以便追溯和撤销。": "Сохранено решение «отклонить»; кандидат исключён из итоговых меток и стандартного экспорта событий, но сохранён в таблице аудита.",
+        "已标记为后续复核。该决定会持久化并纳入导出。": "Отмечено для последующей проверки; решение будет сохранено и включено в экспорт.",
     ]
 
     private func time(_ value: Double?) -> String {
