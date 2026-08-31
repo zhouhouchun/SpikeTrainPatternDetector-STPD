@@ -11,11 +11,10 @@ replicates.
 
 ## Real manual reference labels and public metadata
 
-The local validation snapshot contains GPe, STN, and GPi manual ISI-label
-workbooks. The default public bundle does **not** distribute these patient-level
-workbooks. `data/real/` instead contains the frozen structural summary, byte
-hashes, eligibility counts, and the source/ethics/redistribution record. In the
-local frozen snapshot:
+`data/real/` contains the publicly cleared GPe, STN, and GPi manual ISI-label
+workbooks under region-only filenames, together with the frozen structural
+summary, byte hashes, eligibility counts, and source/ethics record. In this
+frozen snapshot:
 
 - GPe: 16 spike-train worksheets;
 - STN: 23 spike-train worksheets;
@@ -26,14 +25,13 @@ local frozen snapshot:
 
 The worksheet identifiers are experimental recording identifiers, not names.
 Blank ISI labels are interpreted as `other` only where the frozen validation
-protocol explicitly states this. If redistribution is later authorized, the
-release builder can include the unchanged frozen workbooks under region-only
-public filenames by setting `STPD_INCLUDE_REAL_DATA=1`.
+protocol explicitly states this. The release builder includes the unchanged
+frozen workbooks by default. A code-and-synthetic-only bundle can be generated
+by setting `STPD_INCLUDE_REAL_DATA=0`.
 
 ## Redistribution checkpoint
 
-Patient-level workbooks may be added only after the repository owner confirms
-the redistribution terms for the source biological recordings and derived
-manual labels. Until then, public reproducibility relies on the synthetic
-benchmarks, aggregate real-data metrics, frozen eligibility metadata, and the
-published analysis code.
+Public release was authorized by the repository owner, Zhou Houchun, on
+2026-08-31. Public availability does not waive the requirement to cite the
+software and clinical-data context, and it does not by itself grant a separate
+licence for unrelated redistribution or commercial reuse.

@@ -16,8 +16,9 @@ Frozen synthetic benchmark snapshots are available under `data/synthetic/`.
 They contain detector-visible spike trains, multitrack truth, generator source,
 quality-control tables, and R-generated figures. Frozen structural summaries,
 eligibility counts, and byte hashes for the GPe, STN, and GPi manual-reference
-sets are organized under `data/real/`; patient-level workbooks are excluded from
-the default public bundle pending documented redistribution clearance.
+sets are organized under `data/real/`. The publicly cleared workbooks are
+distributed under region-only filenames together with their byte hashes and
+source/ethics record.
 
 Compact validation summaries are stored under `results/`. Bulky serialized run
 objects, exploratory reruns, manuscript drafts, and private submission records

@@ -97,7 +97,7 @@ public_real_workbook_names <- c(
   STN = "PD_STN_manual_isi_labels.xlsx",
   GPi = "PD_GPi_manual_isi_labels.xlsx"
 )
-include_real_data <- identical(Sys.getenv("STPD_INCLUDE_REAL_DATA", unset = "0"), "1")
+include_real_data <- identical(Sys.getenv("STPD_INCLUDE_REAL_DATA", unset = "1"), "1")
 if (include_real_data) {
   for (region in names(real_workbooks)) {
     copy_file(
