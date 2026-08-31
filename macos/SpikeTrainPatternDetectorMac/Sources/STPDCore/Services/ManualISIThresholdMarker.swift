@@ -46,6 +46,10 @@ public struct ManualISIThresholdRule: Hashable, Sendable {
     public let isiRangeSeconds: ManualISIThresholdClosedRange
     public let minimumSpikeCount: Int
     public let maximumSpikeCount: Int?
+    /// Optional manual Burst boundary gate. This is a reviewer-authored quick-label rule, not a
+    /// detector parameter. The observed value is the weaker available adjacent-boundary ISI
+    /// divided by the candidate's intra-run Q90 ISI.
+    public let burstMinimumEdgeContrast: Double?
     public let tonicMetric: ManualISITonicMetric?
     public let tonicMetricRange: ManualISIThresholdClosedRange?
 
@@ -54,6 +58,7 @@ public struct ManualISIThresholdRule: Hashable, Sendable {
         isiRangeSeconds: ManualISIThresholdClosedRange,
         minimumSpikeCount: Int = 2,
         maximumSpikeCount: Int? = nil,
+        burstMinimumEdgeContrast: Double? = nil,
         tonicMetric: ManualISITonicMetric? = nil,
         tonicMetricRange: ManualISIThresholdClosedRange? = nil
     ) {
@@ -61,6 +66,7 @@ public struct ManualISIThresholdRule: Hashable, Sendable {
         self.isiRangeSeconds = isiRangeSeconds
         self.minimumSpikeCount = minimumSpikeCount
         self.maximumSpikeCount = maximumSpikeCount
+        self.burstMinimumEdgeContrast = burstMinimumEdgeContrast
         self.tonicMetric = tonicMetric
         self.tonicMetricRange = tonicMetricRange
     }
@@ -72,25 +78,38 @@ public struct ManualISIThresholdCandidate: Hashable, Sendable {
     public let spikeCount: Int
     public let regularityMetric: ManualISITonicMetric?
     public let regularityValue: Double?
+    public let burstIntraQ90Seconds: Double?
+    public let burstLeftEdgeContrast: Double?
+    public let burstRightEdgeContrast: Double?
+    public let burstMinimumEdgeContrast: Double?
 
     public init(
         pattern: ManualISIThresholdPattern,
         isiIndices: [Int],
         spikeCount: Int,
         regularityMetric: ManualISITonicMetric? = nil,
-        regularityValue: Double? = nil
+        regularityValue: Double? = nil,
+        burstIntraQ90Seconds: Double? = nil,
+        burstLeftEdgeContrast: Double? = nil,
+        burstRightEdgeContrast: Double? = nil,
+        burstMinimumEdgeContrast: Double? = nil
     ) {
         self.pattern = pattern
         self.isiIndices = isiIndices
         self.spikeCount = spikeCount
         self.regularityMetric = regularityMetric
         self.regularityValue = regularityValue
+        self.burstIntraQ90Seconds = burstIntraQ90Seconds
+        self.burstLeftEdgeContrast = burstLeftEdgeContrast
+        self.burstRightEdgeContrast = burstRightEdgeContrast
+        self.burstMinimumEdgeContrast = burstMinimumEdgeContrast
     }
 }
 
 public enum ManualISIThresholdMarkerError: Error, Equatable, Sendable, LocalizedError {
     case invalidISIRange
     case invalidSpikeCountRange
+    case invalidBurstContrast
     case missingTonicMetric
     case invalidTonicMetricRange
     case invalidSampleOrder
@@ -101,6 +120,8 @@ public enum ManualISIThresholdMarkerError: Error, Equatable, Sendable, Localized
             return "ISI range must be finite, nonnegative, and ordered as a closed interval."
         case .invalidSpikeCountRange:
             return "Spike-count bounds must be positive and ordered."
+        case .invalidBurstContrast:
+            return "Burst edge contrast must be finite and at least 1."
         case .missingTonicMetric:
             return "Tonic threshold labeling requires MM, CV, CV2, or LV."
         case .invalidTonicMetricRange:
@@ -158,14 +179,24 @@ public enum ManualISIThresholdMarker {
                 range: rule.isiRangeSeconds,
                 minimumValidISISeconds: minimumValidISISeconds
             )
+            let samplePositions: [Int: Int] = rule.pattern == .burst
+                ? Dictionary(uniqueKeysWithValues: samples.indices.map { (samples[$0].isiIndex, $0) })
+                : [:]
             return runs.compactMap { run in
-                candidate(for: run, rule: rule)
+                candidate(
+                    for: run,
+                    in: samples,
+                    samplePositions: samplePositions,
+                    rule: rule
+                )
             }
         }
     }
 
     private static func candidate(
         for run: [ManualISIThresholdSample],
+        in samples: [ManualISIThresholdSample],
+        samplePositions: [Int: Int],
         rule: ManualISIThresholdRule
     ) -> ManualISIThresholdCandidate? {
         let spikeCount = run.count + 1
@@ -201,11 +232,78 @@ public enum ManualISIThresholdMarker {
             )
         }
 
+        if rule.pattern == .burst {
+            let contrast = burstContrast(
+                for: run,
+                in: samples,
+                samplePositions: samplePositions
+            )
+            if let required = rule.burstMinimumEdgeContrast {
+                guard let observed = contrast.minimum, observed >= required else { return nil }
+            }
+            return ManualISIThresholdCandidate(
+                pattern: .burst,
+                isiIndices: run.map(\.isiIndex),
+                spikeCount: spikeCount,
+                burstIntraQ90Seconds: contrast.intraQ90Seconds,
+                burstLeftEdgeContrast: contrast.left,
+                burstRightEdgeContrast: contrast.right,
+                burstMinimumEdgeContrast: contrast.minimum
+            )
+        }
+
         return ManualISIThresholdCandidate(
             pattern: rule.pattern,
             isiIndices: run.map(\.isiIndex),
             spikeCount: spikeCount
         )
+    }
+
+    /// Matches the formal detector's interpretable Q90 boundary ratio while remaining an
+    /// independent, reviewer-authored quick-label calculation. When both flanks exist, both must
+    /// be valid and `minimum` is the weaker side. At a true train edge, the single available side
+    /// is used. A run spanning the whole train has no measurable contrast.
+    private static func burstContrast(
+        for run: [ManualISIThresholdSample],
+        in samples: [ManualISIThresholdSample],
+        samplePositions: [Int: Int]
+    ) -> (intraQ90Seconds: Double?, left: Double?, right: Double?, minimum: Double?) {
+        guard let first = run.first,
+              let last = run.last,
+              let firstPosition = samplePositions[first.isiIndex],
+              let lastPosition = samplePositions[last.isiIndex],
+              let q90 = SortedFiniteSample(run.map(\.isiSeconds), positiveOnly: true).quantile(0.90),
+              q90 > 0 else {
+            return (nil, nil, nil, nil)
+        }
+
+        let hasLeftBoundary = firstPosition > samples.startIndex
+        let hasRightBoundary = lastPosition < samples.index(before: samples.endIndex)
+        let leftSample = hasLeftBoundary ? samples[samples.index(before: firstPosition)] : nil
+        let rightSample = hasRightBoundary ? samples[samples.index(after: lastPosition)] : nil
+
+        // A discontinuity in the supplied sample sequence is not a train edge and must not be
+        // silently treated as usable one-sided evidence.
+        let leftIsAdjacent = leftSample.map { $0.isiIndex + 1 == first.isiIndex } ?? !hasLeftBoundary
+        let rightIsAdjacent = rightSample.map { last.isiIndex + 1 == $0.isiIndex } ?? !hasRightBoundary
+        let left = leftSample.flatMap { ratio($0.isiSeconds, over: q90) }
+        let right = rightSample.flatMap { ratio($0.isiSeconds, over: q90) }
+
+        guard leftIsAdjacent, rightIsAdjacent else {
+            return (q90, left, right, nil)
+        }
+        if hasLeftBoundary && left == nil { return (q90, nil, right, nil) }
+        if hasRightBoundary && right == nil { return (q90, left, nil, nil) }
+
+        let available = [left, right].compactMap { $0 }
+        return (q90, left, right, available.min())
+    }
+
+    private static func ratio(_ numerator: Double, over denominator: Double) -> Double? {
+        guard numerator.isFinite, numerator > 0,
+              denominator.isFinite, denominator > 0 else { return nil }
+        let value = numerator / denominator
+        return value.isFinite ? value : nil
     }
 
     private static func contiguousEligibleRuns(
@@ -288,6 +386,12 @@ public enum ManualISIThresholdMarker {
         guard rule.minimumSpikeCount >= structuralMinimum,
               rule.maximumSpikeCount.map({ $0 >= rule.minimumSpikeCount }) ?? true else {
             throw ManualISIThresholdMarkerError.invalidSpikeCountRange
+        }
+
+        if let contrast = rule.burstMinimumEdgeContrast {
+            guard rule.pattern == .burst, contrast.isFinite, contrast >= 1 else {
+                throw ManualISIThresholdMarkerError.invalidBurstContrast
+            }
         }
 
         if rule.pattern == .tonic {

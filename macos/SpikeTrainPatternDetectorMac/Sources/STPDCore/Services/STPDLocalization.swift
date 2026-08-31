@@ -276,6 +276,10 @@ public enum STPDLocalization {
         "Spike 数闭区间": "Closed spike-count range",
         "连续 n 个 ISI 对应 n+1 个 spike；超出 spike 上限的整段会被跳过，不会被切成人工 Burst 小包。":
             "n consecutive ISIs represent n+1 spikes; an entire run above the spike limit is skipped rather than chopped into artificial Burst packets.",
+        "使用边缘对比度": "Use edge contrast",
+        "最小对比度": "Minimum contrast",
+        "边缘对比度 = 外侧相邻 ISI ÷ 候选段内 ISI 的 Q90；双侧存在时使用较小值，记录边缘使用可用的一侧。":
+            "Edge contrast = adjacent outer ISI ÷ Q90 of the candidate's internal ISIs; the weaker side is used when both exist, and the available side is used at a recording edge.",
         "指标": "Metric",
         "指标闭区间": "Closed metric range",
         "不限": "No limit",
@@ -309,6 +313,8 @@ public enum STPDLocalization {
         "正在构建结果表的语义化审阅视图…": "Building the semantic review view for the result tables…",
         "请输入有效的 ISI 闭区间上下限。": "Enter valid bounds for the closed ISI range.",
         "请输入有效的 Burst spike 数闭区间。": "Enter a valid closed Burst spike-count range.",
+        "请输入不小于 1 的有效 Burst 最小边缘对比度。":
+            "Enter a valid minimum Burst edge contrast of at least 1.",
         "基于 CV/CV2/LV 的 Tonic 初标至少需要 6 个 spike。":
             "CV/CV2/LV-based preliminary Tonic labeling requires at least 6 spikes.",
         "MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。":
@@ -1275,6 +1281,11 @@ public enum STPDLocalization {
         "Spike 数闭区间": "Замкнутый диапазон числа спайков",
         "连续 n 个 ISI 对应 n+1 个 spike；超出 spike 上限的整段会被跳过，不会被切成人工 Burst 小包。":
             "n последовательных ISI соответствуют n+1 spike; весь сегмент выше предела пропускается, а не разрезается на искусственные пачки.",
+        "使用边缘对比度": "Использовать контраст границы",
+        "最小对比度": "Минимальный контраст",
+        "边缘对比度": "Контраст границы",
+        "边缘对比度 = 外侧相邻 ISI ÷ 候选段内 ISI 的 Q90；双侧存在时使用较小值，记录边缘使用可用的一侧。":
+            "Контраст границы = соседний внешний ISI ÷ Q90 внутренних ISI кандидата; при наличии двух сторон используется меньшая, а на краю записи — доступная сторона.",
         "指标": "Метрика",
         "指标闭区间": "Замкнутый диапазон метрики",
         "不限": "Без предела",
@@ -1308,6 +1319,8 @@ public enum STPDLocalization {
         "正在构建结果表的语义化审阅视图…": "Формирование семантического представления таблиц результатов для проверки…",
         "请输入有效的 ISI 闭区间上下限。": "Введите корректные границы замкнутого диапазона ISI.",
         "请输入有效的 Burst spike 数闭区间。": "Введите корректный замкнутый диапазон числа spike для пачки.",
+        "请输入不小于 1 的有效 Burst 最小边缘对比度。":
+            "Введите корректный минимальный контраст границы пачки не менее 1.",
         "基于 CV/CV2/LV 的 Tonic 初标至少需要 6 个 spike。": "Для предварительной разметки тоника по CV/CV2/LV нужно не менее 6 spike.",
         "MM Tonic 初标仅支持 3–5 个 spike，且 MM 闭区间不能小于 1。":
             "Предварительная разметка тоника по MM поддерживает только 3–5 spike, а замкнутый диапазон MM не может быть ниже 1.",

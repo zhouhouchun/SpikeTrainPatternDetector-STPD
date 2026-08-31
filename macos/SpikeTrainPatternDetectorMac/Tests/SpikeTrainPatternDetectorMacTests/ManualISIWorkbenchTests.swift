@@ -15,6 +15,8 @@ struct ManualISIWorkbenchTests {
         drafts[.burst].maximumISIMilliseconds = "20"
         drafts[.burst].minimumSpikes = "4"
         drafts[.burst].maximumSpikes = "12"
+        drafts[.burst].usesBurstEdgeContrast = true
+        drafts[.burst].minimumBurstEdgeContrast = "4.5"
 
         #expect(drafts[.pause].minimumISIMilliseconds.isEmpty)
         #expect(drafts[.pause].maximumISIMilliseconds.isEmpty)
@@ -30,6 +32,10 @@ struct ManualISIWorkbenchTests {
         #expect(drafts[.burst].maximumISIMilliseconds == "20")
         #expect(drafts[.burst].minimumSpikes == "4")
         #expect(drafts[.burst].maximumSpikes == "12")
+        #expect(drafts[.burst].usesBurstEdgeContrast)
+        #expect(drafts[.burst].minimumBurstEdgeContrast == "4.5")
+        #expect(!drafts[.pause].usesBurstEdgeContrast)
+        #expect(!drafts[.tonic].usesBurstEdgeContrast)
         #expect(drafts[.pause].minimumISIMilliseconds == "90")
         #expect(drafts[.pause].maximumISIMilliseconds == "500")
         #expect(drafts[.tonic].minimumISIMilliseconds == "25")

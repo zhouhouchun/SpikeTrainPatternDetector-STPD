@@ -10,6 +10,8 @@ struct ManualISIThresholdPatternDraft: Equatable {
     var maximumISIMilliseconds: String
     var minimumSpikes: String
     var maximumSpikes: String
+    var usesBurstEdgeContrast: Bool
+    var minimumBurstEdgeContrast: String
     var tonicMetric: ManualISITonicMetric
     var tonicMetricMinimum: String
     var tonicMetricMaximum: String
@@ -22,6 +24,8 @@ struct ManualISIThresholdPatternDraft: Equatable {
                 maximumISIMilliseconds: "",
                 minimumSpikes: "3",
                 maximumSpikes: "15",
+                usesBurstEdgeContrast: false,
+                minimumBurstEdgeContrast: "3.0",
                 tonicMetric: .cv2,
                 tonicMetricMinimum: "0",
                 tonicMetricMaximum: "0.30"
@@ -32,6 +36,8 @@ struct ManualISIThresholdPatternDraft: Equatable {
                 maximumISIMilliseconds: "",
                 minimumSpikes: "2",
                 maximumSpikes: "2",
+                usesBurstEdgeContrast: false,
+                minimumBurstEdgeContrast: "3.0",
                 tonicMetric: .cv2,
                 tonicMetricMinimum: "0",
                 tonicMetricMaximum: "0.30"
@@ -42,6 +48,8 @@ struct ManualISIThresholdPatternDraft: Equatable {
                 maximumISIMilliseconds: "",
                 minimumSpikes: "6",
                 maximumSpikes: "",
+                usesBurstEdgeContrast: false,
+                minimumBurstEdgeContrast: "3.0",
                 tonicMetric: .cv2,
                 tonicMetricMinimum: "0",
                 tonicMetricMaximum: "0.30"

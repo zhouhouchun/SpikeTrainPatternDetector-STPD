@@ -73,7 +73,35 @@ struct ManualISIThresholdAssistant: View {
             }
 
             if pattern == .burst {
+                HStack(spacing: 10) {
+                    Text("")
+                        .frame(width: 82, alignment: .leading)
+                    Toggle(
+                        l10n.t("使用边缘对比度"),
+                        isOn: patternDraft(for: .burst).usesBurstEdgeContrast
+                    )
+                    .toggleStyle(.switch)
+                    .fixedSize()
+
+                    HStack(spacing: 5) {
+                        Text(l10n.t("最小对比度"))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        compactField(
+                            "3.0",
+                            text: patternDraft(for: .burst).minimumBurstEdgeContrast,
+                            width: 66
+                        )
+                    }
+                    .disabled(!patternDrafts[.burst].usesBurstEdgeContrast)
+
+                    Spacer(minLength: 0)
+                }
+
                 Text(l10n.t("连续 n 个 ISI 对应 n+1 个 spike；超出 spike 上限的整段会被跳过，不会被切成人工 Burst 小包。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(l10n.t("边缘对比度 = 外侧相邻 ISI ÷ 候选段内 ISI 的 Q90；双侧存在时使用较小值，记录边缘使用可用的一侧。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -135,6 +163,13 @@ struct ManualISIThresholdAssistant: View {
                     if pattern == .tonic,
                        let values = result.metricValueRange {
                         Text("\(patternDrafts[.tonic].tonicMetric.displayName) \(format(values.lowerBound))–\(format(values.upperBound))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    if pattern == .burst,
+                       patternDrafts[.burst].usesBurstEdgeContrast,
+                       let values = result.burstEdgeContrastRange {
+                        Text("\(l10n.t("边缘对比度")) \(format(values.lowerBound))–\(format(values.upperBound))")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -263,6 +298,7 @@ struct ManualISIThresholdAssistant: View {
 
         let minimumSpikes: Int
         let maximumSpikes: Int?
+        var burstMinimumEdgeContrast: Double? = nil
         switch pattern {
         case .burst:
             guard let minimum = positiveInt(draft.minimumSpikes),
@@ -272,6 +308,13 @@ struct ManualISIThresholdAssistant: View {
             }
             minimumSpikes = minimum
             maximumSpikes = maximum
+            if draft.usesBurstEdgeContrast {
+                guard let contrast = nonnegativeDouble(draft.minimumBurstEdgeContrast),
+                      contrast >= 1 else {
+                    return .error(l10n.t("请输入不小于 1 的有效 Burst 最小边缘对比度。"))
+                }
+                burstMinimumEdgeContrast = contrast
+            }
         case .pause:
             minimumSpikes = 2
             maximumSpikes = 2
@@ -321,6 +364,7 @@ struct ManualISIThresholdAssistant: View {
             ),
             minimumSpikeCount: minimumSpikes,
             maximumSpikeCount: maximumSpikes,
+            burstMinimumEdgeContrast: burstMinimumEdgeContrast,
             tonicMetric: pattern == .tonic ? draft.tonicMetric : nil,
             tonicMetricRange: metricRange
         )
@@ -463,6 +507,12 @@ struct ManualISIThresholdProposalResult {
 
     var metricValueRange: ClosedRange<Double>? {
         let values = eligibleCandidates.compactMap(\.regularityValue)
+        guard let lower = values.min(), let upper = values.max() else { return nil }
+        return lower...upper
+    }
+
+    var burstEdgeContrastRange: ClosedRange<Double>? {
+        let values = eligibleCandidates.compactMap(\.burstMinimumEdgeContrast)
         guard let lower = values.min(), let upper = values.max() else { return nil }
         return lower...upper
     }

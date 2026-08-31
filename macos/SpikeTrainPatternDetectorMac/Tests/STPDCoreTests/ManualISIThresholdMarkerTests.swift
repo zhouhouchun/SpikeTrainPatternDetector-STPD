@@ -42,6 +42,114 @@ struct ManualISIThresholdMarkerTests {
         #expect(candidates.map(\.isiIndices) == [[1], [2], [3]])
     }
 
+    @Test("Optional Burst edge contrast uses the weaker flank over intra-run Q90")
+    func burstEdgeContrastUsesWeakerQ90Ratio() throws {
+        let samples = [
+            sample(1, 100),
+            sample(2, 10), sample(3, 20),
+            sample(4, 80),
+        ]
+        let acceptingRule = ManualISIThresholdRule(
+            pattern: .burst,
+            isiRangeSeconds: milliseconds(10...20),
+            minimumSpikeCount: 3,
+            maximumSpikeCount: 3,
+            burstMinimumEdgeContrast: 4
+        )
+
+        let accepted = try ManualISIThresholdMarker.propose(
+            samples: samples,
+            rule: acceptingRule,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+
+        #expect(accepted.count == 1)
+        #expect(abs((accepted[0].burstIntraQ90Seconds ?? 0) - 0.019) < 1e-12)
+        #expect(abs((accepted[0].burstLeftEdgeContrast ?? 0) - (0.100 / 0.019)) < 1e-12)
+        #expect(abs((accepted[0].burstRightEdgeContrast ?? 0) - (0.080 / 0.019)) < 1e-12)
+        #expect(abs((accepted[0].burstMinimumEdgeContrast ?? 0) - (0.080 / 0.019)) < 1e-12)
+
+        let rejectingRule = ManualISIThresholdRule(
+            pattern: .burst,
+            isiRangeSeconds: milliseconds(10...20),
+            minimumSpikeCount: 3,
+            maximumSpikeCount: 3,
+            burstMinimumEdgeContrast: 4.5
+        )
+        let rejected = try ManualISIThresholdMarker.propose(
+            samples: samples,
+            rule: rejectingRule,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+        #expect(rejected.isEmpty)
+    }
+
+    @Test("Burst contrast uses one flank at a true train edge but requires measurable evidence")
+    func burstContrastHandlesTrainEdges() throws {
+        let rule = ManualISIThresholdRule(
+            pattern: .burst,
+            isiRangeSeconds: milliseconds(10...10),
+            minimumSpikeCount: 3,
+            maximumSpikeCount: 3,
+            burstMinimumEdgeContrast: 9
+        )
+
+        let oneSided = try ManualISIThresholdMarker.propose(
+            samples: [sample(1, 10), sample(2, 10), sample(3, 100)],
+            rule: rule,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+        #expect(oneSided.count == 1)
+        #expect(oneSided[0].burstLeftEdgeContrast == nil)
+        #expect(oneSided[0].burstRightEdgeContrast == 10)
+        #expect(oneSided[0].burstMinimumEdgeContrast == 10)
+
+        let noFlank = try ManualISIThresholdMarker.propose(
+            samples: [sample(1, 10), sample(2, 10)],
+            rule: rule,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+        #expect(noFlank.isEmpty)
+
+        let discontinuous = try ManualISIThresholdMarker.propose(
+            samples: [sample(1, 100), sample(3, 10), sample(4, 10), sample(5, 100)],
+            rule: rule,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+        #expect(discontinuous.isEmpty)
+    }
+
+    @Test("Burst contrast is optional and validates a dimensionless minimum of at least one")
+    func burstContrastOptionalityAndValidation() throws {
+        let unfiltered = ManualISIThresholdRule(
+            pattern: .burst,
+            isiRangeSeconds: milliseconds(10...10),
+            minimumSpikeCount: 3,
+            maximumSpikeCount: 3
+        )
+        let wholeTrain = try ManualISIThresholdMarker.propose(
+            samples: [sample(1, 10), sample(2, 10)],
+            rule: unfiltered,
+            minimumValidISISeconds: 0.9 / 1_000
+        )
+        #expect(wholeTrain.count == 1)
+
+        let invalid = ManualISIThresholdRule(
+            pattern: .burst,
+            isiRangeSeconds: milliseconds(10...10),
+            minimumSpikeCount: 3,
+            maximumSpikeCount: 3,
+            burstMinimumEdgeContrast: 0.99
+        )
+        #expect(throws: ManualISIThresholdMarkerError.invalidBurstContrast) {
+            try ManualISIThresholdMarker.propose(
+                samples: [sample(1, 10), sample(2, 10)],
+                rule: invalid,
+                minimumValidISISeconds: 0.9 / 1_000
+            )
+        }
+    }
+
     @Test("Tonic reuses canonical CV CV2 and LV over the entire contiguous run")
     func tonicRegularityMetrics() throws {
         let samples = [
