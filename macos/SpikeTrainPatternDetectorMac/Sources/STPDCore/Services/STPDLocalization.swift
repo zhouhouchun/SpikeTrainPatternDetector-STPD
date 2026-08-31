@@ -37,8 +37,14 @@ public enum STPDLocalization {
         case .zh:
             return source
         case .en:
+            if let pageText = STPDScientificImportLocalization.text(source, language: language) {
+                return pageText
+            }
             return translated(source, exact: exactDictionary, phrases: phraseEntries) ?? source
         case .ru:
+            if let pageText = STPDScientificImportLocalization.text(source, language: language) {
+                return pageText
+            }
             return translated(source, exact: russianExactDictionary, phrases: russianPhraseEntries)
                 ?? translated(source, exact: exactDictionary, phrases: phraseEntries)
                 ?? source
