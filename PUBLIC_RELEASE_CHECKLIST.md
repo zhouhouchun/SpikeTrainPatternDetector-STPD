@@ -15,4 +15,4 @@
 - [ ] Document institutional redistribution authorization and a licence before publicly distributing patient-level workbooks.
 - [x] Run the full R regression suite on the final source snapshot (141 files, 999 test blocks, 0 failures/errors/warnings; 1 optional fresh-baseline test skipped by design).
 - [x] Run the public-bundle scanner and verify the SHA-256 manifest.
-- [ ] Create the public GitHub repository and push only the clean release history.
+- [x] Push the scanned public release to `https://github.com/zhouhouchun/SpikeTrainPatternDetector-STPD` without rewriting existing history.
