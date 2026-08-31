@@ -10,8 +10,41 @@ stpd_schema_ui_choices <- function(x) {
   strsplit(as.character(x[1]), "|", fixed = TRUE)[[1]]
 }
 
-stpd_schema_ui_group_label <- function(group) {
-  labels <- stpd_contract_section_labels()
+stpd_schema_ui_locale_text <- function(x, lang = "zh", fallback = "") {
+  txt <- as.character(x %||% "")[1]
+  if (!nzchar(txt) || !identical(as.character(lang %||% "zh")[1], "en")) {
+    return(txt)
+  }
+  out <- if (exists("stpd_i18n_translate_text", mode = "function")) {
+    stpd_i18n_translate_text(txt, lang = "en")
+  } else {
+    txt
+  }
+  if (grepl("[\u3400-\u9fff]", out, perl = TRUE)) {
+    return(as.character(fallback %||% "")[1])
+  }
+  out
+}
+
+stpd_schema_ui_group_label <- function(group, lang = "zh") {
+  labels <- if (identical(as.character(lang %||% "zh")[1], "en")) {
+    stpd_contract_section_labels()
+  } else {
+    c(
+      detector = "\u68C0\u6D4B\u5668\u7B56\u7565",
+      event_core = "\u4E8B\u4EF6\u6838\u5FC3",
+      event_grammar = "\u9608\u503C\u8BED\u6CD5",
+      arbitration = "\u91CD\u53E0\u4EF2\u88C1",
+      burst = "burst \u5BB6\u65CF",
+      highfreq = "\u9AD8\u9891\u6A21\u5F0F",
+      tonic = "tonic",
+      pause = "pause",
+      classification = "\u4E8B\u4EF6\u6027\u5206\u7C7B",
+      state = "\u72B6\u6001\u5BA1\u8BA1",
+      spiketrainpattern = "\u516C\u5F00\u4EA7\u54C1\u547D\u540D\u7A7A\u95F4",
+      metadata = "\u5143\u6570\u636E"
+    )
+  }
   out <- labels[as.character(group)]
   ifelse(is.na(out), as.character(group), out)
 }
@@ -70,11 +103,16 @@ stpd_schema_ui_visible_schema <- function(schema, exclude_paths = character(), g
   schema
 }
 
-stpd_schema_ui_control <- function(row, prefix = "schema_param_", show_notes = TRUE) {
+stpd_schema_ui_control <- function(row, prefix = "schema_param_", show_notes = TRUE,
+                                   lang = "zh", current_values = list()) {
   id <- paste0(prefix, row$input_id)
-  label <- row$label
   pat_hint <- ""
   path_txt <- as.character(row$path %||% "")
+  label <- stpd_schema_ui_locale_text(
+    row$label,
+    lang = lang,
+    fallback = if (nzchar(path_txt)) path_txt else "Parameter"
+  )
   pat_hint <- stpd_schema_ui_pattern_hint(
     path = path_txt,
     group = as.character(row$group %||% ""),
@@ -87,6 +125,9 @@ stpd_schema_ui_control <- function(row, prefix = "schema_param_", show_notes = T
   control_type <- as.character(row$control_type %||% "")
   if (!nzchar(control_type)) control_type <- stpd_contract_control_type(typ)
   val <- suppressWarnings(stpd_schema_value(row))
+  if (is.list(current_values) && id %in% names(current_values)) {
+    val <- current_values[[id]]
+  }
   choices <- stpd_schema_ui_choices(row$choices)
   ctrl <- switch(control_type,
     number = shiny::numericInput(id, label, value = as.numeric(val), min = stpd_schema_ui_num_arg(row$min), max = stpd_schema_ui_num_arg(row$max), step = stpd_schema_ui_num_arg(row$step)),
@@ -98,9 +139,22 @@ stpd_schema_ui_control <- function(row, prefix = "schema_param_", show_notes = T
   )
   note <- as.character(row$help_text %||% "")
   if (!nzchar(note)) note <- as.character(row$scientific_note %||% "")
+  note <- stpd_schema_ui_locale_text(
+    note,
+    lang = lang,
+    fallback = if (nzchar(note)) {
+      "Scientific guidance is available in the parameter contract."
+    } else {
+      ""
+    }
+  )
   unit <- as.character(row$unit %||% "")
   ui_level <- as.character(row$ui_level %||% "")
-  section <- as.character(row$section %||% "")
+  section <- stpd_schema_ui_locale_text(
+    row$section,
+    lang = lang,
+    fallback = stpd_schema_ui_group_label(row$group %||% "", lang = "en")
+  )
   meta <- paste(c(if (nzchar(path_txt)) path_txt else NULL, if (nzchar(section)) section else NULL, if (nzchar(ui_level)) paste0("level: ", ui_level) else NULL, if (nzchar(unit)) paste0("unit: ", unit) else NULL), collapse = " | ")
   shiny::tagList(
     ctrl,
@@ -116,11 +170,18 @@ schema_ui_controls <- function(schema = stpd_parameter_schema(), prefix = "schem
                                include_types = c("numeric", "integer", "logical", "choice", "choice_vector", "text"),
                                group_by = FALSE, title = "\u6838\u5FC3\u68C0\u6D4B\u5668\u53C2\u6570",
                                note = "\u4F2A\u8FF9\u3001\u7591\u4F3C\u4E0D\u5E94\u671F\u3001\u91CD\u590D\u65F6\u95F4\u6233\u7B56\u7565\u548C\u68C0\u6D4B\u5668\u5BB6\u65CF\u9009\u62E9\u5747\u5728\u5404\u81EA\u4E13\u5C5E UI \u533A\u57DF\u63A7\u5236\uFF0C\u4EE5\u907F\u514D\u91CD\u590D\u53C2\u6570\u6765\u6E90\u3002",
-                               show_notes = TRUE, open_groups = FALSE, group_field = "group") {
+                               show_notes = TRUE, open_groups = FALSE, group_field = "group",
+                               lang = "zh", current_values = list()) {
   schema <- stpd_schema_ui_visible_schema(schema, exclude_paths = exclude_paths, groups = groups, scopes = scopes, ui_levels = ui_levels, include_types = include_types)
   if (nrow(schema) == 0) return(shiny::tagList())
   render_rows <- function(df) {
-    lapply(seq_len(nrow(df)), function(ii) stpd_schema_ui_control(df[ii, , drop = FALSE], prefix = prefix, show_notes = show_notes))
+    lapply(seq_len(nrow(df)), function(ii) stpd_schema_ui_control(
+      df[ii, , drop = FALSE],
+      prefix = prefix,
+      show_notes = show_notes,
+      lang = lang,
+      current_values = current_values
+    ))
   }
   controls <- if (isTRUE(group_by) && group_field %in% names(schema)) {
     group_order <- unique(as.character(schema[[group_field]]))
@@ -131,11 +192,19 @@ schema_ui_controls <- function(schema = stpd_parameter_schema(), prefix = "schem
         group = paste(unique(as.character(rows$group %||% "")), collapse = " "),
         section = grp
       )
+      group_title <- stpd_schema_ui_locale_text(
+        stpd_schema_ui_group_label(grp, lang = lang),
+        lang = lang,
+        fallback = stpd_schema_ui_group_label(
+          as.character(rows$group %||% "Parameters")[1],
+          lang = "en"
+        )
+      )
       shiny::tags$details(
         class = "schema-section-box",
         style = stpd_schema_ui_box_style(pat_hint),
         open = if (isTRUE(open_groups)) TRUE else NULL,
-        shiny::tags$summary(shiny::strong(grp), " (", nrow(rows), ")"),
+        shiny::tags$summary(shiny::strong(group_title), " (", nrow(rows), ")"),
         shiny::tags$div(class = "schema-contract-group", render_rows(rows))
       )
     })
@@ -144,8 +213,17 @@ schema_ui_controls <- function(schema = stpd_parameter_schema(), prefix = "schem
   }
   shiny::tagList(
     if (!is.null(title) && nzchar(title)) shiny::tags$hr(),
-    if (!is.null(title) && nzchar(title)) shiny::h5(title),
-    if (!is.null(note) && nzchar(note)) shiny::tags$div(class = "small-note", note),
+    if (!is.null(title) && nzchar(title)) shiny::h5(stpd_schema_ui_locale_text(
+      title, lang = lang, fallback = "Core detector parameters"
+    )),
+    if (!is.null(note) && nzchar(note)) shiny::tags$div(
+      class = "small-note",
+      stpd_schema_ui_locale_text(
+        note,
+        lang = lang,
+        fallback = "Dedicated controls define artifact, refractory-period, duplicate-timestamp, and detector-family policies."
+      )
+    ),
     controls
   )
 }
@@ -155,6 +233,7 @@ stpd_contract_ui_schema <- function(groups = c("burst", "event_core", "event_gra
                                     scopes = "full_contract",
                                     ui_level = "all") {
   schema <- stpd_parameter_schema(scope = "all")
+  schema <- stpd_contract_ui_apply_semantic_contract(schema)
   stpd_schema_ui_visible_schema(
     schema,
     exclude_paths = exclude_paths,
@@ -165,6 +244,37 @@ stpd_contract_ui_schema <- function(groups = c("burst", "event_core", "event_gra
   )
 }
 
+stpd_contract_ui_threshold_source_choices <- function() {
+  c("auto", "user", "manual", "histogram", "default")
+}
+
+stpd_contract_ui_legacy_diagnostic_paths <- function() {
+  c(
+    "burst.T_seed",
+    "burst.T_bridge",
+    "highfreq.T_high_max",
+    "highfreq.spiking_max_ISI_abs"
+  )
+}
+
+stpd_contract_ui_apply_semantic_contract <- function(schema) {
+  if (is.null(schema) || nrow(schema) == 0L || !("path" %in% names(schema))) return(schema)
+
+  source_row <- as.character(schema$path) == "event_grammar.threshold_source_mode"
+  if (any(source_row)) {
+    schema$type[source_row] <- "choice"
+    schema$control_type[source_row] <- "select"
+    schema$choices[source_row] <- paste(stpd_contract_ui_threshold_source_choices(), collapse = "|")
+  }
+
+  legacy_rows <- as.character(schema$path) %in% stpd_contract_ui_legacy_diagnostic_paths()
+  if (any(legacy_rows)) {
+    schema$ui_level[legacy_rows] <- "advanced"
+    schema$advanced[legacy_rows] <- "TRUE"
+  }
+  schema
+}
+
 stpd_contract_ui_excluded_paths <- function() {
   unique(c(stpd_parameter_schema()$path))
 }
@@ -172,14 +282,27 @@ stpd_contract_ui_excluded_paths <- function() {
 stpd_contract_ui_controls <- function(prefix = "contract_param_",
                                       ui_level = "basic",
                                       groups = c("burst", "event_core", "event_grammar", "arbitration", "tonic", "highfreq", "pause", "detector", "classification", "state"),
-                                      exclude_paths = stpd_contract_ui_excluded_paths()) {
+                                      exclude_paths = stpd_contract_ui_excluded_paths(),
+                                      lang = "zh", current_values = list()) {
   schema <- stpd_contract_ui_schema(groups = groups, exclude_paths = exclude_paths, ui_level = ui_level)
   level_label <- c(basic = "Basic", advanced = "Advanced", expert = "Expert", all = "All")
   level_txt <- level_label[as.character(ui_level)[1]]
   if (is.na(level_txt)) level_txt <- as.character(ui_level)[1]
   shiny::tagList(
-    shiny::h4(paste0("\u53C2\u6570\u5951\u7EA6\uFF08", level_txt, "\uFF09")),
-    shiny::tags$div(class = "small-note", paste0("\u6B64\u9762\u677F\u7531 inst/config/parameters.yml \u7684 parameter_contract \u751F\u6210\uFF1B\u5F53\u524D\u663E\u793A ", nrow(schema), " \u4E2A\u53C2\u6570\u3002Basic \u9762\u5411\u5E38\u89C4\u79D1\u7814\u4F7F\u7528\uFF0CAdvanced \u9762\u5411\u7B97\u6CD5\u8C03\u53C2\uFF0CExpert \u9762\u5411\u8BCA\u65AD/\u517C\u5BB9/\u8FB9\u754C\u4FDD\u62A4\u3002")),
+    shiny::h4(if (identical(lang, "en")) {
+      paste0("Parameter contract (", level_txt, ")")
+    } else {
+      paste0("\u53C2\u6570\u5951\u7EA6\uFF08", level_txt, "\uFF09")
+    }),
+    shiny::tags$div(class = "small-note", if (identical(lang, "en")) {
+      paste0(
+        "This panel is generated from the parameter_contract in inst/config/parameters.yml; ",
+        nrow(schema), " parameters are shown. Basic is for routine scientific use, ",
+        "Advanced for algorithm tuning, and Expert for diagnostics, compatibility, and boundary safeguards."
+      )
+    } else {
+      paste0("\u6B64\u9762\u677F\u7531 inst/config/parameters.yml \u7684 parameter_contract \u751F\u6210\uFF1B\u5F53\u524D\u663E\u793A ", nrow(schema), " \u4E2A\u53C2\u6570\u3002Basic \u9762\u5411\u5E38\u89C4\u79D1\u7814\u4F7F\u7528\uFF0CAdvanced \u9762\u5411\u7B97\u6CD5\u8C03\u53C2\uFF0CExpert \u9762\u5411\u8BCA\u65AD/\u517C\u5BB9/\u8FB9\u754C\u4FDD\u62A4\u3002")
+    }),
     schema_ui_controls(
       schema = schema,
       prefix = prefix,
@@ -189,7 +312,9 @@ stpd_contract_ui_controls <- function(prefix = "contract_param_",
       note = NULL,
       show_notes = identical(as.character(ui_level)[1], "basic"),
       open_groups = identical(as.character(ui_level)[1], "basic"),
-      group_field = "section"
+      group_field = "section",
+      lang = lang,
+      current_values = current_values
     )
   )
 }

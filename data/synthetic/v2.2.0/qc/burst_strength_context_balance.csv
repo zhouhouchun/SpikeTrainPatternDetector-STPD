@@ -1,0 +1,13 @@
+"Split","Context","Strength","N"
+"development","hfs","moderate",4
+"holdout","hfs","moderate",10
+"development","standalone","moderate",5
+"holdout","standalone","moderate",15
+"development","hfs","strong",3
+"holdout","hfs","strong",10
+"development","standalone","strong",5
+"holdout","standalone","strong",15
+"development","hfs","weak",3
+"holdout","hfs","weak",10
+"development","standalone","weak",5
+"holdout","standalone","weak",15

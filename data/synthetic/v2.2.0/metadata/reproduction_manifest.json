@@ -1,0 +1,41 @@
+{
+  "dataset_id": "clean_synthetic_mechanism_benchmark_v2_2_0",
+  "dataset_version": "2.2.0",
+  "created_utc": "2026-08-28T00:00:00Z",
+  "generator_file": "generate_benchmark_spike_trains.R",
+  "generator_sha256": "ca210e22d2e6bd09303caba2c8b5d55812cecbc41cc7309c3b1b47d4c4bee6ee",
+  "module_files": ["00_parameters.R", "10_point_process.R", "20_template_generation.R", "30_phenotype_audit.R", "40_exports_and_figures.R"],
+  "module_sha256": {
+    "00_parameters.R": "f9ba18c4138c064f235ad3b4f39b3888f3ae6468926461c8e3a00e3d8aeb8294",
+    "10_point_process.R": "c7a800763c6ded7fdfcc827866b5f01b97da66e3e6ed81fdf369c8018e4f3ded",
+    "20_template_generation.R": "94e411ed4ff38202eab746de54298a353b5a80e974e682b70dace76861e63e53",
+    "30_phenotype_audit.R": "6985046a687957fe2b3f5bb2286617c62cf764365fe56ac8c9d89758a5b6df02",
+    "40_exports_and_figures.R": "7e5a252756932adcfa47c43cd6325cd6af6d61ad73fec11e065ccc10ba5839d7"
+  },
+  "r_version": "R version 4.5.2 (2025-10-31)",
+  "rng_kind": ["Mersenne-Twister", "Inversion", "Rejection"],
+  "package_versions": {
+    "ggplot2": "4.0.2",
+    "jsonlite": "2.0.0",
+    "yaml": "2.3.12",
+    "digest": "0.6.39",
+    "openxlsx": "4.2.8.1",
+    "readxl": "1.4.5"
+  },
+  "n_dimensionless_templates": 20,
+  "n_scaled_samples": 60,
+  "exact_scale_factors": [1, 4, 10],
+  "scales_are_paired_not_independent": true,
+  "same_episode_ids_used_for_calibration_across_scales": true,
+  "component_rng_isolated": true,
+  "rng_seed_key_excludes_dataset_version": true,
+  "tonic_strict_and_observable_estimands_exported": true,
+  "canonical_pause_hard_cuts_hfs_state": true,
+  "composite_hfs_regime_is_not_continuous_state": true,
+  "detector_input_columns": ["Sample_ID", "Spike_Index", "Time_s"],
+  "detector_output_used_for_generation_or_selection": false,
+  "contextual_separator_is_primary_pause_truth": false,
+  "stimulation_enabled": false,
+  "observation_noise_enabled": false,
+  "drift_enabled": false
+}

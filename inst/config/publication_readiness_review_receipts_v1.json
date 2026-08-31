@@ -1,0 +1,131 @@
+{
+  "schema": "stpd_publication_readiness_review_receipts_v1",
+  "receipt_version": "1.0.0",
+  "authority_scope": "bounded_framework_review_only_no_scientific_or_release_authority",
+  "framework_sha256": "5708de987161f20c7c8e6ce8a72f91990f8a554ae489d4a555f61ca80110442d",
+  "packets_sha256": "1ab0e7bf7f29cefd361c5aeb619148ed895c9ae9fa65846cd5b8e386e729e7bc",
+  "remediation_record_path": "validation/publication_readiness/FRAMEWORK_RECHECK_REMEDIATION.md",
+  "remediation_record_sha256": "3a175e5c0fe3d1a8ef6e24411cd5169b91604d749749b925c8b257f3a86a1beb",
+  "receipts": [
+    {
+      "stage_id": "PR-01",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE01_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "9b745e1daacd203b2733cae6ec37d40358af0c7702221ea6743c07974478dff3",
+      "bound_output_ids": ["ordered_remaining_root_registry", "typed_authority_boundaries", "per_root_review_gate"],
+      "passed_stop_check_ids": ["six_roots_registered_once", "dependencies_are_acyclic_and_serial", "all_unimplemented_roots_remain_non_authoritative", "existing_detector_bytes_unchanged"],
+      "deferred_work_ids": ["root_specific_hook_schemas", "root_specific_replay", "final_candidate_universe_authority"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-02",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE02_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "7ac8902f08fc663cd4b421b8f70fe75d382b26ee3ed7c90e9a3878d413bb6c13",
+      "bound_output_ids": ["normative_contract_binding", "schema_registry_fixture_binding", "external_approval_manifest_prototype"],
+      "passed_stop_check_ids": ["candidate_contract_not_self_promoted", "all_contract_ids_have_fixture_targets", "approval_requires_external_review_bytes"],
+      "deferred_work_ids": ["final_external_signatures", "post_implementation_attestation", "gate_b_promotion"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-03",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE03_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "ba8222ab28a36f8eb60672b4301defa11ef741942db78ca4c5eb5ccd1836b8b2",
+      "bound_output_ids": ["direct_support_ledger", "connector_ledger", "hard_boundary_ledger", "split_redetection_lineage"],
+      "passed_stop_check_ids": ["pause_never_connector", "support_connector_identity_preserved", "split_fragments_require_redetection"],
+      "deferred_work_ids": ["large_scale_performance_tuning", "optional_descriptive_relationships"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-04",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE04_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "779d4435fd70b78e9f571c55c8fdbfc5dfe56b9d472e9240d99a2c08e22788f7",
+      "bound_output_ids": ["typed_auto_tables", "per_isi_projection", "parent_bound_validator", "hash_dag_manifest"],
+      "passed_stop_check_ids": ["event_state_gap_tracks_are_distinct", "pause_and_qc_exclude_active_state_support", "detached_integrity_never_claims_execution_authenticity"],
+      "deferred_work_ids": ["official_release_signature", "nonessential_ui_views"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-05",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE05_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "4c043365789ef2fd6896c722f28bd8abc88ca28133070b76c728000eec92bf39",
+      "bound_output_ids": ["append_only_transition_schema", "compare_and_swap_parent_binding", "deterministic_final_replay", "unsupported_transition_guards"],
+      "passed_stop_check_ids": ["auto_bytes_immutable", "non_target_tracks_unchanged", "stale_or_cross_dataset_requests_fail_closed"],
+      "deferred_work_ids": ["freeform_split_merge_relabel", "counterfactual_state_restoration"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-06",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE06_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "38622a739accbdbcbf2ee0638fe15a81a56ec145d55697230d09542d0207c87d",
+      "bound_output_ids": ["contract_to_test_evidence_map", "atomic_generation_export", "version_negotiating_consumers", "release_attestation_prototype"],
+      "passed_stop_check_ids": ["missing_evidence_blocks_promotion", "partial_or_stale_exports_fail_closed", "candidate_and_official_views_are_distinct"],
+      "deferred_work_ids": ["production_private_key_operation", "extended_interoperability_formats"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-07",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE07_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "798779dc083c081c6cd39a339be7272be807f3d324341915f2d3adedbf5c6f3f",
+      "bound_output_ids": ["versioned_input_manifest", "truth_eligibility_table", "scale_pairing_map", "immutable_split_registry"],
+      "passed_stop_check_ids": ["three_scales_scored_separately", "paired_templates_not_treated_as_independent", "detector_output_not_used_for_truth_eligibility"],
+      "deferred_work_ids": ["additional_mechanism_families", "nonessential_visual_variants"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-08",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE08_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "a97e22dc9db5ba676f256bc15c4424c9fb9268e02d3fe86029a231dee5edaf40",
+      "bound_output_ids": ["grouped_calibration_evaluation", "event_and_support_metrics", "cluster_bootstrap", "ood_and_spike_perturbation_matrix"],
+      "passed_stop_check_ids": ["calibration_and_evaluation_groups_disjoint", "oracle_sensitivity_reported_separately", "split_merge_and_boundary_errors_reported"],
+      "deferred_work_ids": ["unbounded_simulation_catalog", "new_biological_claims"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-09",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE09_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "9c3bcc3c54b4e89136b860f1e8e2ee2cdbb74c5e130dee25a44a30bea38789e9",
+      "bound_output_ids": ["reference_input_hashes", "annotation_coverage_table", "train_track_eligibility", "single_rater_limitation_record"],
+      "passed_stop_check_ids": ["blank_labels_follow_frozen_other_policy", "sparse_unreviewed_trains_excluded_per_track", "single_patient_bilateral_scope_explicit"],
+      "deferred_work_ids": ["second_expert_annotation", "external_patient_cohort"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-10",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE10_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "a8dd4f4bfb3cc3e121195c9ce12d8b439b07b3a2dbb4f07d69ed4ad368907414",
+      "bound_output_ids": ["recording_group_logo", "cluster_bootstrap_intervals", "fair_comparator_protocol", "error_attribution_tables"],
+      "passed_stop_check_ids": ["label_blind_predictions", "heldout_groups_excluded_from_calibration", "detector_performance_and_adjudicated_agreement_separated"],
+      "deferred_work_ids": ["cross_patient_generalization", "multi_rater_agreement"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-11",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE11_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "e65119c72db1baf64fac527bcb03e62b41a467bb2a404b51b1cde090f6ab6408",
+      "bound_output_ids": ["regenerated_tables_figures", "runtime_memory_budget", "clean_package_build_check", "versioned_release_manifest"],
+      "passed_stop_check_ids": ["all_report_numbers_source_backed", "final_detector_hash_matches_validation", "formal_exports_are_atomic_and_reproducible"],
+      "deferred_work_ids": ["full_cross_os_matrix", "optional_neo_nwb_spikeinterface_exports"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-12",
+      "review_status": "bounded_framework_review_passed",
+      "review_record_path": "validation/publication_readiness/STAGE12_FRAMEWORK_REVIEW.md",
+      "review_record_sha256": "c1eee241342774fa79a4abca9ec22fb7639d041deafa16369028a6e2ceefef91",
+      "bound_output_ids": ["revised_manuscript", "reviewer_response_matrix", "claim_evidence_crosswalk", "reproducibility_archive"],
+      "passed_stop_check_ids": ["claims_match_final_estimands", "single_patient_single_rater_limits_explicit", "all_tables_figures_and_versions_resolve_to_frozen_artifacts"],
+      "deferred_work_ids": ["future_multi_expert_study", "future_external_validation"],
+      "authority_granted": false
+    }
+  ]
+}

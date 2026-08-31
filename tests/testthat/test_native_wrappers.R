@@ -100,3 +100,17 @@ test_that("native wrappers reject mismatched paired vector lengths", {
     "target_start and target_end"
   )
 })
+
+test_that("structure scanner rejects unsafe allocation plans before native allocation", {
+  small <- stpd_structure_scan_memory_estimate(1000, 2, 8)
+  expect_equal(small$capacity, 7000)
+  expect_lt(small$worst_case_total_bytes, stpd_native_structure_scan_memory_budget_bytes())
+  expect_invisible(stpd_assert_structure_scan_memory_budget(1000, 2, 8))
+
+  large <- stpd_structure_scan_memory_estimate(5000000, 2, 8)
+  expect_gt(large$worst_case_total_bytes, stpd_native_structure_scan_memory_budget_bytes())
+  expect_error(
+    stpd_assert_structure_scan_memory_budget(5000000, 2, 8),
+    "above the 512\\.0 MiB safety budget"
+  )
+})

@@ -21,7 +21,7 @@ test_that("event grammar burst detector registry exposes semantic implementation
   expect_equal(default_pipeline(params), "final")
 })
 
-test_that("event grammar burst detector preserves golden burst candidates", {
+test_that("event grammar burst detector adds structure-first evidence while preserving the golden threshold candidate", {
   detector <- getFromNamespace("stpd_event_grammar_detect_burst_events", "SpikeTrainPatternDetector")
   dispatch <- getFromNamespace("stpd_event_grammar_detect_burst_events_dispatch", "SpikeTrainPatternDetector")
   ds <- stpd_golden_test_dataset("middle_burst")
@@ -33,14 +33,22 @@ test_that("event grammar burst detector preserves golden burst candidates", {
   burst <- detector(dat, params, vp, min_isi_sec = min_isi, train = "train_1")
   explicit <- dispatch(dat, params, vp, min_isi_sec = min_isi, train = "train_1", pipeline = "final")
 
-  expect_equal(nrow(burst), 1L)
-  expect_equal(as.character(burst$final_label), "burst")
-  expect_equal(as.integer(burst$start_isi), 4L)
-  expect_equal(as.integer(burst$end_isi), 6L)
-  expect_equal(as.character(burst$candidate_id), "event_grammar_burst_opt2_1")
-  expect_equal(as.character(burst$boundary_type), "two_sided")
-  expect_equal(as.numeric(burst$priority), 1250)
-  expect_equal(as.numeric(burst$score), 20.83, tolerance = 1e-8)
+  structure <- burst[burst$candidate_layer == "structure_first_burst_screen", , drop = FALSE]
+  legacy <- burst[burst$candidate_id == "event_grammar_burst_opt2_1", , drop = FALSE]
+  expect_equal(nrow(structure), 1L)
+  expect_equal(nrow(legacy), 1L)
+  expect_equal(as.character(structure$final_label), "burst")
+  expect_equal(as.integer(structure$start_isi), 4L)
+  expect_equal(as.integer(structure$end_isi), 6L)
+  expect_equal(as.character(structure$boundary_type), "two_sided")
+  expect_true(structure$structure_first_no_seed_band_gate)
+  expect_match(structure$decision_path, "source=local_flank_contrast", fixed = TRUE)
+  expect_equal(as.character(legacy$final_label), "burst")
+  expect_equal(as.integer(legacy$start_isi), 4L)
+  expect_equal(as.integer(legacy$end_isi), 6L)
+  expect_equal(as.character(legacy$boundary_type), "two_sided")
+  expect_equal(as.numeric(legacy$priority), 1250)
+  expect_equal(as.numeric(legacy$score), 20.83, tolerance = 1e-8)
   expect_equal(
     burst[, intersect(names(burst), c("candidate_id", "final_label", "start_isi", "end_isi", "score", "priority"))],
     explicit[, intersect(names(explicit), c("candidate_id", "final_label", "start_isi", "end_isi", "score", "priority"))]
@@ -53,7 +61,7 @@ test_that("event grammar burst detector preserves golden burst candidates", {
   )
 })
 
-test_that("event grammar burst detector preserves edge-limited possible burst behavior", {
+test_that("short edge-limited candidates remain Review-only in both routes", {
   detector <- getFromNamespace("stpd_event_grammar_detect_burst_events", "SpikeTrainPatternDetector")
   ds <- stpd_golden_test_dataset("boundary_start")
   params <- default_params()
@@ -62,13 +70,26 @@ test_that("event grammar burst detector preserves edge-limited possible burst be
   vp <- stpd_event_grammar_params(dat, params, min_isi_sec = min_isi)
 
   burst <- detector(dat, params, vp, min_isi_sec = min_isi, train = "train_1")
-  expect_equal(nrow(burst), 1L)
-  expect_equal(as.character(burst$final_label), "possible_burst")
-  expect_equal(as.integer(burst$start_isi), 2L)
-  expect_equal(as.integer(burst$end_isi), 4L)
-  expect_equal(as.character(burst$boundary_type), "clean_one_sided_or_edge_limited")
-  expect_equal(as.numeric(burst$priority), 760)
-  expect_equal(as.character(burst$decision_path), "clean_one_sided_flank_contrast_pass_core_compact")
+  structure <- burst[burst$candidate_layer == "structure_first_burst_screen", , drop = FALSE]
+  legacy <- burst[burst$candidate_layer == "event_grammar_burst_event", , drop = FALSE]
+  expect_equal(nrow(structure), 1L)
+  expect_equal(nrow(legacy), 1L)
+  expect_equal(as.character(structure$final_label), "possible_burst")
+  expect_equal(as.integer(structure$start_isi), 2L)
+  expect_equal(as.integer(structure$end_isi), 4L)
+  expect_equal(as.character(structure$boundary_type), "train_start_endpoint")
+  expect_equal(as.character(legacy$final_label), "possible_burst")
+  expect_equal(as.integer(legacy$start_isi), 2L)
+  expect_equal(as.integer(legacy$end_isi), 4L)
+  expect_equal(as.character(legacy$boundary_type), "clean_one_sided_or_edge_limited")
+  expect_equal(as.numeric(legacy$priority), 760)
+  expect_equal(
+    as.character(legacy$decision_path),
+    "clean_one_sided_flank_contrast_pass_core_compact"
+  )
+  expect_false(legacy$threshold_elastic_acceptance)
+  expect_false(legacy$threshold_elastic_support_pass)
+  expect_identical(legacy$contrast_evidence_status, "clean_edge_limited")
 
   out <- run_detector_one_train(dat, params, min_isi_sec = min_isi, train = "train_1")
   expect_equal(

@@ -1,0 +1,4 @@
+"region","train_n","group_n","meanisi_isi_n","logisi_isi_n","stpd_isi_n","three_way_intersection_isi_n","three_way_union_isi_n","three_way_jaccard"
+"GPE",13,13,12035,23358,4213,1648,23372,0.070511723429745
+"GPI",21,13,7631,17155,5074,2088,17177,0.1215578971881
+"STN",23,13,8160,15413,8151,5757,15675,0.367272727272727

@@ -60,10 +60,27 @@ stpd_state_trajectory_embedding_choices <- function() {
   )
 }
 
-stpd_state_trajectory_axis_titles <- function(cols) {
+stpd_state_trajectory_axis_titles <- function(cols, lang = "en") {
   choices <- stpd_state_trajectory_axis_choices()
   titles <- names(choices)[match(cols, unname(choices))]
   titles[is.na(titles) | !nzchar(titles)] <- cols[is.na(titles) | !nzchar(titles)]
+  if (!identical(as.character(lang %||% "en")[1], "en")) {
+    zh_titles <- c(
+      burst_activity = "burst \u5BB6\u65CF\u653E\u7535\u7387\uFF08Hz/train\uFF09",
+      pause_activity = "pause \u5360\u636E\u6BD4\u4F8B",
+      tonic_activity = "tonic \u5BB6\u65CF\u653E\u7535\u7387\uFF08Hz/train\uFF09",
+      hf_spiking_activity = "HF spiking \u653E\u7535\u7387\uFF08Hz/train\uFF09",
+      hf_spiking_fraction = "HF spiking \u5360\u636E\u6BD4\u4F8B",
+      firing_rate_hz = "\u603B\u4F53\u653E\u7535\u7387\uFF08Hz/train\uFF09",
+      burst_fraction = "burst \u5BB6\u65CF\u5360\u636E\u6BD4\u4F8B",
+      tonic_fraction = "tonic \u5BB6\u65CF\u5360\u636E\u6BD4\u4F8B",
+      others_fraction = "others \u5360\u636E\u6BD4\u4F8B",
+      unlabeled_fraction = "\u672A\u6807\u8BB0\u5360\u636E\u6BD4\u4F8B"
+    )
+    mapped <- unname(zh_titles[as.character(cols)])
+    use <- !is.na(mapped)
+    titles[use] <- mapped[use]
+  }
   titles
 }
 
@@ -362,13 +379,19 @@ stpd_make_state_pair_analysis <- function(res,
 }
 
 stpd_state_pair_heatmap <- function(pair_res,
-                                    value = c("log2_enrichment", "observed_count", "observed_prob", "standardized_residual", "observed_expected_ratio")) {
+                                    value = c("log2_enrichment", "observed_count", "observed_prob", "standardized_residual", "observed_expected_ratio"),
+                                    lang = "en") {
   value <- match.arg(value)
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   mat <- pair_res$matrix %||% data.frame()
   states <- pair_res$states %||% stpd_state_trajectory_state_levels()
   if (is.null(mat) || nrow(mat) == 0L || !(value %in% names(mat))) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "No state-pair matrix available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u6682\u65E0\u53EF\u7528\u7684\u72B6\u6001\u5BF9\u77E9\u9635\u3002", "No state-pair matrix available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   train_count <- pair_res$train_count %||% length(pair_res$trains %||% character(0))
   if (!is.finite(train_count) || train_count <= 0L) train_count <- 2L
@@ -387,13 +410,17 @@ stpd_state_pair_heatmap <- function(pair_res,
                 dimnames = list(y, value))
     text <- matrix(rev(paste0(
       as.character(mat_top[[label_col]]),
-      "<br>observed: ", mat_top$observed_count,
-      "<br>expected: ", signif(mat_top$expected_count, 4),
-      "<br>observed/expected: ", signif(mat_top$observed_expected_ratio, 4),
-      "<br>log2 enrichment: ", signif(mat_top$log2_enrichment, 4),
-      "<br>FDR p: ", signif(mat_top$p_fdr, 4)
+      ui_copy("<br>\u89C2\u6D4B\u503C\uFF1A", "<br>observed: "), mat_top$observed_count,
+      ui_copy("<br>\u671F\u671B\u503C\uFF1A", "<br>expected: "), signif(mat_top$expected_count, 4),
+      ui_copy("<br>\u89C2\u6D4B/\u671F\u671B\uFF1A", "<br>observed/expected: "), signif(mat_top$observed_expected_ratio, 4),
+      ui_copy("<br>log2 \u5BCC\u96C6\uFF1A", "<br>log2 enrichment: "), signif(mat_top$log2_enrichment, 4),
+      ui_copy("<br>FDR p\uFF1A", "<br>FDR p: "), signif(mat_top$p_fdr, 4)
     )), ncol = 1, dimnames = list(y, value))
-    subtitle <- if (nrow(mat) > nrow(mat_top)) paste0("top ", nrow(mat_top), " of ", nrow(mat), " combinations") else paste0(nrow(mat_top), " combinations")
+    subtitle <- if (nrow(mat) > nrow(mat_top)) {
+      if (zh) paste0("\u524D ", nrow(mat_top), " / ", nrow(mat), " \u4E2A\u7EC4\u5408") else paste0("top ", nrow(mat_top), " of ", nrow(mat), " combinations")
+    } else {
+      if (zh) paste0(nrow(mat_top), " \u4E2A\u7EC4\u5408") else paste0(nrow(mat_top), " combinations")
+    }
     return(plot_ly(
       x = value,
       y = y,
@@ -405,14 +432,14 @@ stpd_state_pair_heatmap <- function(pair_res,
       source = "state_pair_heatmap"
     ) %>%
       layout(
-        title = list(text = paste0("Joint-state combinations: ", value, " (", subtitle, ")"), x = 0.02, font = list(size = 14)),
+        title = list(text = paste0(ui_copy("\u8054\u5408\u72B6\u6001\u7EC4\u5408\uFF1A", "Joint-state combinations: "), value, " (", subtitle, ")"), x = 0.02, font = list(size = 14)),
         xaxis = list(title = ""),
         yaxis = list(title = "", automargin = TRUE),
         margin = list(l = 220, r = 20, t = 60, b = 50),
         paper_bgcolor = "#ffffff",
         plot_bgcolor = "#ffffff"
       ) %>%
-      config(displaylogo = FALSE))
+      config(displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"))
   }
   z <- matrix(NA_real_, nrow = length(states), ncol = length(states), dimnames = list(states, states))
   text <- matrix("", nrow = length(states), ncol = length(states), dimnames = list(states, states))
@@ -420,12 +447,12 @@ stpd_state_pair_heatmap <- function(pair_res,
     z[mat$state_x[ii], mat$state_y[ii]] <- mat[[value]][ii]
     text[mat$state_x[ii], mat$state_y[ii]] <- paste0(
       pair_res$train_x, ": ", mat$state_x[ii],
-      "<br>", pair_res$train_y, if (pair_res$lag_bins == 0) ": " else paste0(" lag ", pair_res$lag_bins, " bins: "), mat$state_y[ii],
-      "<br>observed: ", mat$observed_count[ii],
-      "<br>expected: ", signif(mat$expected_count[ii], 4),
-      "<br>log2 enrichment: ", signif(mat$log2_enrichment[ii], 4),
-      "<br>odds ratio: ", signif(mat$odds_ratio[ii], 4),
-      "<br>FDR p: ", signif(mat$p_fdr[ii], 4)
+      "<br>", pair_res$train_y, if (pair_res$lag_bins == 0) ": " else paste0(ui_copy(" \u6EDE\u540E ", " lag "), pair_res$lag_bins, ui_copy(" \u4E2A\u5206\u7BB1\uFF1A", " bins: ")), mat$state_y[ii],
+      ui_copy("<br>\u89C2\u6D4B\u503C\uFF1A", "<br>observed: "), mat$observed_count[ii],
+      ui_copy("<br>\u671F\u671B\u503C\uFF1A", "<br>expected: "), signif(mat$expected_count[ii], 4),
+      ui_copy("<br>log2 \u5BCC\u96C6\uFF1A", "<br>log2 enrichment: "), signif(mat$log2_enrichment[ii], 4),
+      ui_copy("<br>\u4F18\u52BF\u6BD4\uFF1A", "<br>odds ratio: "), signif(mat$odds_ratio[ii], 4),
+      ui_copy("<br>FDR p\uFF1A", "<br>FDR p: "), signif(mat$p_fdr[ii], 4)
     )
   }
   plot_ly(
@@ -439,22 +466,27 @@ stpd_state_pair_heatmap <- function(pair_res,
     source = "state_pair_heatmap"
   ) %>%
     layout(
-      title = list(text = paste0("State-pair matrix: ", value), x = 0.02, font = list(size = 14)),
+      title = list(text = paste0(ui_copy("\u72B6\u6001\u5BF9\u77E9\u9635\uFF1A", "State-pair matrix: "), value), x = 0.02, font = list(size = 14)),
       xaxis = list(title = pair_res$train_y),
       yaxis = list(title = pair_res$train_x, autorange = "reversed"),
       margin = list(l = 80, r = 20, t = 60, b = 70),
       paper_bgcolor = "#ffffff",
       plot_bgcolor = "#ffffff"
     ) %>%
-    config(displaylogo = FALSE)
+    config(displaylogo = FALSE, locale = if (zh) "zh-CN" else "en")
 }
 
-stpd_state_pair_timeline_plot <- function(pair_res) {
+stpd_state_pair_timeline_plot <- function(pair_res, lang = "en") {
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   pairs <- pair_res$pair_bins %||% data.frame()
   states <- pair_res$states %||% stpd_state_trajectory_state_levels()
   if (is.null(pairs) || nrow(pairs) == 0L) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "No state-pair timeline available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u6682\u65E0\u53EF\u7528\u7684\u72B6\u6001\u5BF9\u65F6\u95F4\u7EBF\u3002", "No state-pair timeline available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   trains <- as.character(pair_res$trains %||% c(pair_res$train_x, pair_res$train_y))
   trains <- trains[nzchar(trains)]
@@ -466,8 +498,11 @@ stpd_state_pair_timeline_plot <- function(pair_res) {
   state_cols <- state_cols[unname(state_cols) %in% names(pairs)]
   trains <- names(state_cols)
   if (length(trains) == 0L) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "No state-pair timeline available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u6682\u65E0\u53EF\u7528\u7684\u72B6\u6001\u5BF9\u65F6\u95F4\u7EBF\u3002", "No state-pair timeline available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   state_code <- stats::setNames(seq_along(states), states)
   z <- do.call(rbind, lapply(unname(state_cols), function(col) {
@@ -487,7 +522,7 @@ stpd_state_pair_timeline_plot <- function(pair_res) {
     tcol <- unname(time_cols[tr])
     if (is.na(tcol) || !nzchar(tcol)) tcol <- "time_mid_sec"
     tt <- if (tcol %in% names(pairs)) pairs[[tcol]] else pairs$time_mid_sec
-    paste0(tr, "<br>time: ", signif(tt, 5), " s<br>state: ", pairs[[col]])
+    paste0(tr, ui_copy("<br>\u65F6\u95F4\uFF1A", "<br>time: "), signif(tt, 5), ui_copy(" s<br>\u72B6\u6001\uFF1A", " s<br>state: "), pairs[[col]])
   }))
   plot_ly(
     x = pairs$time_mid_sec,
@@ -503,24 +538,30 @@ stpd_state_pair_timeline_plot <- function(pair_res) {
     source = "state_pair_timeline"
   ) %>%
     layout(
-      title = list(text = if (length(trains) > 2L) "Joint-state timeline" else "State-pair timeline", x = 0.02, font = list(size = 14)),
-      xaxis = list(title = "time (s)"),
+      title = list(text = if (length(trains) > 2L) ui_copy("\u8054\u5408\u72B6\u6001\u65F6\u95F4\u7EBF", "Joint-state timeline") else ui_copy("\u72B6\u6001\u5BF9\u65F6\u95F4\u7EBF", "State-pair timeline"), x = 0.02, font = list(size = 14)),
+      xaxis = list(title = ui_copy("\u65F6\u95F4\uFF08s\uFF09", "time (s)")),
       yaxis = list(title = "", autorange = "reversed"),
       margin = list(l = 120, r = 20, t = 55, b = 55),
       paper_bgcolor = "#ffffff",
       plot_bgcolor = "#ffffff"
     ) %>%
-    config(displaylogo = FALSE, scrollZoom = TRUE)
+    config(displaylogo = FALSE, scrollZoom = TRUE, locale = if (zh) "zh-CN" else "en")
 }
 
 stpd_state_pair_transition_heatmap <- function(pair_res,
-                                               value = c("prob", "n")) {
+                                               value = c("prob", "n"),
+                                               lang = "en") {
   value <- match.arg(value)
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   trans <- pair_res$transitions %||% data.frame()
   states <- pair_res$states %||% stpd_state_trajectory_state_levels()
   if (is.null(trans) || nrow(trans) == 0L || !(value %in% names(trans))) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "No joint-state transitions available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u6682\u65E0\u53EF\u7528\u7684\u8054\u5408\u72B6\u6001\u8F6C\u79FB\u3002", "No joint-state transitions available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   train_count <- pair_res$train_count %||% length(pair_res$trains %||% character(0))
   if (isTRUE(train_count == 2L)) {
@@ -546,10 +587,10 @@ stpd_state_pair_transition_heatmap <- function(pair_res,
     if (!(from %in% observed_levels) || !(to %in% observed_levels)) next
     z[from, to] <- suppressWarnings(as.numeric(trans[[value]][ii]))
     text[from, to] <- paste0(
-      "from: ", from,
-      "<br>to: ", to,
-      "<br>count: ", trans$n[ii],
-      "<br>probability: ", signif(trans$prob[ii], 4)
+      ui_copy("\u8D77\u59CB\u72B6\u6001\uFF1A", "from: "), from,
+      ui_copy("<br>\u76EE\u6807\u72B6\u6001\uFF1A", "<br>to: "), to,
+      ui_copy("<br>\u8BA1\u6570\uFF1A", "<br>count: "), trans$n[ii],
+      ui_copy("<br>\u6982\u7387\uFF1A", "<br>probability: "), signif(trans$prob[ii], 4)
     )
   }
   plot_ly(
@@ -563,14 +604,14 @@ stpd_state_pair_transition_heatmap <- function(pair_res,
     source = "state_pair_transition_heatmap"
   ) %>%
     layout(
-      title = list(text = paste0("Joint-state transition matrix: ", value), x = 0.02, font = list(size = 14)),
-      xaxis = list(title = "next joint state"),
-      yaxis = list(title = "current joint state", autorange = "reversed"),
+      title = list(text = paste0(ui_copy("\u8054\u5408\u72B6\u6001\u8F6C\u79FB\u77E9\u9635\uFF1A", "Joint-state transition matrix: "), value), x = 0.02, font = list(size = 14)),
+      xaxis = list(title = ui_copy("\u4E0B\u4E00\u8054\u5408\u72B6\u6001", "next joint state")),
+      yaxis = list(title = ui_copy("\u5F53\u524D\u8054\u5408\u72B6\u6001", "current joint state"), autorange = "reversed"),
       margin = list(l = 150, r = 20, t = 60, b = 130),
       paper_bgcolor = "#ffffff",
       plot_bgcolor = "#ffffff"
     ) %>%
-    config(displaylogo = FALSE, scrollZoom = TRUE)
+    config(displaylogo = FALSE, scrollZoom = TRUE, locale = if (zh) "zh-CN" else "en")
 }
 
 stpd_state_trajectory_clean_feature_name <- function(x) {
@@ -1189,38 +1230,44 @@ stpd_make_state_trajectory <- function(trains,
 stpd_state_trajectory_plot <- function(res,
                                        coordinate_mode = c("pattern_axes", "pca", "fa", "isomap", "tsne", "umap"),
                                        axis_cols = NULL,
-                                       title = NULL) {
+                                       title = NULL,
+                                       lang = "en") {
   coordinate_mode <- match.arg(coordinate_mode)
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   dat <- res$features %||% res$bins %||% data.frame()
   if (is.null(dat) || nrow(dat) == 0L) {
-    return(layout(
-      plot_ly(),
-      scene = list(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE), zaxis = list(visible = FALSE)),
-      annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                              text = "No state trajectory can be built from the selected trains.",
-                              showarrow = FALSE))
+    return(config(
+      layout(
+        plot_ly(),
+        scene = list(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE), zaxis = list(visible = FALSE)),
+        annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                text = ui_copy("\u65E0\u6CD5\u4ECE\u6240\u9009 train \u6784\u5EFA\u72B6\u6001\u8F68\u8FF9\u3002", "No state trajectory can be built from the selected trains."),
+                                showarrow = FALSE))
+      ),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
     ))
   }
   if (identical(coordinate_mode, "pca")) {
     cols <- c("PC1", "PC2", "PC3")
     axis_titles <- cols
-    plot_title <- title %||% "PCA state trajectory"
+    plot_title <- title %||% ui_copy("PCA \u72B6\u6001\u8F68\u8FF9", "PCA state trajectory")
   } else if (identical(coordinate_mode, "fa")) {
     cols <- c("FA1", "FA2", "FA3")
     axis_titles <- cols
-    plot_title <- title %||% "Factor-analysis state trajectory"
+    plot_title <- title %||% ui_copy("\u56E0\u5B50\u5206\u6790\u72B6\u6001\u8F68\u8FF9", "Factor-analysis state trajectory")
   } else if (identical(coordinate_mode, "isomap")) {
     cols <- c("Isomap1", "Isomap2", "Isomap3")
     axis_titles <- cols
-    plot_title <- title %||% "Isomap state trajectory"
+    plot_title <- title %||% ui_copy("Isomap \u72B6\u6001\u8F68\u8FF9", "Isomap state trajectory")
   } else if (identical(coordinate_mode, "tsne")) {
     cols <- c("tSNE1", "tSNE2", "tSNE3")
     axis_titles <- cols
-    plot_title <- title %||% "t-SNE state trajectory"
+    plot_title <- title %||% ui_copy("t-SNE \u72B6\u6001\u8F68\u8FF9", "t-SNE state trajectory")
   } else if (identical(coordinate_mode, "umap")) {
     cols <- c("UMAP1", "UMAP2", "UMAP3")
     axis_titles <- cols
-    plot_title <- title %||% "UMAP state trajectory"
+    plot_title <- title %||% ui_copy("UMAP \u72B6\u6001\u8F68\u8FF9", "UMAP state trajectory")
   } else {
     default_cols <- c("burst_activity", "pause_activity", "tonic_activity")
     allowed_cols <- unname(stpd_state_trajectory_axis_choices())
@@ -1231,8 +1278,8 @@ stpd_state_trajectory_plot <- function(res,
       if (!(default_col %in% cols)) cols <- c(cols, default_col)
     }
     cols <- cols[seq_len(3L)]
-    axis_titles <- stpd_state_trajectory_axis_titles(cols)
-    plot_title <- title %||% "Custom pattern-state trajectory"
+    axis_titles <- stpd_state_trajectory_axis_titles(cols, lang = lang)
+    plot_title <- title %||% ui_copy("\u81EA\u5B9A\u4E49\u6A21\u5F0F\u72B6\u6001\u8F68\u8FF9", "Custom pattern-state trajectory")
   }
   missing_cols <- setdiff(cols, names(dat))
   if (length(missing_cols) > 0L) {
@@ -1245,21 +1292,21 @@ stpd_state_trajectory_plot <- function(res,
       plot_ly(),
       scene = list(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE), zaxis = list(visible = FALSE)),
       annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                              text = "Need at least two valid time bins for a trajectory.",
+                              text = ui_copy("\u72B6\u6001\u8F68\u8FF9\u81F3\u5C11\u9700\u8981\u4E24\u4E2A\u6709\u6548\u65F6\u95F4 bin\u3002", "Need at least two valid time bins for a trajectory."),
                               showarrow = FALSE))
     ))
   }
   dat$state_color <- stpd_state_trajectory_state_colors(dat$dominant_state)
   dat$hover <- paste0(
-    "bin ", dat$bin_id,
-    "<br>time: ", signif(dat$bin_start_sec, 5), "-", signif(dat$bin_end_sec, 5), " s",
-    "<br>state: ", dat$dominant_state,
-    "<br>firing rate: ", signif(dat$firing_rate_hz, 4), " Hz/train",
-    "<br>burst-family rate: ", signif(dat$burst_activity, 4),
-    "<br>pause occupancy: ", signif(dat$pause_activity, 4),
-    "<br>tonic-family rate: ", signif(dat$tonic_activity, 4),
-    "<br>HF spiking rate: ", signif(dat$hf_spiking_rate_hz, 4),
-    "<br>HF spiking occupancy: ", signif(dat$hf_spiking_fraction, 4)
+    ui_copy("\u65F6\u95F4\u7BB1\uFF1A", "bin "), dat$bin_id,
+    ui_copy("<br>\u65F6\u95F4\uFF1A", "<br>time: "), signif(dat$bin_start_sec, 5), "-", signif(dat$bin_end_sec, 5), " s",
+    ui_copy("<br>\u72B6\u6001\uFF1A", "<br>state: "), dat$dominant_state,
+    ui_copy("<br>\u653E\u7535\u7387\uFF1A", "<br>firing rate: "), signif(dat$firing_rate_hz, 4), " Hz/train",
+    ui_copy("<br>burst \u5BB6\u65CF\u653E\u7535\u7387\uFF1A", "<br>burst-family rate: "), signif(dat$burst_activity, 4),
+    ui_copy("<br>pause \u5360\u636E\u6BD4\u4F8B\uFF1A", "<br>pause occupancy: "), signif(dat$pause_activity, 4),
+    ui_copy("<br>tonic \u5BB6\u65CF\u653E\u7535\u7387\uFF1A", "<br>tonic-family rate: "), signif(dat$tonic_activity, 4),
+    ui_copy("<br>HF spiking \u653E\u7535\u7387\uFF1A", "<br>HF spiking rate: "), signif(dat$hf_spiking_rate_hz, 4),
+    ui_copy("<br>HF spiking \u5360\u636E\u6BD4\u4F8B\uFF1A", "<br>HF spiking occupancy: "), signif(dat$hf_spiking_fraction, 4)
   )
   p <- plot_ly(source = "state_trajectory")
   p <- add_trace(
@@ -1306,5 +1353,5 @@ stpd_state_trajectory_plot <- function(res,
     paper_bgcolor = "#ffffff",
     font = list(color = "#1f2937")
   ) %>%
-    config(displaylogo = FALSE, scrollZoom = TRUE)
+    config(displaylogo = FALSE, scrollZoom = TRUE, locale = if (zh) "zh-CN" else "en")
 }

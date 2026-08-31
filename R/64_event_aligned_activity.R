@@ -394,17 +394,62 @@ stpd_event_aligned_correlogram_from_prepared <- function(prepared,
   if (length(rows) == 0L) data.frame() else do.call(rbind, rows)
 }
 
-stpd_event_aligned_empty_plot <- function(message) {
-  plotly::layout(
+stpd_event_aligned_plot_is_zh <- function(lang = "en") {
+  !identical(as.character(lang %||% "en")[1], "en")
+}
+
+stpd_event_aligned_plot_copy <- function(lang = "en", zh, en) {
+  if (stpd_event_aligned_plot_is_zh(lang)) zh else en
+}
+
+stpd_event_aligned_plot_message <- function(message = NULL,
+                                            lang = "en",
+                                            fallback_zh = "\u6682\u65E0\u53EF\u7528\u6570\u636E\u3002",
+                                            fallback_en = "No data available.") {
+  message <- as.character(message %||% "")[1]
+  if (is.na(message) || !nzchar(trimws(message))) {
+    return(stpd_event_aligned_plot_copy(lang, fallback_zh, fallback_en))
+  }
+  if (!stpd_event_aligned_plot_is_zh(lang)) return(message)
+  known_messages <- c(
+    "No event-aligned activity can be computed." = "\u65E0\u6CD5\u8BA1\u7B97\u4E8B\u4EF6\u5BF9\u9F50\u6D3B\u52A8\u3002",
+    "No spike trains are loaded." = "\u5C1A\u672A\u52A0\u8F7D\u8109\u51B2\u5E8F\u5217\u3002",
+    "Select at least one spike train." = "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761\u8109\u51B2\u5E8F\u5217\u3002",
+    "No task-event columns were found. Load a dataset with Event / Event_* columns." =
+      "\u672A\u627E\u5230\u4EFB\u52A1\u4E8B\u4EF6\u5217\u3002\u8BF7\u52A0\u8F7D\u5305\u542B Event / Event_* \u5217\u7684\u6570\u636E\u96C6\u3002",
+    "No selected task events are available." = "\u6682\u65E0\u6240\u9009\u4EFB\u52A1\u4E8B\u4EF6\u3002"
+  )
+  translated <- unname(known_messages[message])
+  if (!is.na(translated)) translated else message
+}
+
+stpd_event_aligned_plot_config <- function(p, lang = "en") {
+  plotly::config(
+    p,
+    locale = if (stpd_event_aligned_plot_is_zh(lang)) "zh-CN" else "en"
+  )
+}
+
+stpd_event_aligned_empty_plot <- function(message = NULL,
+                                          lang = "en",
+                                          fallback_zh = "\u6682\u65E0\u53EF\u7528\u6570\u636E\u3002",
+                                          fallback_en = "No data available.") {
+  p <- plotly::layout(
     plotly::plot_ly(),
     annotations = list(list(
       x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-      text = as.character(message %||% "No data available."),
+      text = stpd_event_aligned_plot_message(
+        message,
+        lang = lang,
+        fallback_zh = fallback_zh,
+        fallback_en = fallback_en
+      ),
       showarrow = FALSE
     )),
     xaxis = list(visible = FALSE),
     yaxis = list(visible = FALSE)
   )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
 stpd_event_aligned_add_onset_shape <- function(p) {
@@ -417,9 +462,17 @@ stpd_event_aligned_add_onset_shape <- function(p) {
   )
 }
 
-stpd_event_aligned_raster_plot <- function(res, max_spikes = 5000L) {
+stpd_event_aligned_raster_plot <- function(res, max_spikes = 5000L, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$raster %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot(res$message %||% "No event-aligned spikes are available."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      res$message,
+      lang = lang,
+      fallback_zh = "\u6682\u65E0\u4E8B\u4EF6\u5BF9\u9F50\u7684 spike\u3002",
+      fallback_en = "No event-aligned spikes are available."
+    ))
+  }
   max_spikes <- suppressWarnings(as.integer(max_spikes %||% 5000L))[1]
   if (!is.finite(max_spikes) || max_spikes <= 0L) max_spikes <- 5000L
   if (nrow(dat) > max_spikes) {
@@ -429,11 +482,11 @@ stpd_event_aligned_raster_plot <- function(res, max_spikes = 5000L) {
   dat$y0 <- dat$raster_row - 0.35
   dat$y1 <- dat$raster_row + 0.35
   dat$hover <- paste0(
-    "event: ", dat$event_name,
-    "<br>trial: ", dat$trial_id,
-    "<br>train: ", dat$train,
-    "<br>t-event: ", signif(dat$rel_time_sec, 5), " s",
-    "<br>label: ", dat$pattern_label
+    ui_copy("\u4E8B\u4EF6\uFF1A", "event: "), dat$event_name,
+    ui_copy("<br>\u8BD5\u6B21\uFF1A", "<br>trial: "), dat$trial_id,
+    ui_copy("<br>spike train\uFF1A", "<br>train: "), dat$train,
+    ui_copy("<br>\u76F8\u5BF9\u4E8B\u4EF6\u65F6\u95F4\uFF1A", "<br>t-event: "), signif(dat$rel_time_sec, 5), " s",
+    ui_copy("<br>\u6807\u7B7E\uFF1A", "<br>label: "), dat$pattern_label
   )
   train_levels <- unique(dat[, c("train", "train_index"), drop = FALSE])
   train_levels <- train_levels[order(train_levels$train_index), , drop = FALSE]
@@ -453,18 +506,32 @@ stpd_event_aligned_raster_plot <- function(res, max_spikes = 5000L) {
     showlegend = FALSE
   )
   p <- stpd_event_aligned_add_onset_shape(p)
-  plotly::layout(
+  p <- plotly::layout(
     p,
-    title = list(text = "Event-aligned raster", x = 0.02),
-    xaxis = list(title = "Time from event onset (s)", zeroline = FALSE),
-    yaxis = list(title = "Spike train / event trials", tickvals = tickvals, ticktext = train_levels$train, autorange = "reversed"),
+    title = list(text = ui_copy("\u4E8B\u4EF6\u5BF9\u9F50 raster", "Event-aligned raster"), x = 0.02),
+    xaxis = list(title = ui_copy("\u8DDD\u4E8B\u4EF6\u8D77\u70B9\u7684\u65F6\u95F4\uFF08s\uFF09", "Time from event onset (s)"), zeroline = FALSE),
+    yaxis = list(
+      title = ui_copy("\u8109\u51B2\u5E8F\u5217 / \u4E8B\u4EF6\u8BD5\u6B21", "Spike train / event trials"),
+      tickvals = tickvals,
+      ticktext = train_levels$train,
+      autorange = "reversed"
+    ),
     margin = list(l = 90, r = 20, t = 45, b = 55)
   )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
-stpd_event_aligned_psth_plot <- function(res) {
+stpd_event_aligned_psth_plot <- function(res, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$psth %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot(res$message %||% "No PSTH can be computed."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      res$message,
+      lang = lang,
+      fallback_zh = "\u6682\u65E0\u53EF\u8BA1\u7B97\u7684 PSTH\u3002",
+      fallback_en = "No PSTH can be computed."
+    ))
+  }
   dat$lower <- pmax(0, dat$mean_rate_hz - ifelse(is.finite(dat$sem_rate_hz), dat$sem_rate_hz, 0))
   dat$upper <- dat$mean_rate_hz + ifelse(is.finite(dat$sem_rate_hz), dat$sem_rate_hz, 0)
   trains <- unique(as.character(dat$train))
@@ -486,23 +553,36 @@ stpd_event_aligned_psth_plot <- function(res) {
       type = "scatter", mode = "lines",
       line = list(color = col, width = 1.5),
       name = trains[ii],
-      hovertemplate = paste0(trains[ii], "<br>t=%{x:.3f}s<br>rate=%{y:.3f} Hz<extra></extra>")
+      hovertemplate = paste0(
+        trains[ii],
+        ui_copy("<br>\u65F6\u95F4=%{x:.3f}s<br>\u653E\u7535\u7387=%{y:.3f} Hz<extra></extra>",
+                "<br>t=%{x:.3f}s<br>rate=%{y:.3f} Hz<extra></extra>")
+      )
     )
   }
   p <- stpd_event_aligned_add_onset_shape(p)
-  plotly::layout(
+  p <- plotly::layout(
     p,
-    title = list(text = "Peri-event firing rate / PSTH by neuron", x = 0.02),
-    xaxis = list(title = "Time from event onset (s)", zeroline = FALSE),
-    yaxis = list(title = "Firing rate (Hz)"),
+    title = list(text = ui_copy("\u5404\u795E\u7ECF\u5143\u7684\u4E8B\u4EF6\u5468\u56F4\u653E\u7535\u7387 / PSTH", "Peri-event firing rate / PSTH by neuron"), x = 0.02),
+    xaxis = list(title = ui_copy("\u8DDD\u4E8B\u4EF6\u8D77\u70B9\u7684\u65F6\u95F4\uFF08s\uFF09", "Time from event onset (s)"), zeroline = FALSE),
+    yaxis = list(title = ui_copy("\u653E\u7535\u7387\uFF08Hz\uFF09", "Firing rate (Hz)")),
     legend = list(orientation = "h", x = 0, y = 1.08),
     margin = list(l = 70, r = 20, t = 60, b = 55)
   )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
-stpd_event_aligned_population_plot <- function(res) {
+stpd_event_aligned_population_plot <- function(res, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$population %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot(res$message %||% "No population-rate summary can be computed."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      res$message,
+      lang = lang,
+      fallback_zh = "\u6682\u65E0\u53EF\u8BA1\u7B97\u7684\u7FA4\u4F53\u653E\u7535\u7387\u6458\u8981\u3002",
+      fallback_en = "No population-rate summary can be computed."
+    ))
+  }
   dat$lower <- pmax(0, dat$mean_rate_hz - ifelse(is.finite(dat$sem_rate_hz), dat$sem_rate_hz, 0))
   dat$upper <- dat$mean_rate_hz + ifelse(is.finite(dat$sem_rate_hz), dat$sem_rate_hz, 0)
   p <- plotly::plot_ly(source = "event_aligned_population")
@@ -518,22 +598,34 @@ stpd_event_aligned_population_plot <- function(res) {
     type = "scatter", mode = "lines+markers",
     line = list(color = "#71B436", width = 2),
     marker = list(size = 4, color = "#71B436"),
-    name = "Population mean",
-    hovertemplate = "t=%{x:.3f}s<br>mean rate=%{y:.3f} Hz/neuron<extra></extra>"
+    name = ui_copy("\u7FA4\u4F53\u5747\u503C", "Population mean"),
+    hovertemplate = ui_copy(
+      "\u65F6\u95F4=%{x:.3f}s<br>\u5E73\u5747\u653E\u7535\u7387=%{y:.3f} Hz/\u795E\u7ECF\u5143<extra></extra>",
+      "t=%{x:.3f}s<br>mean rate=%{y:.3f} Hz/neuron<extra></extra>"
+    )
   )
   p <- stpd_event_aligned_add_onset_shape(p)
-  plotly::layout(
+  p <- plotly::layout(
     p,
-    title = list(text = "Population mean firing rate +/- SEM", x = 0.02),
-    xaxis = list(title = "Time from event onset (s)", zeroline = FALSE),
-    yaxis = list(title = "Mean rate (Hz/neuron)"),
+    title = list(text = ui_copy("\u7FA4\u4F53\u5E73\u5747\u653E\u7535\u7387 \u00B1 SEM", "Population mean firing rate +/- SEM"), x = 0.02),
+    xaxis = list(title = ui_copy("\u8DDD\u4E8B\u4EF6\u8D77\u70B9\u7684\u65F6\u95F4\uFF08s\uFF09", "Time from event onset (s)"), zeroline = FALSE),
+    yaxis = list(title = ui_copy("\u5E73\u5747\u653E\u7535\u7387\uFF08Hz/\u795E\u7ECF\u5143\uFF09", "Mean rate (Hz/neuron)")),
     margin = list(l = 70, r = 20, t = 45, b = 55)
   )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
-stpd_event_aligned_heatmap_plot <- function(res) {
+stpd_event_aligned_heatmap_plot <- function(res, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$heatmap %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot(res$message %||% "No neuron heatmap can be computed."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      res$message,
+      lang = lang,
+      fallback_zh = "\u6682\u65E0\u53EF\u8BA1\u7B97\u7684\u795E\u7ECF\u5143\u70ED\u56FE\u3002",
+      fallback_en = "No neuron heatmap can be computed."
+    ))
+  }
   trains <- unique(dat$train[order(dat$train_index)])
   times <- sort(unique(dat$rel_time_sec))
   z <- matrix(NA_real_, nrow = length(trains), ncol = length(times), dimnames = list(trains, times))
@@ -549,62 +641,90 @@ stpd_event_aligned_heatmap_plot <- function(res) {
     zmin = -z_lim,
     zmax = z_lim,
     colorscale = list(c(0, "#2E4780"), c(0.5, "#FFFFFF"), c(1, "#CC6F47")),
-    colorbar = list(title = "baseline z"),
-    hovertemplate = "train=%{y}<br>t=%{x:.3f}s<br>z=%{z:.3f}<extra></extra>",
+    colorbar = list(title = ui_copy("\u57FA\u7EBF z", "baseline z")),
+    hovertemplate = ui_copy(
+      "\u8109\u51B2\u5E8F\u5217=%{y}<br>\u65F6\u95F4=%{x:.3f}s<br>z=%{z:.3f}<extra></extra>",
+      "train=%{y}<br>t=%{x:.3f}s<br>z=%{z:.3f}<extra></extra>"
+    ),
     source = "event_aligned_heatmap"
   )
   p <- stpd_event_aligned_add_onset_shape(p)
-  plotly::layout(
+  p <- plotly::layout(
     p,
-    title = list(text = "Neuron-wise z-scored firing-rate heatmap", x = 0.02),
-    xaxis = list(title = "Time from event onset (s)", zeroline = FALSE),
-    yaxis = list(title = "Spike train / neuron"),
+    title = list(text = ui_copy("\u795E\u7ECF\u5143\u7EA7 z \u6807\u51C6\u5316\u653E\u7535\u7387\u70ED\u56FE", "Neuron-wise z-scored firing-rate heatmap"), x = 0.02),
+    xaxis = list(title = ui_copy("\u8DDD\u4E8B\u4EF6\u8D77\u70B9\u7684\u65F6\u95F4\uFF08s\uFF09", "Time from event onset (s)"), zeroline = FALSE),
+    yaxis = list(title = ui_copy("\u8109\u51B2\u5E8F\u5217 / \u795E\u7ECF\u5143", "Spike train / neuron")),
     margin = list(l = 110, r = 20, t = 45, b = 55)
   )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
-stpd_event_aligned_correlation_plot <- function(res) {
+stpd_event_aligned_correlation_plot <- function(res, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$correlation %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot("Select at least two trains to compute spike-count correlation."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      lang = lang,
+      fallback_zh = "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E24\u6761\u8109\u51B2\u5E8F\u5217\uFF0C\u4EE5\u8BA1\u7B97\u8109\u51B2\u8BA1\u6570\u76F8\u5173\u6027\u3002",
+      fallback_en = "Select at least two trains to compute spike-count correlation."
+    ))
+  }
   trains <- unique(c(as.character(dat$train_x), as.character(dat$train_y)))
   z <- matrix(NA_real_, nrow = length(trains), ncol = length(trains), dimnames = list(trains, trains))
   for (ii in seq_len(nrow(dat))) z[dat$train_x[ii], dat$train_y[ii]] <- dat$correlation[ii]
-  plotly::plot_ly(
+  p <- plotly::plot_ly(
     x = trains, y = trains, z = z,
     type = "heatmap",
     zmin = -1, zmax = 1,
     colorscale = list(c(0, "#2E4780"), c(0.5, "#FFFFFF"), c(1, "#BD569B")),
     colorbar = list(title = "r"),
-    hovertemplate = "%{y} vs %{x}<br>r=%{z:.3f}<extra></extra>",
+    hovertemplate = ui_copy(
+      "%{y} \u4E0E %{x}<br>r=%{z:.3f}<extra></extra>",
+      "%{y} vs %{x}<br>r=%{z:.3f}<extra></extra>"
+    ),
     source = "event_aligned_correlation"
-  ) %>%
-    plotly::layout(
-      title = list(text = "Spike-count correlation across event bins", x = 0.02),
-      xaxis = list(title = ""),
-      yaxis = list(title = ""),
-      margin = list(l = 110, r = 20, t = 45, b = 80)
-    )
+  )
+  p <- plotly::layout(
+    p,
+    title = list(text = ui_copy("\u4E8B\u4EF6\u65F6\u95F4\u7BB1\u95F4\u7684\u8109\u51B2\u8BA1\u6570\u76F8\u5173\u6027", "Spike-count correlation across event bins"), x = 0.02),
+    xaxis = list(title = ""),
+    yaxis = list(title = ""),
+    margin = list(l = 110, r = 20, t = 45, b = 80)
+  )
+  stpd_event_aligned_plot_config(p, lang)
 }
 
-stpd_event_aligned_correlogram_plot <- function(res) {
+stpd_event_aligned_correlogram_plot <- function(res, lang = "en") {
+  ui_copy <- function(zh, en) stpd_event_aligned_plot_copy(lang, zh, en)
   dat <- as.data.frame(res$correlogram %||% data.frame(), stringsAsFactors = FALSE)
-  if (nrow(dat) == 0L) return(stpd_event_aligned_empty_plot("Select at least two trains to compute cross-correlograms."))
+  if (nrow(dat) == 0L) {
+    return(stpd_event_aligned_empty_plot(
+      lang = lang,
+      fallback_zh = "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E24\u6761\u8109\u51B2\u5E8F\u5217\uFF0C\u4EE5\u8BA1\u7B97\u4E92\u76F8\u5173\u56FE\u3002",
+      fallback_en = "Select at least two trains to compute cross-correlograms."
+    ))
+  }
   pairs <- unique(as.character(dat$pair))
   lags <- sort(unique(dat$lag_sec))
   z <- matrix(0, nrow = length(pairs), ncol = length(lags), dimnames = list(pairs, lags))
   for (ii in seq_len(nrow(dat))) z[as.character(dat$pair[ii]), as.character(dat$lag_sec[ii])] <- dat$count_per_event[ii]
-  plotly::plot_ly(
+  p <- plotly::plot_ly(
     x = lags, y = pairs, z = z,
     type = "heatmap",
     colorscale = "Viridis",
-    colorbar = list(title = "count/event"),
-    hovertemplate = "pair=%{y}<br>lag=%{x:.4f}s<br>count/event=%{z:.3f}<extra></extra>",
+    colorbar = list(title = ui_copy("\u8BA1\u6570/\u4E8B\u4EF6", "count/event")),
+    hovertemplate = ui_copy(
+      "\u914D\u5BF9=%{y}<br>\u65F6\u6EDE=%{x:.4f}s<br>\u8BA1\u6570/\u4E8B\u4EF6=%{z:.3f}<extra></extra>",
+      "pair=%{y}<br>lag=%{x:.4f}s<br>count/event=%{z:.3f}<extra></extra>"
+    ),
     source = "event_aligned_correlogram"
-  ) %>%
-    plotly::layout(
-      title = list(text = "Cross-correlogram around task events", x = 0.02),
-      xaxis = list(title = "Lag target - reference (s)", zeroline = TRUE),
-      yaxis = list(title = "Train pair"),
-      margin = list(l = 160, r = 20, t = 45, b = 55)
-    )
+  )
+  p <- plotly::layout(
+    p,
+    title = list(text = ui_copy("\u4EFB\u52A1\u4E8B\u4EF6\u5468\u56F4\u7684\u4E92\u76F8\u5173\u56FE", "Cross-correlogram around task events"), x = 0.02),
+    xaxis = list(title = ui_copy("\u65F6\u6EDE\uFF1A\u76EE\u6807 - \u53C2\u8003\uFF08s\uFF09", "Lag target - reference (s)"), zeroline = TRUE),
+    yaxis = list(title = ui_copy("\u8109\u51B2\u5E8F\u5217\u914D\u5BF9", "Train pair")),
+    margin = list(l = 160, r = 20, t = 45, b = 55)
+  )
+  stpd_event_aligned_plot_config(p, lang)
 }

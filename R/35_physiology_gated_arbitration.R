@@ -54,8 +54,8 @@ stpd_arbitration_train_phenotype <- function(dat, min_isi_sec = 0.001) {
   med <- stats::median(x, na.rm = TRUE)
   q10 <- as.numeric(stats::quantile(x, 0.10, na.rm = TRUE, names = FALSE))
   q90 <- as.numeric(stats::quantile(x, 0.90, na.rm = TRUE, names = FALSE))
-  fast_fraction <- mean(x <= 0.020, na.rm = TRUE)
-  pause_fraction <- mean(x >= max(0.100, 2.5 * med), na.rm = TRUE)
+  fast_fraction <- mean(x <= 0.50 * med, na.rm = TRUE)
+  pause_fraction <- mean(x >= 2.5 * med, na.rm = TRUE)
   lv <- calc_LV(x)
   cv <- calc_CV(x)
   prior <- "mixed"

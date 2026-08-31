@@ -1,0 +1,15 @@
+"Level","Component","N","Median_Duration_u","Median_Spikes","Median_ISI_u","Median_Rate_per_B","Median_CV"
+"primary_event","Burst / burst_in_hfs / moderate",14,0.259940332132401,7,,,
+"primary_event","Burst / burst_in_hfs / strong",13,0.206291626715242,6,,,
+"primary_event","Burst / burst_in_hfs / weak",13,0.321856683790287,6,,,
+"primary_event","Burst / standalone_burst / moderate",20,0.565518550218323,7,,,
+"primary_event","Burst / standalone_burst / strong",20,0.46140479787819,7,,,
+"primary_event","Burst / standalone_burst / weak",20,0.705746344275138,6,,,
+"primary_event","Pause / canonical",40,3.61125646128785,2,,,
+"primary_event","Pause / complex_multi_gap",10,5.90392071157694,3,,,
+"state","Broad_HFS / intermediate",20,6.17144904981871,32,0.210806449126357,4.74395125179499,0.531274226529788
+"state","Broad_HFS / irregular",20,5.52974372696914,32.5,0.18631023654505,5.36778483685639,0.718910261493553
+"state","Broad_HFS / regular",20,6.61604390767893,33,0.223138417356611,4.48187333237969,0.453735446807701
+"state","Tonic / generic_stress",20,11.0135366278477,13.5,0.853659946123727,1.17145415847718,0.217455881427188
+"state","Tonic / stn_like_empirical",20,4.57351888943068,12.5,0.386330642813993,2.58966712795809,0.154872621232673
+"secondary_event","Contextual_Separator",20,0.543559490400367,2,0.543559490400367,1.83973426257914,

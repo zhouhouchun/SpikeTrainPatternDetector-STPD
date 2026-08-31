@@ -79,6 +79,351 @@ stpd_event_grammar_valid_isis_by_train <- function(trains, min_isi_sec = 0.001) 
   out
 }
 
+# Detect an independently separated upper ISI tail without consulting labels.
+# The rule operates on log(ISI), so both the full-data threshold and its
+# leave-one-train-out stability audit are equivariant to a change of time unit.
+# A fixed top quantile is retained only as a soft fallback when no reproducible
+# density valley exists; it is not evidence of a distinct strong-Pause tail.
+stpd_event_grammar_pause_strong_tail <- function(
+    vals_by_train, min_isi_sec = 0.001, density_n = 4096L) {
+  clean <- lapply(vals_by_train, function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x[is.finite(x) & x >= min_isi_sec]
+  })
+  clean <- clean[lengths(clean) > 0L]
+  pooled <- unlist(clean, use.names = FALSE)
+  q90 <- stpd_event_grammar_q(pooled, 0.90, NA_real_)
+  q95 <- stpd_event_grammar_q(pooled, 0.95, q90)
+
+  unresolved <- function(status, full = NULL, fold = NULL) {
+    list(
+      threshold_sec = q95,
+      status = status,
+      method = "q95_soft_fallback_no_strong_tail",
+      full_candidate_sec = if (is.null(full)) NA_real_ else full$threshold_sec,
+      upper_mass = if (is.null(full)) NA_real_ else full$upper_mass,
+      valley_depth = if (is.null(full)) NA_real_ else full$depth,
+      threshold_to_entry_ratio = if (is.null(full)) NA_real_ else full$ratio,
+      jackknife_active_n = if (is.null(fold)) 0L else sum(fold$active),
+      jackknife_train_n = length(clean),
+      jackknife_activation_rate = if (is.null(fold) || !nrow(fold)) {
+        NA_real_
+      } else mean(fold$active),
+      jackknife_log_threshold_sd = if (is.null(fold) || sum(fold$active) < 2L) {
+        NA_real_
+      } else stats::sd(log(fold$threshold_sec[fold$active])),
+      upper_tail_train_n = if (is.null(full)) 0L else sum(vapply(
+        clean, function(x) any(x >= full$threshold_sec), logical(1)
+      )),
+      upper_tail_train_required = max(3L, as.integer(ceiling(0.50 * length(clean)))),
+      entry_q90_sec = q90,
+      fallback_q95_sec = q95
+    )
+  }
+
+  single_fit <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x) & x >= min_isi_sec]
+    if (length(x) < 200L || length(unique(x)) < 32L) return(NULL)
+    z_raw <- log(x)
+    z_center <- stats::median(z_raw)
+    # Density operates on centered, rounded log ratios.  The rounding removes
+    # harmless floating-point translation noise, so multiplying all ISIs by a
+    # constant cannot select a neighbouring numerical grid valley.
+    z <- round(z_raw - z_center, digits = 12L)
+    limits <- suppressWarnings(as.numeric(stats::quantile(
+      z, c(0.001, 0.999), na.rm = TRUE, names = FALSE, type = 7
+    )))
+    if (length(limits) != 2L || any(!is.finite(limits)) ||
+        limits[2L] <= limits[1L]) return(NULL)
+    z_fit <- z[z >= limits[1L] & z <= limits[2L]]
+    if (length(z_fit) < 200L || length(unique(z_fit)) < 3L) return(NULL)
+    den <- tryCatch(
+      stats::density(
+        z_fit, bw = "SJ", n = as.integer(density_n),
+        from = limits[1L], to = limits[2L]
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(den) || length(den$x) < 5L || any(!is.finite(den$y))) {
+      return(NULL)
+    }
+    turn <- diff(sign(diff(den$y)))
+    peaks <- which(turn < 0) + 1L
+    valleys <- which(turn > 0) + 1L
+    if (!length(peaks) || !length(valleys)) return(NULL)
+    local_q90 <- stpd_event_grammar_q(x, 0.90, NA_real_)
+    local_q95 <- stpd_event_grammar_q(x, 0.95, local_q90)
+    candidates <- lapply(valleys, function(m) {
+      left <- peaks[peaks < m]
+      right <- peaks[peaks > m]
+      if (!length(left) || !length(right)) return(NULL)
+      left <- max(left); right <- min(right)
+      threshold <- exp(z_center) * exp(den$x[m])
+      upper_mass <- mean(x >= threshold)
+      shoulder <- min(den$y[left], den$y[right])
+      depth <- if (is.finite(shoulder) && shoulder > 0) {
+        1 - den$y[m] / shoulder
+      } else NA_real_
+      ratio <- threshold / local_q90
+      eligible <- is.finite(threshold) && is.finite(local_q95) &&
+        threshold >= local_q95 && is.finite(upper_mass) &&
+        upper_mass >= 0.005 && upper_mass <= 0.05 &&
+        is.finite(depth) && depth >= 0.05 &&
+        is.finite(ratio) && ratio >= 1.50
+      data.frame(
+        threshold_sec = threshold, upper_mass = upper_mass,
+        depth = depth, ratio = ratio, grid_index = as.integer(m),
+        eligible = eligible, stringsAsFactors = FALSE
+      )
+    })
+    candidates <- dplyr::bind_rows(candidates)
+    if (!nrow(candidates)) return(NULL)
+    candidates <- candidates[candidates$eligible, , drop = FALSE]
+    if (!nrow(candidates)) return(NULL)
+    candidates <- candidates[
+      order(-candidates$depth, candidates$threshold_sec,
+            candidates$grid_index, method = "radix"),
+      , drop = FALSE
+    ]
+    as.list(candidates[1L, , drop = FALSE])
+  }
+
+  if (length(pooled) < 200L || length(clean) < 5L) {
+    return(unresolved("unresolved_insufficient_samples_or_trains"))
+  }
+  full <- single_fit(pooled)
+  if (is.null(full)) return(unresolved("unresolved_no_eligible_full_data_valley"))
+  upper_tail_train_n <- sum(vapply(
+    clean, function(x) any(x >= full$threshold_sec), logical(1)
+  ))
+  upper_tail_train_required <- max(
+    3L, as.integer(ceiling(0.50 * length(clean)))
+  )
+  if (upper_tail_train_n < upper_tail_train_required) {
+    return(unresolved("unresolved_upper_tail_cluster_concentrated", full))
+  }
+
+  fold_rows <- lapply(seq_along(clean), function(i) {
+    fit <- single_fit(unlist(clean[-i], use.names = FALSE))
+    data.frame(
+      omitted_train = names(clean)[i] %||% as.character(i),
+      active = !is.null(fit),
+      threshold_sec = if (is.null(fit)) NA_real_ else fit$threshold_sec,
+      stringsAsFactors = FALSE
+    )
+  })
+  folds <- dplyr::bind_rows(fold_rows)
+  active_n <- sum(folds$active)
+  required_n <- max(4L, as.integer(ceiling(0.80 * length(clean))))
+  activation_rate <- mean(folds$active)
+  log_sd <- if (active_n >= 2L) {
+    stats::sd(log(folds$threshold_sec[folds$active]))
+  } else NA_real_
+  stable <- active_n >= required_n && activation_rate >= 0.80 &&
+    is.finite(log_sd) && log_sd <= 0.10
+  if (!stable) {
+    return(unresolved("unresolved_unstable_leave_one_train_out", full, folds))
+  }
+  list(
+    threshold_sec = as.numeric(full$threshold_sec),
+    status = "resolved_stable_log_kde_upper_tail",
+    method = "log_isi_sj_kde_valley_with_cluster_jackknife",
+    full_candidate_sec = as.numeric(full$threshold_sec),
+    upper_mass = as.numeric(full$upper_mass),
+    valley_depth = as.numeric(full$depth),
+    threshold_to_entry_ratio = as.numeric(full$ratio),
+    jackknife_active_n = as.integer(active_n),
+    jackknife_train_n = as.integer(length(clean)),
+    jackknife_activation_rate = as.numeric(activation_rate),
+    jackknife_log_threshold_sd = as.numeric(log_sd),
+    upper_tail_train_n = as.integer(upper_tail_train_n),
+    upper_tail_train_required = as.integer(upper_tail_train_required),
+    entry_q90_sec = q90,
+    fallback_q95_sec = q95
+  )
+}
+
+# Propose the direct-support envelope for automatic Broad HFS without labels.
+# A reproducible lower-tail density valley is preferred when the pooled ISI
+# distribution contains one.  If no such valley survives leave-one-train-out
+# stability, q75 is retained only as a proposal: candidate-local background,
+# fast-core evidence, compactness, and connector budgets remain authoritative.
+# All operations are on quantiles or centred log ratios and are therefore
+# equivariant to a change of time unit.
+stpd_event_grammar_hfs_envelope_proposal <- function(
+    vals_by_train, min_isi_sec = 0.001, density_n = 4096L) {
+  clean <- lapply(vals_by_train, function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x[is.finite(x) & x >= min_isi_sec]
+  })
+  clean <- clean[lengths(clean) > 0L]
+  pooled <- unlist(clean, use.names = FALSE)
+  q25 <- stpd_event_grammar_q(pooled, 0.25, NA_real_)
+  q75 <- stpd_event_grammar_q(pooled, 0.75, q25)
+  q90 <- stpd_event_grammar_q(pooled, 0.90, q75)
+
+  bounded_connector <- function(envelope) {
+    if (!is.finite(envelope) || envelope <= 0) return(NA_real_)
+    out <- min(q90, 1.35 * envelope, na.rm = TRUE)
+    if (!is.finite(out) || out < envelope) out <- envelope
+    out
+  }
+  fallback <- function(status, full = NULL, folds = NULL) {
+    list(
+      envelope_upper_sec = q75,
+      connector_upper_sec = bounded_connector(q75),
+      status = status,
+      method = "pooled_q75_proposal_no_stable_lower_tail_valley",
+      valley_candidate_sec = if (is.null(full)) NA_real_ else full$threshold_sec,
+      valley_depth = if (is.null(full)) NA_real_ else full$depth,
+      valley_lower_mass = if (is.null(full)) NA_real_ else full$lower_mass,
+      jackknife_active_n = if (is.null(folds)) 0L else sum(folds$active),
+      jackknife_train_n = length(clean),
+      jackknife_activation_rate = if (is.null(folds) || !nrow(folds)) {
+        NA_real_
+      } else mean(folds$active),
+      jackknife_log_threshold_sd = if (is.null(folds) ||
+          sum(folds$active) < 2L) {
+        NA_real_
+      } else stats::sd(log(folds$threshold_sec[folds$active])),
+      jackknife_full_to_fold_center_log_deviation = if (is.null(full) ||
+          is.null(folds) || sum(folds$active) < 1L) {
+        NA_real_
+      } else {
+        abs(log(full$threshold_sec / stats::median(
+          folds$threshold_sec[folds$active], na.rm = TRUE
+        )))
+      },
+      fallback_q75_sec = q75,
+      connector_q90_sec = q90,
+      connector_to_envelope_ratio = bounded_connector(q75) / q75
+    )
+  }
+
+  single_fit <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x) & x >= min_isi_sec]
+    if (length(x) < 200L || length(unique(x)) < 32L) return(NULL)
+    local_q25 <- stpd_event_grammar_q(x, 0.25, NA_real_)
+    local_q75 <- stpd_event_grammar_q(x, 0.75, NA_real_)
+    z_raw <- log(x)
+    z_center <- stats::median(z_raw)
+    z <- round(z_raw - z_center, digits = 12L)
+    limits <- suppressWarnings(as.numeric(stats::quantile(
+      z, c(0.001, 0.999), na.rm = TRUE, names = FALSE, type = 7
+    )))
+    if (length(limits) != 2L || any(!is.finite(limits)) ||
+        limits[2L] <= limits[1L]) return(NULL)
+    z_fit <- z[z >= limits[1L] & z <= limits[2L]]
+    den <- tryCatch(
+      stats::density(
+        z_fit, bw = "nrd0", n = as.integer(density_n),
+        from = limits[1L], to = limits[2L]
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(den) || length(den$x) < 5L || any(!is.finite(den$y))) {
+      return(NULL)
+    }
+    turn <- diff(sign(diff(den$y)))
+    peaks <- which(turn < 0) + 1L
+    valleys <- which(turn > 0) + 1L
+    if (!length(peaks) || !length(valleys)) return(NULL)
+    candidates <- lapply(valleys, function(m) {
+      left <- peaks[peaks < m]
+      right <- peaks[peaks > m]
+      if (!length(left) || !length(right)) return(NULL)
+      left <- max(left)
+      right <- min(right)
+      threshold <- exp(z_center) * exp(den$x[m])
+      lower_mass <- mean(x <= threshold)
+      shoulder <- min(den$y[left], den$y[right])
+      depth <- if (is.finite(shoulder) && shoulder > 0) {
+        1 - den$y[m] / shoulder
+      } else NA_real_
+      eligible <- is.finite(threshold) && is.finite(local_q25) &&
+        is.finite(local_q75) && threshold > local_q25 &&
+        threshold <= local_q75 && lower_mass >= 0.25 &&
+        lower_mass <= 0.75 && is.finite(depth) && depth >= 0.10
+      data.frame(
+        threshold_sec = threshold, lower_mass = lower_mass,
+        depth = depth, grid_index = as.integer(m), eligible = eligible,
+        stringsAsFactors = FALSE
+      )
+    })
+    candidates <- dplyr::bind_rows(candidates)
+    if (!nrow(candidates)) return(NULL)
+    candidates <- candidates[candidates$eligible, , drop = FALSE]
+    if (!nrow(candidates)) return(NULL)
+    # The first eligible valley after the low-ISI peak is the conservative
+    # boundary; a later valley would absorb the intermediate State by design.
+    candidates <- candidates[
+      order(candidates$threshold_sec, -candidates$depth,
+            candidates$grid_index, method = "radix"),
+      , drop = FALSE
+    ]
+    as.list(candidates[1L, , drop = FALSE])
+  }
+
+  if (length(pooled) < 200L || length(clean) < 5L) {
+    return(fallback("fallback_q75_insufficient_samples_or_trains"))
+  }
+  full <- single_fit(pooled)
+  if (is.null(full)) {
+    return(fallback("fallback_q75_no_eligible_lower_tail_valley"))
+  }
+  folds <- dplyr::bind_rows(lapply(seq_along(clean), function(i) {
+    fit <- single_fit(unlist(clean[-i], use.names = FALSE))
+    data.frame(
+      omitted_train = names(clean)[i] %||% as.character(i),
+      active = !is.null(fit),
+      threshold_sec = if (is.null(fit)) NA_real_ else fit$threshold_sec,
+      stringsAsFactors = FALSE
+    )
+  }))
+  active_n <- sum(folds$active)
+  required_n <- max(4L, as.integer(ceiling(0.80 * length(clean))))
+  log_sd <- if (active_n >= 2L) {
+    stats::sd(log(folds$threshold_sec[folds$active]))
+  } else NA_real_
+  fold_center <- if (active_n >= 1L) {
+    stats::median(folds$threshold_sec[folds$active], na.rm = TRUE)
+  } else NA_real_
+  full_to_fold_center_log_deviation <- if (is.finite(fold_center) &&
+      fold_center > 0 && is.finite(full$threshold_sec) &&
+      full$threshold_sec > 0) {
+    abs(log(full$threshold_sec / fold_center))
+  } else NA_real_
+  stable <- active_n >= required_n && is.finite(log_sd) && log_sd <= 0.10 &&
+    is.finite(full_to_fold_center_log_deviation) &&
+    full_to_fold_center_log_deviation <= 0.10
+  if (!stable) {
+    return(fallback("fallback_q75_unstable_leave_one_train_out", full, folds))
+  }
+  envelope <- as.numeric(full$threshold_sec)
+  connector <- min(q75, 1.50 * envelope, na.rm = TRUE)
+  if (!is.finite(connector) || connector < envelope) connector <- envelope
+  list(
+    envelope_upper_sec = envelope,
+    connector_upper_sec = connector,
+    status = "resolved_stable_lower_tail_valley",
+    method = "log_isi_nrd0_kde_lower_tail_valley_with_cluster_jackknife",
+    valley_candidate_sec = envelope,
+    valley_depth = as.numeric(full$depth),
+    valley_lower_mass = as.numeric(full$lower_mass),
+    jackknife_active_n = as.integer(active_n),
+    jackknife_train_n = as.integer(length(clean)),
+    jackknife_activation_rate = mean(folds$active),
+    jackknife_log_threshold_sd = log_sd,
+    jackknife_full_to_fold_center_log_deviation =
+      full_to_fold_center_log_deviation,
+    fallback_q75_sec = q75,
+    connector_q90_sec = q90,
+    connector_to_envelope_ratio = connector / envelope
+  )
+}
+
 stpd_event_grammar_histogram_suggest <- function(vals_by_train, min_isi_sec = 0.001, bin_width_sec = 0.005) {
   vals <- unlist(vals_by_train, use.names = FALSE)
   vals <- suppressWarnings(as.numeric(vals))
@@ -87,7 +432,18 @@ stpd_event_grammar_histogram_suggest <- function(vals_by_train, min_isi_sec = 0.
     burst_hi <- 0.010
     return(list(
       burst = list(seed_lower_sec = max(min_isi_sec, 0.001), seed_upper_sec = burst_hi, bridge_upper_sec = 0.015, contrast_S = 2.5),
-      high_frequency_spiking = list(seed_lower_sec = max(min_isi_sec, 0.001), seed_upper_sec = 0.020, bridge_upper_sec = 0.030),
+      # Do not present fixed millisecond defaults as a data-derived HFS
+      # suggestion. The resolver may still fall back to an explicit default
+      # contract, but the histogram source itself must abstain.
+      high_frequency_spiking = list(
+        seed_lower_sec = NA_real_, seed_upper_sec = NA_real_,
+        bridge_upper_sec = NA_real_, available = FALSE,
+        status = "unavailable_insufficient_unlabelled_isis",
+        reason = "Fewer than five valid ISIs; no automatic Broad-HFS proposal.",
+        separation_method = "none",
+        requires_candidate_local_background = TRUE,
+        promotable_to_user_override = FALSE
+      ),
       high_frequency_tonic = list(seed_lower_sec = 0.010, seed_upper_sec = 0.030, bridge_upper_sec = 0.035),
       tonic = list(seed_lower_sec = 0.020, seed_upper_sec = 0.060, bridge_upper_sec = 0.080),
       pause = list(seed_lower_sec = 0.100, seed_upper_sec = 0.250, bridge_upper_sec = 0.250)
@@ -115,7 +471,7 @@ stpd_event_grammar_histogram_suggest <- function(vals_by_train, min_isi_sec = 0.
     if (length(br) >= 4) {
       hh <- hist(low, breaks = br, plot = FALSE, include.lowest = TRUE, right = FALSE)
       cnt <- as.numeric(hh$counts); mids <- (hh$breaks[-1] + hh$breaks[-length(hh$breaks)]) / 2
-      search_max <- min(low_xmax, max(0.040, q15, min_obs * 1.10, na.rm = TRUE))
+      search_max <- min(low_xmax, max(q15, min_obs * 1.10, na.rm = TRUE))
       search <- which(mids >= min_isi_sec & mids <= search_max)
       if (length(search) > 0 && max(cnt[search], na.rm = TRUE) > 0) {
         pk <- search[which.max(cnt[search])]
@@ -159,12 +515,76 @@ stpd_event_grammar_histogram_suggest <- function(vals_by_train, min_isi_sec = 0.
   } else {
     bridge_hi <- min(max(bridge_hi, burst_hi), 0.050)
   }
+  # Broad HFS is a sustained State, not an expanded Burst Event. q25 generates
+  # fast-core anchors. Direct support ends at a reproducible lower-tail density
+  # valley when one exists; otherwise q75 is only a scale-equivariant proposal
+  # envelope. Values above the envelope and below a bounded q90 proposal spend
+  # connector budget. A histogram-sourced proposal is accepted later only when
+  # its candidate has an independently observable slower local background.
+  # Homogeneous/no-background HFS therefore requires a user/manual/default
+  # threshold contract instead of being inferred from its own distribution.
+  hfs_short_hi <- q25
+  hfs_envelope <- stpd_event_grammar_hfs_envelope_proposal(
+    vals_by_train, min_isi_sec = min_isi_sec
+  )
+  hfs_bridge_hi <- as.numeric(hfs_envelope$envelope_upper_sec)[1L]
+  hfs_connector_hi <- as.numeric(hfs_envelope$connector_upper_sec)[1L]
+  if (!is.finite(hfs_short_hi) || hfs_short_hi <= min_isi_sec) {
+    hfs_short_hi <- max(q25, q20, min_isi_sec, na.rm = TRUE)
+  }
+  if (!is.finite(hfs_bridge_hi) || hfs_bridge_hi < hfs_short_hi) {
+    hfs_bridge_hi <- hfs_short_hi
+  }
+  if (!is.finite(hfs_connector_hi) || hfs_connector_hi < hfs_bridge_hi) {
+    hfs_connector_hi <- hfs_bridge_hi
+  }
+  hfs_lo <- max(
+    min_isi_sec,
+    min(q005, 0.25 * hfs_short_hi, na.rm = TRUE)
+  )
+  pause_tail <- stpd_event_grammar_pause_strong_tail(
+    vals_by_train, min_isi_sec = min_isi_sec
+  )
   list(
     burst = list(seed_lower_sec = burst_lo, seed_upper_sec = burst_hi, bridge_upper_sec = bridge_hi, contrast_S = 2.5),
-    high_frequency_spiking = list(seed_lower_sec = burst_lo, seed_upper_sec = max(bridge_hi, burst_hi), bridge_upper_sec = max(bridge_hi * 2, 0.030)),
+    high_frequency_spiking = list(
+      seed_lower_sec = hfs_lo,
+      seed_upper_sec = hfs_short_hi,
+      bridge_upper_sec = hfs_bridge_hi,
+      fast_core_upper_sec = hfs_short_hi,
+      envelope_upper_sec = hfs_bridge_hi,
+      connector_upper_sec = hfs_connector_hi,
+      fast_core_quantile = 0.25,
+      envelope_quantile = if (identical(
+        hfs_envelope$status, "resolved_stable_lower_tail_valley"
+      )) NA_real_ else 0.75,
+      connector_quantile = if (identical(
+        hfs_envelope$status, "resolved_stable_lower_tail_valley"
+      )) 0.75 else 0.90,
+      envelope_proposal = hfs_envelope,
+      support_semantics =
+        "q25_anchor_stable_valley_or_q75_proposal_envelope",
+      available = TRUE,
+      status = "proposal_requires_candidate_local_background",
+      reason = paste(
+        "q25 fast cores plus a stable valley or q75 fallback define the Broad-HFS proposal;",
+        "automatic acceptance requires a slower candidate-local background."
+      ),
+      separation_method = paste0(
+        hfs_envelope$method,
+        "_plus_adjacent_flanks"
+      ),
+      requires_candidate_local_background = TRUE,
+      promotable_to_user_override = FALSE
+    ),
     high_frequency_tonic = list(seed_lower_sec = max(burst_hi, min(q25, 0.030, na.rm = TRUE)), seed_upper_sec = max(q25, bridge_hi, 0.020, na.rm = TRUE), bridge_upper_sec = max(q25, bridge_hi * 1.3, 0.030, na.rm = TRUE)),
     tonic = list(seed_lower_sec = max(q25, bridge_hi, 0.020, na.rm = TRUE), seed_upper_sec = max(q75, q50, 0.050, na.rm = TRUE), bridge_upper_sec = max(q90, q75, 0.080, na.rm = TRUE)),
-    pause = list(seed_lower_sec = max(q90, 0.080, na.rm = TRUE), seed_upper_sec = max(q95, q90, 0.150, na.rm = TRUE), bridge_upper_sec = max(q95, q90, 0.150, na.rm = TRUE))
+    pause = list(
+      seed_lower_sec = q90,
+      seed_upper_sec = max(pause_tail$threshold_sec, q90, na.rm = TRUE),
+      bridge_upper_sec = max(pause_tail$threshold_sec, q90, na.rm = TRUE),
+      strong_tail = pause_tail
+    )
   )
 }
 
@@ -270,9 +690,9 @@ stpd_event_grammar_default_suggest <- function(params) {
   list(
     burst = list(seed_lower_sec = stpd_event_grammar_num(ec$seed_band_lower_sec %||% 0.001, 0.001), seed_upper_sec = stpd_event_grammar_num(ec$seed_band_upper_sec %||% 0.010, 0.010), bridge_upper_sec = stpd_event_grammar_num(ec$bridge_band_upper_sec %||% 0.015, 0.015), contrast_S = stpd_event_grammar_num(ec$burst_contrast_min %||% 2.5, 2.5)),
     high_frequency_spiking = list(seed_lower_sec = stpd_event_grammar_num(ec$seed_band_lower_sec %||% 0.001, 0.001), seed_upper_sec = stpd_event_grammar_num(hp$spiking_q90_max_ISI_sec %||% 0.020, 0.020), bridge_upper_sec = stpd_event_grammar_num(hp$spiking_epoch_bridge_ISI_sec %||% 0.030, 0.030), contrast_S = NA_real_),
-    high_frequency_tonic = list(seed_lower_sec = stpd_event_grammar_num(hp$tonic_min_ISI_floor_sec %||% 0.010, 0.010), seed_upper_sec = stpd_event_grammar_num(hp$T_high_max %||% 0.020, 0.020), bridge_upper_sec = stpd_event_grammar_num(hp$T_high_max %||% 0.020, 0.020) * 1.25, contrast_S = NA_real_),
-    tonic = list(seed_lower_sec = stpd_event_grammar_num(tp$T_min %||% 0.020, 0.020), seed_upper_sec = stpd_event_grammar_num(tp$T_max %||% 0.060, 0.060), bridge_upper_sec = stpd_event_grammar_num(tp$T_max %||% 0.060, 0.060) * 1.25, contrast_S = NA_real_),
-    pause = list(seed_lower_sec = stpd_event_grammar_num(pp$T_seed %||% 0.100, 0.100), seed_upper_sec = stpd_event_grammar_num(pp$T_strong %||% 0.150, 0.150), bridge_upper_sec = stpd_event_grammar_num(pp$T_strong %||% 0.150, 0.150), contrast_S = NA_real_)
+    high_frequency_tonic = list(seed_lower_sec = stpd_event_grammar_num(hp$tonic_min_ISI_floor_sec %||% 0.010, 0.010), seed_upper_sec = stpd_event_grammar_num(hp$T_high_max %||% 0.020, 0.020), bridge_upper_sec = stpd_event_grammar_num(hp$tonic_bridge_upper_sec %||% (stpd_event_grammar_num(hp$T_high_max %||% 0.020, 0.020) * 1.25), 0.025), contrast_S = NA_real_),
+    tonic = list(seed_lower_sec = stpd_event_grammar_num(tp$T_min %||% 0.020, 0.020), seed_upper_sec = stpd_event_grammar_num(tp$T_max %||% 0.060, 0.060), bridge_upper_sec = stpd_event_grammar_num(tp$bridge_upper_sec %||% (stpd_event_grammar_num(tp$T_max %||% 0.060, 0.060) * 1.25), 0.075), contrast_S = NA_real_),
+    pause = list(seed_lower_sec = stpd_event_grammar_num(pp$T_seed %||% 0.100, 0.100), seed_upper_sec = stpd_event_grammar_num(pp$T_strong %||% 0.150, 0.150), bridge_upper_sec = stpd_event_grammar_num(pp$bridge_upper_sec %||% pp$T_strong %||% 0.150, 0.150), contrast_S = NA_real_)
   )
 }
 
@@ -319,6 +739,55 @@ stpd_resolve_thresholds_for_dataset_impl <- function(trains, params, min_isi_sec
     }
   }
   tab <- do.call(rbind, rows)
+  # Keep the scientific status of a data-derived proposal beside its numeric
+  # values. In particular, a Broad-HFS q25/proposal-envelope band still
+  # requires candidate-local separation; it is not an automatically validated
+  # user threshold.
+  tab$histogram_available <- NA
+  tab$histogram_status <- ""
+  tab$histogram_reason <- ""
+  tab$histogram_separation_method <- ""
+  hfs_hist_meta <- hist$high_frequency_spiking %||% list()
+  hfs_rows <- tab$pattern == "high_frequency_spiking"
+  tab$histogram_available[hfs_rows] <- isTRUE(hfs_hist_meta$available)
+  tab$histogram_status[hfs_rows] <- as.character(
+    hfs_hist_meta$status %||% "unavailable"
+  )[1L]
+  tab$histogram_reason[hfs_rows] <- as.character(
+    hfs_hist_meta$reason %||% ""
+  )[1L]
+  tab$histogram_separation_method[hfs_rows] <- as.character(
+    hfs_hist_meta$separation_method %||% "none"
+  )[1L]
+  hfs_field_sources <- as.character(c(
+    eff$high_frequency_spiking$seed_upper_sec_source %||% "",
+    eff$high_frequency_spiking$bridge_upper_sec_source %||% ""
+  ))
+  hfs_histogram_effective <- length(hfs_field_sources) > 0L &&
+    all(hfs_field_sources %in% c("histogram", "auto"))
+  if (hfs_histogram_effective && isTRUE(hfs_hist_meta$available)) {
+    eff$high_frequency_spiking$fast_core_upper_sec <-
+      stpd_event_grammar_num(
+        hfs_hist_meta$fast_core_upper_sec,
+        eff$high_frequency_spiking$seed_upper_sec
+      )
+    eff$high_frequency_spiking$envelope_upper_sec <-
+      stpd_event_grammar_num(
+        hfs_hist_meta$envelope_upper_sec,
+        eff$high_frequency_spiking$bridge_upper_sec
+      )
+    eff$high_frequency_spiking$connector_upper_sec <-
+      stpd_event_grammar_num(
+        hfs_hist_meta$connector_upper_sec,
+        eff$high_frequency_spiking$bridge_upper_sec
+      )
+    eff$high_frequency_spiking$envelope_proposal_status <- as.character(
+      (hfs_hist_meta$envelope_proposal %||% list())$status %||% ""
+    )[1L]
+    eff$high_frequency_spiking$envelope_proposal_method <- as.character(
+      (hfs_hist_meta$envelope_proposal %||% list())$method %||% ""
+    )[1L]
+  }
   # Enforce valid band geometry per pattern.
   for (pat in names(eff)) {
     lo <- stpd_event_grammar_num(eff[[pat]]$seed_lower_sec, NA_real_); hi <- stpd_event_grammar_num(eff[[pat]]$seed_upper_sec, NA_real_); br <- stpd_event_grammar_num(eff[[pat]]$bridge_upper_sec, NA_real_)
@@ -371,22 +840,89 @@ stpd_event_grammar_params_impl <- function(dat, params, min_isi_sec = 0.001, tra
     if (is.finite(b$burst$contrast_S)) vp$S <- b$burst$contrast_S
   }
   if (!is.null(b$high_frequency_spiking)) {
+    vp$hf_spiking_seed_lower <- b$high_frequency_spiking$seed_lower_sec
+    vp$hf_spiking_fast_core_upper <-
+      b$high_frequency_spiking$fast_core_upper_sec %||%
+      b$high_frequency_spiking$seed_upper_sec
+    vp$hf_spiking_envelope_upper <-
+      b$high_frequency_spiking$envelope_upper_sec %||%
+      b$high_frequency_spiking$bridge_upper_sec
     vp$hf_spiking_q90_max <- b$high_frequency_spiking$seed_upper_sec
     vp$hf_spiking_epoch_bridge <- b$high_frequency_spiking$bridge_upper_sec
     vp$hf_spiking_break_isi <- max(vp$hf_spiking_break_isi, b$high_frequency_spiking$bridge_upper_sec, na.rm = TRUE)
+    hfs_sources <- as.character(c(
+      b$high_frequency_spiking$seed_lower_sec_source %||% "",
+      b$high_frequency_spiking$seed_upper_sec_source %||% "",
+      b$high_frequency_spiking$bridge_upper_sec_source %||% ""
+    ))
+    hfs_sources <- unique(hfs_sources[!is.na(hfs_sources) &
+      nzchar(hfs_sources)])
+    if (!length(hfs_sources)) {
+      hfs_sources <- as.character(eg$threshold_source_mode %||% "auto")[1L]
+    }
+    hfs_source <- if (any(hfs_sources %in% c("histogram", "auto"))) {
+      "histogram"
+    } else {
+      as.character(
+        b$high_frequency_spiking$seed_upper_sec_source %||% hfs_sources[1L]
+      )[1L]
+    }
+    hfs_hist <- (eg$histogram_suggest %||%
+      list())$high_frequency_spiking %||% list()
+    vp$hf_spiking_threshold_source_mode <- hfs_source
+    vp$hf_spiking_threshold_field_sources <- paste(
+      sort(hfs_sources), collapse = ";"
+    )
+    vp$hf_spiking_auto_requires_local_background <-
+      hfs_source %in% c("histogram", "auto") &&
+      isTRUE(hfs_hist$requires_candidate_local_background %||% TRUE)
+    vp$hf_spiking_histogram_available <- isTRUE(hfs_hist$available)
+    vp$hf_spiking_histogram_status <- as.character(
+      hfs_hist$status %||% "not_applicable"
+    )[1L]
+    vp$hf_spiking_histogram_reason <- as.character(
+      hfs_hist$reason %||% ""
+    )[1L]
   }
   if (!is.null(b$high_frequency_tonic)) {
     vp$hf_tonic_floor <- b$high_frequency_tonic$seed_lower_sec
     vp$hf_tonic_high_max <- b$high_frequency_tonic$seed_upper_sec
+    vp$hf_tonic_bridge_upper <- b$high_frequency_tonic$bridge_upper_sec
   }
   if (!is.null(b$tonic)) {
     vp$tonic_min <- b$tonic$seed_lower_sec
     vp$tonic_max <- b$tonic$seed_upper_sec
+    vp$tonic_bridge_upper <- b$tonic$bridge_upper_sec
+    vp$tonic_threshold_source_mode <- as.character(
+      eg$threshold_source_mode %||% "auto"
+    )[1]
   }
   if (!is.null(b$pause)) {
     vp$pause_thr <- b$pause$seed_lower_sec
+    vp$pause_entry_thr <- b$pause$seed_lower_sec
+    vp$pause_strong_thr <- b$pause$seed_upper_sec
+    pause_source <- as.character(
+      b$pause$seed_upper_sec_source %||%
+        (eg$threshold_source_mode %||% "auto")
+    )[1L]
+    pause_tail <- (eg$histogram_suggest %||% list())$pause$strong_tail %||%
+      list()
+    pause_status <- if (identical(pause_source, "histogram")) {
+      as.character(pause_tail$status %||% "unresolved_histogram_tail")[1L]
+    } else {
+      paste0("resolved_", pause_source, "_strong_threshold")
+    }
+    vp$pause_strong_active <- !identical(pause_source, "histogram") ||
+      identical(pause_status, "resolved_stable_log_kde_upper_tail")
+    vp$pause_strong_status <- pause_status
+    vp$pause_threshold_source_mode <- pause_source
   }
   vp <- stpd_apply_train_isi_thresholds_to_event_vp(vp, params, train = train, min_isi_sec = min_isi_sec)
+  if (exists("stpd_apply_bounded_borrowing_to_event_vp", mode = "function")) {
+    vp <- stpd_apply_bounded_borrowing_to_event_vp(
+      vp, dat, params, train = train, min_isi_sec = min_isi_sec
+    )
+  }
   vp$tonic_burst_overlap_ref <- suppressWarnings(max(c(
     stpd_event_grammar_num(vp$tonic_burst_overlap_ref, NA_real_),
     stpd_event_grammar_num(vp$seed_high, NA_real_),
@@ -486,15 +1022,30 @@ stpd_detect_train_threshold_resolved_impl <- function(dat, params, min_isi_sec =
   patterns <- params$detector$patterns_to_run %||% stpd_default_patterns_to_run()
   profile <- stpd_event_core_train_profile_row(dat, params, vp, min_isi_sec, train)
   cand_rows <- list(profile)
+  burst_candidates <- data.frame()
+  burst_pause_support <- data.frame()
+  if (any(c("burst", "long_burst") %in% patterns)) {
+    b <- stpd_event_grammar_detect_burst_events(dat, params, vp, min_isi_sec, train)
+    if (nrow(b) > 0) {
+      burst_pause_support <- stpd_event_core_freeze_burst_bridges(
+        dat, params, vp, b, min_isi_sec = min_isi_sec, train = train
+      )
+      burst_candidates <- b
+      cand_rows[[length(cand_rows)+1L]] <- b
+    }
+  }
   hard_thr <- stpd_event_core_detect_hard_isi_thresholds(dat, params, vp, min_isi_sec, train)
   if (nrow(hard_thr) > 0) cand_rows[[length(cand_rows)+1L]] <- hard_thr
-  if (any(c("burst", "long_burst") %in% patterns)) {
-    b <- stpd_event_grammar_detect_burst_events(dat, params, vp, min_isi_sec, train); if (nrow(b) > 0) cand_rows[[length(cand_rows)+1L]] <- b
-  }
   if ("high_frequency_spiking" %in% patterns) { hfs <- stpd_event_core_detect_hf_spiking(dat, params, vp, min_isi_sec, train); if (nrow(hfs) > 0) cand_rows[[length(cand_rows)+1L]] <- hfs }
   if ("high_frequency_tonic" %in% patterns) { hft <- stpd_event_core_detect_hf_tonic(dat, params, vp, min_isi_sec, train); if (nrow(hft) > 0) cand_rows[[length(cand_rows)+1L]] <- hft }
   if ("tonic" %in% patterns) { ton <- stpd_event_core_detect_tonic(dat, params, vp, min_isi_sec, train); if (nrow(ton) > 0) cand_rows[[length(cand_rows)+1L]] <- ton }
-  if ("pause" %in% patterns) { pau <- stpd_event_core_detect_pause(dat, params, vp, min_isi_sec, train); if (nrow(pau) > 0) cand_rows[[length(cand_rows)+1L]] <- pau }
+  if ("pause" %in% patterns) {
+    pau <- stpd_event_core_detect_pause(
+      dat, params, vp, min_isi_sec, train,
+      burst_candidates = burst_pause_support
+    )
+    if (nrow(pau) > 0) cand_rows[[length(cand_rows)+1L]] <- pau
+  }
   audit <- dplyr::bind_rows(cand_rows)
   audit <- stpd_event_core_weighted_select(audit, locked = locked, patterns = patterns)
   pat <- rep("", n); score <- rep(NA_real_, n)

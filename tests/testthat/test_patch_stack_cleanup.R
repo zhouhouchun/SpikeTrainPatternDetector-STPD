@@ -90,19 +90,34 @@ test_that("namespace does not expose patch-stack implementation names", {
   expect_false(any(grepl(patch_stack, ns_names)))
 })
 
-test_that("split server module installers share the live server environment", {
+test_that("remaining split server module installers share the live server environment", {
   expect_true(is.function(stpd_server_install_parameters_module))
   expect_true(is.function(stpd_server_install_data_io_module))
   expect_true(is.function(stpd_server_install_visualization_module))
   expect_true(is.function(stpd_server_install_detection_module))
-  expect_true(is.function(stpd_server_install_ml_module))
   expect_true(is.function(stpd_server_install_export_module))
   shiny::testServer(server, {
     expect_true(exists("rv"))
     expect_true(is.function(get_dataset))
     expect_true(is.function(aligned_data))
     expect_true(is.function(run_detector_from_ui))
-    expect_true(is.function(ml_feature_table_current))
     expect_true(is.function(export_event_csv))
+
+    legacy_ds <- list(
+      trains = list(),
+      train_settings = list(),
+      task_events = data.frame(),
+      quality = data.frame(status = "ok"),
+      meta = list(display_name = "legacy", unit_in = "s"),
+      ml = list(last_prediction_table = data.frame(label = "burst")),
+      params_last = list(
+        spiketrainpattern = list(neural_network = list(confidence_cutoff = 0.9))
+      ),
+      params_est = list(neural_network = list(hidden = 8L))
+    )
+    migrated <- normalize_dataset(legacy_ds)
+    expect_null(migrated$ml)
+    expect_null(migrated$params_last$spiketrainpattern$neural_network)
+    expect_null(migrated$params_est$neural_network)
   })
 })

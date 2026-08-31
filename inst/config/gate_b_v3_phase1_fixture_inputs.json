@@ -1,0 +1,990 @@
+{
+  "schema": "stpd_gate_b_v3_phase1_fixture_inputs_1",
+  "plan_sha256": "eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5",
+  "normative_contract_sha256": "81aa7f48411e774b0b1faa45e19b45f591891bb368d72bfd06401555ee01e8f4",
+  "inputs": [
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "contract_gb3_sci_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "state_axis_grid"
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "contract_gb3_sci_002",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "pause_hard_boundary"
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "contract_gb3_sci_003",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "connector_nonrecursive"
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "contract_gb3_sci_004",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "burst_hf_coexistence"
+      }
+    },
+    {
+      "contract_id": "GB3-GEO-001",
+      "fixture_id": "contract_gb3_geo_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "geometry"
+      }
+    },
+    {
+      "contract_id": "GB3-GEO-002",
+      "fixture_id": "contract_gb3_geo_002",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "episode_partition"
+      }
+    },
+    {
+      "contract_id": "GB3-GEO-003",
+      "fixture_id": "contract_gb3_geo_003",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "per_isi_roles"
+      }
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "contract_gb3_rel_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "relationship_closure"
+      }
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "contract_gb3_rel_002",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "episode_link_closure"
+      }
+    },
+    {
+      "contract_id": "GB3-ID-001",
+      "fixture_id": "contract_gb3_id_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "entity_identity"
+      }
+    },
+    {
+      "contract_id": "GB3-HASH-001",
+      "fixture_id": "contract_gb3_hash_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "jcs_hash_dag"
+      }
+    },
+    {
+      "contract_id": "GB3-BLIND-001",
+      "fixture_id": "contract_gb3_blind_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "label_blind_manifest"
+      }
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "contract_gb3_thr_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "threshold_provenance"
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "contract_gb3_final_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "final_history"
+      }
+    },
+    {
+      "contract_id": "GB3-STATUS-001",
+      "fixture_id": "contract_gb3_status_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "status_matrix"
+      }
+    },
+    {
+      "contract_id": "GB3-ATT-001",
+      "fixture_id": "contract_gb3_att_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "attestation_guard"
+      }
+    },
+    {
+      "contract_id": "GB3-EXP-001",
+      "fixture_id": "contract_gb3_exp_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "atomic_export"
+      }
+    },
+    {
+      "contract_id": "GB3-MIG-001",
+      "fixture_id": "contract_gb3_mig_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "migration_guard"
+      }
+    },
+    {
+      "contract_id": "GB3-GUARD-001",
+      "fixture_id": "contract_gb3_guard_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "gate_c_guard"
+      }
+    },
+    {
+      "contract_id": "GB3-CAND-001",
+      "fixture_id": "contract_gb3_cand_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "candidate_universe"
+      }
+    },
+    {
+      "contract_id": "GB3-REG-001",
+      "fixture_id": "contract_gb3_reg_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "registry_fk"
+      }
+    },
+    {
+      "contract_id": "GB3-CTX-001",
+      "fixture_id": "contract_gb3_ctx_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "scientific_context"
+      }
+    },
+    {
+      "contract_id": "GB3-REF-001",
+      "fixture_id": "contract_gb3_ref_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "reference_blinding"
+      }
+    },
+    {
+      "contract_id": "GB3-EVT-001",
+      "fixture_id": "contract_gb3_evt_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "event_selector"
+      }
+    },
+    {
+      "contract_id": "GB3-RES-001",
+      "fixture_id": "contract_gb3_res_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "resource_budget"
+      }
+    },
+    {
+      "contract_id": "GB3-PRIV-001",
+      "fixture_id": "contract_gb3_priv_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "privacy_redaction"
+      }
+    },
+    {
+      "contract_id": "GB3-CONS-001",
+      "fixture_id": "contract_gb3_cons_001",
+      "case_kind": "contract_component",
+      "case_input": {
+        "component": "consumer_negotiation"
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_01",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-01",
+        "input": {
+          "state_profile": "high_irregular"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_02",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-02",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "connector",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_03",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-03",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "connector",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.02,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_04",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-04",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "connector",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.05,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_05",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-05",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "connector",
+            "direct",
+            "connector",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0.01,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "acceptance_gb3_06",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-06",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "pause",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "acceptance_gb3_07",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-07",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "direct",
+            "pause",
+            "direct",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0,
+            0.01,
+            0,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 3,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "acceptance_gb3_08",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-08",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "pause",
+            "direct",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 3,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "acceptance_gb3_09",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-09",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "direct",
+            "direct",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": [
+            {
+              "start": 2,
+              "end": 4,
+              "class": "burst_event"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "acceptance_gb3_10",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-10",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "connector",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": [
+            {
+              "start": 3,
+              "end": 3,
+              "class": "burst_event"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "acceptance_gb3_11",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-11",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "direct",
+            "direct",
+            "direct",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_tonic",
+          "gap_sec": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": [
+            {
+              "start": 3,
+              "end": 4,
+              "class": "burst_event"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-CTX-001",
+      "fixture_id": "acceptance_gb3_12",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-12",
+        "input": {
+          "roles": [
+            "direct",
+            "artifact",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 1,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_13",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-13",
+        "input": {
+          "state_profile": "high_regular"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_14",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-14",
+        "input": {
+          "state_profile": "non_high_regular"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "acceptance_gb3_15",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-15",
+        "input": {
+          "roles": [
+            "direct",
+            "direct",
+            "pause",
+            "direct",
+            "direct",
+            "pause",
+            "direct",
+            "direct"
+          ],
+          "state_class": "high_frequency_irregular_state",
+          "gap_sec": [
+            0,
+            0,
+            0.01,
+            0,
+            0,
+            0.01,
+            0,
+            0
+          ],
+          "tolerated_gap_sec": 0.02,
+          "hard_break_sec": 0.05,
+          "max_gap_count": 1,
+          "min_direct_isi": 2,
+          "bursts": []
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "acceptance_gb3_16",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-16",
+        "input": {
+          "tamper": "delete_event_state_relationship_and_reseal"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_17",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-17",
+        "input": {
+          "auto": {
+            "states": "se_1",
+            "gaps": "gp_1",
+            "events": []
+          },
+          "transitions": [
+            {
+              "action": "event_candidate_accept",
+              "id": "ev_1"
+            },
+            {
+              "action": "compensate",
+              "id": "ev_1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-MIG-001",
+      "fixture_id": "acceptance_gb3_18",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-18",
+        "input": {
+          "source_schema": "stpd_multitrack_auto_v3",
+          "raw_input_available": false
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-ATT-001",
+      "fixture_id": "acceptance_gb3_19",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-19",
+        "input": {
+          "evidence_hash": "d30759d1fc87945a2fc97d78f60c2b1ae7f8e081d46cc1e57496bccf3bb357c5",
+          "observed_evidence_hash": "91ac7588c725bdb164ef2d9cc968e09ec9ae618d0fb11464a0ca1f47ea219ca8"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-GUARD-001",
+      "fixture_id": "acceptance_gb3_20",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-20",
+        "input": {
+          "gate_c_status": "pending",
+          "requested_estimand": "detector_performance"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "acceptance_gb3_21",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-21",
+        "input": {
+          "path": "pause.absolute_threshold_sec",
+          "instances": [
+            {
+              "scope": "train",
+              "key": "tr_a",
+              "value": 0.2
+            },
+            {
+              "scope": "session",
+              "key": "ss_a",
+              "value": 0.25
+            }
+          ],
+          "base_train_hashes": {
+            "tr_a": "b9c8bb29b3d31a65e961308863d5d5d240e72bf986dece878c09ce4abb1569a8"
+          },
+          "appended_train_hashes": {
+            "tr_a": "b9c8bb29b3d31a65e961308863d5d5d240e72bf986dece878c09ce4abb1569a8",
+            "tr_b": "840393de55f10ee0583eb8b05b889008b6622fb4af3c5291d8a417634b11b378"
+          }
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "acceptance_gb3_22",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-22",
+        "input": {
+          "calibration_groups": ["p1", "p2"],
+          "validation_groups": ["p2", "p3"]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-REF-001",
+      "fixture_id": "acceptance_gb3_23",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-23",
+        "input": {
+          "blinded_to_algorithm": false,
+          "blinded_to_thresholds": false,
+          "blinded_to_other_raters": false
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-CAND-001",
+      "fixture_id": "acceptance_gb3_24",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-24",
+        "input": {
+          "tamper": "delete_accepted_event_candidate_and_lineage_then_reseal"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-RES-001",
+      "fixture_id": "acceptance_gb3_25",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-25",
+        "input": {
+          "counter": "candidate_rows",
+          "increment": 1
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-PRIV-001",
+      "fixture_id": "acceptance_gb3_26",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-26",
+        "input": {
+          "fields": {
+            "patient_id": "patient-7",
+            "host_path": "/Users/a/raw.csv",
+            "safe_code": "qc_unknown"
+          }
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-STATUS-001",
+      "fixture_id": "acceptance_gb3_27",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-27",
+        "input": {
+          "valid_statuses": 9,
+          "invalid": {
+            "product_kind": "auto",
+            "product_status": "gate_b_authoritative",
+            "authority_scope": "reviewed_prediction_record"
+          }
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_28",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-28",
+        "input": {
+          "action": "state_class_edit",
+          "overlap": "high_frequency_tonic",
+          "state": {
+            "events": [
+              {
+                "event_id": "ev_1",
+                "start_isi": 2,
+                "end_isi": 3,
+                "record_status": "predicted"
+              }
+            ],
+            "states": [
+              {
+                "state_episode_id": "se_1",
+                "start_isi": 1,
+                "end_isi": 5,
+                "state_class": "high_frequency_tonic"
+              }
+            ],
+            "gaps": [
+              {
+                "gap_id": "gp_1",
+                "start_isi": 6,
+                "end_isi": 6
+              }
+            ]
+          },
+          "expected_final_hash": "aeda5365049794f0759e01b41501fdf54e1188d3eb7c477824a2f4ebaecfb8ea"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_29",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-29",
+        "input": {
+          "action": "event_projection_reject",
+          "split_parent_state": true,
+          "state": {
+            "events": [
+              {
+                "event_id": "ev_1",
+                "start_isi": 2,
+                "end_isi": 3,
+                "record_status": "predicted"
+              }
+            ],
+            "states": [
+              {
+                "state_episode_id": "se_1",
+                "start_isi": 1,
+                "end_isi": 5,
+                "state_class": "high_frequency_tonic"
+              }
+            ],
+            "gaps": [
+              {
+                "gap_id": "gp_1",
+                "start_isi": 6,
+                "end_isi": 6
+              }
+            ]
+          },
+          "expected_final_hash": "aeda5365049794f0759e01b41501fdf54e1188d3eb7c477824a2f4ebaecfb8ea"
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_30",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-30",
+        "input": {
+          "action": "state_split",
+          "state": {
+            "events": [
+              {
+                "event_id": "ev_1",
+                "start_isi": 2,
+                "end_isi": 3,
+                "record_status": "predicted"
+              }
+            ],
+            "states": [
+              {
+                "state_episode_id": "se_1",
+                "start_isi": 1,
+                "end_isi": 5,
+                "state_class": "high_frequency_tonic"
+              }
+            ],
+            "gaps": [
+              {
+                "gap_id": "gp_1",
+                "start_isi": 6,
+                "end_isi": 6
+              }
+            ]
+          },
+          "expected_final_hash": "aeda5365049794f0759e01b41501fdf54e1188d3eb7c477824a2f4ebaecfb8ea",
+          "state_episode_id": "se_1",
+          "episode_hash": "9f40f49745997532ad9de2f615f4bdc3198cf0c3973bfc070f0dd38378883f74",
+          "connector_segment_id": "sg_connector",
+          "connector_hash": "eaf7a1d144662a599bfd09a9be0037adbd2ef1a40470f9e5fd95968e2c0bafac",
+          "left_child": [1, 2],
+          "right_child": [4, 5]
+        }
+      }
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_31",
+      "case_kind": "acceptance_scenario",
+      "case_input": {
+        "scenario_id": "GB3-31",
+        "input": {
+          "action": "event_candidate_accept",
+          "overlap": ["accepted_event", "canonical_pause"],
+          "state": {
+            "events": [
+              {
+                "event_id": "ev_1",
+                "start_isi": 2,
+                "end_isi": 3,
+                "record_status": "predicted"
+              }
+            ],
+            "states": [
+              {
+                "state_episode_id": "se_1",
+                "start_isi": 1,
+                "end_isi": 5,
+                "state_class": "high_frequency_tonic"
+              }
+            ],
+            "gaps": [
+              {
+                "gap_id": "gp_1",
+                "start_isi": 6,
+                "end_isi": 6
+              }
+            ]
+          },
+          "expected_final_hash": "aeda5365049794f0759e01b41501fdf54e1188d3eb7c477824a2f4ebaecfb8ea"
+        }
+      }
+    }
+  ]
+}

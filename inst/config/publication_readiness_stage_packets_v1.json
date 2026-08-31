@@ -1,0 +1,103 @@
+{
+  "schema": "stpd_publication_readiness_stage_packets_v1",
+  "packet_version": "1.1.0",
+  "authority_scope": "framework_only_no_scientific_or_release_authority",
+  "packets": [
+    {
+      "stage_id": "PR-01",
+      "framework_objective": "Order the six remaining Gate 1B roots without closing them.",
+      "artifact_contracts": ["ordered_remaining_root_registry", "typed_authority_boundaries", "per_root_review_gate"],
+      "review_evidence": ["six_roots_registered_once", "dependencies_are_acyclic_and_serial", "all_unimplemented_roots_remain_non_authoritative", "existing_detector_bytes_unchanged"],
+      "deferred_work": ["root_specific_hook_schemas", "root_specific_replay", "final_candidate_universe_authority"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-02",
+      "framework_objective": "Bind the Gate B v3 normative contract, schemas, fixtures and external approval boundary.",
+      "artifact_contracts": ["normative_contract_binding", "schema_registry_fixture_binding", "external_approval_manifest_prototype"],
+      "review_evidence": ["candidate_contract_not_self_promoted", "all_contract_ids_have_fixture_targets", "approval_requires_external_review_bytes"],
+      "deferred_work": ["final_external_signatures", "post_implementation_attestation", "gate_b_promotion"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-03",
+      "framework_objective": "Separate direct state support, connectors and hard boundaries with replayable lineage.",
+      "artifact_contracts": ["direct_support_ledger", "connector_ledger", "hard_boundary_ledger", "split_redetection_lineage"],
+      "review_evidence": ["pause_never_connector", "support_connector_identity_preserved", "split_fragments_require_redetection"],
+      "deferred_work": ["large_scale_performance_tuning", "optional_descriptive_relationships"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-04",
+      "framework_objective": "Define a typed AUTO v3 multitrack product and deterministic per-ISI projection.",
+      "artifact_contracts": ["typed_auto_tables", "per_isi_projection", "parent_bound_validator", "hash_dag_manifest"],
+      "review_evidence": ["event_state_gap_tracks_are_distinct", "pause_and_qc_exclude_active_state_support", "detached_integrity_never_claims_execution_authenticity"],
+      "deferred_work": ["official_release_signature", "nonessential_ui_views"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-05",
+      "framework_objective": "Define append-only review transitions from immutable AUTO v3 to deterministic FINAL v3.",
+      "artifact_contracts": ["append_only_transition_schema", "compare_and_swap_parent_binding", "deterministic_final_replay", "unsupported_transition_guards"],
+      "review_evidence": ["auto_bytes_immutable", "non_target_tracks_unchanged", "stale_or_cross_dataset_requests_fail_closed"],
+      "deferred_work": ["freeform_split_merge_relabel", "counterfactual_state_restoration"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-06",
+      "framework_objective": "Bind evidence, atomic export, consumer migration, UI separation and release signing.",
+      "artifact_contracts": ["contract_to_test_evidence_map", "atomic_generation_export", "version_negotiating_consumers", "release_attestation_prototype"],
+      "review_evidence": ["missing_evidence_blocks_promotion", "partial_or_stale_exports_fail_closed", "candidate_and_official_views_are_distinct"],
+      "deferred_work": ["production_private_key_operation", "extended_interoperability_formats"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-07",
+      "framework_objective": "Freeze a versioned synthetic benchmark without using detector outputs to define truth.",
+      "artifact_contracts": ["versioned_input_manifest", "truth_eligibility_table", "scale_pairing_map", "immutable_split_registry"],
+      "review_evidence": ["three_scales_scored_separately", "paired_templates_not_treated_as_independent", "detector_output_not_used_for_truth_eligibility"],
+      "deferred_work": ["additional_mechanism_families", "nonessential_visual_variants"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-08",
+      "framework_objective": "Define label-blind grouped synthetic validation with uncertainty and boundary diagnostics.",
+      "artifact_contracts": ["grouped_calibration_evaluation", "event_and_support_metrics", "cluster_bootstrap", "ood_and_spike_perturbation_matrix"],
+      "review_evidence": ["calibration_and_evaluation_groups_disjoint", "oracle_sensitivity_reported_separately", "split_merge_and_boundary_errors_reported"],
+      "deferred_work": ["unbounded_simulation_catalog", "new_biological_claims"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-09",
+      "framework_objective": "Freeze real-reference bytes, annotation coverage and per-track eligibility.",
+      "artifact_contracts": ["reference_input_hashes", "annotation_coverage_table", "train_track_eligibility", "single_rater_limitation_record"],
+      "review_evidence": ["blank_labels_follow_frozen_other_policy", "sparse_unreviewed_trains_excluded_per_track", "single_patient_bilateral_scope_explicit"],
+      "deferred_work": ["second_expert_annotation", "external_patient_cohort"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-10",
+      "framework_objective": "Define real-data LOGO validation and fair comparator evaluation.",
+      "artifact_contracts": ["recording_group_logo", "cluster_bootstrap_intervals", "fair_comparator_protocol", "error_attribution_tables"],
+      "review_evidence": ["label_blind_predictions", "heldout_groups_excluded_from_calibration", "detector_performance_and_adjudicated_agreement_separated"],
+      "deferred_work": ["cross_patient_generalization", "multi_rater_agreement"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-11",
+      "framework_objective": "Define source-backed reports, resource budgets and a reproducible software release manifest.",
+      "artifact_contracts": ["regenerated_tables_figures", "runtime_memory_budget", "clean_package_build_check", "versioned_release_manifest"],
+      "review_evidence": ["all_report_numbers_source_backed", "final_detector_hash_matches_validation", "formal_exports_are_atomic_and_reproducible"],
+      "deferred_work": ["full_cross_os_matrix", "optional_neo_nwb_spikeinterface_exports"],
+      "authority_granted": false
+    },
+    {
+      "stage_id": "PR-12",
+      "framework_objective": "Bind manuscript claims and reviewer responses to frozen evidence and a reproducibility archive.",
+      "artifact_contracts": ["revised_manuscript", "reviewer_response_matrix", "claim_evidence_crosswalk", "reproducibility_archive"],
+      "review_evidence": ["claims_match_final_estimands", "single_patient_single_rater_limits_explicit", "all_tables_figures_and_versions_resolve_to_frozen_artifacts"],
+      "deferred_work": ["future_multi_expert_study", "future_external_validation"],
+      "authority_granted": false
+    }
+  ]
+}

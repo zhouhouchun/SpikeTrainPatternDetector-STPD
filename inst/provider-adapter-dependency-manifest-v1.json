@@ -1,0 +1,64 @@
+{
+  "schema_version": "stpd_provider_adapter_dependency_manifest_v1",
+  "provider_contract_sha256": "29a2a660ee594494c6687433db1448825bf5ac5f518f36344bdf81f65ee01a6b",
+  "provider_adapter_protocol_sha256": "5b0cc6ca2fe6bdf2bb7bd2bddb066632ea3b0646b1096be87c77bec292a26877",
+  "adapters": [
+    {
+      "adapter_key": "native_stpd_postcomposer_v1",
+      "adapter_version": "1.0.0",
+      "adapter_code_sha256": "54e6fb989d6edc3f7ce662e21b9a3619069db30fea14e7d00e05d5277d62d847",
+      "provider_code_sha256": "c69c61cfbc850bd98a8a6156a87cb878f4b7acb5d57089af38c22183e3509fd0",
+      "dependency_files": [
+        {"path": "R/82_provider_contract.R", "sha256": "34073b3bb9cc0fdef5d2712bcfb34dec74c78caed71deed3c4b1209eb0e11708"},
+        {"path": "R/83_provider_normalization.R", "sha256": "fc3901462cbd5b418ef9baae5e6a19603f7e944456f91af9563777ed856be8d8"},
+        {"path": "R/84_provider_adapters.R", "sha256": "4e64ecacd8f9ec78e3446f5faa0c5c7faa5903f53ab435d93b093418228c7858"}
+      ]
+    },
+    {
+      "adapter_key": "mean_isi_v1",
+      "adapter_version": "1.0.0",
+      "adapter_code_sha256": "07df9dd73a6003f6279330d541e279576ac64349e94ddcf7c830f53c3ae58741",
+      "provider_code_sha256": "036741837efbbcac8b021ffa09a77c0d36f30bffe1938732b3a87efc00abb02b",
+      "dependency_files": [
+        {"path": "R/33_support_misi.R", "sha256": "3f1212a52b179cd8ee64f1977f4c1bbabf396f6297b51a56463c2049602605aa"},
+        {"path": "R/82_provider_contract.R", "sha256": "34073b3bb9cc0fdef5d2712bcfb34dec74c78caed71deed3c4b1209eb0e11708"},
+        {"path": "R/83_provider_normalization.R", "sha256": "fc3901462cbd5b418ef9baae5e6a19603f7e944456f91af9563777ed856be8d8"},
+        {"path": "R/84_provider_adapters.R", "sha256": "4e64ecacd8f9ec78e3446f5faa0c5c7faa5903f53ab435d93b093418228c7858"}
+      ]
+    },
+    {
+      "adapter_key": "logisi_newbd_v1",
+      "adapter_version": "1.0.0",
+      "adapter_code_sha256": "86636beea7c77a12888143e14cdb517e0782485486d7aa68f94eeda80bf47054",
+      "provider_code_sha256": "30ca504aa96c7004bf7b74ac82633051dd9808c4695f20c591dbc26e5b769ca3",
+      "dependency_files": [
+        {"path": "R/34_support_logisi.R", "sha256": "adb38c828e656dcc05e47e9879c7090451c8ee829ab2eb3892a460f55f09811b"},
+        {"path": "R/82_provider_contract.R", "sha256": "34073b3bb9cc0fdef5d2712bcfb34dec74c78caed71deed3c4b1209eb0e11708"},
+        {"path": "R/83_provider_normalization.R", "sha256": "fc3901462cbd5b418ef9baae5e6a19603f7e944456f91af9563777ed856be8d8"},
+        {"path": "R/84_provider_adapters.R", "sha256": "4e64ecacd8f9ec78e3446f5faa0c5c7faa5903f53ab435d93b093418228c7858"}
+      ]
+    },
+    {
+      "adapter_key": "external_interval_v1",
+      "adapter_version": "1.0.0",
+      "adapter_code_sha256": "e17069c70f57f160c5699b0967aa1ab6ee111050f013b88a7753820e9689d31a",
+      "provider_code_sha256": "8d3b7fd265867daa0216fb1f9ac2ffe09647d818acd8dc7d77076775df8936d4",
+      "dependency_files": [
+        {"path": "R/82_provider_contract.R", "sha256": "34073b3bb9cc0fdef5d2712bcfb34dec74c78caed71deed3c4b1209eb0e11708"},
+        {"path": "R/83_provider_normalization.R", "sha256": "fc3901462cbd5b418ef9baae5e6a19603f7e944456f91af9563777ed856be8d8"},
+        {"path": "R/84_provider_adapters.R", "sha256": "4e64ecacd8f9ec78e3446f5faa0c5c7faa5903f53ab435d93b093418228c7858"}
+      ]
+    },
+    {
+      "adapter_key": "external_per_isi_v1",
+      "adapter_version": "1.0.0",
+      "adapter_code_sha256": "324144de5eff946813d250eb7ec215a6700042017a4c6e5ff099f0b15b382c2c",
+      "provider_code_sha256": "8d3b7fd265867daa0216fb1f9ac2ffe09647d818acd8dc7d77076775df8936d4",
+      "dependency_files": [
+        {"path": "R/82_provider_contract.R", "sha256": "34073b3bb9cc0fdef5d2712bcfb34dec74c78caed71deed3c4b1209eb0e11708"},
+        {"path": "R/83_provider_normalization.R", "sha256": "fc3901462cbd5b418ef9baae5e6a19603f7e944456f91af9563777ed856be8d8"},
+        {"path": "R/84_provider_adapters.R", "sha256": "4e64ecacd8f9ec78e3446f5faa0c5c7faa5903f53ab435d93b093418228c7858"}
+      ]
+    }
+  ]
+}

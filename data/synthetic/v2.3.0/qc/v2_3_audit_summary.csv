@@ -1,0 +1,12 @@
+"Check","Value"
+"Standalone_Burst_strength_min_cell_count",20
+"Standalone_Burst_strength_max_cell_count",20
+"HFS_Burst_strength_min_cell_count",13
+"HFS_Burst_strength_max_cell_count",14
+"HFS_Burst_development",10
+"HFS_Burst_holdout",30
+"Four_spike_Burst",12
+"Contextual_as_primary_Pause",0
+"Complex_Pause",10
+"Direct_target_boundaries",158
+"Paired_scale_templates",20

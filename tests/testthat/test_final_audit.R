@@ -32,7 +32,7 @@ test_that("final audit promotes possible labels without rewriting auto or manual
   expect_equal(res$summary$n_promoted_events, 1)
 })
 
-test_that("audit_final label source feeds state space, events, and ML features", {
+test_that("audit_final label source feeds state space and events", {
   ts <- c(0, cumsum(c(0.02, 0.021, 0.019, 0.20, 0.45, 0.10, 0.11)))
   dat <- data.frame(
     idx = seq_along(ts),
@@ -64,11 +64,6 @@ test_that("audit_final label source feeds state space, events, and ML features",
   expect_true("burst" %in% ev$pattern)
   expect_false("possible_burst" %in% ev$pattern)
 
-  ml <- extract_ml_feature_table(ds$trains, source = "audit_final",
-                                 min_isi_sec = 0.001,
-                                 fill_blank_others = FALSE)
-  expect_true("burst" %in% ml$label)
-  expect_false("possible_burst" %in% ml$label)
 })
 
 test_that("clearing selected final audit trains preserves other audit records", {

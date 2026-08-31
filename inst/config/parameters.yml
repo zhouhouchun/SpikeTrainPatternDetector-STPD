@@ -281,14 +281,27 @@ runtime_defaults:
     local_ratio_min: 0.7
     local_ratio_max: 1.3
     tonic_mm_max: 1.25
+    tonic_mm_relax_lv_max: 0.15
+    tonic_mm_relax_cv_max: 0.30
+    tonic_mm_relaxed_max: 1.40
     tonic_mm_min: 0.85
     G_min: 5
     D_min: 0.0
+    short_regular_route_enabled: no
+    short_regular_min_isi_count: 0
+    short_regular_evidence_n: 0
+    short_regular_group_n: 0
+    short_regular_count_q10_full: 0.0
+    short_regular_logo_q10_min: 0.0
+    short_regular_logo_q10_max: 0.0
+    short_regular_structural_floor_spikes: 3
+    short_regular_mode: not_calibrated
+    short_regular_status: not_calibrated
     connector_budget_frac: 0.15
     connector_max_n: 1
     lv_delta: 0.1
-    anti_burst_veto: yes
-    burst_overlap_guard: yes
+    anti_burst_veto: no
+    burst_overlap_guard: no
     burst_overlap_guard_factor: 1.15
     burst_overlap_lower_quantile: 0.1
     burst_overlap_low_fraction_max: 0.05
@@ -312,7 +325,7 @@ runtime_defaults:
     irregular_CV_min: 0.35
     irregular_LV_min: 0.5
     irregular_MM_min: 1.5
-    spiking_min_spikes: 30
+    spiking_min_spikes: 20
     spiking_min_duration: 0.0
     spiking_use_abs_max: yes
     spiking_max_ISI_abs: 0.02
@@ -322,7 +335,7 @@ runtime_defaults:
     spiking_short_fraction_min: 0.7
     tonic_min_ISI_floor_sec: 0.01
     tonic_low_tail_fraction_max: 0.05
-    tonic_burst_core_veto: yes
+    tonic_burst_core_veto: no
     tonic_burst_core_veto_min_isi_n: 2
     spiking_epoch_bridge_ISI_sec: 0.035
     spiking_q90_max_ISI_sec: 0.025
@@ -416,7 +429,10 @@ runtime_defaults:
   arbitration:
     enabled: yes
 product_defaults:
-  schema_version: spiketrainpattern-1
+  schema_version: spiketrainpattern-2
+  multitrack_preview:
+    enabled: no
+    schema_version: stpd_multitrack_public_preview_v1
   engine:
     enabled: yes
     core: event_grammar
@@ -453,10 +469,21 @@ product_defaults:
     max_candidates_per_train: 3000
     allow_one_sided_as_canonical: no
     allow_one_sided_possible: yes
+    threshold_elastic_min_spikes_without_contrast: 6
     one_sided_seed_purity_min: 0.65
     strict_q95_bridge_gate: no
     q95_soft_penalty_weight: 0.35
     dynamic_possible_priority: yes
+    structure_first_enabled: yes
+    structure_first_min_isi_count: 3
+    structure_first_max_isi_count: 8
+    structure_first_contrast_min: 3.0
+    structure_first_geom_contrast_min: 3.0
+    structure_first_compactness_quantile: 0.8
+    structure_first_background_fraction: 0.35
+    structure_first_min_train_valid_isi: 8
+    structure_first_max_internal_tail_ratio: 1.25
+    structure_first_allow_endpoint: yes
     classic_min_spikes: 3
     classic_max_spikes: 10
     long_min_spikes: 11
@@ -464,7 +491,7 @@ product_defaults:
     prolonged_min_spikes: 16
     prolonged_max_spikes: 29
   high_frequency_spiking:
-    min_spikes: 30
+    min_spikes: 20
     min_duration_sec: 0.0
     short_isi_upper_sec: 0.02
     q90_isi_max_sec: 0.025
@@ -478,7 +505,7 @@ product_defaults:
     max_isi_sec: 0.03
     bridge_upper_sec: 0.035
     low_tail_fraction_max: 0.05
-    veto_burst_core_run: yes
+    veto_burst_core_run: no
   tonic:
     min_isi_sec: 0.02
     max_isi_sec: 0.06
@@ -486,7 +513,23 @@ product_defaults:
     min_spikes: 5
     lv_max: 0.5
     mm_max: 1.25
-    burst_overlap_guard: yes
+    mm_relax_lv_max: 0.15
+    mm_relax_cv_max: 0.30
+    mm_relaxed_max: 1.40
+    mm_min: 0.85
+    connector_max_isi_count: 1
+    min_duration_sec: 0.0
+    short_regular_route_enabled: no
+    short_regular_min_isi_count: 0
+    short_regular_evidence_n: 0
+    short_regular_group_n: 0
+    short_regular_count_q10_full: 0.0
+    short_regular_logo_q10_min: 0.0
+    short_regular_logo_q10_max: 0.0
+    short_regular_structural_floor_spikes: 3
+    short_regular_mode: not_calibrated
+    short_regular_status: not_calibrated
+    burst_overlap_guard: no
     burst_overlap_guard_factor: 1.15
     burst_overlap_lower_quantile: 0.1
     burst_overlap_low_fraction_max: 0.05
@@ -495,13 +538,59 @@ product_defaults:
     min_isi_sec: 0.1
     max_isi_sec: 0.15
     bridge_upper_sec: 0.15
-  neural_network:
-    event_guardrails: yes
-    confidence_cutoff: 0.7
-    context_window: 3
   diagnostics:
     keep_diagnostic_candidate_audit: yes
     export_public_tables_only: yes
+  multitrack_shadow:
+    phase1a_policy_version: phase1a_observation_only_v3
+    phase1a_track_ontology_version: stpd_multitrack_semantic_tracks_v2
+    phase1a_track_ontology: event=burst,long_burst,high_frequency_burst,hf_burst|state=high_frequency_spiking,high_frequency_tonic,high_frequency_irregular_state,tonic|gap=pause|review=possible_burst|profile=profile|default=diagnostic
+    possible_burst_review_target_track: event
+    possible_burst_review_target_label: burst
+    possible_burst_review_promotion_required: yes
+    possible_burst_review_policy_status: review_only__not_accepted_event__manual_confirmation_required__primary_event_metrics_ineligible__event_state_coexistence_non_destructive__hfs_dominance_ineligible
+    phase1b_policy_version: phase1b_compatibility_shadow_v1
+    hfs_dominance_group_floor: 6
+    hfs_dominance_group_fraction: 0.055
+    hfs_dominance_distributed_coverage_min: 0.25
+    hfs_dominance_majority_coverage_min: 0.50
+    tonic_fragment_min_spikes_floor: 3
+    tonic_fragment_mm_relax_lv_max: 0.15
+    tonic_fragment_mm_relax_cv_max: 0.30
+    tonic_fragment_mm_relaxed_max: 1.40
+    tonic_fragment_seed_fraction_max: 0.20
+    hft_fragment_min_spikes_floor: 3
+    hft_fragment_low_quantile: 0.10
+    hft_fragment_high_quantile: 0.90
+    hfs_fragment_min_spikes_floor: 3
+    hfs_fragment_tolerated_gap_fallback_min_sec: 0.060
+    hfs_fragment_tolerated_gap_fallback_max_sec: 0.120
+    hfs_fragment_tolerated_gap_bridge_multiplier: 2.0
+    hfs_fragment_tolerated_gap_q90_multiplier: 2.5
+    hfs_fragment_short_fraction_lower_bound: 0.10
+    hfs_fragment_allowed_large_fraction_floor: 0.30
+    hfs_fragment_max_consecutive_large_floor: 2
+    hfs_fragment_q80_probability: 0.80
+    hfs_fragment_q90_probability: 0.90
+    hfs_fragment_short_fraction_min_floor: 0.50
+    hfs_fragment_short_fraction_relaxation: 0.15
+    hfs_fragment_q90_short_fraction_min_floor: 0.60
+    hfs_fragment_q90_short_fraction_relaxation: 0.10
+    hfs_fragment_bridge_fraction_min_floor: 0.75
+    hfs_fragment_tolerated_gap_fraction_min: 0.95
+    variable_hfs_cv_min: 0.65
+    variable_hfs_lv_min: 0.45
+    variable_hfs_large_fraction_min: 0.08
+    variable_hfs_mm_audit_min: 3.0
+    packet_like_multi_group_min: 2
+    packet_like_multi_group_coverage_min: 0.08
+    packet_like_single_group_min: 1
+    packet_like_single_group_coverage_min: 0.18
+    packet_neighbor_max_gap_isi: 3
+    tonic_hft_burst_rule: non_destructive_event_overlay
+    hfs_burst_rule: overlay_with_dominance_evidence_only
+    packet_rule: diagnostic_annotation_only
+    variable_hfs_mm_rule: audit_only_not_boolean_gate
 key_schema:
 - path: detector.min_valid_isi_sec
   input_id: detector__min_valid_isi_sec
@@ -672,7 +761,7 @@ key_schema:
   input_id: highfreq__spiking_min_spikes
   group: highfreq
   type: integer
-  default: '30'
+  default: '20'
   label: HF spiking 最小 spike 数
   choices: ''
   min: '3'
@@ -751,12 +840,12 @@ eventness_schema:
   group: classification
   type: numeric
   default: '1.50'
-  label: 回到 baseline 容差
+  label: 回到基线的容差
   choices: ''
   min: '1'
   max: '5'
   step: '0.05'
-  scientific_note: pre/post ISI 回到远端 baseline 的倍数容差。
+  scientific_note: 前/后 ISI 回到远端基线的倍数容差。
 - path: classification.context_window_isi_n
   input_id: classification__context_window_isi_n
   group: classification
@@ -773,7 +862,7 @@ eventness_schema:
   group: classification
   type: integer
   default: '2'
-  label: 候选与远端上下文之间的 gap（ISI 数）
+  label: 候选与远端上下文之间的间隔（ISI 数）
   choices: ''
   min: '0'
   max: '20'
@@ -976,8 +1065,8 @@ eventness_schema:
   min: '2'
   max: '500'
   step: '1'
-  scientific_note: Audit/recommendation threshold. For a contiguous high-frequency
-    epoch, ISI count is usually spike count minus 1; artifact ISIs are not valid support.
+  scientific_note: 审计/建议阈值。对于连续高频时期，ISI 数通常等于 spike 数减 1；伪迹 ISI
+    不能作为有效支持证据。
 - path: state.hf_spiking_eventness_max
   input_id: state__hf_spiking_eventness_max
   group: state
@@ -1285,8 +1374,8 @@ parameter_contract:
   max: ''
   step: '0.0001'
   unit: sec
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: HFS direct-support 与 q90 的上限；不是每个 ISI 的硬上限。少量超过该值但未达到
+    Pause-bounded connector 上限的 ISI 可保留在同一 HFS episode 中。
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: advanced
@@ -1296,8 +1385,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'FALSE'
   visible_if: ''
-  help_text: 'Contract-managed advanced parameter: detector.pattern_isi_limits.high_frequency_spiking.max_sec.
-    Review biological range and validation warnings before changing.'
+  help_text: 设为 0 时关闭该 direct-support 约束。启用后候选 q90 必须通过；少量更大的 connector
+    仍可由 tolerated-gap 规则接受，canonical Pause 始终切断连续 HFS support。
   control_type: number
 - path: detector.pattern_isi_limits.high_frequency_spiking.min_sec
   input_id: detector__pattern_isi_limits__high_frequency_spiking__min_sec
@@ -1914,7 +2003,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: burst 内部可桥接的中等 ISI 上限。调高会让事件跨过更长的小间隙并合并为同一候选。
+  help_text: burst 内部可桥接的中等 ISI 上限。调高会让事件跨过更长的小间隙并合并为同一候选。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: event_core.burst_contrast_min
   input_id: event_core__burst_contrast_min
@@ -1938,7 +2027,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: burst 核心相对 pre/post 背景的最小对比度。调高更保守，要求事件更突显；调低会增加召回。
+  help_text: burst 核心相对 pre/post 背景的最小对比度。调高更保守，要求事件更突显；调低会增加召回。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: event_core.classic_max_spikes
   input_id: event_core__classic_max_spikes
@@ -2556,7 +2645,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: burst 紧凑核心允许的最短 ISI。通常贴近有效 ISI 下限；调低可能纳入伪迹，调高会忽略最短的核心间隔。
+  help_text: burst 紧凑核心允许的最短 ISI。通常贴近有效 ISI 下限；调低可能纳入伪迹，调高会忽略最短的核心间隔。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: event_core.seed_band_upper_sec
   input_id: event_core__seed_band_upper_sec
@@ -2580,7 +2669,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: burst 紧凑核心的短 ISI 上限。调高会把较慢的 spike 簇纳入 burst seed，提高召回但可能增加假阳性。
+  help_text: burst 紧凑核心的短 ISI 上限。调高会把较慢的 spike 簇纳入 burst seed，提高召回但可能增加假阳性。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: event_core.seed_percentile_gate_max
   input_id: event_core__seed_percentile_gate_max
@@ -2884,10 +2973,10 @@ parameter_contract:
 - path: event_grammar.threshold_source_mode
   input_id: event_grammar__threshold_source_mode
   group: event_grammar
-  type: text
+  type: choice
   default: auto
   label: 阈值来源策略
-  choices: ''
+  choices: auto|user|manual|histogram|default
   min: ''
   max: ''
   step: ''
@@ -2903,7 +2992,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: 选择用户阈值、manual 学习阈值、全局直方图建议和默认值之间的优先级。会直接影响各模式的 seed/bridge 阈值。
+  help_text: 选择 user、manual、histogram 和 default 阈值之间的优先级。auto 按 user → manual → histogram → default 解析；检测实际使用的值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: select
 - path: arbitration.enabled
   input_id: arbitration__enabled
@@ -9280,7 +9369,7 @@ parameter_contract:
   group: burst
   type: numeric
   default: '0.035'
-  label: 经典 burst bridge 阈值
+  label: 旧版/诊断：经典 burst bridge 阈值
   choices: ''
   min: ''
   max: ''
@@ -9290,14 +9379,14 @@ parameter_contract:
     review biological range before exposing in UI.
   schema_scope: full_contract
   required: 'TRUE'
-  ui_level: basic
+  ui_level: advanced
   ui_order: 20150.0
   section: 爆发 seed / bridge / contrast
   section_order: 20.0
-  advanced: no
+  advanced: yes
   expert_only: no
   visible_if: ''
-  help_text: 经典 burst 规则中可桥接 ISI 的上限。调高会让 burst 跨过更长间隔；调低会拆分事件。
+  help_text: 旧版/诊断兼容参数。当前活动 AUTO event grammar 不消费此值；仅供旧版/备用检测和诊断记录使用。
   control_type: number
 - path: burst.T_edge_post
   input_id: burst__T_edge_post
@@ -9429,7 +9518,7 @@ parameter_contract:
   group: burst
   type: numeric
   default: '0.02'
-  label: 经典 burst seed 阈值
+  label: 旧版/诊断：经典 burst seed 阈值
   choices: ''
   min: ''
   max: ''
@@ -9439,14 +9528,14 @@ parameter_contract:
     review biological range before exposing in UI.
   schema_scope: full_contract
   required: 'TRUE'
-  ui_level: basic
+  ui_level: advanced
   ui_order: 20140.0
   section: 爆发 seed / bridge / contrast
   section_order: 20.0
-  advanced: no
+  advanced: yes
   expert_only: no
   visible_if: ''
-  help_text: 经典 burst 规则中的短 ISI 阈值。主要影响旧式 seed 形成，并与事件语法阈值共同约束 burst 候选。
+  help_text: 旧版/诊断兼容参数。当前活动 AUTO event grammar 不消费此值；仅供旧版/备用检测和诊断记录使用。
   control_type: number
 - path: burst.use_boundary_optimization
   input_id: burst__use_boundary_optimization
@@ -9951,7 +10040,7 @@ parameter_contract:
   group: highfreq
   type: numeric
   default: '0.02'
-  label: HF spiking 最大容忍 ISI
+  label: 旧版/诊断：HF spiking 最大容忍 ISI
   choices: ''
   min: '0'
   max: ''
@@ -9961,14 +10050,14 @@ parameter_contract:
     review biological range before exposing in UI.
   schema_scope: full_contract
   required: 'TRUE'
-  ui_level: basic
+  ui_level: advanced
   ui_order: 30030.0
   section: HF spiking
   section_order: 30.0
-  advanced: no
+  advanced: yes
   expert_only: no
   visible_if: ''
-  help_text: HF spiking 内部允许的最大 ISI。调高可容忍偶发较长间隔，调低会把不规则片段拆开。
+  help_text: 旧版/near-miss 诊断兼容参数。当前活动 AUTO event grammar 的 HF-spiking short band 来自解析后的生效阈值，不消费此值；仅供兼容路径和诊断记录使用。
   control_type: number
 - path: highfreq.spiking_max_ISI_pct
   input_id: highfreq__spiking_max_ISI_pct
@@ -10024,7 +10113,7 @@ parameter_contract:
   input_id: highfreq__spiking_min_spikes
   group: highfreq
   type: integer
-  default: '30'
+  default: '20'
   label: HF spiking 最少 spikes
   choices: ''
   min: '3'
@@ -10127,8 +10216,8 @@ parameter_contract:
   max: ''
   step: '0.0001'
   unit: sec
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: 允许连接两个 HFS direct-support 片段的短暂中断基准。活动检测器还会结合该 train
+    的已解析 Pause 边界自适应放宽，但不会跨越 canonical Pause；并同时限制 connector 的比例和连续个数。
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: advanced
@@ -10138,8 +10227,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'FALSE'
   visible_if: ''
-  help_text: 'Contract-managed advanced parameter: highfreq.spiking_tolerated_gap_ISI_sec.
-    Review biological range and validation warnings before changing.'
+  help_text: 这是 connector 基准，不是 HFS direct-support ISI 上限。较大值可减少含短暂减速 HFS 的漏检，
+    但仍受 Pause 边界、最大 120 ms、安全比例和连续 connector 数限制。
   control_type: number
 - path: highfreq.spiking_use_abs_max
   input_id: highfreq__spiking_use_abs_max
@@ -10271,7 +10360,7 @@ parameter_contract:
   group: highfreq
   type: numeric
   default: '0.03'
-  label: HF 状态短 ISI 上限
+  label: 旧版/诊断：HF 状态短 ISI 上限
   choices: ''
   min: ''
   max: ''
@@ -10281,14 +10370,14 @@ parameter_contract:
     review biological range before exposing in UI.
   schema_scope: full_contract
   required: 'TRUE'
-  ui_level: basic
+  ui_level: advanced
   ui_order: 30010.0
   section: HF spiking
   section_order: 30.0
-  advanced: no
+  advanced: yes
   expert_only: no
   visible_if: ''
-  help_text: 高频状态使用的短 ISI 上限。调高会把较慢的连续放电纳入 HF 候选，调低会更强调快速放电。
+  help_text: 旧版/near-miss 诊断兼容参数。当前活动 AUTO event grammar 不消费此值；仅供旧版/near-miss 诊断和兼容记录使用。
   control_type: number
 - path: highfreq.tonic_bridge_upper_sec
   input_id: highfreq__tonic_bridge_upper_sec
@@ -10319,15 +10408,16 @@ parameter_contract:
   input_id: highfreq__tonic_burst_core_veto
   group: highfreq
   type: logical
-  default: 'TRUE'
+  default: 'FALSE'
   label: highfreq.tonic_burst_core_veto
   choices: ''
   min: ''
   max: ''
   step: ''
   unit: ''
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: Deprecated compatibility control. Burst is an Event overlay and
+    does not veto an independently supported HFT State; this control is inactive in
+    the authoritative multi-track path.
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: advanced
@@ -10337,8 +10427,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'FALSE'
   visible_if: ''
-  help_text: 'Contract-managed advanced parameter: highfreq.tonic_burst_core_veto.
-    Review biological range and validation warnings before changing.'
+  help_text: 'Deprecated compatibility input retained for old parameter files. It
+    is audit-only and does not split, reject, or re-gate HFT State support.'
   control_type: checkbox
 - path: highfreq.tonic_burst_core_veto_min_isi_n
   input_id: highfreq__tonic_burst_core_veto_min_isi_n
@@ -10544,15 +10634,15 @@ parameter_contract:
   input_id: tonic__anti_burst_veto
   group: tonic
   type: logical
-  default: 'TRUE'
+  default: 'FALSE'
   label: tonic.anti_burst_veto
   choices: ''
   min: ''
   max: ''
   step: ''
   unit: ''
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: Deprecated compatibility control. Burst is an orthogonal Event;
+    tonic State selection uses independent frequency and regularity evidence.
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: advanced
@@ -10562,22 +10652,22 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'FALSE'
   visible_if: ''
-  help_text: 'Contract-managed advanced parameter: tonic.anti_burst_veto. Review biological
-    range and validation warnings before changing.'
+  help_text: 'Deprecated audit-only input retained for old parameter files; it does
+    not reject or split tonic State support.'
   control_type: checkbox
 - path: tonic.burst_overlap_guard
   input_id: tonic__burst_overlap_guard
   group: tonic
   type: logical
-  default: 'TRUE'
+  default: 'FALSE'
   label: tonic.burst_overlap_guard
   choices: ''
   min: ''
   max: ''
   step: ''
   unit: ''
-  scientific_note: Prevent AUTO tonic candidates from occupying ISI bands already
-    represented by AUTO burst-like intervals.
+  scientific_note: Deprecated audit-only separation indicator. Event overlap cannot
+    determine tonic State geometry in the authoritative multi-track path.
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: advanced
@@ -10587,9 +10677,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'FALSE'
   visible_if: ''
-  help_text: Enables a tonic-vs-burst separation guard. Tonic remains structure-based,
-    but its ISI distribution must not substantially overlap the current burst-like
-    AUTO ISI reference.
+  help_text: Retained for backward-compatible import and diagnostics; not applied as
+    a tonic State veto.
   control_type: checkbox
 - path: tonic.burst_overlap_guard_factor
   input_id: tonic__burst_overlap_guard_factor
@@ -10690,6 +10779,30 @@ parameter_contract:
   visible_if: ''
   help_text: Uses the upper tail of AUTO burst-like ISIs rather than a single raw
     maximum, reducing sensitivity to isolated bridge/outlier intervals.
+  control_type: number
+- path: tonic.bridge_upper_sec
+  input_id: tonic__bridge_upper_sec
+  group: tonic
+  type: numeric
+  default: '0.08'
+  label: tonic.bridge_upper_sec
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.0001'
+  unit: sec
+  scientific_note: Maximum connector ISI admitted while assembling a tonic candidate.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: advanced
+  ui_order: '70005.6'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'FALSE'
+  visible_if: ''
+  help_text: Allows short gaps inside an otherwise tonic interval; increasing it can
+    merge distinct tonic epochs and should be validated on held-out recordings.
   control_type: number
 - path: tonic.connector_budget_frac
   input_id: tonic__connector_budget_frac
@@ -10987,7 +11100,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: 规则强直发放允许的最长 ISI。调高会纳入更慢的稳定放电，调低会更严格。
+  help_text: 规则强直发放允许的最长 ISI。调高会纳入更慢的稳定放电，调低会更严格。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: tonic.T_min
   input_id: tonic__T_min
@@ -11011,7 +11124,7 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: 规则强直发放允许的最短 ISI。调高会排除过快片段，帮助区分 HF tonic / HF spiking。
+  help_text: 规则强直发放允许的最短 ISI。调高会排除过快片段，帮助区分 HF tonic / HF spiking。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: tonic.tonic_mm_max
   input_id: tonic__tonic_mm_max
@@ -11038,6 +11151,75 @@ parameter_contract:
   help_text: 'Contract-managed advanced parameter: tonic.tonic_mm_max. Review biological
     range and validation warnings before changing.'
   control_type: number
+- path: tonic.tonic_mm_relax_lv_max
+  input_id: tonic__tonic_mm_relax_lv_max
+  group: tonic
+  type: numeric
+  default: '0.15'
+  label: tonic.tonic_mm_relax_lv_max
+  choices: ''
+  min: '0'
+  max: '0.15'
+  step: '0.01'
+  unit: ratio
+  scientific_note: LV ceiling required before the Tonic MM upper bound may be relaxed.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70019.1'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Strong-regularity guard for calibration-supported MM relaxation.
+  control_type: number
+- path: tonic.tonic_mm_relax_cv_max
+  input_id: tonic__tonic_mm_relax_cv_max
+  group: tonic
+  type: numeric
+  default: '0.30'
+  label: tonic.tonic_mm_relax_cv_max
+  choices: ''
+  min: '0'
+  max: '0.30'
+  step: '0.01'
+  unit: ratio
+  scientific_note: CV ceiling required before the Tonic MM upper bound may be relaxed.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70019.2'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Strong-regularity guard for calibration-supported MM relaxation.
+  control_type: number
+- path: tonic.tonic_mm_relaxed_max
+  input_id: tonic__tonic_mm_relaxed_max
+  group: tonic
+  type: numeric
+  default: '1.40'
+  label: tonic.tonic_mm_relaxed_max
+  choices: ''
+  min: '1'
+  max: '1.50'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Conditional MM ceiling used only after both CV and LV strong-regularity guards pass.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70019.3'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Defaults to 1.40 and may be frozen up to 1.50 from calibration-only group-LOGO evidence.
+  control_type: number
 - path: tonic.tonic_mm_min
   input_id: tonic__tonic_mm_min
   group: tonic
@@ -11063,6 +11245,246 @@ parameter_contract:
   help_text: 'Contract-managed advanced parameter: tonic.tonic_mm_min. Review biological
     range and validation warnings before changing.'
   control_type: number
+- path: tonic.short_regular_route_enabled
+  input_id: tonic__short_regular_route_enabled
+  group: tonic
+  type: logical
+  default: 'FALSE'
+  label: tonic.short_regular_route_enabled
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: flag
+  scientific_note: Calibration-frozen alternative Tonic entry route; it is valid
+    only when the complete evidence contract is satisfied.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70021'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror of the canonical Tonic short regular route switch.
+  control_type: checkbox
+- path: tonic.short_regular_min_isi_count
+  input_id: tonic__short_regular_min_isi_count
+  group: tonic
+  type: integer
+  default: '0'
+  label: tonic.short_regular_min_isi_count
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: ISI_count
+  scientific_note: Frozen from calibration groups and not estimated from the
+    train currently being detected.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70022'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror; zero when the alternative route is disabled.
+  control_type: integer
+- path: tonic.short_regular_evidence_n
+  input_id: tonic__short_regular_evidence_n
+  group: tonic
+  type: integer
+  default: '0'
+  label: tonic.short_regular_evidence_n
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: episode_count
+  scientific_note: Number of calibration Tonic State episodes supporting the
+    frozen route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70023'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror; at least 10 episodes are required when enabled.
+  control_type: integer
+- path: tonic.short_regular_group_n
+  input_id: tonic__short_regular_group_n
+  group: tonic
+  type: integer
+  default: '0'
+  label: tonic.short_regular_group_n
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: group_count
+  scientific_note: Number of independent calibration groups supporting the
+    frozen route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70024'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror; at least four groups are required when enabled.
+  control_type: integer
+- path: tonic.short_regular_count_q10_full
+  input_id: tonic__short_regular_count_q10_full
+  group: tonic
+  type: numeric
+  default: '0'
+  label: tonic.short_regular_count_q10_full
+  choices: ''
+  min: '0'
+  max: ''
+  step: ''
+  unit: ISI_count
+  scientific_note: Lower-decile support count estimated from all calibration
+    Tonic State episodes.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70025'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration audit mirror.
+  control_type: number
+- path: tonic.short_regular_logo_q10_min
+  input_id: tonic__short_regular_logo_q10_min
+  group: tonic
+  type: numeric
+  default: '0'
+  label: tonic.short_regular_logo_q10_min
+  choices: ''
+  min: '0'
+  max: ''
+  step: ''
+  unit: ISI_count
+  scientific_note: Minimum lower-decile support count across calibration-only
+    leave-one-group-out folds.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70026'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror used to freeze the short-route support count.
+  control_type: number
+- path: tonic.short_regular_logo_q10_max
+  input_id: tonic__short_regular_logo_q10_max
+  group: tonic
+  type: numeric
+  default: '0'
+  label: tonic.short_regular_logo_q10_max
+  choices: ''
+  min: '0'
+  max: ''
+  step: ''
+  unit: ISI_count
+  scientific_note: Maximum lower-decile support count across calibration-only
+    leave-one-group-out folds.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70027'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration stability audit mirror.
+  control_type: number
+- path: tonic.short_regular_structural_floor_spikes
+  input_id: tonic__short_regular_structural_floor_spikes
+  group: tonic
+  type: integer
+  default: '3'
+  label: tonic.short_regular_structural_floor_spikes
+  choices: ''
+  min: '3'
+  max: ''
+  step: '1'
+  unit: spike_count
+  scientific_note: Structural Tonic spike floor retained independently of the
+    calibration-frozen short-route count.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70028'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit mirror; the frozen ISI count must exceed this floor minus one.
+  control_type: integer
+- path: tonic.short_regular_mode
+  input_id: tonic__short_regular_mode
+  group: tonic
+  type: character
+  default: not_calibrated
+  label: tonic.short_regular_mode
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: provenance
+  scientific_note: Immutable identifier of the calibration method used to freeze
+    the alternative route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70029'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration provenance mirror.
+  control_type: text
+- path: tonic.short_regular_status
+  input_id: tonic__short_regular_status
+  group: tonic
+  type: character
+  default: not_calibrated
+  label: tonic.short_regular_status
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: provenance
+  scientific_note: Records whether the complete calibration evidence contract
+    enabled or disabled the alternative route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '70030'
+  section: Tonic
+  section_order: '70'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration status mirror.
+  control_type: text
 - path: pause.adaptive_range_mode
   input_id: pause__adaptive_range_mode
   group: pause
@@ -11479,14 +11901,14 @@ parameter_contract:
   advanced: no
   expert_only: no
   visible_if: ''
-  help_text: 进入 pause 候选的长 ISI 起点阈值。调高会只保留更长暂停，调低会增加短暂停候选。
+  help_text: 进入 pause 候选的长 ISI 起点阈值。调高会只保留更长暂停，调低会增加短暂停候选。在 auto 来源策略下，本输入仅作为 default 回退值；检测实际读取解析后的生效值，当前值与来源请查看“阈值来源 / 实际检测阈值”表。
   control_type: number
 - path: pause.T_strong
   input_id: pause__T_strong
   group: pause
   type: numeric
   default: '0.15'
-  label: 强 pause ISI 阈值
+  label: 强 pause core ISI 阈值
   choices: ''
   min: ''
   max: ''
@@ -11496,14 +11918,14 @@ parameter_contract:
     review biological range before exposing in UI.
   schema_scope: full_contract
   required: 'TRUE'
-  ui_level: basic
+  ui_level: advanced
   ui_order: 50020.0
   section: Pause 检测
   section_order: 50.0
-  advanced: no
+  advanced: yes
   expert_only: no
   visible_if: ''
-  help_text: 强 pause 的长 ISI 阈值。调高会要求更明显的放电中断，调低会把更多 pause 视为强证据。
+  help_text: canonical Pause 强 core 的生效阈值。AUTO 直方图模式优先使用经过 cluster-jackknife 稳定性门的 log-ISI 上尾谷；没有稳定谷时显示 q95 soft fallback，并继续要求局部/全局相对对比。该值决定强证据层，不替代较低的 Pause entry/review 阈值。
   control_type: number
 - path: classification.apply_eventness_recommendations_to_auto
   input_id: classification__apply_eventness_recommendations_to_auto
@@ -11867,8 +12289,8 @@ parameter_contract:
   max: '500'
   step: '1'
   unit: count
-  scientific_note: Audit/recommendation threshold. For a contiguous high-frequency
-    epoch, ISI count is usually spike count minus 1; artifact ISIs are not valid support.
+  scientific_note: 审计/建议阈值。对于连续高频时期，ISI 数通常等于 spike 数减 1；伪迹 ISI
+    不能作为有效支持证据。
   schema_scope: eventness_audit
   required: 'TRUE'
   ui_level: expert
@@ -11878,8 +12300,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'TRUE'
   visible_if: ''
-  help_text: Audit/recommendation threshold. For a contiguous high-frequency epoch,
-    ISI count is usually spike count minus 1; artifact ISIs are not valid support.
+  help_text: 审计/建议阈值。对于连续高频时期，ISI 数通常等于 spike 数减 1；伪迹 ISI
+    不能作为有效支持证据。
   control_type: integer
 - path: state.hf_spiking_short_isi_fraction_min
   input_id: state__hf_spiking_short_isi_fraction_min
@@ -12025,6 +12447,31 @@ parameter_contract:
   help_text: 'Contract-managed expert parameter: spiketrainpattern.burst.allow_one_sided_possible.
     Review biological range and validation warnings before changing.'
   control_type: checkbox
+- path: spiketrainpattern.burst.threshold_elastic_min_spikes_without_contrast
+  input_id: spiketrainpattern__burst__threshold_elastic_min_spikes_without_contrast
+  group: spiketrainpattern
+  type: integer
+  default: '6'
+  label: 无对比度时阈值弹性 Burst 最少 spikes
+  choices: ''
+  min: '3'
+  max: '100'
+  step: '1'
+  unit: spikes
+  scientific_note: 当 seed/bridge、尺寸、q90/q95 与安全边界均通过但局部 flank
+    对比度不足时，至少需要该数量的 spikes 才能直接形成 Burst；更短候选保留为 possible_burst
+    或由结构路径提供额外证据。
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: advanced
+  ui_order: '900002.5'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'FALSE'
+  visible_if: ''
+  help_text: 该参数控制低对比度阈值候选的证据量，不影响具有强双侧对比度的短 Burst。
+  control_type: numeric
 - path: spiketrainpattern.burst.boundary_floor_hard
   input_id: spiketrainpattern__burst__boundary_floor_hard
   group: spiketrainpattern
@@ -13004,7 +13451,7 @@ parameter_contract:
   input_id: spiketrainpattern__high_frequency_spiking__min_spikes
   group: spiketrainpattern
   type: integer
-  default: '30'
+  default: '20'
   label: spiketrainpattern.high_frequency_spiking.min_spikes
   choices: ''
   min: '0'
@@ -13086,8 +13533,8 @@ parameter_contract:
   max: ''
   step: '0.0001'
   unit: sec
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: HFS episode 内 brief-interruption connector 的预设基准。活动阈值按已解析的
+    train-specific Pause 边界调整，connector 不得达到 canonical Pause。
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: expert
@@ -13097,8 +13544,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'TRUE'
   visible_if: ''
-  help_text: 'Contract-managed expert parameter: spiketrainpattern.high_frequency_spiking.tolerated_gap_isi_sec.
-    Review biological range and validation warnings before changing.'
+  help_text: 该参数允许两侧均有 HFS 支持的少量较大 ISI 在最小 spike 数检查前连接；它不会放宽
+    HFS q90、connector 比例或连续数，也不会吞并 canonical Pause。
   control_type: number
 - path: spiketrainpattern.high_frequency_tonic.bridge_upper_sec
   input_id: spiketrainpattern__high_frequency_tonic__bridge_upper_sec
@@ -13229,15 +13676,15 @@ parameter_contract:
   input_id: spiketrainpattern__high_frequency_tonic__veto_burst_core_run
   group: spiketrainpattern
   type: logical
-  default: 'TRUE'
+  default: 'FALSE'
   label: spiketrainpattern.high_frequency_tonic.veto_burst_core_run
   choices: ''
   min: ''
   max: ''
   step: ''
   unit: spikes
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
+  scientific_note: Deprecated compatibility mirror. Burst is an orthogonal Event
+    and cannot veto HFT State support in the multi-track product.
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: expert
@@ -13247,83 +13694,8 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'TRUE'
   visible_if: ''
-  help_text: 'Contract-managed expert parameter: spiketrainpattern.high_frequency_tonic.veto_burst_core_run.
-    Review biological range and validation warnings before changing.'
-  control_type: checkbox
-- path: spiketrainpattern.neural_network.confidence_cutoff
-  input_id: spiketrainpattern__neural_network__confidence_cutoff
-  group: spiketrainpattern
-  type: numeric
-  default: '0.7'
-  label: spiketrainpattern.neural_network.confidence_cutoff
-  choices: ''
-  min: ''
-  max: ''
-  step: ''
-  unit: spikes
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
-  schema_scope: full_contract
-  required: 'TRUE'
-  ui_level: expert
-  ui_order: '900052'
-  section: Public product namespace
-  section_order: '900'
-  advanced: 'TRUE'
-  expert_only: 'TRUE'
-  visible_if: ''
-  help_text: 'Contract-managed expert parameter: spiketrainpattern.neural_network.confidence_cutoff.
-    Review biological range and validation warnings before changing.'
-  control_type: number
-- path: spiketrainpattern.neural_network.context_window
-  input_id: spiketrainpattern__neural_network__context_window
-  group: spiketrainpattern
-  type: integer
-  default: '3'
-  label: spiketrainpattern.neural_network.context_window
-  choices: ''
-  min: '0'
-  max: ''
-  step: '1'
-  unit: spikes
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
-  schema_scope: full_contract
-  required: 'TRUE'
-  ui_level: expert
-  ui_order: '900053'
-  section: Public product namespace
-  section_order: '900'
-  advanced: 'TRUE'
-  expert_only: 'TRUE'
-  visible_if: ''
-  help_text: 'Contract-managed expert parameter: spiketrainpattern.neural_network.context_window.
-    Review biological range and validation warnings before changing.'
-  control_type: integer
-- path: spiketrainpattern.neural_network.event_guardrails
-  input_id: spiketrainpattern__neural_network__event_guardrails
-  group: spiketrainpattern
-  type: logical
-  default: 'TRUE'
-  label: spiketrainpattern.neural_network.event_guardrails
-  choices: ''
-  min: ''
-  max: ''
-  step: ''
-  unit: spikes
-  scientific_note: YAML parameter contract row generated from default parameters;
-    review biological range before exposing in UI.
-  schema_scope: full_contract
-  required: 'TRUE'
-  ui_level: expert
-  ui_order: '900054'
-  section: Public product namespace
-  section_order: '900'
-  advanced: 'TRUE'
-  expert_only: 'TRUE'
-  visible_if: ''
-  help_text: 'Contract-managed expert parameter: spiketrainpattern.neural_network.event_guardrails.
-    Review biological range and validation warnings before changing.'
+  help_text: 'Deprecated compatibility mirror retained for import and provenance;
+    authoritative multi-track State selection ignores it.'
   control_type: checkbox
 - path: spiketrainpattern.pause.bridge_upper_sec
   input_id: spiketrainpattern__pause__bridge_upper_sec
@@ -13502,7 +13874,7 @@ parameter_contract:
   input_id: spiketrainpattern__schema_version
   group: spiketrainpattern
   type: text
-  default: spiketrainpattern-1
+  default: spiketrainpattern-2
   label: spiketrainpattern.schema_version
   choices: ''
   min: ''
@@ -13558,7 +13930,7 @@ parameter_contract:
   min: '0'
   max: ''
   step: '0.05'
-  unit: spikes
+  unit: ratio
   scientific_note: YAML parameter contract row generated from default parameters;
     review biological range before exposing in UI.
   schema_scope: full_contract
@@ -13658,7 +14030,7 @@ parameter_contract:
   min: '0'
   max: ''
   step: '0.05'
-  unit: spikes
+  unit: ratio
   scientific_note: YAML parameter contract row generated from default parameters;
     review biological range before exposing in UI.
   schema_scope: full_contract
@@ -13673,19 +14045,387 @@ parameter_contract:
   help_text: 'Contract-managed expert parameter: spiketrainpattern.tonic.mm_max. Review
     biological range and validation warnings before changing.'
   control_type: number
+- path: spiketrainpattern.tonic.mm_relax_lv_max
+  input_id: spiketrainpattern__tonic__mm_relax_lv_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0.15'
+  label: spiketrainpattern.tonic.mm_relax_lv_max
+  choices: ''
+  min: '0'
+  max: '0.15'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical LV guard for conditional Tonic MM relaxation.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.0001'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Strong-regularity guard; it cannot relax ordinary Tonic candidates.
+  control_type: number
+- path: spiketrainpattern.tonic.mm_relax_cv_max
+  input_id: spiketrainpattern__tonic__mm_relax_cv_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0.30'
+  label: spiketrainpattern.tonic.mm_relax_cv_max
+  choices: ''
+  min: '0'
+  max: '0.30'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical CV guard for conditional Tonic MM relaxation.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.0002'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Strong-regularity guard; it cannot relax ordinary Tonic candidates.
+  control_type: number
+- path: spiketrainpattern.tonic.mm_relaxed_max
+  input_id: spiketrainpattern__tonic__mm_relaxed_max
+  group: spiketrainpattern
+  type: numeric
+  default: '1.40'
+  label: spiketrainpattern.tonic.mm_relaxed_max
+  choices: ''
+  min: '1'
+  max: '1.50'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical conditional MM ceiling, bounded by calibration evidence and a prespecified 1.50 cap.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.0003'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Defaults to 1.40; a calibration-only group-LOGO contract may freeze a value up to 1.50.
+  control_type: number
+- path: spiketrainpattern.tonic.mm_min
+  input_id: spiketrainpattern__tonic__mm_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.85'
+  label: spiketrainpattern.tonic.mm_min
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.05'
+  unit: ratio
+  scientific_note: Lower MM regularity bound retained by the public Tonic schema.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.001'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Expert Tonic regularity bound; validate before changing.
+  control_type: number
+- path: spiketrainpattern.tonic.connector_max_isi_count
+  input_id: spiketrainpattern__tonic__connector_max_isi_count
+  group: spiketrainpattern
+  type: integer
+  default: '1'
+  label: spiketrainpattern.tonic.connector_max_isi_count
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: ISIs
+  scientific_note: Maximum connector count inside a Tonic State envelope.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.002'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Expert State-geometry parameter; validate before changing.
+  control_type: integer
+- path: spiketrainpattern.tonic.min_duration_sec
+  input_id: spiketrainpattern__tonic__min_duration_sec
+  group: spiketrainpattern
+  type: numeric
+  default: '0'
+  label: spiketrainpattern.tonic.min_duration_sec
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.001'
+  unit: sec
+  scientific_note: Calibration-derived Tonic duration support floor.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.003'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Frozen from calibration Tonic State episodes; not a universal absolute threshold.
+  control_type: number
+- path: spiketrainpattern.tonic.short_regular_route_enabled
+  input_id: spiketrainpattern__tonic__short_regular_route_enabled
+  group: spiketrainpattern
+  type: logical
+  default: 'FALSE'
+  label: spiketrainpattern.tonic.short_regular_route_enabled
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Read-only calibration decision for the short regular Tonic support route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.004'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Must satisfy the complete calibration-frozen evidence contract.
+  control_type: checkbox
+- path: spiketrainpattern.tonic.short_regular_min_isi_count
+  input_id: spiketrainpattern__tonic__short_regular_min_isi_count
+  group: spiketrainpattern
+  type: integer
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_min_isi_count
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: ISIs
+  scientific_note: Conservative group-LOGO q10 support count frozen on calibration data.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.005'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit/calibration field; zero when the alternative route is disabled.
+  control_type: integer
+- path: spiketrainpattern.tonic.short_regular_evidence_n
+  input_id: spiketrainpattern__tonic__short_regular_evidence_n
+  group: spiketrainpattern
+  type: integer
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_evidence_n
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: episodes
+  scientific_note: Number of calibration Tonic episodes supporting the short route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.006'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit/calibration field; at least 10 episodes are required when enabled.
+  control_type: integer
+- path: spiketrainpattern.tonic.short_regular_group_n
+  input_id: spiketrainpattern__tonic__short_regular_group_n
+  group: spiketrainpattern
+  type: integer
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_group_n
+  choices: ''
+  min: '0'
+  max: ''
+  step: '1'
+  unit: groups
+  scientific_note: Independent calibration-group count for the short route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.007'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Audit/calibration field; at least four groups are required when enabled.
+  control_type: integer
+- path: spiketrainpattern.tonic.short_regular_count_q10_full
+  input_id: spiketrainpattern__tonic__short_regular_count_q10_full
+  group: spiketrainpattern
+  type: numeric
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_count_q10_full
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.1'
+  unit: ISIs
+  scientific_note: Full-calibration q10 of Tonic episode ISI support.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.008'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration audit field.
+  control_type: number
+- path: spiketrainpattern.tonic.short_regular_logo_q10_min
+  input_id: spiketrainpattern__tonic__short_regular_logo_q10_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_logo_q10_min
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.1'
+  unit: ISIs
+  scientific_note: Minimum leave-one-group-out q10 Tonic support.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.009'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Determines the frozen short-route support count.
+  control_type: number
+- path: spiketrainpattern.tonic.short_regular_logo_q10_max
+  input_id: spiketrainpattern__tonic__short_regular_logo_q10_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0'
+  label: spiketrainpattern.tonic.short_regular_logo_q10_max
+  choices: ''
+  min: '0'
+  max: ''
+  step: '0.1'
+  unit: ISIs
+  scientific_note: Maximum leave-one-group-out q10 Tonic support.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.010'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only stability audit for the frozen short-route count.
+  control_type: number
+- path: spiketrainpattern.tonic.short_regular_structural_floor_spikes
+  input_id: spiketrainpattern__tonic__short_regular_structural_floor_spikes
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: spiketrainpattern.tonic.short_regular_structural_floor_spikes
+  choices: ''
+  min: '3'
+  max: ''
+  step: '1'
+  unit: spikes
+  scientific_note: Existing minimum structural support used to judge whether the route is informative.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.011'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: The frozen ISI count must exceed this spike floor minus one.
+  control_type: integer
+- path: spiketrainpattern.tonic.short_regular_mode
+  input_id: spiketrainpattern__tonic__short_regular_mode
+  group: spiketrainpattern
+  type: character
+  default: not_calibrated
+  label: spiketrainpattern.tonic.short_regular_mode
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Versioned calibration method identifier for the short route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.012'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration provenance field.
+  control_type: text
+- path: spiketrainpattern.tonic.short_regular_status
+  input_id: spiketrainpattern__tonic__short_regular_status
+  group: spiketrainpattern
+  type: character
+  default: not_calibrated
+  label: spiketrainpattern.tonic.short_regular_status
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fail-closed calibration status for the short route.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900067.013'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Read-only calibration provenance and eligibility field.
+  control_type: text
 - path: spiketrainpattern.tonic.burst_overlap_guard
   input_id: spiketrainpattern__tonic__burst_overlap_guard
   group: spiketrainpattern
   type: logical
-  default: 'TRUE'
+  default: 'FALSE'
   label: spiketrainpattern.tonic.burst_overlap_guard
   choices: ''
   min: ''
   max: ''
   step: ''
   unit: ''
-  scientific_note: Public product parameter controlling tonic separation from
-    burst-like AUTO ISI intervals.
+  scientific_note: Deprecated compatibility mirror. Burst remains an Event overlay
+    and this value is audit-only for multi-track State selection.
   schema_scope: full_contract
   required: 'TRUE'
   ui_level: expert
@@ -13695,7 +14435,7 @@ parameter_contract:
   advanced: 'TRUE'
   expert_only: 'TRUE'
   visible_if: ''
-  help_text: Mirrors to tonic.burst_overlap_guard during detector setup.
+  help_text: Mirrors the deprecated audit-only compatibility value during import.
   control_type: checkbox
 - path: spiketrainpattern.tonic.burst_overlap_guard_factor
   input_id: spiketrainpattern__tonic__burst_overlap_guard_factor
@@ -13794,7 +14534,7 @@ parameter_contract:
   input_id: metadata__deprecated_parameter_aliases
   group: metadata
   type: data_frame
-  default: <data.frame:51x2>
+  default: <data.frame:52x2>
   label: metadata.deprecated_parameter_aliases
   choices: ''
   min: ''
@@ -13840,3 +14580,759 @@ parameter_contract:
   help_text: 'Contract-managed expert parameter: metadata.parameter_schema. Review
     biological range and validation warnings before changing.'
   control_type: text
+- path: spiketrainpattern.burst.structure_first_enabled
+  group: spiketrainpattern
+  type: logical
+  default: 'TRUE'
+  label: Enable structure-first burst screen
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Run local flank-separation screening before the absolute burst
+    seed and bridge bands.
+- path: spiketrainpattern.burst.structure_first_min_isi_count
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: Structure-first minimum ISI count
+  choices: ''
+  min: '3'
+  max: '100'
+  step: '1'
+  unit: ISIs
+  scientific_note: Minimum number of contiguous valid ISIs in a structure-first
+    burst window.
+- path: spiketrainpattern.burst.structure_first_max_isi_count
+  group: spiketrainpattern
+  type: integer
+  default: '8'
+  label: Structure-first maximum ISI count
+  choices: ''
+  min: '1'
+  max: '100'
+  step: '1'
+  unit: ISIs
+  scientific_note: Maximum number of contiguous valid ISIs in a structure-first
+    classic-burst window.
+- path: spiketrainpattern.burst.structure_first_contrast_min
+  group: spiketrainpattern
+  type: numeric
+  default: '3.0'
+  label: Structure-first flank separation
+  choices: ''
+  min: '1'
+  max: '20'
+  step: '0.05'
+  unit: ratio
+  scientific_note: Each available flank must be at least this multiple of the
+    candidate-window Q90 ISI.
+- path: spiketrainpattern.burst.structure_first_geom_contrast_min
+  group: spiketrainpattern
+  type: numeric
+  default: '3.0'
+  label: Structure-first geometric flank separation
+  choices: ''
+  min: '1'
+  max: '20'
+  step: '0.05'
+  unit: ratio
+  scientific_note: Minimum geometric mean of left and right Q90-normalized flank
+    ratios for two-sided candidates.
+- path: spiketrainpattern.burst.structure_first_compactness_quantile
+  group: spiketrainpattern
+  type: numeric
+  default: '0.8'
+  label: Structure-first train reference quantile
+  choices: ''
+  min: '0.5'
+  max: '1'
+  step: '0.01'
+  unit: quantile
+  scientific_note: Train-level valid-ISI quantile used to derive the adaptive
+    compactness ceiling.
+- path: spiketrainpattern.burst.structure_first_background_fraction
+  group: spiketrainpattern
+  type: numeric
+  default: '0.35'
+  label: Structure-first background fraction
+  choices: ''
+  min: '0.01'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Multiplier applied to the train reference quantile to form the
+    adaptive compactness ceiling; this is relative, not a fixed ISI threshold.
+- path: spiketrainpattern.burst.structure_first_min_train_valid_isi
+  group: spiketrainpattern
+  type: integer
+  default: '8'
+  label: Structure-first minimum train support
+  choices: ''
+  min: '1'
+  max: '10000'
+  step: '1'
+  unit: ISIs
+  scientific_note: Minimum valid-ISI support required before applying the
+    train-adaptive compactness ceiling.
+- path: spiketrainpattern.burst.structure_first_max_internal_tail_ratio
+  group: spiketrainpattern
+  type: numeric
+  default: '1.25'
+  label: Structure-first internal-tail tolerance
+  choices: ''
+  min: '1'
+  max: '5'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Maximum single-ISI excursion above the adaptive compactness
+    ceiling, allowed only with strong two-sided separation.
+- path: spiketrainpattern.burst.structure_first_allow_endpoint
+  group: spiketrainpattern
+  type: logical
+  default: 'TRUE'
+  label: Allow structure-first endpoint candidates
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Allow train-start or train-end candidates when their sole
+    observable flank meets the separation criterion.
+- path: spiketrainpattern.multitrack_shadow.phase1a_policy_version
+  group: spiketrainpattern
+  type: choice
+  default: phase1a_observation_only_v3
+  label: Phase 1A shadow policy version
+  choices: phase1a_observation_only_v3
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Version key for non-authoritative per-track selection.
+- path: spiketrainpattern.multitrack_shadow.phase1a_track_ontology_version
+  group: spiketrainpattern
+  type: choice
+  default: stpd_multitrack_semantic_tracks_v2
+  label: Phase 1A semantic-track ontology version
+  choices: stpd_multitrack_semantic_tracks_v2
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Version of the fixed Event/State/Gap/Review/Profile label ontology.
+- path: spiketrainpattern.multitrack_shadow.phase1a_track_ontology
+  group: spiketrainpattern
+  type: text
+  default: event=burst,long_burst,high_frequency_burst,hf_burst|state=high_frequency_spiking,high_frequency_tonic,high_frequency_irregular_state,tonic|gap=pause|review=possible_burst|profile=profile|default=diagnostic
+  label: Phase 1A fixed semantic-track ontology
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Canonical fixed label-to-track mapping included verbatim in policy provenance.
+- path: spiketrainpattern.multitrack_shadow.possible_burst_review_target_track
+  group: spiketrainpattern
+  type: choice
+  default: event
+  label: Possible-burst promotion target track
+  choices: event
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fixed D-012 target link. A possible_burst remains in Review until
+    manual confirmation; this field records Event as its future promotion target.
+- path: spiketrainpattern.multitrack_shadow.possible_burst_review_target_label
+  group: spiketrainpattern
+  type: choice
+  default: burst
+  label: Possible-burst promotion target label
+  choices: burst
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fixed D-012 target link. Manual confirmation may promote a Review
+    possible_burst to canonical Burst; this field does not itself perform promotion.
+- path: spiketrainpattern.multitrack_shadow.possible_burst_review_promotion_required
+  group: spiketrainpattern
+  type: logical
+  default: 'TRUE'
+  label: Possible-burst manual promotion required
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fixed D-012 safeguard. A Review possible_burst requires manual
+    confirmation before it can become an accepted Event/Burst.
+- path: spiketrainpattern.multitrack_shadow.possible_burst_review_policy_status
+  group: spiketrainpattern
+  type: choice
+  default: review_only__not_accepted_event__manual_confirmation_required__primary_event_metrics_ineligible__event_state_coexistence_non_destructive__hfs_dominance_ineligible
+  label: Possible-burst pre-promotion policy status
+  choices: review_only__not_accepted_event__manual_confirmation_required__primary_event_metrics_ineligible__event_state_coexistence_non_destructive__hfs_dominance_ineligible
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fixed D-012 audit identity. Before manual promotion, possible_burst
+    is not an accepted Event, is excluded from primary Event metrics, cannot split
+    tonic/HF-tonic, and cannot contribute to HFS dominance.
+- path: spiketrainpattern.multitrack_shadow.phase1b_policy_version
+  group: spiketrainpattern
+  type: choice
+  default: phase1b_compatibility_shadow_v1
+  label: Phase 1B compatibility policy version
+  choices: phase1b_compatibility_shadow_v1
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Version key for the non-authoritative multi-track compatibility
+    policy; retained in run and shadow provenance.
+- path: spiketrainpattern.multitrack_shadow.hfs_dominance_group_floor
+  group: spiketrainpattern
+  type: integer
+  default: '6'
+  label: HFS dominance minimum Burst-group count
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: groups
+  scientific_note: Provisional minimum selected canonical Burst-group count for
+    distributed HFS-dominance evidence; shadow-only and non-destructive.
+- path: spiketrainpattern.multitrack_shadow.hfs_dominance_group_fraction
+  group: spiketrainpattern
+  type: numeric
+  default: '0.055'
+  label: HFS dominance Burst-group fraction
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.001'
+  unit: groups per ISI
+  scientific_note: Provisional span-scaled selected Burst-group requirement for
+    HFS-dominance evidence; shadow-only and non-destructive.
+- path: spiketrainpattern.multitrack_shadow.hfs_dominance_distributed_coverage_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.25'
+  label: HFS distributed-dominance coverage
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Provisional selected Event coverage required by the distributed
+    HFS-dominance evidence rule; it cannot remove an HFS state.
+- path: spiketrainpattern.multitrack_shadow.hfs_dominance_majority_coverage_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.50'
+  label: HFS majority-dominance coverage
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Provisional selected Event coverage required by the majority
+    HFS-dominance evidence rule; it cannot remove an HFS state.
+- path: spiketrainpattern.multitrack_shadow.tonic_fragment_min_spikes_floor
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: tonic_fragment_min_spikes_floor
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: spikes
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.tonic_fragment_mm_relax_lv_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0.15'
+  label: tonic_fragment_mm_relax_lv_max
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.tonic_fragment_mm_relax_cv_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0.30'
+  label: tonic_fragment_mm_relax_cv_max
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.tonic_fragment_mm_relaxed_max
+  group: spiketrainpattern
+  type: numeric
+  default: '1.40'
+  label: tonic_fragment_mm_relaxed_max
+  choices: ''
+  min: '0'
+  max: '100'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.tonic_fragment_seed_fraction_max
+  group: spiketrainpattern
+  type: numeric
+  default: '0.20'
+  label: tonic_fragment_seed_fraction_max
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hft_fragment_min_spikes_floor
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: hft_fragment_min_spikes_floor
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: spikes
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hft_fragment_low_quantile
+  group: spiketrainpattern
+  type: numeric
+  default: '0.10'
+  label: hft_fragment_low_quantile
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: quantile
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hft_fragment_high_quantile
+  group: spiketrainpattern
+  type: numeric
+  default: '0.90'
+  label: hft_fragment_high_quantile
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: quantile
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_min_spikes_floor
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: hfs_fragment_min_spikes_floor
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: spikes
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_tolerated_gap_fallback_min_sec
+  group: spiketrainpattern
+  type: numeric
+  default: '0.060'
+  label: hfs_fragment_tolerated_gap_fallback_min_sec
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.001'
+  unit: sec
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_tolerated_gap_fallback_max_sec
+  group: spiketrainpattern
+  type: numeric
+  default: '0.120'
+  label: hfs_fragment_tolerated_gap_fallback_max_sec
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.001'
+  unit: sec
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_tolerated_gap_bridge_multiplier
+  group: spiketrainpattern
+  type: numeric
+  default: '2.0'
+  label: hfs_fragment_tolerated_gap_bridge_multiplier
+  choices: ''
+  min: '0'
+  max: '100'
+  step: '0.1'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_tolerated_gap_q90_multiplier
+  group: spiketrainpattern
+  type: numeric
+  default: '2.5'
+  label: hfs_fragment_tolerated_gap_q90_multiplier
+  choices: ''
+  min: '0'
+  max: '100'
+  step: '0.1'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_short_fraction_lower_bound
+  group: spiketrainpattern
+  type: numeric
+  default: '0.10'
+  label: hfs_fragment_short_fraction_lower_bound
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_allowed_large_fraction_floor
+  group: spiketrainpattern
+  type: numeric
+  default: '0.30'
+  label: hfs_fragment_allowed_large_fraction_floor
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_max_consecutive_large_floor
+  group: spiketrainpattern
+  type: integer
+  default: '2'
+  label: hfs_fragment_max_consecutive_large_floor
+  choices: ''
+  min: '0'
+  max: '1000'
+  step: '1'
+  unit: ISIs
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_q80_probability
+  group: spiketrainpattern
+  type: numeric
+  default: '0.80'
+  label: hfs_fragment_q80_probability
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: quantile
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_q90_probability
+  group: spiketrainpattern
+  type: numeric
+  default: '0.90'
+  label: hfs_fragment_q90_probability
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: quantile
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_short_fraction_min_floor
+  group: spiketrainpattern
+  type: numeric
+  default: '0.50'
+  label: hfs_fragment_short_fraction_min_floor
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_short_fraction_relaxation
+  group: spiketrainpattern
+  type: numeric
+  default: '0.15'
+  label: hfs_fragment_short_fraction_relaxation
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_q90_short_fraction_min_floor
+  group: spiketrainpattern
+  type: numeric
+  default: '0.60'
+  label: hfs_fragment_q90_short_fraction_min_floor
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_q90_short_fraction_relaxation
+  group: spiketrainpattern
+  type: numeric
+  default: '0.10'
+  label: hfs_fragment_q90_short_fraction_relaxation
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_bridge_fraction_min_floor
+  group: spiketrainpattern
+  type: numeric
+  default: '0.75'
+  label: hfs_fragment_bridge_fraction_min_floor
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.hfs_fragment_tolerated_gap_fraction_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.95'
+  label: hfs_fragment_tolerated_gap_fraction_min
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.variable_hfs_cv_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.65'
+  label: variable_hfs_cv_min
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.variable_hfs_lv_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.45'
+  label: variable_hfs_lv_min
+  choices: ''
+  min: '0'
+  max: '10'
+  step: '0.01'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.variable_hfs_large_fraction_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.08'
+  label: variable_hfs_large_fraction_min
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.variable_hfs_mm_audit_min
+  group: spiketrainpattern
+  type: numeric
+  default: '3.0'
+  label: variable_hfs_mm_audit_min
+  choices: ''
+  min: '0'
+  max: '100'
+  step: '0.1'
+  unit: ratio
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.packet_like_multi_group_min
+  group: spiketrainpattern
+  type: integer
+  default: '2'
+  label: packet_like_multi_group_min
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: groups
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.packet_like_multi_group_coverage_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.08'
+  label: packet_like_multi_group_coverage_min
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.packet_like_single_group_min
+  group: spiketrainpattern
+  type: integer
+  default: '1'
+  label: packet_like_single_group_min
+  choices: ''
+  min: '1'
+  max: '1000'
+  step: '1'
+  unit: groups
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.packet_like_single_group_coverage_min
+  group: spiketrainpattern
+  type: numeric
+  default: '0.18'
+  label: packet_like_single_group_coverage_min
+  choices: ''
+  min: '0'
+  max: '1'
+  step: '0.01'
+  unit: fraction
+  scientific_note: Canonical non-authoritative Phase 1B shadow threshold; included
+    in Boolean/annotation behavior, the effective parameter payload, and policy hash.
+- path: spiketrainpattern.multitrack_shadow.packet_neighbor_max_gap_isi
+  group: spiketrainpattern
+  type: integer
+  default: '3'
+  label: Packet-neighbor maximum ISI gap
+  choices: ''
+  min: '0'
+  max: '1000'
+  step: '1'
+  unit: ISIs
+  scientific_note: Maximum gap used by the non-destructive packet-neighbor shadow
+    annotation.
+- path: spiketrainpattern.multitrack_shadow.tonic_hft_burst_rule
+  group: spiketrainpattern
+  type: choice
+  default: non_destructive_event_overlay
+  label: Tonic/HF-tonic with Burst rule
+  choices: non_destructive_event_overlay
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Canonical Burst events are orthogonal Event overlays and do not
+    split or reject tonic/HF-tonic State support.
+- path: spiketrainpattern.multitrack_shadow.hfs_burst_rule
+  group: spiketrainpattern
+  type: choice
+  default: overlay_with_dominance_evidence_only
+  label: HFS with Burst rule
+  choices: overlay_with_dominance_evidence_only
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Accepted D-008 shadow rule; HFS and Burst coexist while dominance
+    remains non-destructive evidence.
+- path: spiketrainpattern.multitrack_shadow.packet_rule
+  group: spiketrainpattern
+  type: choice
+  default: diagnostic_annotation_only
+  label: HFS packet annotation rule
+  choices: diagnostic_annotation_only
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Accepted D-009 rule; packet-like and packet-neighbor evidence is
+    diagnostic only.
+- path: spiketrainpattern.multitrack_shadow.variable_hfs_mm_rule
+  group: spiketrainpattern
+  type: choice
+  default: audit_only_not_boolean_gate
+  label: Variable-HFS MM rule
+  choices: audit_only_not_boolean_gate
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Accepted D-010 rule; MM remains an audit feature and is excluded
+    from the variable-HFS Boolean gate in the multi-track shadow.
+- path: spiketrainpattern.multitrack_preview.enabled
+  input_id: spiketrainpattern__multitrack_preview__enabled
+  group: spiketrainpattern
+  type: logical
+  default: 'FALSE'
+  label: Enable multi-track public preview
+  choices: ''
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Opt-in serialization gate for the Phase 2A automatic multi-track
+    preview. Disabled runs retain the legacy result shape and exports.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900130'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Enables additional preview-only Event, State, Gap, and Review products;
+    it does not alter legacy scientific labels.
+  control_type: checkbox
+- path: spiketrainpattern.multitrack_preview.schema_version
+  input_id: spiketrainpattern__multitrack_preview__schema_version
+  group: spiketrainpattern
+  type: choice
+  default: stpd_multitrack_public_preview_v1
+  label: Multi-track public-preview schema version
+  choices: stpd_multitrack_public_preview_v1
+  min: ''
+  max: ''
+  step: ''
+  unit: ''
+  scientific_note: Fixed Phase 2A result-schema identity. Unsupported values fail
+    closed when the Preview is enabled; a valid disabled flag attaches no Preview,
+    while parameter validation may still report the dormant schema mismatch.
+  schema_scope: full_contract
+  required: 'TRUE'
+  ui_level: expert
+  ui_order: '900131'
+  section: Public product namespace
+  section_order: '900'
+  advanced: 'TRUE'
+  expert_only: 'TRUE'
+  visible_if: ''
+  help_text: Fixed provenance value for the opt-in automatic multi-track preview.
+  control_type: select

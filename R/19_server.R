@@ -17,18 +17,25 @@ server <- function(input, output, session) {
     preview_candidate = NULL,
     last_plotly_selection = NULL,
     near_miss_idx = 1L,
-    nn_model = NULL,
-    nn_training_info = NULL,
-    nn_eval = NULL,
     manual_detector_eval = NULL,
     scientific_validation = NULL,
-    last_detector_summary = "\u5C1A\u65E0\u68C0\u6D4B\u5668\u91CD\u8DD1\u6458\u8981\u3002",
-    near_miss_rerun_summary = "\u5C1A\u65E0\u9608\u503C\u5E94\u7528/\u91CD\u8DD1\u6458\u8981\u3002",
+	    last_detector_summary = "\u5C1A\u65E0\u68C0\u6D4B\u5668\u91CD\u8DD1\u6458\u8981\u3002",
+	    last_detector_summary_record = list(key = "detector_not_run_summary", args = list()),
+    near_miss_rerun_summary = structure(
+      c(
+        zh = "\u5C1A\u65E0\u9608\u503C\u5E94\u7528/\u91CD\u8DD1\u6458\u8981\u3002",
+        en = "No threshold-application / rerun summary is available yet."
+      ),
+      class = c("stpd_ui_bilingual", "character")
+    ),
 	    batch_status = "\u5C1A\u672A\u8FD0\u884C\u6279\u5904\u7406\u3002",
+	    batch_status_record = list(key = "batch_not_started", args = list()),
 	    isi_profile_ref = NULL,
 	    cluster_a = NULL,
 	    cluster_b = NULL,
-	    manual_undo_snapshot = NULL,
+	    ui_run_identity_by_dataset = list(),
+	    manual_detector_eval_identity = NULL,
+	    scientific_validation_identity = NULL,
 	    syncing_min_isi = FALSE,
     syncing_xrange = FALSE,
 	    syncing_threshold_unit = FALSE,
@@ -38,13 +45,274 @@ server <- function(input, output, session) {
 	    parameter_delta_preview = NULL,
 	    parameter_delta_preview_selected_row = NULL,
 	    distribution_evidence_selected_row = NULL,
-	    parameter_delta_preview_status = "\u5C1A\u672A\u8FD0\u884C\u5C40\u90E8\u5DEE\u5F02\u91CD\u8DD1\u9884\u89C8\u3002",
+	    parameter_delta_preview_status = structure(
+	      c(
+	        zh = "\u5C1A\u672A\u8FD0\u884C\u5C40\u90E8\u5DEE\u5F02\u91CD\u8DD1\u9884\u89C8\u3002",
+	        en = "No local difference-rerun preview has been run yet."
+	      ),
+	      class = c("stpd_ui_bilingual", "character")
+	    ),
 	    parameter_sensitivity = NULL,
-	    parameter_sensitivity_status = "\u5C1A\u672A\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\u3002",
+	    parameter_sensitivity_status = structure(
+	      c(
+	        zh = "\u5C1A\u672A\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\u3002",
+	        en = "No event-level parameter-sensitivity scan has been run yet."
+	      ),
+	      class = c("stpd_ui_bilingual", "character")
+	    ),
 	    possible_burst_promotion_preview = NULL,
-	    possible_burst_promotion_status = "\u5C1A\u672A\u9884\u89C8 possible_burst \u6279\u91CF\u5347\u7EA7\u3002"
+	    possible_burst_promotion_preview_identity = NULL,
+	    possible_burst_promotion_status = structure(
+	      c(
+	        zh = "\u5C1A\u672A\u9884\u89C8 possible_burst \u6279\u91CF\u5347\u7EA7\u3002",
+	        en = "No possible_burst bulk-promotion preview has been run yet."
+	      ),
+	      class = c("stpd_ui_bilingual", "character")
+	    ),
+	    ui_pending_confirmation = NULL,
+	    ui_confirmation_nonce = 0L,
+	    pending_workspace_import = NULL,
+	    provider_bundle = NULL,
+	    provider_adjudication = NULL,
+	    provider_composition = NULL,
+	    provider_review_view = NULL,
+	    provider_reference = NULL,
+	    provider_score = NULL,
+	    provider_workbench_message = NULL
 	  )
-  
+
+  ui_language <- function() {
+    lang <- tryCatch(as.character(input$ui_language %||% "zh")[1], error = function(e) "zh")
+    if (identical(lang, "en")) "en" else "zh"
+  }
+
+  ui_text <- function(key, ...) {
+    stpd_ui_copy(key, lang = ui_language(), ...)
+  }
+
+  ui_text_record <- function(record, fallback_key) {
+    if (!is.list(record) || !nzchar(as.character(record$key %||% "")[1])) {
+      return(ui_text(fallback_key))
+    }
+    args <- record$args %||% list()
+    if (!is.list(args)) args <- list()
+    do.call(ui_text, c(list(key = as.character(record$key)[1]), args))
+  }
+
+  ui_condition_detail <- function(e) {
+    stpd_ui_condition_detail(e, lang = ui_language())
+  }
+
+  ui_current_copy <- function(zh, en, lang = ui_language()) {
+    if (identical(as.character(lang %||% "zh")[1], "en")) {
+      as.character(en %||% "")[1]
+    } else {
+      as.character(zh %||% "")[1]
+    }
+  }
+
+  ui_control_memory_ids <- c(
+    "pool_ids", "trains",
+    "metadata_filter_structure", "metadata_filter_side",
+    "metadata_filter_trajectory", "metadata_filter_depth",
+    "possible_burst_promote_trains", "final_audit_trains",
+    "parameter_delta_preview_trains", "parameter_sensitivity_trains",
+    "parameter_sensitivity_paths", "isi_table_trains",
+    "task_event_jump_id", "isi_profile_train", "isi_profile_trains_multi",
+    "isi_profile_custom_range", "isi_state_space_train",
+    "isi_state_space_custom_range", "state_pair_trains",
+    "state_pair_lag_bins", "state_pair_heatmap_value",
+    "neural_manifold_behavior_time_col", "neural_manifold_behavior_value_col",
+    "neural_manifold_trial_time_col", "neural_manifold_trial_id_col",
+    "neural_manifold_trial_condition_col"
+  )
+  ui_control_memory <- stats::setNames(lapply(ui_control_memory_ids, function(id) {
+    reactiveVal(list(initialized = FALSE, value = NULL, dataset_id = NULL))
+  }), ui_control_memory_ids)
+  invisible(lapply(ui_control_memory_ids, function(id) {
+    observe({
+      value <- input[[id]]
+      memory <- ui_control_memory[[id]]
+      state <- isolate(memory())
+      if (!isTRUE(state$initialized) && is.null(value)) return()
+      if (is.null(value)) value <- character(0)
+      next_state <- list(
+        initialized = TRUE,
+        value = value,
+        dataset_id = isolate(as.character(rv$current_id %||% "")[1])
+      )
+      if (!identical(state, next_state)) memory(next_state)
+    })
+  }))
+  ui_control_remembered <- function(id, fallback = NULL, dataset_bound = TRUE) {
+    memory <- ui_control_memory[[as.character(id)[1]]]
+    if (is.null(memory)) return(fallback)
+    state <- isolate(memory())
+    if (!isTRUE(state$initialized)) return(fallback)
+    if (isTRUE(dataset_bound) && !identical(
+      as.character(state$dataset_id %||% "")[1],
+      as.character(rv$current_id %||% "")[1]
+    )) {
+      return(fallback)
+    }
+    state$value
+  }
+
+  ui_bilingual_value <- function(zh, en) {
+    structure(
+      c(zh = as.character(zh %||% "")[1], en = as.character(en %||% "")[1]),
+      class = c("stpd_ui_bilingual", "character")
+    )
+  }
+
+  ui_bilingual_current <- function(value, lang = ui_language()) {
+    lang <- if (identical(as.character(lang %||% "zh")[1], "en")) "en" else "zh"
+    if (inherits(value, "stpd_ui_bilingual") ||
+        (is.character(value) && all(c("zh", "en") %in% names(value)))) {
+      return(unname(as.character(value[[lang]] %||% "")[1]))
+    }
+    source <- as.character(value %||% "")[1]
+    if (identical(lang, "en") && exists("stpd_i18n_translate_text", mode = "function")) {
+      source <- stpd_i18n_translate_text(source, "en")
+    }
+    source
+  }
+
+  near_miss_summary_set <- function(zh, en) {
+    rv$near_miss_rerun_summary <- ui_bilingual_value(zh, en)
+    invisible(rv$near_miss_rerun_summary)
+  }
+
+  near_miss_summary_current <- function(value = rv$near_miss_rerun_summary,
+                                        lang = ui_language()) {
+    ui_bilingual_current(value, lang = lang)
+  }
+
+  ui_formal_gate_detail <- function(gate) {
+    if (isTRUE((gate %||% list())$eligible)) {
+      return(ui_text("formal_export_ready_detail"))
+    }
+    ui_text(
+      "formal_export_blocked_detail",
+      code = as.character((gate %||% list())$code %||% "formal_export_unavailable")[1]
+    )
+  }
+
+  # Keep DataTables controls in the selected UI language.  The client-side
+  # translator intentionally skips table bodies, so localization must happen
+  # before the widget is created.
+  datatable <- function(data, ..., options = list()) {
+    lang <- ui_language()
+    data <- stpd_ui_localize_table_copy(data, lang = lang)
+    base_options <- list(language = stpd_ui_dt_language(lang))
+    widget <- DT::datatable(
+      data, ...,
+      options = utils::modifyList(base_options, options %||% list())
+    )
+    stpd_ui_localize_dt_filter_html(widget, lang = lang)
+  }
+
+  # Plotly's own mode-bar controls are generated after the static DOM
+  # translator runs.  Supplying the locale here loads Plotly's language pack
+  # and keeps zoom/pan/download tooltips consistent with the selected UI.
+  config <- function(p, ..., locale = NULL) {
+    locale <- locale %||% if (identical(ui_language(), "en")) "en" else "zh-CN"
+    plotly::config(p, ..., locale = locale)
+  }
+
+  show_ui_confirmation <- function(confirm_id, title, message,
+                                   confirm_label = NULL,
+                                   typed_token = NULL, context = list()) {
+    confirm_id <- as.character(confirm_id %||% "")[1]
+    if (!nzchar(confirm_id)) stop("confirm_id is required", call. = FALSE)
+    nonce <- suppressWarnings(as.integer(rv$ui_confirmation_nonce %||% 0L)) + 1L
+    rv$ui_confirmation_nonce <- nonce
+    rv$ui_pending_confirmation <- list(
+      confirm_id = confirm_id,
+      nonce = nonce,
+      context = context %||% list(),
+      opened_at = as.character(Sys.time())
+    )
+    if (is.null(confirm_label) || !nzchar(as.character(confirm_label %||% "")[1])) {
+      confirm_label <- ui_current_copy("\u786E\u8BA4\u6267\u884C", "Confirm action")
+    }
+    token_ui <- NULL
+    if (!is.null(typed_token) && nzchar(as.character(typed_token)[1])) {
+      token <- as.character(typed_token)[1]
+      token_ui <- tagList(
+        tags$p(
+          class = "text-danger",
+          paste0(ui_current_copy("\u4E3A\u907F\u514D\u8BEF\u64CD\u4F5C\uFF0C\u8BF7\u8F93\u5165\uFF1A", "To prevent mistakes, enter: "), token)
+        ),
+        textInput(paste0(confirm_id, "_token"), NULL, value = "")
+      )
+    }
+    showModal(modalDialog(
+      title = title,
+      tags$p(message),
+      token_ui,
+      easyClose = FALSE,
+      footer = tagList(
+        actionButton("cancel_ui_confirmation", ui_current_copy("\u53D6\u6D88", "Cancel")),
+        actionButton(confirm_id, confirm_label, class = "btn-danger")
+      )
+    ))
+    invisible(TRUE)
+  }
+
+  consume_ui_confirmation <- function(confirm_id) {
+    confirm_id <- as.character(confirm_id %||% "")[1]
+    pending <- isolate(rv$ui_pending_confirmation)
+    if (!is.list(pending) ||
+        !identical(as.character(pending$confirm_id %||% "")[1], confirm_id)) {
+      showNotification(
+        ui_current_copy(
+          "\u8BE5\u786E\u8BA4\u8BF7\u6C42\u5DF2\u53D6\u6D88\u3001\u5DF2\u6267\u884C\u6216\u4E0D\u518D\u5C5E\u4E8E\u5F53\u524D\u64CD\u4F5C\uFF1B\u6CA1\u6709\u8FDB\u884C\u4EFB\u4F55\u66F4\u6539\u3002",
+          "This confirmation was canceled, already consumed, or no longer belongs to the current action; no changes were made."
+        ),
+        type = "error", duration = 6
+      )
+      return(NULL)
+    }
+    rv$ui_pending_confirmation <- NULL
+    removeModal()
+    pending
+  }
+
+  observeEvent(input$cancel_ui_confirmation, {
+    pending <- isolate(rv$ui_pending_confirmation)
+    if (identical(as.character((pending %||% list())$confirm_id %||% "")[1],
+                  "confirm_replace_workspace")) {
+      rv$pending_workspace_import <- NULL
+      if (exists("data_load_progress", mode = "function")) {
+        try(data_load_progress(
+          1, "\u7528\u6237\u5DF2\u53D6\u6D88\u66FF\u6362\uFF1B\u5F53\u524D session \u672A\u6539\u53D8\u3002",
+          "\u5DE5\u4F5C\u533A\u52A0\u8F7D\u5DF2\u53D6\u6D88", "idle"
+        ), silent = TRUE)
+      }
+    }
+    rv$ui_pending_confirmation <- NULL
+    removeModal()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$ui_language, {
+    pending <- isolate(rv$ui_pending_confirmation)
+    if (!is.list(pending)) return()
+    if (identical(as.character(pending$confirm_id %||% "")[1],
+                  "confirm_replace_workspace")) {
+      rv$pending_workspace_import <- NULL
+    }
+    rv$ui_pending_confirmation <- NULL
+    removeModal()
+    showNotification(
+      ui_current_copy(
+        "\u8BED\u8A00\u5DF2\u5207\u6362\uFF1B\u4E3A\u907F\u514D\u4F7F\u7528\u65E7\u8BED\u8A00\u7684\u786E\u8BA4\u5185\u5BB9\uFF0C\u5F53\u524D\u786E\u8BA4\u5DF2\u53D6\u6D88\u3002\u8BF7\u91CD\u65B0\u53D1\u8D77\u8BE5\u64CD\u4F5C\u3002",
+        "The language changed, so the open confirmation was canceled to avoid using stale copy. Start the action again."
+      ),
+      type = "message", duration = 6
+    )
+  }, ignoreInit = TRUE)
+
   get_dataset <- function(id = NULL) {
     datasets <- rv$datasets
     if (length(datasets) == 0) return(NULL)
@@ -71,11 +339,17 @@ server <- function(input, output, session) {
     if (is.null(ds$train_settings$highfreq_isi_ranges)) ds$train_settings$highfreq_isi_ranges <- list()
     if (is.null(ds$train_settings$isi_thresholds)) ds$train_settings$isi_thresholds <- list()
     ds$task_events <- stpd_normalize_task_events(ds$task_events %||% data.frame(), source = ds$meta$display_name %||% "")
-    if (is.null(ds$ml)) ds$ml <- list(last_feature_table = data.frame(), last_prediction_table = data.frame())
-    if (is.null(ds$ml$last_feature_table)) ds$ml$last_feature_table <- data.frame()
-    if (is.null(ds$ml$last_prediction_table)) ds$ml$last_prediction_table <- data.frame()
-    if (is.null(ds$ml$last_eval_table)) ds$ml$last_eval_table <- data.frame()
-    if (is.null(ds$ml$last_eval_metrics)) ds$ml$last_eval_metrics <- data.frame()
+    # Retired neural-network/ML classifier state is intentionally not restored
+    # from old workspaces.  Its parameters and cached predictions must not be
+    # re-saved or affect provenance after the feature has been removed.
+    ds$ml <- NULL
+    for (params_field in c("params_est", "params_last")) {
+      pp <- ds[[params_field]]
+      if (!is.list(pp)) next
+      pp$neural_network <- NULL
+      if (is.list(pp$spiketrainpattern)) pp$spiketrainpattern$neural_network <- NULL
+      ds[[params_field]] <- pp
+    }
     if (is.null(ds$quality) || nrow(ds$quality) == 0) {
       min_isi <- ds$params_last$detector$min_valid_isi_sec %||% ds$params_est$detector$min_valid_isi_sec %||% 0.0009
       ds$quality <- validate_dataset_quality_impl(ds$trains, min_isi_sec = min_isi, unit_hint = ds$meta$unit_in %||% "s", refractory_suspect_sec = refractory_suspect_sec(), display_unit = qc_isi_unit())
@@ -150,7 +424,10 @@ server <- function(input, output, session) {
   output$train_metadata_filters <- renderUI({
     if (!isTRUE(input$use_train_metadata_filter)) return(NULL)
     meta <- current_train_metadata()
-    validate(need(!is.null(meta) && nrow(meta) > 0, "\u6CA1\u6709\u53EF\u7528\u7684 train \u5143\u6570\u636E\u3002"))
+    validate(need(!is.null(meta) && nrow(meta) > 0, ui_current_copy(
+      "\u6CA1\u6709\u53EF\u7528\u7684 train \u5143\u6570\u636E\u3002",
+      "No train metadata are available."
+    )))
     clean_choices <- function(x) {
       x <- as.character(x)
       x <- x[!is.na(x) & nzchar(x) & x != "unknown"]
@@ -166,25 +443,48 @@ server <- function(input, output, session) {
       mn <- floor(min(depth, na.rm = TRUE) * 100) / 100
       mx <- ceiling(max(depth, na.rm = TRUE) * 100) / 100
       if (identical(mn, mx)) mx <- mn + 0.01
-      depth_ui <- sliderInput("metadata_filter_depth", "\u4ECE\u5217\u540D\u89E3\u6790\u51FA\u7684\u8BB0\u5F55\u6DF1\u5EA6", min = mn, max = mx, value = c(mn, mx), step = 0.01)
+      depth_value <- suppressWarnings(as.numeric(ui_control_remembered(
+        "metadata_filter_depth", c(mn, mx)
+      )))
+      if (length(depth_value) != 2L || any(!is.finite(depth_value))) {
+        depth_value <- c(mn, mx)
+      }
+      depth_value <- pmax(mn, pmin(mx, sort(depth_value)))
+      depth_ui <- sliderInput(
+        "metadata_filter_depth",
+        ui_current_copy("\u4ECE\u5217\u540D\u89E3\u6790\u51FA\u7684\u8BB0\u5F55\u6DF1\u5EA6", "Recording depth parsed from column names"),
+        min = mn, max = mx, value = depth_value, step = 0.01
+      )
     }
     tags$div(class = "soft-box",
-      h5("\u5217\u540D\u5143\u6570\u636E\u8FC7\u6EE4\u5668"),
-      if (length(structures) > 0) selectizeInput("metadata_filter_structure", "Structure", choices = structures, selected = structures, multiple = TRUE, options = list(placeholder = "\u6240\u6709\u89E3\u6790\u51FA\u7684\u7ED3\u6784")),
-      if (length(sides) > 0) selectizeInput("metadata_filter_side", "Side", choices = sides, selected = sides, multiple = TRUE, options = list(placeholder = "L/R")),
-      if (length(trajs) > 0) selectizeInput("metadata_filter_trajectory", "\u8F68\u8FF9 / track", choices = trajs, selected = trajs, multiple = TRUE, options = list(placeholder = "\u6240\u6709\u8F68\u8FF9")),
+      h5(ui_current_copy("\u5217\u540D\u5143\u6570\u636E\u8FC7\u6EE4\u5668", "Column-name metadata filters")),
+      if (length(structures) > 0) selectizeInput("metadata_filter_structure", ui_current_copy("\u7ED3\u6784", "Structure"), choices = structures, selected = intersect(as.character(ui_control_remembered("metadata_filter_structure", structures)), structures), multiple = TRUE, options = list(placeholder = ui_current_copy("\u6240\u6709\u89E3\u6790\u51FA\u7684\u7ED3\u6784", "All parsed structures"))),
+      if (length(sides) > 0) selectizeInput("metadata_filter_side", ui_current_copy("\u4FA7\u522B", "Side"), choices = sides, selected = intersect(as.character(ui_control_remembered("metadata_filter_side", sides)), sides), multiple = TRUE, options = list(placeholder = "L/R")),
+      if (length(trajs) > 0) selectizeInput("metadata_filter_trajectory", ui_current_copy("\u8F68\u8FF9", "Track"), choices = trajs, selected = intersect(as.character(ui_control_remembered("metadata_filter_trajectory", trajs)), trajs), multiple = TRUE, options = list(placeholder = ui_current_copy("\u6240\u6709\u8F68\u8FF9", "All tracks"))),
       depth_ui,
-      tags$div(class = "small-note", "\u8FD9\u4E9B\u8FC7\u6EE4\u5668\u53EA\u63A7\u5236\u53EF\u89C1 trains \u548C selected-only \u64CD\u4F5C\uFF1B\u4E0D\u4F1A\u5220\u9664\u6570\u636E\u6216\u6539\u53D8\u6807\u7B7E\u3002")
+      tags$div(class = "small-note", ui_current_copy(
+        "\u8FD9\u4E9B\u8FC7\u6EE4\u5668\u53EA\u63A7\u5236\u53EF\u89C1 train \u548C\u201C\u4EC5\u9009\u4E2D\u9879\u201D\u64CD\u4F5C\uFF1B\u4E0D\u4F1A\u5220\u9664\u6570\u636E\u6216\u6539\u53D8\u6807\u7B7E\u3002",
+        "These filters control only visible trains and selected-only operations; they do not delete data or change labels."
+      ))
     )
   })
 
   output$train_metadata_table <- DT::renderDT({
     meta <- current_train_metadata()
-    validate(need(!is.null(meta) && nrow(meta) > 0, "\u6CA1\u6709\u53EF\u7528\u7684 train \u5143\u6570\u636E\u3002"))
+    validate(need(!is.null(meta) && nrow(meta) > 0, ui_current_copy(
+      "\u6CA1\u6709\u53EF\u7528\u7684 train \u5143\u6570\u636E\u3002",
+      "No train metadata are available."
+    )))
     cols <- c("train", "structure", "side", "hemisphere", "trajectory", "recording_depth", "channel_type", "wire", "unit_id", "flag", "duplicate_name_suffix", "n_spikes", "first_timestamp_sec", "last_timestamp_sec", "duration_sec", "parse_ok")
     cols <- intersect(cols, names(meta))
     out <- meta[, cols, drop = FALSE]
-    DT::datatable(out, rownames = FALSE, filter = "top", options = list(pageLength = 8, scrollX = TRUE))
+    if (identical(ui_language(), "zh")) {
+      char_cols <- names(out)[vapply(out, is.character, logical(1))]
+      for (nm in char_cols) {
+        out[[nm]][!is.na(out[[nm]]) & out[[nm]] == "unknown"] <- "\u672A\u77E5"
+      }
+    }
+    datatable(out, rownames = FALSE, filter = "top", options = list(pageLength = 8, scrollX = TRUE))
   })
 
   pool_dataset_ids <- reactive({
@@ -197,7 +497,10 @@ server <- function(input, output, session) {
   pooled_trains <- reactive({
     ids <- pool_dataset_ids()
     ds <- rv$datasets
-    validate(need(length(ids) > 0, "\u672A\u9009\u62E9\u7528\u4E8E pooling \u7684\u6570\u636E\u96C6\u3002"))
+    validate(need(length(ids) > 0, ui_current_copy(
+      "\u672A\u9009\u62E9\u7528\u4E8E\u5408\u5E76\u7684\u6570\u636E\u96C6\u3002",
+      "No datasets were selected for pooling."
+    )))
     trains <- list()
     ds_map <- list()
     for (id in ids) {
@@ -240,11 +543,18 @@ server <- function(input, output, session) {
 	  refractory_suspect_sec <- reactive({ max(threshold_to_sec(input$refractory_suspect_ms %||% input$refractory_suspect_ms_param %||% 1.0), min_valid_isi_sec()) })
 	  logisi_mcv_sec <- reactive({ as.numeric(input$logisi_mcv_ms %||% 100) / 1000 })
 
-	  manual_action_error_message <- function(e) {
+	  manual_action_error_message <- function(e, lang = ui_language()) {
+	    lang <- if (identical(as.character(lang %||% "zh")[1], "en")) "en" else "zh"
 	    msg <- conditionMessage(e)
 	    msg <- as.character(msg %||% "")
 	    msg <- msg[1]
-	    if (!nzchar(msg)) msg <- "\u5F53\u524D\u6846\u9009\u6CA1\u6709\u8986\u76D6\u6709\u6548 ISI\u3002\u8BF7\u91CD\u65B0\u6846\u9009\uFF0C\u6216\u5148\u6E05\u9664\u7F13\u5B58\u9009\u62E9\u3002"
+	    if (!nzchar(msg)) {
+	      return(if (identical(lang, "en")) {
+	        "The current box selection contains no valid ISI. Select again or clear the cached selection first."
+	      } else {
+	        "\u5F53\u524D\u6846\u9009\u6CA1\u6709\u8986\u76D6\u6709\u6548 ISI\u3002\u8BF7\u91CD\u65B0\u6846\u9009\uFF0C\u6216\u5148\u6E05\u9664\u7F13\u5B58\u9009\u62E9\u3002"
+	      })
+	    }
 	    map <- c(
 	      "Please Box Select on aligned plot first." = "\u8BF7\u5148\u5728\u5BF9\u9F50 raster \u56FE\u4E0A\u6846\u9009\u6709\u6548\u533A\u57DF\u3002",
 	      "No finite points were captured by the current box selection." = "\u8FD9\u6B21\u6846\u9009\u6CA1\u6709\u6355\u83B7\u5230\u6709\u6548\u5750\u6807\u70B9\uFF0C\u8BF7\u91CD\u65B0\u6846\u9009\u3002",
@@ -254,29 +564,153 @@ server <- function(input, output, session) {
 	      "Need at least 2 different spikes." = "\u8BE5\u6A21\u5F0F\u81F3\u5C11\u9700\u8981\u6846\u5230 2 \u4E2A\u4E0D\u540C spike\uFF1B\u5C0F ISI \u53EF\u4EE5\u653E\u5927\u89C6\u56FE\u540E\u518D\u6846\u9009\u3002"
 	    )
 	    mapped <- unname(map[msg])
-	    if (!is.na(mapped) && nzchar(mapped)) mapped else msg
+	    if (!is.na(mapped) && nzchar(mapped)) {
+	      if (identical(lang, "en")) msg else mapped
+	    } else {
+	      if (identical(lang, "en")) {
+	        translated <- tryCatch(
+	          stpd_i18n_translate_text(msg, lang = "en"),
+	          error = function(err) msg
+	        )
+	        if (grepl("[\u3400-\u9fff]", translated, perl = TRUE)) {
+	          return(paste(
+	            "The operation was blocked because its safety preconditions changed.",
+	            "Reopen the action and try again."
+	          ))
+	        }
+	        return(stpd_ui_condition_detail(translated, lang = "en"))
+	      }
+	      stpd_ui_condition_detail(e, lang = "zh")
+	    }
+	  }
+
+	  manual_action_prefix_current <- function(prefix, lang = ui_language()) {
+	    lang <- if (identical(as.character(lang %||% "zh")[1], "en")) "en" else "zh"
+	    prefix <- as.character(prefix %||% "\u624B\u52A8\u64CD\u4F5C\u672A\u5B8C\u6210")[1]
+	    if (!identical(lang, "en")) return(prefix)
+	    translated <- if (exists("stpd_i18n_translate_text", mode = "function")) {
+	      stpd_i18n_translate_text(prefix, "en")
+	    } else {
+	      prefix
+	    }
+	    if (grepl("[\\x{3400}-\\x{9FFF}]", translated, perl = TRUE)) {
+	      "Manual operation did not complete"
+	    } else {
+	      translated
+	    }
 	  }
 
 	  run_manual_ui_action <- function(expr, prefix = "\u624B\u52A8\u64CD\u4F5C\u672A\u5B8C\u6210") {
+	    prior_transaction_ids <- stpd_ui_transaction_ids(rv)
+	    rollback_new_transaction <- function() {
+	      tryCatch(
+	        {
+	          stpd_ui_transaction_abort_new(rv, prior_transaction_ids)
+	          ""
+	        },
+	        error = function(e) paste0(
+	          ui_current_copy("\uFF1B\u81EA\u52A8\u56DE\u6EDA\u5931\u8D25\u3002", "; Automatic rollback failed. "),
+	          stpd_ui_condition_detail(e, lang = ui_language())
+	        )
+	      )
+	    }
+	    notify_failure <- function(e) {
+	      rollback_note <- rollback_new_transaction()
+	      separator <- ui_current_copy("\uFF1A", ": ")
+	      showNotification(
+	        paste0(
+	          manual_action_prefix_current(prefix), separator,
+	          manual_action_error_message(e), rollback_note
+	        ),
+	        type = "warning", duration = 5
+	      )
+	      FALSE
+	    }
 	    tryCatch(
 	      {
 	        force(expr)
 	        TRUE
 	      },
-	      shiny.silent.error = function(e) {
-	        showNotification(paste0(prefix, "\uFF1A", manual_action_error_message(e)), type = "warning", duration = 5)
-	        FALSE
-	      },
-	      error = function(e) {
-	        showNotification(paste0(prefix, "\uFF1A", manual_action_error_message(e)), type = "warning", duration = 5)
-	        FALSE
-	      }
+	      shiny.silent.error = notify_failure,
+	      error = notify_failure
 	    )
 	  }
 
 	  push_manual_undo <- function(action = "\u624B\u52A8\u64CD\u4F5C") {
-	    ds <- current_dataset()
-	    stpd_push_manual_undo(rv, rv$current_id, ds$trains, action)
+	    push_ui_undo("manual_label_edit", action)
+	  }
+
+	  push_ui_undo <- function(action_id, action,
+	                           dataset_ids = rv$current_id %||% character(),
+	                           train_ids = character(),
+	                           target_tracks = character(),
+	                           target_count = NA_integer_) {
+	    canonical_action <- switch(
+	      as.character(action_id %||% "")[1],
+	      collapse_duplicate_spikes_current = "collapse_duplicate_spikes",
+	      collapse_duplicate_spikes_all = "collapse_duplicate_spikes",
+	      legacy_final_audit_promote = "manual_label_edit",
+	      manual_or_audit_change = "manual_label_edit",
+	      action_id
+	    )
+	    record <- stpd_ui_transaction_push(
+	      rv,
+	      action_id = canonical_action,
+	      dataset_ids = dataset_ids,
+	      train_ids = train_ids,
+	      target_tracks = target_tracks,
+	      target_count = target_count,
+	      details = list(ui_action_label = as.character(action %||% "")[1]),
+	      max_depth = 5L,
+	      max_bytes = 64 * 1024^2
+	    )
+	    transaction_id <- as.character(record$metadata$transaction_id %||% "")[1]
+	    session$onFlushed(function() {
+	      try(stpd_ui_transaction_finalize(rv, transaction_id), silent = TRUE)
+	    }, once = TRUE)
+	    invisible(TRUE)
+	  }
+
+	  reset_dataset_bound_ui_state <- function() {
+	    rv$manual_detector_eval <- NULL
+	    rv$manual_detector_eval_identity <- NULL
+	    rv$scientific_validation <- NULL
+	    rv$scientific_validation_identity <- NULL
+	    rv$last_plotly_selection <- NULL
+	    rv$preview_candidate <- NULL
+	    rv$cluster_a <- NULL
+	    rv$cluster_b <- NULL
+	    rv$isi_profile_ref <- NULL
+	    rv$parameter_delta_preview <- NULL
+	    rv$parameter_delta_preview_selected_row <- NULL
+	    rv$parameter_delta_preview_status <- ui_bilingual_value(
+	      "\u5C1A\u672A\u8FD0\u884C\u5C40\u90E8\u5DEE\u5F02\u91CD\u8DD1\u9884\u89C8\u3002",
+	      "No local difference-rerun preview has been run yet."
+	    )
+	    rv$parameter_sensitivity <- NULL
+	    rv$parameter_sensitivity_status <- ui_bilingual_value(
+	      "\u5C1A\u672A\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\u3002",
+	      "No event-level parameter-sensitivity scan has been run yet."
+	    )
+	    rv$possible_burst_promotion_preview <- NULL
+	    rv$possible_burst_promotion_preview_identity <- NULL
+	    rv$possible_burst_promotion_status <- ui_bilingual_value(
+	      "\u5C1A\u672A\u9884\u89C8 possible_burst \u6279\u91CF\u5347\u7EA7\u3002",
+	      "No possible_burst bulk-promotion preview has been run yet."
+	    )
+	    rv$final_audit_status <- ui_bilingual_value(
+	      "\u5C1A\u672A\u751F\u6210\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u3002\u82E5\u672A\u751F\u6210\uFF0C\u4E0B\u6E38 audit_final \u4F1A\u56DE\u9000\u5230\u5F53\u524D final \u6807\u7B7E\u3002",
+	      "No final-audit result has been generated. Until then, downstream audit_final views fall back to the current final labels."
+	    )
+	    rv$last_detector_summary <- "\u5C1A\u65E0\u68C0\u6D4B\u5668\u91CD\u8DD1\u6458\u8981\u3002"
+	    rv$last_detector_summary_record <- list(key = "detector_not_run_summary", args = list())
+	    near_miss_summary_set(
+	      "\u5C1A\u65E0\u9608\u503C\u5E94\u7528/\u91CD\u8DD1\u6458\u8981\u3002",
+	      "No threshold-application / rerun summary is available yet."
+	    )
+	    rv$batch_status <- "\u5C1A\u672A\u8FD0\u884C\u6279\u5904\u7406\u3002"
+	    rv$batch_status_record <- list(key = "batch_not_started", args = list())
+	    invisible(TRUE)
 	  }
 
   stpd_server_install_parameters_module(environment())
@@ -284,6 +718,466 @@ server <- function(input, output, session) {
   stpd_server_install_data_io_module(environment())
 
   stpd_server_install_visualization_module(environment())
+
+  stpd_server_install_provider_workbench_module(environment())
+
+	  ui_state_card <- function(state, heading = NULL) {
+	    if (is.null(state) || !is.list(state)) return(NULL)
+	    level <- as.character(state$level %||% "neutral")[1]
+	    modifier <- switch(
+	      level,
+	      success = "stpd-state-current",
+	      warning = "stpd-state-warning",
+	      danger = "stpd-state-error",
+	      info = "stpd-state-info",
+	      ""
+	    )
+	    scope <- as.character(state$scope_label %||% "?/?")[1]
+	    trains <- as.character(state$selected_trains %||% character())
+	    train_note <- if (length(trains) > 0L && length(trains) <= 8L) {
+	      tags$div(class = "small-note", paste0("Trains: ", paste(trains, collapse = ", ")))
+	    } else if (length(trains) > 8L) {
+	      tags$div(class = "small-note", paste0("Trains: ", paste(head(trains, 8L), collapse = ", "), " \u2026"))
+	    } else {
+	      NULL
+	    }
+	    tags$div(
+	      class = paste("stpd-state-card", modifier),
+	      if (!is.null(heading)) tags$div(class = "small-note", heading),
+	      tags$div(
+	        tags$strong(as.character(state$title %||% "\u72B6\u6001")[1]),
+	        tags$span(class = "label label-default pull-right", scope)
+	      ),
+	      tags$div(as.character(state$detail %||% "")[1]),
+	      train_note
+	    )
+	  }
+
+	  current_ui_params <- reactive({
+	    tryCatch(
+	      effective_params_for_detector(read_params_from_ui()),
+	      error = function(e) NULL
+	    )
+	  })
+
+	  current_ui_dataset_identity <- reactive({
+	    id <- rv$current_id
+	    ds <- get_dataset(id)
+	    if (is.null(ds) || is.null(id)) return(NULL)
+	    stpd_ui_dataset_identity(ds, id)
+	  })
+
+	  ui_run_identity_for <- function(ds, dataset_id, dataset_identity = NULL) {
+	    stored <- (rv$ui_run_identity_by_dataset %||% list())[[dataset_id]] %||% NULL
+	    if (!is.null(stored)) return(stored)
+	    # Runs produced before the Phase-0 UI identity model have no trustworthy
+	    # data snapshot.  Preserve their metadata, but fail soft as unverifiable
+	    # instead of pretending that a snapshot taken now existed at run time.
+	    inferred <- stpd_ui_run_identity(
+	      ds, params = NULL, dataset_id = dataset_id,
+	      dataset_identity = dataset_identity
+	    )
+	    if (isTRUE(inferred$has_run)) {
+	      inferred$data_sha256 <- ""
+	      inferred$verifiable <- FALSE
+	    }
+	    inferred
+	  }
+
+	  require_ui_detector_output_current <- function(dataset_id = rv$current_id,
+	                                                ds = NULL) {
+	    id <- as.character(dataset_id %||% "")[1]
+	    identities <- rv$ui_run_identity_by_dataset %||% list()
+	    run_identity <- if (nzchar(id)) identities[[id]] %||% NULL else NULL
+	    ds <- ds %||% if (nzchar(id)) get_dataset(id) else NULL
+	    state <- if (is.list(ds) && is.list(run_identity) &&
+	                 isTRUE(run_identity$has_run)) {
+	      tryCatch(
+	        stpd_ui_detector_output_state(
+	          ds,
+	          expected_identity = run_identity$detector_output_identity %||% NULL,
+	          selected_trains = run_identity$selected_trains
+	        ),
+	        error = function(e) NULL
+	      )
+	    } else {
+	      NULL
+	    }
+	    validate(need(
+	      is.list(state) && isTRUE(state$current),
+	      "\u68C0\u6D4B\u7ED3\u679C\u8EAB\u4EFD\u5DF2\u6539\u53D8\u6216\u65E0\u6CD5\u9A8C\u8BC1\uFF1B\u8BF7\u5148\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\uFF0C\u518D\u4FEE\u6539 Legacy \u5BA1\u8BA1\u5C42\u3002"
+	    ))
+	    list(
+	      dataset_id = id,
+	      run_identity = run_identity,
+	      detector_output_state = state
+	    )
+	  }
+
+	  commit_ui_review_dataset <- function(ds, proof,
+	                                       dataset_id = rv$current_id) {
+	    id <- as.character(dataset_id %||% "")[1]
+	    identities <- rv$ui_run_identity_by_dataset %||% list()
+	    run_identity <- if (nzchar(id)) identities[[id]] %||% NULL else NULL
+	    validate(need(
+	      is.list(proof) && nzchar(id) && identical(id, proof$dataset_id) &&
+	        is.list(run_identity) && identical(run_identity, proof$run_identity),
+	      "\u68C0\u6D4B\u8FD0\u884C\u8EAB\u4EFD\u5DF2\u6539\u53D8\uFF1B\u672A\u63D0\u4EA4 Legacy \u5BA1\u8BA1\u5C42\u4FEE\u6539\u3002"
+	    ))
+	    normalized <- normalize_dataset(ds)
+	    change_state <- tryCatch(
+	      stpd_ui_detector_output_state(
+	        normalized,
+	        expected_identity = run_identity$detector_output_identity,
+	        selected_trains = run_identity$selected_trains
+	      ),
+	      error = function(e) NULL
+	    )
+	    allowed_changes <- c(
+      "legacy_final_audit_train_output",
+	      "final_audit_summary", "final_audit_events",
+	      "final_audit_history", "final_audit_event_history"
+	    )
+	    changed <- as.character(
+	      (change_state %||% list())$changed_artifacts %||% character()
+	    )
+	    allowed_commit <- is.list(change_state) && (
+	      isTRUE(change_state$current) ||
+	        (identical(change_state$code, "detector_output_changed") &&
+	           length(changed) > 0L && all(changed %in% allowed_changes))
+	    )
+	    validate(need(
+	      allowed_commit,
+	      "Legacy \u5BA1\u8BA1\u64CD\u4F5C\u4FEE\u6539\u4E86\u5141\u8BB8\u8303\u56F4\u4E4B\u5916\u7684\u68C0\u6D4B\u4EA7\u7269\uFF1B\u5DF2\u53D6\u6D88\u6574\u4E2A\u63D0\u4EA4\u3002"
+	    ))
+	    output_identity <- change_state$current_identity %||% NULL
+	    validate(need(
+	      is.list(output_identity) && isTRUE(output_identity$verifiable),
+	      "\u4FEE\u6539\u540E\u7684 Legacy \u5BA1\u8BA1\u5C42\u65E0\u6CD5\u5B8C\u6574\u9A8C\u8BC1\uFF1B\u672A\u63D0\u4EA4\u66F4\u6539\u3002"
+	    ))
+	    run_identity$detector_output_identity <- output_identity
+	    set_dataset(id, normalized)
+	    identities[[id]] <- run_identity
+	    rv$ui_run_identity_by_dataset <- identities
+	    invisible(TRUE)
+	  }
+
+	  current_ui_run_state <- reactive({
+	    id <- rv$current_id
+	    ds <- get_dataset(id)
+	    if (is.null(ds) || is.null(id)) {
+	      return(stpd_ui_status_record(
+	        "run_no_dataset", "neutral", "\u672A\u52A0\u8F7D\u6570\u636E",
+	        "\u5BFC\u5165\u6570\u636E\u540E\u5C06\u5728\u8FD9\u91CC\u663E\u793A\u68C0\u6D4B\u72B6\u6001\u3002",
+	        0L, 0L, verifiable = FALSE
+	      ))
+	    }
+	    params <- current_ui_params()
+	    if (is.null(params)) {
+	      total <- length(ds$trains %||% list())
+	      return(stpd_ui_status_record(
+	        "run_params_invalid", "danger", "\u53C2\u6570\u65E0\u6548",
+	        "\u5F53\u524D UI \u53C2\u6570\u65E0\u6CD5\u6807\u51C6\u5316\uFF1B\u4E0D\u80FD\u5224\u5B9A\u68C0\u6D4B\u7ED3\u679C\u662F\u5426\u4E3A\u5F53\u524D\u3002",
+	        0L, total, verifiable = FALSE
+	      ))
+	    }
+	    dataset_identity <- current_ui_dataset_identity()
+	    stpd_ui_run_state(
+	      ds, params = params, dataset_id = id,
+	      run_identity = ui_run_identity_for(ds, id, dataset_identity),
+	      dataset_identity = dataset_identity
+	    )
+	  })
+
+	  output$ui_run_state_status <- renderUI({
+	    ui_state_card(current_ui_run_state(), "\u68C0\u6D4B\u72B6\u6001")
+	  })
+
+	  output$orientation_context_bar <- renderUI({
+	    id <- rv$current_id
+	    ds <- get_dataset(id)
+	    state <- current_ui_run_state()
+	    total <- if (is.null(ds)) 0L else length(ds$trains %||% list())
+	    visible <- if (is.null(ds)) character(0) else tryCatch(
+	      intersect(as.character(displayed_train_names() %||% character()), names(ds$trains)),
+	      error = function(e) character(0)
+	    )
+	    visible_n <- length(unique(visible))
+	    dataset_label <- if (is.null(ds)) {
+	      "\u672A\u52A0\u8F7D"
+	    } else {
+	      as.character(ds$meta$display_name %||% id %||% "\u672A\u547D\u540D\u6570\u636E\u96C6")[1]
+	    }
+	    level <- as.character(state$level %||% "neutral")[1]
+	    modifier <- switch(level, success = "is-current", warning = "is-warning", danger = "is-error", "")
+	    run_scope <- as.character(state$scope_label %||% paste0("0/", total))[1]
+	    metadata <- if (is.null(ds)) data.frame() else tryCatch(stpd_ui_state_run_metadata(ds), error = function(e) data.frame())
+	    detection_mode <- if (is.null(metadata) || nrow(metadata) == 0L) {
+	      "\u672A\u8FD0\u884C"
+	    } else if (isTRUE(as.logical(metadata$label_blind[1] %||% FALSE))) {
+	      "label-blind AUTO"
+	    } else {
+	      mode <- as.character(metadata$detection_mode[1] %||% "manual_aware")
+	      if (identical(mode, "label_blind")) "label-blind AUTO" else "manual-aware AUTO"
+	    }
+	    tags$div(
+	      class = paste("stpd-context-strip", modifier),
+	      role = "status", `aria-live` = "polite",
+	      `data-run-code` = as.character(state$code %||% ""),
+	      `data-viewing-scope` = paste0(visible_n, "/", total),
+	      `data-detected-scope` = run_scope,
+	      tags$span(class = "stpd-context-chip", "\u6570\u636E\u96C6\uFF1A", tags$strong(dataset_label)),
+	      tags$span(class = "stpd-context-chip", paste0("\u6B63\u5728\u67E5\u770B\uFF1A", visible_n, "/", total, " trains")),
+	      tags$span(class = "stpd-context-chip", paste0("\u4E0A\u6B21\u68C0\u6D4B\uFF1A", run_scope, " trains")),
+	      tags$span(class = "stpd-context-chip", paste0("\u6A21\u5F0F\uFF1A", detection_mode)),
+	      tags$span(
+	        class = "stpd-context-chip",
+	        tags$span(class = "stpd-context-status-dot", `aria-hidden` = "true"),
+	        as.character(state$title %||% "\u72B6\u6001\u672A\u77E5")[1]
+	      )
+	    )
+	  })
+
+	  navigate_orientation_step <- function(tab, anchor = NULL) {
+	    updateTabsetPanel(session, "main_tabs", selected = tab)
+	    if (!is.null(anchor) && !is.na(anchor) && nzchar(anchor)) {
+	      session$sendCustomMessage(
+	        "stpd-orientation-focus",
+	        list(anchor = anchor, expandSidebar = TRUE)
+	      )
+	    }
+	    invisible(TRUE)
+	  }
+
+	  orientation_steps <- stpd_ui_orientation_workflow()
+	  lapply(seq_len(nrow(orientation_steps)), function(ii) {
+	    local({
+	      step <- orientation_steps[ii, , drop = FALSE]
+	      observeEvent(input[[as.character(step$step_id)]], {
+	        navigate_orientation_step(
+	          as.character(step$target_tab),
+	          as.character(step$control_anchor)
+	        )
+	      }, ignoreInit = TRUE)
+	    })
+	  })
+
+	  formal_results_export_state <- reactive({
+	    id <- rv$current_id
+	    ds <- get_dataset(id)
+	    if (is.null(ds) || is.null(id)) {
+	      return(list(
+	        eligible = FALSE,
+	        code = "formal_export_no_dataset",
+	        detail = "\u8BF7\u5148\u5BFC\u5165\u6570\u636E\u5E76\u5B8C\u6210\u4E00\u6B21\u5168\u90E8 trains \u7684\u68C0\u6D4B\u3002"
+	      ))
+	    }
+	    dataset_identity <- current_ui_dataset_identity()
+	    stpd_ui_formal_export_state(
+	      ds, params = current_ui_params(), dataset_id = id,
+	      run_identity = ui_run_identity_for(ds, id, dataset_identity),
+	      dataset_identity = dataset_identity
+	    )
+	  })
+
+	  output$formal_results_export_control <- renderUI({
+	    gate <- formal_results_export_state()
+	    if (isTRUE(gate$eligible)) {
+	      return(tagList(
+	        downloadButton(
+	          "download_labeled_csv", "\u4E0B\u8F7D\u5F53\u524D\u5168\u91CF\u6807\u8BB0 CSV\uFF08\u5BBD\u8868\uFF09",
+	          width = "100%"
+	        ),
+	        downloadButton(
+	          "download_results_zip", "\u4E0B\u8F7D\u5F53\u524D\u5168\u91CF\u7ED3\u679C ZIP", width = "100%"
+	        ),
+	        tags$div(class = "small-note", ui_formal_gate_detail(gate)),
+	        uiOutput("formal_export_progress_status")
+	      ))
+	    }
+	    tagList(
+	      tags$button(
+	        type = "button", class = "btn btn-default disabled",
+	        style = "width:100%;", disabled = "disabled",
+	        "\u6B63\u5F0F\u6807\u8BB0 CSV\uFF1A\u9700\u5148\u5B8C\u6210\u5168\u91CF\u8FD0\u884C"
+	      ),
+	      tags$button(
+	        type = "button", class = "btn btn-default disabled",
+	        style = "width:100%;", disabled = "disabled",
+	        "\u6B63\u5F0F\u7ED3\u679C ZIP\uFF1A\u9700\u5148\u5B8C\u6210\u5168\u91CF\u8FD0\u884C"
+	      ),
+	      tags$div(
+	        class = "small-note stpd-state-warning",
+	        ui_formal_gate_detail(gate)
+	      ),
+	      uiOutput("formal_export_progress_status")
+	    )
+	  })
+
+	  output$formal_export_progress_status <- renderUI({
+	    progress <- rv$formal_export_progress %||% NULL
+	    if (is.null(progress) || !is.list(progress)) {
+	      return(tags$div(
+	        class = "small-note",
+	        ui_current_copy("\u5C1A\u672A\u751F\u6210\u6B63\u5F0F\u5BFC\u51FA\u6587\u4EF6\u3002", "No formal export file has been generated yet.")
+	      ))
+	    }
+	    current_dataset_id <- as.character(rv$current_id %||% "")[1]
+	    foreign <- !identical(
+	      as.character(progress$dataset_id %||% "")[1], current_dataset_id
+	    )
+	    ds <- get_dataset(current_dataset_id)
+	    current_run <- if (foreign || is.null(ds) || !nzchar(current_dataset_id)) {
+	      NULL
+	    } else {
+	      dataset_identity <- tryCatch(
+	        stpd_ui_dataset_identity(ds, current_dataset_id),
+	        error = function(e) NULL
+	      )
+	      tryCatch(
+	        ui_run_identity_for(ds, current_dataset_id, dataset_identity),
+	        error = function(e) NULL
+	      )
+	    }
+	    progress_bound <- nzchar(as.character(progress$run_id %||% "")[1]) ||
+	      nzchar(as.character(progress$params_sha256 %||% "")[1]) ||
+	      !is.na(suppressWarnings(as.integer(
+	        progress$selected_train_n %||% NA_integer_
+	      )))
+	    same_scope <- !is.null(current_run) && identical(
+	      stpd_ui_state_parse_trains(progress$selected_trains),
+	      stpd_ui_state_parse_trains(current_run$selected_trains)
+	    ) && identical(
+	      suppressWarnings(as.integer(progress$selected_train_n %||% NA_integer_))[1],
+	      suppressWarnings(as.integer(current_run$selected_train_n %||% NA_integer_))[1]
+	    ) && identical(
+	      suppressWarnings(as.integer(progress$total_train_n %||% NA_integer_))[1],
+	      suppressWarnings(as.integer(current_run$total_train_n %||% NA_integer_))[1]
+	    )
+	    superseded <- !foreign && isTRUE(progress_bound) && (
+	      is.null(current_run) ||
+	      !identical(as.character(progress$run_id %||% "")[1],
+	                 as.character(current_run$run_id %||% "")[1]) ||
+	      !identical(as.character(progress$params_sha256 %||% "")[1],
+	                 as.character(current_run$effective_params_sha256 %||% "")[1]) ||
+	      !same_scope
+	    )
+	    state <- as.character(progress$state %||% "preparing")[1]
+	    value <- suppressWarnings(as.numeric(progress$progress %||% 0)[1])
+	    if (!is.finite(value)) value <- 0
+	    value <- max(0, min(1, value))
+	    type <- if (foreign) "error" else if (superseded) "superseded" else if (state %in% c("generated")) "success" else if (state %in% c("error", "blocked")) "error" else "active"
+	    title <- if (foreign) {
+	      ui_current_copy("\u4E0A\u4E00\u6B21\u5BFC\u51FA\u5C5E\u4E8E\u5176\u4ED6\u6570\u636E\u96C6", "The previous export belongs to another dataset")
+	    } else if (superseded) {
+	      ui_current_copy(
+	        "\u4E0A\u4E00\u6B21\u5BFC\u51FA\u5DF2\u88AB\u65B0\u7684\u8FD0\u884C\u6216\u53C2\u6570\u72B6\u6001\u53D6\u4EE3",
+	        "The previous export was superseded by a newer run or parameter state"
+	      )
+	    } else switch(
+	      state,
+	      generated = ui_current_copy("\u670D\u52A1\u5668\u5DF2\u751F\u6210\u5BFC\u51FA\u6587\u4EF6", "The server generated the export file"),
+	      error = ui_current_copy("\u5BFC\u51FA\u751F\u6210\u5931\u8D25", "Export generation failed"),
+	      blocked = ui_current_copy("\u5BFC\u51FA\u5DF2\u963B\u6B62", "Export was blocked"),
+	      ui_current_copy("\u6B63\u5728\u51C6\u5907\u6B63\u5F0F\u5BFC\u51FA", "Preparing the formal export")
+	    )
+	    phase <- as.character(
+	      progress$detail_key %||% progress$key %||% progress$phase %||% progress$state %||% "unknown"
+	    )[1]
+	    phase_detail <- switch(
+	      phase,
+	      validate = ui_current_copy("\u6B63\u5728\u9A8C\u8BC1\u5F53\u524D\u5B8C\u6574\u8FD0\u884C\u4E0E\u6B63\u5F0F\u5BFC\u51FA\u95E8\u63A7\u3002", "Validating the current full run and formal-export gate."),
+	      validating_current_run = ui_current_copy("\u6B63\u5728\u9A8C\u8BC1\u5F53\u524D\u5B8C\u6574\u8FD0\u884C\u3002", "Validating the current full run."),
+	      assemble_labels = ui_current_copy("\u6B63\u5728\u7EC4\u88C5\u5DF2\u6807\u8BB0 train \u5217\u3002", "Assembling labeled train columns."),
+	      write_csv = ui_current_copy("\u6B63\u5728\u5199\u5165 UTF-8 CSV\u3002", "Writing the UTF-8 CSV."),
+	      derive_intervals = ui_current_copy("\u6B63\u5728\u751F\u6210\u4E8B\u4EF6\u4E0E ISI \u533A\u95F4\u8868\u3002", "Deriving event and ISI-interval tables."),
+	      write_event_tables = ui_current_copy("\u6B63\u5728\u5199\u5165\u4E8B\u4EF6\u4E0E\u533A\u95F4\u8868\u3002", "Writing event and interval tables."),
+	      write_label_audits = ui_current_copy("\u6B63\u5728\u5199\u5165\u6807\u7B7E\u5BA1\u8BA1\u4EA7\u7269\u3002", "Writing label-audit artifacts."),
+	      write_diagnostics = ui_current_copy("\u6B63\u5728\u5199\u5165\u68C0\u6D4B\u5668\u5019\u9009\u4E0E\u8BCA\u65AD\u4EA7\u7269\u3002", "Writing detector candidate and diagnostic artifacts."),
+	      writing_detector_artifacts = ui_current_copy("\u6B63\u5728\u5199\u5165\u68C0\u6D4B\u5668\u5019\u9009\u4E0E\u8BCA\u65AD\u4EA7\u7269\u3002", "Writing detector candidate and diagnostic artifacts."),
+	      write_provenance = ui_current_copy("\u6B63\u5728\u5199\u5165\u53C2\u6570\u3001\u8FD0\u884C\u5143\u6570\u636E\u4E0E\u6EAF\u6E90\u4FE1\u606F\u3002", "Writing parameters, run metadata, and provenance."),
+	      writing_provenance = ui_current_copy("\u6B63\u5728\u5199\u5165\u53C2\u6570\u3001\u8FD0\u884C\u5143\u6570\u636E\u4E0E\u6EAF\u6E90\u4FE1\u606F\u3002", "Writing parameters, run metadata, and provenance."),
+	      write_qc = ui_current_copy("\u6B63\u5728\u5199\u5165 QC \u4EA7\u7269\u3002", "Writing QC artifacts."),
+	      write_validation = ui_current_copy("\u6B63\u5728\u5199\u5165\u9A8C\u8BC1\u4EA7\u7269\u3002", "Writing validation artifacts."),
+	      archive = ui_current_copy("\u6B63\u5728\u521B\u5EFA ZIP \u5F52\u6863\u3002", "Creating the ZIP archive."),
+	      verify = ui_current_copy("\u6B63\u5728\u9A8C\u8BC1\u751F\u6210\u7684\u5BFC\u51FA\u6587\u4EF6\u3002", "Verifying the generated export file."),
+	      generated = {
+	        size <- suppressWarnings(as.numeric(progress$file_size_bytes %||% NA_real_)[1])
+	        if (is.finite(size)) {
+	          ui_current_copy(
+	            paste0("\u670D\u52A1\u5668\u5DF2\u751F\u6210\u6587\u4EF6\uFF08", size, " bytes\uFF09\u3002"),
+	            paste0("Server-side file generated (", size, " bytes).")
+	          )
+	        } else {
+	          ui_current_copy("\u670D\u52A1\u5668\u5DF2\u751F\u6210\u6587\u4EF6\u3002", "The server-side file was generated.")
+	        }
+	      },
+	      ui_text("formal_export_progress_detail", phase = phase)
+	    )
+	    progress_detail <- if (state %in% c("error", "blocked")) {
+	      raw_error <- as.character(progress$error_message %||% "")[1]
+	      tagList(
+	        ui_current_copy("\u6B63\u5F0F\u5BFC\u51FA\u672A\u5B8C\u6210\u3002", "The formal export did not complete."),
+	        if (nzchar(raw_error)) tagList(
+	          tags$br(),
+	          tags$span(
+	            class = "stpd-technical-detail",
+	            ui_current_copy("\u6280\u672F\u8BE6\u60C5\uFF1A", "Technical details: "),
+	            tags$code(raw_error)
+	          )
+	        ) else NULL
+	      )
+	    } else {
+	      phase_detail
+	    }
+	    tags$div(
+	      class = paste("data-load-progress", paste0("is-", type)),
+	      role = "status", `aria-live` = "polite",
+	      tags$div(
+	        class = "data-load-progress-head",
+	        tags$span(class = "data-load-progress-title", title),
+	        tags$span(class = "data-load-progress-percent", paste0(round(value * 100), "%"))
+	      ),
+	      tags$div(
+	        class = "data-load-progress-track",
+	        tags$div(class = "data-load-progress-bar", style = paste0("width:", value * 100, "%;"))
+	      ),
+	      tags$div(
+	        class = "data-load-progress-detail",
+	        progress_detail,
+	        if (!foreign && !superseded && nzchar(as.character(progress$scope %||% "")[1])) paste0(" ", ui_text("scope_label", scope = progress$scope)) else NULL
+	      )
+	    )
+	  })
+
+	  validation_state_for <- function(identity) {
+	    id <- rv$current_id
+	    ds <- get_dataset(id)
+	    if (is.null(ds) || is.null(id)) return(NULL)
+	    dataset_identity <- current_ui_dataset_identity()
+	    stpd_ui_validation_state(
+	      ds, params = current_ui_params(), dataset_id = id,
+	      run_identity = ui_run_identity_for(ds, id, dataset_identity),
+	      validation_identity = identity,
+	      dataset_identity = dataset_identity
+	    )
+	  }
+
+	  output$manual_validation_state_status <- renderUI({
+	    identity <- rv$manual_detector_eval_identity
+	    if (is.null(identity) && !is.null(rv$manual_detector_eval)) {
+	      identity <- list(has_validation = TRUE, verifiable = FALSE)
+	    }
+	    ui_state_card(validation_state_for(identity), "MANUAL \u5BF9\u7167\u62A5\u544A\u72B6\u6001")
+	  })
+
+	  output$scientific_validation_state_status <- renderUI({
+	    identity <- rv$scientific_validation_identity
+	    if (is.null(identity) && !is.null(rv$scientific_validation)) {
+	      identity <- list(has_validation = TRUE, verifiable = FALSE)
+	    }
+	    ui_state_card(validation_state_for(identity), "\u79D1\u5B66\u9A8C\u8BC1\u62A5\u544A\u72B6\u6001")
+	  })
 
 	  observeEvent(selected_points(), {
 	    sel <- selected_points()
@@ -307,17 +1201,15 @@ server <- function(input, output, session) {
 
 	  observeEvent(input$undo_last_manual_action, {
 	    run_manual_ui_action({
-	      snap <- rv$manual_undo_snapshot
-	      validate(need(!is.null(snap), "\u6CA1\u6709\u53EF\u64A4\u9500\u7684\u4E0A\u4E00\u6B21\u624B\u52A8\u64CD\u4F5C\u3002"))
-	      validate(need(!is.null(snap$dataset_id) && snap$dataset_id %in% names(rv$datasets), "\u4E0A\u4E00\u6B21\u64CD\u4F5C\u6240\u5C5E\u7684\u6570\u636E\u96C6\u5DF2\u4E0D\u5B58\u5728\u3002"))
-	      ds <- get_dataset(snap$dataset_id)
-	      validate(need(!is.null(ds), "\u65E0\u6CD5\u8BFB\u53D6\u4E0A\u4E00\u6B21\u64CD\u4F5C\u6240\u5C5E\u7684\u6570\u636E\u96C6\u3002"))
-	      ds$trains <- snap$trains
-	      set_dataset(snap$dataset_id, ds)
-	      rv$current_id <- snap$dataset_id
+	      record <- stpd_ui_transaction_undo(rv)
+	      validate(need(!is.null(record), "\u6CA1\u6709\u53EF\u64A4\u9500\u7684\u4E0A\u4E00\u6B21\u53D8\u66F4\u3002"))
 	      rv$last_plotly_selection <- NULL
-	      rv$manual_undo_snapshot <- NULL
-	      showNotification(paste0("\u5DF2\u64A4\u9500\u4E0A\u4E00\u6B21\u64CD\u4F5C\uFF1A", snap$action, "\u3002"), type = "message", duration = 3)
+	      label <- as.character((record$metadata$details %||% list())$ui_action_label %||%
+	        record$metadata$action_label_zh %||% "\u53D8\u66F4")[1]
+	      showNotification(
+	        paste0("\u5DF2\u64A4\u9500\uFF1A", label, "\u3002\u5269\u4F59\u53EF\u64A4\u9500\u6B65\u6570\uFF1A", record$remaining_depth, "\u3002"),
+	        type = "message", duration = 4
+	      )
 	    }, prefix = "\u64A4\u9500\u5931\u8D25")
 	  })
 
@@ -401,10 +1293,35 @@ server <- function(input, output, session) {
 
 	  observeEvent(input$clear_selected_manual, {
 	    run_manual_ui_action({
-	      sel <- selection_from_cache()
-	      loc <- selection_time_isi_indices(sel)
-	      pats <- input$clear_patterns_manual
+	      loc <- selection_time_isi_indices(selection_from_cache())
+	      show_ui_confirmation(
+	        "confirm_clear_selected_manual",
+	        ui_current_copy("\u786E\u8BA4\u6E05\u9664\u6240\u9009 MANUAL \u6807\u7B7E", "Confirm clearing selected MANUAL labels"),
+	        ui_current_copy(
+	          "\u5C06\u6E05\u9664\u5F53\u524D Raster \u9009\u533A\u4E2D\u5339\u914D\u7684 MANUAL/NOT-burst \u8BC1\u636E\uFF0C\u5E76\u4F7F\u4F9D\u8D56\u8FD9\u4E9B\u771F\u503C\u7684\u9A8C\u8BC1\u7ED3\u679C\u8FC7\u671F\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002",
+	          "This will clear matching MANUAL/NOT-burst evidence in the current raster selection and mark dependent validation results as stale. It can be undone in this session."
+	        ),
+	        context = list(
+	          dataset_id = rv$current_id, train = loc$train, idx = loc$idx,
+	          patterns = as.character(input$clear_patterns_manual %||% character())
+	        )
+	      )
+	    }, prefix = "\u65E0\u6CD5\u786E\u8BA4\u6E05\u9664 MANUAL \u6807\u7B7E")
+	  })
+
+	  observeEvent(input$confirm_clear_selected_manual, {
+	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_clear_selected_manual")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6E05\u9664\u4EFB\u4F55\u6807\u7B7E\u3002\u8BF7\u91CD\u65B0\u9009\u62E9\u3002"))
+	      loc <- list(train = as.character(ctx$train %||% "")[1],
+	                  idx = suppressWarnings(as.integer(ctx$idx %||% integer())))
+	      pats <- as.character(ctx$patterns %||% character())
 	      td <- current_trains()
+	      validate(need(loc$train %in% names(td), "\u786E\u8BA4\u7684 train \u5DF2\u4E0D\u5B58\u5728\u3002"))
 	      dat <- td[[loc$train]]
 	      if (!("pattern_manual_negative" %in% names(dat))) dat$pattern_manual_negative <- rep("", nrow(dat))
 	      idx <- loc$idx
@@ -419,31 +1336,88 @@ server <- function(input, output, session) {
 	      dat$pattern_manual_negative[idx] <- ""
 	      td[[loc$train]] <- dat
 	      update_current_dataset_trains(td)
-	      showNotification(paste0("Cleared ", length(idx), " \u4E2A\u6240\u9009\u533A\u57DF\u4E2D\u7684 MANUAL \u6807\u7B7E\u3002"), type = "message", duration = 3)
+	      showNotification(ui_text("cleared_manual_labels", n = length(idx)), type = "message", duration = 3)
 	    }, prefix = "\u6E05\u9664 MANUAL \u6807\u7B7E\u5931\u8D25")
 	  })
 
 	  observeEvent(input$clear_selected_auto, {
 	    run_manual_ui_action({
-	      sel <- selection_from_cache()
-	      loc <- selection_time_isi_indices(sel)
-	      pats <- input$clear_patterns_manual
+	      loc <- selection_time_isi_indices(selection_from_cache())
+	      show_ui_confirmation(
+	        "confirm_clear_selected_auto",
+	        ui_current_copy("\u786E\u8BA4\u6E05\u9664\u6240\u9009 AUTO \u6807\u7B7E", "Confirm clearing selected AUTO labels"),
+	        ui_current_copy(
+	          "\u5C06\u6E05\u9664\u5F53\u524D Raster \u9009\u533A\u4E2D\u5339\u914D\u7684 AUTO \u6807\u7B7E\u3002\u8FD0\u884C\u6458\u8981\u4E0E\u4E8B\u4EF6\u8868\u5C06\u88AB\u6807\u8BB0\u4E3A\u8FC7\u671F\uFF1B\u672C session \u4E2D\u53EF\u64A4\u9500\u3002",
+	          "This will clear matching AUTO labels in the current raster selection. The run summary and event tables will be marked stale. It can be undone in this session."
+	        ),
+	        context = list(
+	          dataset_id = rv$current_id, train = loc$train, idx = loc$idx,
+	          patterns = as.character(input$clear_patterns_manual %||% character())
+	        )
+	      )
+	    }, prefix = "\u65E0\u6CD5\u786E\u8BA4\u6E05\u9664 AUTO \u6807\u7B7E")
+	  })
+
+	  observeEvent(input$confirm_clear_selected_auto, {
+	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_clear_selected_auto")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6E05\u9664\u4EFB\u4F55\u6807\u7B7E\u3002\u8BF7\u91CD\u65B0\u9009\u62E9\u3002"))
+	      loc <- list(train = as.character(ctx$train %||% "")[1],
+	                  idx = suppressWarnings(as.integer(ctx$idx %||% integer())))
+	      pats <- as.character(ctx$patterns %||% character())
 	      td <- current_trains()
+	      validate(need(loc$train %in% names(td), "\u786E\u8BA4\u7684 train \u5DF2\u4E0D\u5B58\u5728\u3002"))
 	      dat <- td[[loc$train]]
 	      idx <- loc$idx
 	      if (!is.null(pats) && length(pats) > 0) idx <- idx[dat$pattern_auto[idx] %in% pats]
 	      validate(need(length(idx) > 0, "\u6CA1\u6709\u4E0E\u8BF7\u6C42\u6A21\u5F0F\u5339\u914D\u7684\u5DF2\u9009 AUTO \u6807\u7B7E\u3002"))
 	      push_manual_undo("\u6E05\u9664\u6240\u9009 AUTO \u6807\u7B7E")
 	      dat$pattern_auto[idx] <- ""
+	      if ("auto_score" %in% names(dat)) dat$auto_score[idx] <- NA_real_
 	      td[[loc$train]] <- dat
 	      update_current_dataset_trains(td)
-	      showNotification(paste0("Cleared ", length(idx), " \u4E2A\u6240\u9009\u533A\u57DF\u4E2D\u7684 AUTO \u6807\u7B7E\u3002"), type = "message", duration = 3)
+	      showNotification(ui_text("cleared_auto_labels", n = length(idx)), type = "message", duration = 3)
 	    }, prefix = "\u6E05\u9664 AUTO \u6807\u7B7E\u5931\u8D25")
 	  })
 
 		  observeEvent(input$clear_all_manual, {
+		    td <- current_trains()
+		    n_manual <- sum(vapply(td, function(dat) {
+		      pos <- if ("pattern_manual" %in% names(dat)) sum(nzchar(as.character(dat$pattern_manual %||% "")), na.rm = TRUE) else 0L
+		      neg <- if ("pattern_manual_negative" %in% names(dat)) sum(nzchar(as.character(dat$pattern_manual_negative %||% "")), na.rm = TRUE) else 0L
+		      pos + neg
+		    }, numeric(1)))
+		    show_ui_confirmation(
+		      "confirm_clear_all_manual",
+		      ui_current_copy("\u786E\u8BA4\u6E05\u9664\u5168\u90E8 MANUAL \u6807\u7B7E", "Confirm clearing all MANUAL labels"),
+		      ui_current_copy(
+		        paste0("\u5C06\u6E05\u9664\u5F53\u524D\u6570\u636E\u96C6 ", length(td), " \u6761 trains \u4E2D\u7EA6 ", n_manual, " \u4E2A MANUAL/NOT-burst \u6807\u8BB0\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002"),
+		        paste0("This will clear about ", n_manual, " MANUAL/NOT-burst labels across ", length(td), " trains in the current dataset. It can be undone in this session.")
+		      ),
+		      context = list(
+		        dataset_id = rv$current_id,
+		        train_ids = sort(names(td), method = "radix")
+		      )
+		    )
+		  })
+
+		  observeEvent(input$confirm_clear_all_manual, {
 		    run_manual_ui_action({
+		      pending <- consume_ui_confirmation("confirm_clear_all_manual")
+		      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+		      ctx <- pending$context %||% list()
+		      validate(need(identical(as.character(rv$current_id %||% "")[1],
+		                               as.character(ctx$dataset_id %||% "")[1]),
+		                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6E05\u9664\u4EFB\u4F55\u6807\u7B7E\u3002"))
 		      td <- current_trains()
+		      validate(need(identical(
+		        sort(names(td), method = "radix"),
+		        sort(as.character(ctx$train_ids %||% character()), method = "radix")
+		      ), "Train \u8303\u56F4\u5DF2\u6539\u53D8\uFF1B\u8BF7\u91CD\u65B0\u53D1\u8D77\u6E05\u9664\u3002"))
 		      push_manual_undo("\u6E05\u9664\u5168\u90E8 MANUAL \u6807\u7B7E")
 	      for (tr in names(td)) {
 	        td[[tr]]$pattern_manual[] <- ""
@@ -453,66 +1427,186 @@ server <- function(input, output, session) {
 		    }, prefix = "\u6E05\u9664\u5168\u90E8 MANUAL \u6807\u7B7E\u5931\u8D25")
 		  })
 
+	  phase2b_state_present <- reactive({
+	    ds <- tryCatch(current_dataset(), error = function(e) NULL)
+	    if (is.null(ds)) return(FALSE)
+	    tryCatch(isTRUE(stpd_phase2b_has_state(ds)), error = function(e) TRUE)
+	  })
+
+	  output$final_audit_promote_control <- renderUI({
+	    if (isTRUE(phase2b_state_present())) {
+	      return(tags$div(class = "stpd-state-card stpd-state-error",
+	                      strong(ui_current_copy(
+	                        "Phase 2B \u5DF2\u6FC0\u6D3B",
+	                        "Phase 2B active"
+	                      )),
+	                      ui_current_copy(
+	                        "Legacy possible\u2192real \u5347\u7EA7\u5DF2\u7981\u7528\u3002\u5019\u9009\u7EA7 Review\u2192Event Confirm/Revoke \u5F53\u524D\u4EC5\u901A\u8FC7 API \u63D0\u4F9B\uFF0C\u672C\u9636\u6BB5 UI \u4E0D\u6267\u884C\u8BE5\u8F6C\u6362\u3002",
+	                        "Legacy possible\u2192real promotion is disabled. Candidate-level Review\u2192Event Confirm/Revoke is currently available only through the API; this UI does not perform that transition in this phase."
+	                      )))
+	    }
+	    actionButton(
+	      "promote_possible_to_final_audit",
+	      ui_current_copy(
+	        "Legacy\uFF1A\u5C06 possible \u5347\u7EA7\u4E3A real",
+	        "Legacy: promote possible to real"
+	      ),
+	      class = "btn-warning", width = "100%"
+	    )
+	  })
+
+	  output$legacy_promotion_controls <- renderUI({
+	    if (isTRUE(phase2b_state_present())) {
+	      return(tags$div(class = "stpd-state-card stpd-state-error",
+	                      strong(ui_current_copy(
+	                        "Legacy \u6279\u91CF\u5347\u7EA7\u5DF2\u7981\u7528",
+	                        "Legacy bulk promotion disabled"
+	                      )),
+	                      ui_current_copy(
+	                        "\u5F53\u524D\u6570\u636E\u96C6\u5DF2\u5305\u542B Phase 2B Review \u72B6\u6001\u3002Legacy \u8DEF\u5F84\u4E0D\u5F97\u4FEE\u6539\u8BE5\u5BA1\u5B9A\u94FE\uFF0C\u4E5F\u4E0D\u5F97\u4F5C\u4E3A\u66FF\u4EE3\u64CD\u4F5C\u3002",
+	                        "The current dataset contains Phase 2B Review state. The Legacy path must not modify that adjudication chain or be used as a substitute."
+	                      )))
+	    }
+	    tagList(
+	      uiOutput("possible_burst_promote_train_selector"),
+	      fluidRow(
+	        column(4, actionButton(
+	          "preview_possible_burst_promotion",
+	          ui_current_copy("\u9884\u89C8 Legacy \u5347\u7EA7", "Preview Legacy promotion"),
+	          width = "100%"
+	        )),
+	        column(4, actionButton(
+	          "apply_possible_burst_promotion",
+	          ui_current_copy("\u6267\u884C Legacy \u5347\u7EA7", "Apply Legacy promotion"),
+	          class = "btn-warning", width = "100%"
+	        )),
+	        column(4, actionButton(
+	          "revert_possible_burst_promotion",
+	          ui_current_copy("\u64A4\u56DE Legacy \u5347\u7EA7", "Revert Legacy promotion"),
+	          width = "100%"
+	        ))
+	      )
+	    )
+	  })
+
 	  output$possible_burst_promote_train_selector <- renderUI({
 	    td <- current_trains()
 	    choices <- names(td)
-	    validate(need(length(choices) > 0, "\u6CA1\u6709\u53EF\u7528 train\u3002"))
+	    validate(need(length(choices) > 0, ui_current_copy(
+	      "\u6CA1\u6709\u53EF\u7528 train\u3002", "No trains are available."
+	    )))
 	    default <- tryCatch(displayed_train_names(), error = function(e) character(0))
 	    default <- intersect(default, choices)
 	    if (length(default) == 0) {
 	      default <- intersect(metadata_filtered_train_names(), choices)
 	    }
 	    if (length(default) == 0) default <- choices
+	    default <- intersect(
+	      as.character(ui_control_remembered("possible_burst_promote_trains", default)),
+	      choices
+	    )
 	    selectizeInput(
 	      "possible_burst_promote_trains",
-	      "\u9009\u62E9\u8981\u6279\u91CF\u5347\u7EA7 possible_burst \u7684 trains",
+	      ui_current_copy(
+	        "\u9009\u62E9\u8981\u6279\u91CF\u5347\u7EA7 possible_burst \u7684 trains",
+	        "Select trains whose possible_burst labels will be bulk-promoted"
+	      ),
 	      choices = choices,
 	      selected = default,
 	      multiple = TRUE,
-	      options = list(placeholder = "\u53EF\u9009\u62E5\u591A\u6761 spike train")
+	      options = list(placeholder = ui_current_copy(
+	        "\u53EF\u9009\u591A\u6761 spike train", "Select one or more spike trains"
+	      ))
 	    )
 	  })
 
 	  possible_burst_promote_selected_trains <- reactive({
 	    td <- current_trains()
-	    sel <- input$possible_burst_promote_trains
-	    if (is.null(sel) || length(sel) == 0) sel <- tryCatch(displayed_train_names(), error = function(e) names(td))
+	    # Shiny reports a cleared multiple select as NULL. The renderUI default
+	    # is returned after initialization; NULL/empty must remain an empty,
+	    # fail-closed mutation scope.
+	    sel <- input$possible_burst_promote_trains %||% character(0)
 	    intersect(as.character(sel), names(td))
 	  })
+
+	  legacy_promotion_source_hash <- function(ds, selected_trains) {
+	    selected_trains <- sort(intersect(as.character(selected_trains), names(ds$trains %||% list())))
+	    payload <- lapply(selected_trains, function(tr) {
+	      dat <- ds$trains[[tr]]
+	      list(
+	        train = tr,
+	        idx = suppressWarnings(as.integer(dat$idx %||% seq_len(nrow(dat)))),
+	        auto = as.character(dat$pattern_auto %||% rep("", nrow(dat))),
+	        manual = as.character(dat$pattern_manual %||% rep("", nrow(dat))),
+	        manual_negative = as.character(dat$pattern_manual_negative %||% rep("", nrow(dat)))
+	      )
+	    })
+	    digest::digest(payload, algo = "sha256", serialize = TRUE)
+	  }
+
+	  legacy_promotion_preview_identity <- function(ds, selected_trains) {
+	    list(
+	      dataset_id = as.character(rv$current_id %||% "")[1],
+	      selected_trains = sort(as.character(selected_trains)),
+	      source_sha256 = legacy_promotion_source_hash(ds, selected_trains)
+	    )
+	  }
 
 	  output$final_audit_train_selector <- renderUI({
 	    td <- current_trains()
 	    choices <- names(td)
-	    validate(need(length(choices) > 0, "\u6CA1\u6709\u53EF\u7528 train\u3002"))
+	    validate(need(length(choices) > 0, ui_current_copy(
+	      "\u6CA1\u6709\u53EF\u7528 train\u3002", "No trains are available."
+	    )))
 	    default <- tryCatch(displayed_train_names(), error = function(e) character(0))
 	    default <- intersect(default, choices)
 	    if (length(default) == 0) default <- intersect(metadata_filtered_train_names(), choices)
 	    if (length(default) == 0) default <- choices
+	    default <- intersect(
+	      as.character(ui_control_remembered("final_audit_trains", default)),
+	      choices
+	    )
 	    selectizeInput(
 	      "final_audit_trains",
-	      "\u9009\u62E9\u8981\u751F\u6210\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u7684 trains",
+	      ui_current_copy(
+	        "\u9009\u62E9\u8981\u751F\u6210\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u7684 trains",
+	        "Select trains for the final-audit result"
+	      ),
 	      choices = choices,
 	      selected = default,
 	      multiple = TRUE,
-	      options = list(plugins = list("remove_button"), placeholder = "\u53EF\u9009\u591A\u6761 spike train")
+	      options = list(
+	        plugins = list("remove_button"),
+	        placeholder = ui_current_copy(
+	          "\u53EF\u9009\u591A\u6761 spike train", "Select one or more spike trains"
+	        )
+	      )
 	    )
 	  })
 
 	  final_audit_selected_trains <- reactive({
 	    td <- current_trains()
-	    sel <- input$final_audit_trains
-	    if (is.null(sel) || length(sel) == 0) sel <- tryCatch(displayed_train_names(), error = function(e) names(td))
+	    # Do not reinterpret a visually empty selector as the Raster scope.
+	    # Empty legacy-audit scope is blocked by the existing action guards.
+	    sel <- input$final_audit_trains %||% character(0)
 	    intersect(as.character(sel), names(td))
 	  })
 
 	  output$final_audit_status <- renderText({
-	    rv$final_audit_status %||% "\u5C1A\u672A\u751F\u6210\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u3002\u82E5\u672A\u751F\u6210\uFF0C\u4E0B\u6E38 audit_final \u4F1A\u56DE\u9000\u5230\u5F53\u524D final \u6807\u7B7E\u3002"
+	    value <- rv$final_audit_status %||% ui_bilingual_value(
+	      "\u5C1A\u672A\u751F\u6210\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u3002\u82E5\u672A\u751F\u6210\uFF0C\u4E0B\u6E38 audit_final \u4F1A\u56DE\u9000\u5230\u5F53\u524D final \u6807\u7B7E\u3002",
+	      "No final-audit result has been generated. Until then, downstream audit_final views fall back to the current final labels."
+	    )
+	    ui_bilingual_current(value)
 	  })
 
 	  output$final_audit_summary_table <- renderDT({
 	    sm <- stpd_final_audit_summary(current_dataset())
 	    if (is.null(sm) || nrow(sm) == 0) {
-	      return(datatable(data.frame(message = "\u5C1A\u65E0\u6700\u7EC8\u5BA1\u8BA1 summary\u3002", stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
+	      return(datatable(data.frame(message = ui_current_copy(
+	        "\u5C1A\u65E0\u6700\u7EC8\u5BA1\u8BA1\u6458\u8981\u3002",
+	        "No final-audit summary is available."
+	      ), stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
 	    }
 	    datatable(sm, rownames = FALSE, options = list(pageLength = 8, scrollX = TRUE))
 	  })
@@ -520,7 +1614,10 @@ server <- function(input, output, session) {
 	  output$final_audit_event_table <- renderDT({
 	    ev <- stpd_final_audit_events(current_dataset())
 	    if (is.null(ev) || nrow(ev) == 0) {
-	      return(datatable(data.frame(message = "\u5C1A\u65E0 possible \u5347\u7EA7 event\u3002", stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
+	      return(datatable(data.frame(message = ui_current_copy(
+	        "\u5C1A\u65E0 possible \u5347\u7EA7\u4E8B\u4EF6\u3002",
+	        "No possible-promotion events are available."
+	      ), stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
 	    }
 	    datatable(ev, rownames = FALSE, options = list(pageLength = 8, scrollX = TRUE))
 	  })
@@ -528,13 +1625,17 @@ server <- function(input, output, session) {
 	  output$final_audit_history_table <- renderDT({
 	    hist <- stpd_final_audit_history(current_dataset())
 	    if (is.null(hist) || nrow(hist) == 0) {
-	      return(datatable(data.frame(message = "\u5C1A\u65E0\u6700\u7EC8\u5BA1\u8BA1\u5386\u53F2\u3002", stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
+	      return(datatable(data.frame(message = ui_current_copy(
+	        "\u5C1A\u65E0\u6700\u7EC8\u5BA1\u8BA1\u5386\u53F2\u3002",
+	        "No final-audit history is available."
+	      ), stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
 	    }
 	    datatable(hist, rownames = FALSE, options = list(pageLength = 8, scrollX = TRUE))
 	  })
 
 	  apply_final_audit_from_ui <- function(promote_possible) {
 	    ds <- current_dataset()
+	    proof <- require_ui_detector_output_current(rv$current_id, ds)
 	    sel <- final_audit_selected_trains()
 	    validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
 	    res <- stpd_apply_final_audit(
@@ -545,19 +1646,33 @@ server <- function(input, output, session) {
 	      reason = if (isTRUE(promote_possible)) "ui_promote_possible_to_final_audit" else "ui_rebuild_final_audit",
 	      user = Sys.info()[["user"]] %||% NA_character_
 	    )
-	    set_dataset(rv$current_id, res$dataset)
+	    # Final-audit tables are legitimate post-run review products. Commit
+	    # them together with a new export identity only after the complete
+	    # pre-action detector-output identity has been verified. This prevents
+	    # a valid audit action from rebasing (and thereby hiding) an unrelated
+	    # pre-existing result-table mutation.
+	    commit_ui_review_dataset(res$dataset, proof, rv$current_id)
 	    rv$final_audit_last_summary <- stpd_final_audit_summary(res$dataset)
 	    rv$final_audit_last_events <- stpd_final_audit_events(res$dataset)
-	    rv$final_audit_status <- paste0(
-	      "\u6700\u7EC8\u5BA1\u8BA1\u5DF2\u66F4\u65B0\uFF1A", length(sel), " \u6761 train\uFF1B",
-	      "promoted ", sum(res$summary$n_promoted_events %||% 0L), " events / ",
-	      sum(res$summary$n_promoted_isi %||% 0L), " ISIs\uFF1B",
-	      "possible before=", sum(res$summary$n_possible_before %||% 0L),
-	      ", after=", sum(res$summary$n_possible_after %||% 0L), "."
+	    promoted_events <- sum(res$summary$n_promoted_events %||% 0L)
+	    promoted_isi <- sum(res$summary$n_promoted_isi %||% 0L)
+	    possible_before <- sum(res$summary$n_possible_before %||% 0L)
+	    possible_after <- sum(res$summary$n_possible_after %||% 0L)
+	    rv$final_audit_status <- ui_bilingual_value(
+	      paste0(
+	        "\u6700\u7EC8\u5BA1\u8BA1\u5DF2\u66F4\u65B0\uFF1A", length(sel), " \u6761 train\uFF1B\u5DF2\u5347\u7EA7 ",
+	        promoted_events, " \u4E2A\u4E8B\u4EF6 / ", promoted_isi, " \u4E2A ISI\uFF1B",
+	        "\u5347\u7EA7\u524D possible=", possible_before, "\uFF0C\u5347\u7EA7\u540E=", possible_after, "\u3002"
+	      ),
+	      paste0(
+	        "Final audit updated: ", length(sel), " train(s); promoted ",
+	        promoted_events, " event(s) / ", promoted_isi, " ISI(s); ",
+	        "possible before=", possible_before, ", after=", possible_after, "."
+	      )
 	    )
 		    for (id in c("pattern_view", "isi_state_space_label_source", "state_trajectory_label_source",
-		                 "neural_manifold_event_label_source", "ml_label_source", "hist_source",
-		                 "events_view", "dbs_track_pattern_mode")) {
+		                 "neural_manifold_event_label_source", "hist_source",
+		                 "events_view")) {
 		      try(updateRadioButtons(session, id, selected = "audit_final"), silent = TRUE)
 		    }
 	    showNotification("\u6700\u7EC8\u5BA1\u8BA1\u7ED3\u679C\u5DF2\u751F\u6210\uFF0C\u4E0B\u6E38\u5206\u6790\u9ED8\u8BA4\u4F7F\u7528 audit_final\u3002", type = "message", duration = 5)
@@ -565,13 +1680,77 @@ server <- function(input, output, session) {
 	  }
 
 	  observeEvent(input$rebuild_final_audit, {
+	    sel <- final_audit_selected_trains()
+	    if (length(sel) == 0L) {
+	      showNotification("\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002", type = "warning", duration = 5)
+	      return()
+	    }
+	    show_ui_confirmation(
+	      "confirm_rebuild_final_audit",
+	      ui_current_copy(
+	        "\u786E\u8BA4\u91CD\u5EFA Legacy \u5BA1\u8BA1\u5C42",
+	        "Confirm rebuilding the Legacy audit layer"
+	      ),
+	      ui_current_copy(
+	        "\u5C06\u6309\u5F53\u524D final \u6807\u7B7E\u91CD\u5EFA\u6240\u9009 trains \u7684 Legacy audit_final\uFF0C\u5E76\u53D6\u6D88\u8BE5\u8303\u56F4\u5185\u65E2\u6709\u7684 Legacy possible\u2192real \u72B6\u6001\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002",
+	        "This rebuilds Legacy audit_final for the selected trains from their current final labels and removes existing Legacy possible\u2192real state in that scope. It can be undone in this session."
+	      ),
+	      context = list(dataset_id = rv$current_id, train_ids = sel)
+	    )
+	  })
+
+	  observeEvent(input$confirm_rebuild_final_audit, {
 	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_rebuild_final_audit")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u91CD\u5EFA\u5BA1\u8BA1\u5C42\u3002"))
+	      validate(need(identical(
+	        sort(final_audit_selected_trains(), method = "radix"),
+	        sort(as.character(ctx$train_ids %||% character()), method = "radix")
+	      ), "Train \u8303\u56F4\u5DF2\u6539\u53D8\uFF1B\u8BF7\u91CD\u65B0\u53D1\u8D77\u91CD\u5EFA\u3002"))
+	      require_ui_detector_output_current(rv$current_id, current_dataset())
+	      push_ui_undo("legacy_final_audit_promote", "\u91CD\u5EFA Legacy audit_final\uFF08\u4FDD\u7559 possible\uFF09")
 	      apply_final_audit_from_ui(promote_possible = FALSE)
 	    }, prefix = "\u6700\u7EC8\u5BA1\u8BA1\u91CD\u5EFA\u5931\u8D25")
 	  })
 
 	  observeEvent(input$promote_possible_to_final_audit, {
+	    if (isTRUE(phase2b_state_present())) {
+	      showNotification("Phase 2B Review \u72B6\u6001\u5DF2\u6FC0\u6D3B\uFF0CLegacy possible\u2192real \u5347\u7EA7\u4E0D\u53EF\u7528\u3002", type = "error", duration = NULL)
+	      return()
+	    }
+	    show_ui_confirmation(
+	      "confirm_promote_possible_to_final_audit",
+	      ui_current_copy("\u786E\u8BA4 Legacy possible\u2192real \u5347\u7EA7", "Confirm Legacy possible-to-real promotion"),
+	      ui_current_copy(
+	        "\u8FD9\u4F1A\u91CD\u5EFA Legacy \u5355\u6807\u7B7E audit_final \u5C42\u3002\u5B83\u4E0D\u662F Phase 2B \u5019\u9009\u7EA7\u5BA1\u5B9A\uFF0C\u4E0D\u4F1A\u521B\u5EFA Review\u2192Event transition\u3002",
+	        "This rebuilds the Legacy single-label audit_final layer. It is not Phase 2B candidate review and does not create a Review-to-Event transition."
+	      ),
+	      context = list(
+	        dataset_id = rv$current_id,
+	        train_ids = final_audit_selected_trains()
+	      )
+	    )
+	  })
+
+	  observeEvent(input$confirm_promote_possible_to_final_audit, {
 	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_promote_possible_to_final_audit")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6267\u884C Legacy \u5347\u7EA7\u3002"))
+	      validate(need(identical(
+	        sort(final_audit_selected_trains(), method = "radix"),
+	        sort(as.character(ctx$train_ids %||% character()), method = "radix")
+	      ), "Train \u8303\u56F4\u5DF2\u6539\u53D8\uFF1B\u8BF7\u91CD\u65B0\u53D1\u8D77\u5347\u7EA7\u3002"))
+	      validate(need(!isTRUE(phase2b_state_present()), "Phase 2B Review \u72B6\u6001\u5DF2\u6FC0\u6D3B\uFF0CLegacy \u5347\u7EA7\u4E0D\u53EF\u7528\u3002"))
+	      require_ui_detector_output_current(rv$current_id, current_dataset())
+	      push_ui_undo("legacy_final_audit_promote", "Legacy possible\u2192real audit_final \u5347\u7EA7")
 	      res <- apply_final_audit_from_ui(promote_possible = TRUE)
 	      if (sum(res$summary$n_promoted_isi %||% 0L) == 0L) {
 	        showNotification("\u6240\u9009 train \u6CA1\u6709\u53EF\u5347\u7EA7\u7684 possible_* \u6807\u7B7E\uFF1B\u5BA1\u8BA1\u5C42\u5DF2\u91CD\u5EFA\u3002", type = "warning", duration = 5)
@@ -580,27 +1759,64 @@ server <- function(input, output, session) {
 	  })
 
 	  observeEvent(input$clear_final_audit, {
+	    show_ui_confirmation(
+	      "confirm_clear_final_audit",
+	      ui_current_copy("\u786E\u8BA4\u6E05\u9664 Legacy \u5BA1\u8BA1\u5C42", "Confirm clearing the Legacy audit layer"),
+	      ui_current_copy(
+	        "\u5C06\u6E05\u9664\u6240\u9009 trains \u7684 pattern_audit_final \u6D3E\u751F\u5C42\uFF0C\u4E0B\u6E38 audit_final \u663E\u793A\u5C06\u56DE\u9000\u5230 final\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002",
+	        "This clears the derived pattern_audit_final layer for the selected trains. Downstream audit_final views will fall back to final. It can be undone in this session."
+	      ),
+	      context = list(
+	        dataset_id = rv$current_id,
+	        train_ids = final_audit_selected_trains()
+	      )
+	    )
+	  })
+
+	  observeEvent(input$confirm_clear_final_audit, {
 	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_clear_final_audit")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6E05\u9664\u5BA1\u8BA1\u5C42\u3002"))
 	      ds <- current_dataset()
 	      sel <- final_audit_selected_trains()
+	      validate(need(identical(
+	        sort(sel, method = "radix"),
+	        sort(as.character(ctx$train_ids %||% character()), method = "radix")
+	      ), "Train \u8303\u56F4\u5DF2\u6539\u53D8\uFF1B\u8BF7\u91CD\u65B0\u53D1\u8D77\u6E05\u9664\u3002"))
 	      validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
+	      require_ui_detector_output_current(rv$current_id, ds)
+	      push_ui_undo("clear_final_audit", "\u6E05\u9664 Legacy \u5BA1\u8BA1\u5C42")
+	      proof <- require_ui_detector_output_current(rv$current_id, ds)
 	      ds <- stpd_clear_final_audit(ds, selected_trains = sel)
-	      set_dataset(rv$current_id, ds)
+	      commit_ui_review_dataset(ds, proof, rv$current_id)
 	      rv$final_audit_last_summary <- stpd_final_audit_summary(ds)
 	      rv$final_audit_last_events <- stpd_final_audit_events(ds)
-	      rv$final_audit_status <- paste0("\u5DF2\u6E05\u9664 ", length(sel), " \u6761 train \u7684\u6700\u7EC8\u5BA1\u8BA1\u5C42\uFF1B\u4E0B\u6E38 audit_final \u5C06\u56DE\u9000\u5230 final\u3002")
+	      rv$final_audit_status <- ui_bilingual_value(
+	        paste0("\u5DF2\u6E05\u9664 ", length(sel), " \u6761 train \u7684\u6700\u7EC8\u5BA1\u8BA1\u5C42\uFF1B\u4E0B\u6E38 audit_final \u5C06\u56DE\u9000\u5230 final\u3002"),
+	        paste0("Cleared the final-audit layer for ", length(sel), " train(s); downstream audit_final views will fall back to final.")
+	      )
 	      showNotification("\u5DF2\u6E05\u9664\u6700\u7EC8\u5BA1\u8BA1\u5C42\u3002", type = "message", duration = 4)
 	    }, prefix = "\u6E05\u9664\u6700\u7EC8\u5BA1\u8BA1\u5C42\u5931\u8D25")
 	  })
 
 	  output$possible_burst_promotion_status <- renderText({
-	    rv$possible_burst_promotion_status %||% ""
+	    ui_bilingual_current(rv$possible_burst_promotion_status %||% ui_bilingual_value(
+	      "\u5C1A\u672A\u9884\u89C8 possible_burst \u6279\u91CF\u5347\u7EA7\u3002",
+	      "No possible_burst bulk-promotion preview has been run yet."
+	    ))
 	  })
 
 	  output$possible_burst_promotion_preview_table <- renderDT({
 	    pr <- rv$possible_burst_promotion_preview
 	    if (is.null(pr) || is.null(pr$summary) || nrow(pr$summary) == 0) {
-	      return(datatable(data.frame(message = "\u8BF7\u5148\u70B9\u51FB\u201C\u9884\u89C8\u5347\u7EA7\u201D\u3002", stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
+	      return(datatable(data.frame(message = ui_current_copy(
+	        "\u8BF7\u5148\u70B9\u51FB\u201C\u9884\u89C8\u5347\u7EA7\u201D\u3002",
+	        "Click Preview promotion first."
+	      ), stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
 	    }
 	    datatable(pr$summary, rownames = FALSE, options = list(pageLength = 8, scrollX = TRUE))
 	  })
@@ -609,56 +1825,120 @@ server <- function(input, output, session) {
 	    ds <- current_dataset()
 	    au <- stpd_possible_burst_promotion_audit(ds)
 	    if (is.null(au) || nrow(au) == 0) {
-	      return(datatable(data.frame(message = "\u5C1A\u65E0 possible_burst \u5347\u7EA7/\u64A4\u56DE\u5BA1\u8BA1\u8BB0\u5F55\u3002", stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
+	      return(datatable(data.frame(message = ui_current_copy(
+	        "\u5C1A\u65E0 possible_burst \u5347\u7EA7/\u64A4\u56DE\u5BA1\u8BA1\u8BB0\u5F55\u3002",
+	        "No possible_burst promotion/revert audit records are available."
+	      ), stringsAsFactors = FALSE), rownames = FALSE, options = list(dom = "t")))
 	    }
 	    datatable(au, rownames = FALSE, options = list(pageLength = 8, scrollX = TRUE))
 	  })
 
 	  observeEvent(input$preview_possible_burst_promotion, {
 	    run_manual_ui_action({
+	      validate(need(!isTRUE(phase2b_state_present()), "Phase 2B Review \u72B6\u6001\u5DF2\u6FC0\u6D3B\uFF0CLegacy \u6279\u91CF\u5347\u7EA7\u4E0D\u53EF\u7528\u3002"))
 	      ds <- current_dataset()
 	      sel <- possible_burst_promote_selected_trains()
 	      validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
 	      pr <- stpd_possible_burst_promotion_preview(
 	        ds,
 	        selected_trains = sel,
-	        overwrite_manual = isTRUE(input$possible_burst_promote_overwrite_manual)
+	        overwrite_manual = FALSE
 	      )
 	      rv$possible_burst_promotion_preview <- pr
-	      rv$possible_burst_promotion_status <- paste0(
-	        "\u9884\u89C8\u5B8C\u6210\uFF1A",
-	        length(sel), " \u6761 train\uFF1B\u53EF\u5347\u7EA7 ",
-	        pr$total_eligible_events, " \u4E2A possible_burst event / ",
-	        pr$total_eligible_isi, " \u4E2A ISI\u3002"
+	      rv$possible_burst_promotion_preview_identity <- legacy_promotion_preview_identity(ds, sel)
+	      rv$possible_burst_promotion_status <- ui_bilingual_value(
+	        paste0(
+	          "\u9884\u89C8\u5B8C\u6210\uFF1A", length(sel), " \u6761 train\uFF1B\u53EF\u5347\u7EA7 ",
+	          pr$total_eligible_events, " \u4E2A possible_burst \u4E8B\u4EF6 / ",
+	          pr$total_eligible_isi, " \u4E2A ISI\u3002"
+	        ),
+	        paste0(
+	          "Preview complete: ", length(sel), " train(s); ",
+	          pr$total_eligible_events, " possible_burst event(s) / ",
+	          pr$total_eligible_isi, " ISI(s) are eligible for promotion."
+	        )
 	      )
 	    }, prefix = "possible_burst \u5347\u7EA7\u9884\u89C8\u5931\u8D25")
 	  })
 
 	  observeEvent(input$apply_possible_burst_promotion, {
-	    run_manual_ui_action({
-	      ds <- current_dataset()
-	      sel <- possible_burst_promote_selected_trains()
-	      validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
-	      pr <- stpd_possible_burst_promotion_preview(
-	        ds,
-	        selected_trains = sel,
-	        overwrite_manual = isTRUE(input$possible_burst_promote_overwrite_manual)
+	    if (isTRUE(phase2b_state_present())) {
+	      showNotification("Phase 2B Review \u72B6\u6001\u5DF2\u6FC0\u6D3B\uFF0CLegacy \u6279\u91CF\u5347\u7EA7\u5DF2\u7981\u7528\u3002", type = "error", duration = NULL)
+	      return()
+	    }
+	    ds <- current_dataset()
+	    sel <- possible_burst_promote_selected_trains()
+	    pr <- rv$possible_burst_promotion_preview
+	    identity <- rv$possible_burst_promotion_preview_identity
+	    current_identity <- legacy_promotion_preview_identity(ds, sel)
+	    valid_preview <- !is.null(pr) && !is.null(identity) && identical(identity, current_identity)
+	    if (!isTRUE(valid_preview)) {
+	      rv$possible_burst_promotion_preview <- NULL
+	      rv$possible_burst_promotion_preview_identity <- NULL
+	      showNotification("Legacy \u5347\u7EA7\u9884\u89C8\u7F3A\u5931\u6216\u5DF2\u8FC7\u671F\u3002\u8BF7\u5728\u5F53\u524D\u6570\u636E/\u6807\u7B7E\u72B6\u6001\u4E0B\u91CD\u65B0\u9884\u89C8\u3002", type = "error", duration = 8)
+	      return()
+	    }
+	    if (!isTRUE(pr$total_eligible_isi > 0)) {
+	      showNotification("\u5F53\u524D Legacy \u9884\u89C8\u4E2D\u6CA1\u6709\u53EF\u5347\u7EA7\u7684 possible_burst\u3002", type = "warning", duration = 6)
+	      return()
+	    }
+	    show_ui_confirmation(
+	      "confirm_apply_possible_burst_promotion",
+	      ui_current_copy("\u786E\u8BA4\u6267\u884C Legacy \u6279\u91CF\u5347\u7EA7", "Confirm Legacy bulk promotion"),
+	      ui_current_copy(
+	        paste0("\u5C06\u6309\u5DF2\u9884\u89C8\u7684\u56FA\u5B9A\u8303\u56F4\uFF0C\u628A ", pr$total_eligible_events, " \u4E2A possible_burst event / ", pr$total_eligible_isi, " \u4E2A ISI \u5199\u5165 Legacy MANUAL burst\u3002\u4E0D\u4F1A\u8986\u76D6\u5DF2\u6709 MANUAL/NOT-burst\uFF0C\u4E5F\u4E0D\u4F1A\u521B\u5EFA Phase 2B transition\u3002"),
+	        paste0("Using the fixed preview scope, this writes ", pr$total_eligible_events, " possible_burst events / ", pr$total_eligible_isi, " ISIs to Legacy MANUAL burst. Existing MANUAL/NOT-burst evidence is not overwritten, and no Phase 2B transition is created.")
+	      ),
+	      context = list(
+	        dataset_id = rv$current_id, train_ids = sel,
+	        preview_identity = identity
 	      )
+	    )
+	  })
+
+	  observeEvent(input$confirm_apply_possible_burst_promotion, {
+	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_apply_possible_burst_promotion")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6267\u884C Legacy \u5347\u7EA7\u3002"))
+	      validate(need(!isTRUE(phase2b_state_present()), "Phase 2B Review \u72B6\u6001\u5DF2\u6FC0\u6D3B\uFF0CLegacy \u6279\u91CF\u5347\u7EA7\u4E0D\u53EF\u7528\u3002"))
+	      ds <- current_dataset()
+	      sel <- as.character(ctx$train_ids %||% character())
+	      validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
+	      identity <- rv$possible_burst_promotion_preview_identity
+	      current_identity <- legacy_promotion_preview_identity(ds, sel)
+	      validate(need(!is.null(identity) &&
+	                    identical(identity, ctx$preview_identity) &&
+	                    identical(identity, current_identity),
+	                    "Legacy \u5347\u7EA7\u9884\u89C8\u5DF2\u8FC7\u671F\uFF1B\u8BF7\u91CD\u65B0\u9884\u89C8\u3002"))
+	      pr <- rv$possible_burst_promotion_preview
 	      validate(need(pr$total_eligible_isi > 0, "\u6240\u9009 train \u4E2D\u6CA1\u6709\u53EF\u5347\u7EA7\u7684 possible_burst\u3002"))
 	      push_manual_undo("possible_burst \u6279\u91CF\u5347\u7EA7\u4E3A burst")
 	      res <- stpd_promote_possible_burst(
 	        ds,
 	        selected_trains = sel,
-	        overwrite_manual = isTRUE(input$possible_burst_promote_overwrite_manual),
+	        overwrite_manual = FALSE,
 	        reason = "user_promoted_possible_burst_from_ui",
 	        user = Sys.info()[["user"]] %||% NA_character_
 	      )
 	      set_dataset(rv$current_id, res$dataset)
 	      rv$possible_burst_promotion_preview <- res$preview
-	      rv$possible_burst_promotion_status <- paste0(
-	        "\u5DF2\u6267\u884C\u5347\u7EA7\uFF1A",
-	        res$preview$total_eligible_events, " \u4E2A event / ",
-	        res$preview$total_eligible_isi, " \u4E2A ISI \u5DF2\u4ECE AUTO possible_burst \u5199\u4E3A MANUAL burst\uFF1BAUTO \u539F\u59CB\u6807\u7B7E\u548C override \u5BA1\u8BA1\u5DF2\u4FDD\u7559\u3002"
+	      rv$possible_burst_promotion_preview_identity <- legacy_promotion_preview_identity(res$dataset, sel)
+	      rv$possible_burst_promotion_status <- ui_bilingual_value(
+	        paste0(
+	          "\u5DF2\u6267\u884C\u5347\u7EA7\uFF1A",
+	          res$preview$total_eligible_events, " \u4E2A\u4E8B\u4EF6 / ",
+	          res$preview$total_eligible_isi, " \u4E2A ISI \u5DF2\u4ECE AUTO possible_burst \u5199\u4E3A MANUAL burst\uFF1B",
+	          "AUTO \u539F\u59CB\u6807\u7B7E\u548C\u8986\u76D6\u5BA1\u8BA1\u5DF2\u4FDD\u7559\u3002"
+	        ),
+	        paste0(
+	          "Promotion complete: ", res$preview$total_eligible_events, " event(s) / ",
+	          res$preview$total_eligible_isi, " ISI(s) were written from AUTO possible_burst to MANUAL burst. ",
+	          "Original AUTO labels and the override audit were preserved."
+	        )
 	      )
 	      updateRadioButtons(session, "pattern_view", selected = "audit_final")
 	      showNotification("\u5DF2\u5B8C\u6210 possible_burst \u6279\u91CF\u5347\u7EA7\u3002", type = "message", duration = 4)
@@ -666,9 +1946,43 @@ server <- function(input, output, session) {
 	  })
 
 	  observeEvent(input$revert_possible_burst_promotion, {
+	    ds <- current_dataset()
+	    sel <- possible_burst_promote_selected_trains()
+	    if (length(sel) == 0L) {
+	      showNotification("\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002", type = "warning", duration = 5)
+	      return()
+	    }
+	    show_ui_confirmation(
+	      "confirm_revert_possible_burst_promotion",
+	      ui_current_copy(
+	        "\u786E\u8BA4\u64A4\u56DE Legacy possible_burst \u5347\u7EA7",
+	        "Confirm reverting the Legacy possible_burst promotion"
+	      ),
+	      ui_current_copy(
+	        "\u5C06\u64A4\u56DE\u6240\u9009 trains \u4E2D\u7531 Legacy \u6279\u91CF\u5347\u7EA7\u4EA7\u751F\u7684 MANUAL burst\uFF1B\u540E\u7EED\u4EBA\u5DE5\u4FEE\u6539\u4F1A\u53D7\u5230\u4FDD\u62A4\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002",
+	        "This reverts MANUAL burst labels created by Legacy bulk promotion in the selected trains while protecting later manual edits. It can be undone in this session."
+	      ),
+	      context = list(
+	        dataset_id = rv$current_id, train_ids = sel,
+	        dataset_identity = stpd_ui_dataset_identity(ds, rv$current_id)
+	      )
+	    )
+	  })
+
+	  observeEvent(input$confirm_revert_possible_burst_promotion, {
 	    run_manual_ui_action({
+	      pending <- consume_ui_confirmation("confirm_revert_possible_burst_promotion")
+	      validate(need(!is.null(pending), "\u786E\u8BA4\u8BF7\u6C42\u5DF2\u5931\u6548\u3002"))
+	      ctx <- pending$context %||% list()
+	      validate(need(identical(as.character(rv$current_id %||% "")[1],
+	                               as.character(ctx$dataset_id %||% "")[1]),
+	                    "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u64A4\u56DE Legacy \u5347\u7EA7\u3002"))
 	      ds <- current_dataset()
-	      sel <- possible_burst_promote_selected_trains()
+	      validate(need(identical(
+	        stpd_ui_dataset_identity(ds, rv$current_id),
+	        ctx$dataset_identity
+	      ), "\u6570\u636E\u6216\u6807\u7B7E\u5DF2\u6539\u53D8\uFF1B\u8BF7\u91CD\u65B0\u53D1\u8D77\u64A4\u56DE\u3002"))
+	      sel <- as.character(ctx$train_ids %||% character())
 	      validate(need(length(sel) > 0, "\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u6761 train\u3002"))
 	      push_manual_undo("\u64A4\u56DE possible_burst \u6279\u91CF\u5347\u7EA7")
 	      res <- stpd_revert_possible_burst_promotions(ds, selected_trains = sel, protect_manual_edits = TRUE)
@@ -676,26 +1990,94 @@ server <- function(input, output, session) {
 	      pr <- stpd_possible_burst_promotion_preview(
 	        res$dataset,
 	        selected_trains = sel,
-	        overwrite_manual = isTRUE(input$possible_burst_promote_overwrite_manual)
+	        overwrite_manual = FALSE
 	      )
 	      rv$possible_burst_promotion_preview <- pr
-	      rv$possible_burst_promotion_status <- paste0(
-	        "\u5DF2\u64A4\u56DE\uFF1A",
-	        sum(res$summary$n_reverted_events %||% 0L), " \u4E2A event / ",
-	        sum(res$summary$n_reverted_isi %||% 0L), " \u4E2A ISI\u3002\u540E\u7EED\u88AB\u624B\u52A8\u6539\u52A8\u8FC7\u7684\u884C\u672A\u88AB\u8986\u76D6\u3002"
+	      rv$possible_burst_promotion_preview_identity <- legacy_promotion_preview_identity(res$dataset, sel)
+	      reverted_events <- sum(res$summary$n_reverted_events %||% 0L)
+	      reverted_isi <- sum(res$summary$n_reverted_isi %||% 0L)
+	      rv$possible_burst_promotion_status <- ui_bilingual_value(
+	        paste0(
+	          "\u5DF2\u64A4\u56DE\uFF1A", reverted_events, " \u4E2A\u4E8B\u4EF6 / ", reverted_isi,
+	          " \u4E2A ISI\u3002\u540E\u7EED\u88AB\u624B\u52A8\u6539\u52A8\u8FC7\u7684\u884C\u672A\u88AB\u8986\u76D6\u3002"
+	        ),
+	        paste0(
+	          "Reverted ", reverted_events, " event(s) / ", reverted_isi,
+	          " ISI(s). Rows edited manually afterward were not overwritten."
+	        )
 	      )
 	      showNotification("\u5DF2\u64A4\u56DE possible_burst \u5347\u7EA7\uFF08\u4FDD\u62A4\u540E\u7EED\u624B\u52A8\u4FEE\u6539\uFF09\u3002", type = "message", duration = 4)
 	    }, prefix = "possible_burst \u5347\u7EA7\u64A4\u56DE\u5931\u8D25")
 	  })
 
 	  observeEvent(input$clear_auto, {
+	    ds <- current_dataset()
+	    n_auto <- sum(vapply(ds$trains, function(dat) {
+	      if (!is.data.frame(dat) || !("pattern_auto" %in% names(dat))) return(0L)
+	      as.integer(sum(nzchar(trimws(as.character(dat$pattern_auto %||% ""))), na.rm = TRUE))
+	    }, integer(1)))
+	    if (n_auto <= 0L) {
+	      showNotification(ui_current_copy(
+	        "\u5F53\u524D\u6570\u636E\u96C6\u6CA1\u6709\u53EF\u6E05\u9664\u7684 AUTO \u6807\u7B7E\u3002",
+	        "The current dataset has no AUTO labels to clear."
+	      ), type = "message", duration = 3)
+	      return()
+	    }
+	    show_ui_confirmation(
+	      "confirm_clear_all_auto",
+	      ui_current_copy("\u786E\u8BA4\u6E05\u9664\u5168\u90E8 AUTO \u6807\u7B7E", "Confirm clearing all AUTO labels"),
+	      ui_current_copy(
+	        paste0("\u5C06\u6E05\u9664\u5F53\u524D\u6570\u636E\u96C6\u4E2D ", n_auto,
+	               " \u4E2A AUTO \u6807\u7B7E\u53CA\u5176\u5206\u6570\u3002\u672C session \u4E2D\u53EF\u64A4\u9500\u3002"),
+	        paste0("This will clear ", n_auto,
+	               " AUTO label(s) and their scores in the current dataset. The action can be undone in this session.")
+	      ),
+	      context = list(
+	        dataset_id = rv$current_id,
+	        train_ids = sort(names(ds$trains), method = "radix")
+	      )
+	    )
+	  })
+
+	  observeEvent(input$confirm_clear_all_auto, {
+	    pending <- consume_ui_confirmation("confirm_clear_all_auto")
+	    if (is.null(pending)) return()
+	    ctx <- pending$context %||% list()
+	    if (!identical(as.character(rv$current_id %||% "")[1],
+	                   as.character(ctx$dataset_id %||% "")[1])) {
+	      showNotification(ui_current_copy(
+	        "\u6570\u636E\u96C6\u5DF2\u5207\u6362\uFF1B\u672A\u6E05\u9664\u4EFB\u4F55 AUTO \u6807\u7B7E\u3002",
+	        "The dataset changed; no AUTO labels were cleared."
+	      ), type = "error", duration = 6)
+	      return()
+	    }
 	    td <- current_trains()
-	    for (tr in names(td)) {
-      td[[tr]]$pattern_auto[] <- ""
-      td[[tr]]$auto_score <- NA_real_
-    }
-    update_current_dataset_trains(td)
-  })
+	    if (!identical(
+	        sort(names(td), method = "radix"),
+	        sort(as.character(ctx$train_ids %||% character()), method = "radix"))) {
+	      showNotification(ui_current_copy(
+	        "Train \u8303\u56F4\u5DF2\u6539\u53D8\uFF1B\u672A\u6E05\u9664\u4EFB\u4F55 AUTO \u6807\u7B7E\u3002",
+	        "The train scope changed; no AUTO labels were cleared."
+	      ), type = "error", duration = 6)
+	      return()
+	    }
+	    ok <- run_manual_ui_action({
+	      push_ui_undo(
+	        "clear_auto_labels", "\u6E05\u9664\u5168\u90E8 AUTO \u6807\u7B7E",
+	        dataset_ids = rv$current_id, train_ids = names(td), target_tracks = "auto"
+	      )
+	      for (tr in names(td)) {
+	        td[[tr]]$pattern_auto[] <- ""
+	        td[[tr]]$auto_score <- NA_real_
+	      }
+	      update_current_dataset_trains(td)
+	    }, prefix = "\u6E05\u9664\u5168\u90E8 AUTO \u6807\u7B7E\u5931\u8D25")
+	    if (!isTRUE(ok)) return()
+	    showNotification(ui_current_copy(
+	      "\u5DF2\u6E05\u9664\u5168\u90E8 AUTO \u6807\u7B7E\uFF1B\u53EF\u4F7F\u7528\u201C\u64A4\u9500\u4E0A\u4E00\u6B21\u53D8\u66F4\u201D\u6062\u590D\u3002",
+	      "All AUTO labels were cleared. Use Undo last change to restore them."
+	    ), type = "message", duration = 5)
+	  })
   
   # ----------------------------------------------------------
   # Adaptive per-train burst-ISI percentile range controls
@@ -708,9 +2090,9 @@ server <- function(input, output, session) {
     ds <- normalize_dataset(ds)
     td <- ds$trains
     target_trains <- intersect(target_trains %||% character(0), names(td))
-    validate(need(length(target_trains) > 0, "Select at least one train for burst-ISI range assignment."))
+    validate(need(length(target_trains) > 0, ui_text("select_train_burst_range")))
     pct_range <- sort(suppressWarnings(as.numeric(pct_range)))
-    validate(need(length(pct_range) == 2 && all(is.finite(pct_range)), "Invalid percentile range."))
+    validate(need(length(pct_range) == 2 && all(is.finite(pct_range)), ui_text("invalid_percentile_range")))
     pct_range <- clamp(pct_range, 0, 100)
     f <- unit_factor()
     abs_low_sec <- suppressWarnings(as.numeric(abs_low)) / f
@@ -741,17 +2123,20 @@ server <- function(input, output, session) {
       )
     }
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("\u5DF2\u4E3A ", length(target_trains), " \u6761 train \u7684 train-specific ISI \u9608\u503C\u3002"), type = "message", duration = 4)
+    showNotification(ui_current_copy(
+      paste0("\u5DF2\u4E3A ", length(target_trains), " \u6761 train \u4FDD\u5B58\u4E13\u5C5E ISI \u9608\u503C\u3002"),
+      paste0("Saved train-specific ISI thresholds for ", length(target_trains), " train(s).")
+    ), type = "message", duration = 4)
   }
   
   clear_burst_isi_range_for_trains <- function(target_trains) {
     ds <- current_dataset()
     ds <- normalize_dataset(ds)
     target_trains <- intersect(target_trains %||% character(0), names(ds$trains))
-    validate(need(length(target_trains) > 0, "Select at least one train to clear."))
+    validate(need(length(target_trains) > 0, ui_text("select_train_to_clear")))
     for (tr in target_trains) ds$train_settings$burst_isi_ranges[[tr]] <- NULL
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("Cleared burst-ISI range for ", length(target_trains), " \u6761 train \u7684 train-specific ISI \u9608\u503C\u3002"), type = "message", duration = 4)
+    showNotification(ui_text("cleared_burst_range", n = length(target_trains)), type = "message", duration = 4)
   }
   
   observeEvent(input$apply_burst_isi_range, {
@@ -782,10 +2167,13 @@ server <- function(input, output, session) {
     learned <- derive_burst_isi_ranges_from_manual(ds, min_isi_sec = min_valid_isi_sec(),
                                                        expand_pct = safe_ui_value(input$burst_range_expand_pct, 5),
                                                        expand_factor = safe_ui_value(input$burst_range_expand_factor, 1.25))
-    validate(need(length(learned) > 0, "No MANUAL burst ISIs found. Label several bursts first, then learn ranges."))
+    validate(need(length(learned) > 0, ui_text("no_manual_burst_isi")))
     for (tr in names(learned)) ds$train_settings$burst_isi_ranges[[tr]] <- learned[[tr]]
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("\u5DF2\u4ECE MANUAL bursts \u5B66\u4E60 train-specific burst-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train \u7684 train-specific ISI \u9608\u503C\u3002"), type = "message", duration = 5)
+    showNotification(ui_current_copy(
+      paste0("\u5DF2\u6839\u636E MANUAL burst \u6807\u7B7E\u5B66\u4E60\u5355 train burst-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train\u3002"),
+      paste0("Learned train-specific burst-ISI ranges from MANUAL burst labels for ", length(learned), " train(s).")
+    ), type = "message", duration = 5)
   }
   
   observeEvent(input$learn_burst_isi_range_manual, {
@@ -800,30 +2188,39 @@ server <- function(input, output, session) {
     ds <- current_dataset()
     ds <- normalize_dataset(ds)
     learned <- derive_tonic_isi_ranges_from_manual(ds, min_isi_sec = min_valid_isi_sec())
-    validate(need(length(learned) > 0, "No MANUAL tonic ISIs found. Label tonic periods first, then learn ranges."))
+    validate(need(length(learned) > 0, ui_text("no_manual_tonic_isi")))
     for (tr in names(learned)) ds$train_settings$tonic_isi_ranges[[tr]] <- learned[[tr]]
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("\u5DF2\u5B66\u4E60 train-specific tonic-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train \u7684 train-specific ISI \u9608\u503C\u3002"), type = "message", duration = 5)
+    showNotification(ui_current_copy(
+      paste0("\u5DF2\u5B66\u4E60\u5355 train tonic-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train \u7684\u4E13\u5C5E ISI \u9608\u503C\u3002"),
+      paste0("Learned train-specific tonic-ISI ranges for ", length(learned), " train(s).")
+    ), type = "message", duration = 5)
   }
 
   learn_pause_isi_ranges_from_manual <- function() {
     ds <- current_dataset()
     ds <- normalize_dataset(ds)
     learned <- derive_pause_isi_ranges_from_manual(ds, min_isi_sec = min_valid_isi_sec())
-    validate(need(length(learned) > 0, "No MANUAL pause ISIs found. Label pause intervals first, then learn ranges."))
+    validate(need(length(learned) > 0, ui_text("no_manual_pause_isi")))
     for (tr in names(learned)) ds$train_settings$pause_isi_ranges[[tr]] <- learned[[tr]]
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("\u5DF2\u5B66\u4E60 train-specific pause-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train \u7684 train-specific ISI \u9608\u503C\u3002"), type = "message", duration = 5)
+    showNotification(ui_current_copy(
+      paste0("\u5DF2\u5B66\u4E60\u5355 train pause-ISI \u8303\u56F4\uFF0C\u5171 ", length(learned), " \u6761 train \u7684\u4E13\u5C5E ISI \u9608\u503C\u3002"),
+      paste0("Learned train-specific pause-ISI ranges for ", length(learned), " train(s).")
+    ), type = "message", duration = 5)
   }
 
   learn_highfreq_isi_ranges_from_manual <- function() {
     ds <- current_dataset()
     ds <- normalize_dataset(ds)
     learned <- derive_highfreq_isi_ranges_from_manual(ds, min_isi_sec = min_valid_isi_sec())
-    validate(need(length(learned) > 0, "No MANUAL high-frequency tonic/spiking ISIs found. Label high-frequency periods first, then learn anchors."))
+    validate(need(length(learned) > 0, ui_text("no_manual_highfreq_isi")))
     for (tr in names(learned)) ds$train_settings$highfreq_isi_ranges[[tr]] <- learned[[tr]]
     set_dataset(rv$current_id, ds)
-    showNotification(paste0("\u5DF2\u5B66\u4E60 train-specific high-frequency soft anchors\uFF0C\u5171 ", length(learned), " \u6761 train\u3002"), type = "message", duration = 5)
+    showNotification(ui_current_copy(
+      paste0("\u5DF2\u5B66\u4E60\u5355 train \u9AD8\u9891\u8F6F\u951A\u70B9\uFF0C\u5171 ", length(learned), " \u6761 train\u3002"),
+      paste0("Learned train-specific high-frequency soft anchors for ", length(learned), " train(s).")
+    ), type = "message", duration = 5)
   }
 
   observeEvent(input$learn_tonic_isi_range_manual_tab, {
@@ -848,7 +2245,14 @@ server <- function(input, output, session) {
                  highfreq = ds$train_settings$highfreq_isi_ranges)
     rr <- rr %||% list()
     if (length(rr) == 0) {
-      return(data.frame(message = paste0("\u65E0 train-specific ", kind, " soft anchors \u88AB\u5B66\u4E60\u3002"), stringsAsFactors = FALSE))
+      kind_zh <- switch(kind, tonic = "tonic", pause = "pause", highfreq = "\u9AD8\u9891")
+      return(data.frame(
+        message = ui_current_copy(
+          paste0("\u5C1A\u672A\u5B66\u4E60\u4EFB\u4F55\u5355 train ", kind_zh, " \u8F6F\u951A\u70B9\u3002"),
+          paste0("No train-specific ", kind, " soft anchors have been learned.")
+        ),
+        stringsAsFactors = FALSE
+      ))
     }
     f <- unit_factor(); u <- unit_label()
     rows <- lapply(names(rr), function(tr) {
@@ -899,7 +2303,13 @@ server <- function(input, output, session) {
     ds <- normalize_dataset(ds)
     rr <- ds$train_settings$burst_isi_ranges %||% list()
     if (length(rr) == 0) {
-      return(data.frame(message = "\u65E0 train-specific burst-ISI ranges saved.", stringsAsFactors = FALSE))
+      return(data.frame(
+        message = ui_current_copy(
+          "\u5C1A\u672A\u4FDD\u5B58\u4EFB\u4F55\u5355 train burst-ISI \u8303\u56F4\u3002",
+          "No train-specific burst-ISI ranges have been saved."
+        ),
+        stringsAsFactors = FALSE
+      ))
     }
     f <- unit_factor(); u <- unit_label()
     rows <- lapply(names(rr), function(tr) {
@@ -986,32 +2396,34 @@ server <- function(input, output, session) {
     pl <- ds$params_last
     f <- unit_factor()
     u <- unit_label()
+    en <- identical(ui_language(), "en")
+    copy <- function(zh, en_text) if (en) en_text else zh
     fmt <- function(x) ifelse(is.finite(x), paste0(round(x * f, 4), " ", u), "NA")
     fmt_dim <- function(x) ifelse(is.finite(x), as.character(round(x, 4)), "NA")
     paste0(
-      "\u5F53\u524D\u6570\u636E\u96C6: ", ds$meta$display_name, "\n",
-      "Estimation pool datasets: ", paste(pool_dataset_ids(), collapse = ", "), "\n\n",
-      "Estimated params:\n",
-      if (is.null(pe)) "  <none>\n" else paste0(
-        "  Burst seed-bridge: T_seed=", fmt(pe$burst$T_seed),
+      copy("\u5F53\u524D\u6570\u636E\u96C6\uFF1A", "Current dataset: "), ds$meta$display_name, "\n",
+      copy("\u4F30\u8BA1\u6C60\u6570\u636E\u96C6\uFF1A", "Estimation-pool datasets: "), paste(pool_dataset_ids(), collapse = ", "), "\n\n",
+      copy("\u4F30\u8BA1\u53C2\u6570\uFF1A\n", "Estimated parameters:\n"),
+      if (is.null(pe)) copy("  <\u65E0>\n", "  <none>\n") else paste0(
+        copy("  Burst seed-bridge\uFF1AT_seed=", "  Burst seed-bridge: T_seed="), fmt(pe$burst$T_seed),
         ", seed_q_max=", fmt(pe$burst$seed_q_max),
         ", bridge ratio max=", fmt_dim(pe$burst$bridge_ratio_max),
         ", final edge min=", fmt_dim(pe$burst$final_edge_contrast_min), "\n",
         "  logISI\uFF1A", (pe$burst$T_log_status %||% ifelse(is.finite(pe$burst$T_log), "resolved", "threshold_unresolved")),
         " (resolved=", (pe$burst$T_log_resolved_n %||% NA), ", unresolved=", (pe$burst$T_log_unresolved_n %||% NA), ")\n",
-        "  Pause: T_strong=", fmt(pe$pause$T_strong), ", T_seed=", fmt(pe$pause$T_seed), "\n",
-        "  Tonic: T_min=", fmt(pe$tonic$T_min), ", T_max=", fmt(pe$tonic$T_max),
+        copy("  Pause\uFF1AT_strong=", "  Pause: T_strong="), fmt(pe$pause$T_strong), ", T_seed=", fmt(pe$pause$T_seed), "\n",
+        copy("  Tonic\uFF1AT_min=", "  Tonic: T_min="), fmt(pe$tonic$T_min), ", T_max=", fmt(pe$tonic$T_max),
         ", LV_core=", fmt_dim(pe$tonic$LV_core), "\n"
       ),
-      "\nLast detector params:\n",
-      if (is.null(pl)) "  <none>\n" else paste0(
-        "  Burst seed-bridge T_seed=", fmt(pl$burst$T_seed),
+      copy("\n\u4E0A\u6B21\u68C0\u6D4B\u53C2\u6570\uFF1A\n", "\nLast detector parameters:\n"),
+      if (is.null(pl)) copy("  <\u65E0>\n", "  <none>\n") else paste0(
+        copy("  Burst seed-bridge\uFF1AT_seed=", "  Burst seed-bridge: T_seed="), fmt(pl$burst$T_seed),
         ", seed_q_max=", fmt(pl$burst$seed_q_max),
         ", bridge ratio max=", fmt_dim(pl$burst$bridge_ratio_max),
         ", final edge min=", fmt_dim(pl$burst$final_edge_contrast_min),
         ", G_min=", pl$burst$G_min, "\n",
-        "  Seed-bridge model=", pl$burst$use_seed_bridge_model,
-        ", possible labels=", pl$burst$label_possible_burst, "\n"
+        copy("  Seed-bridge \u6A21\u578B=", "  Seed-bridge model="), pl$burst$use_seed_bridge_model,
+        copy("\uFF0Cpossible \u6807\u7B7E=", ", possible labels="), pl$burst$label_possible_burst, "\n"
       )
     )
   })
@@ -1245,7 +2657,7 @@ server <- function(input, output, session) {
     updateNumericInput(session, "tonic_connector_budget", value = p$tonic$connector_budget_frac)
     updateNumericInput(session, "tonic_connector_n", value = p$tonic$connector_max_n)
     updateNumericInput(session, "tonic_lv_delta", value = p$tonic$lv_delta)
-    updateCheckboxInput(session, "tonic_anti_burst_veto", value = isTRUE(p$tonic$anti_burst_veto))
+    updateCheckboxInput(session, "tonic_anti_burst_veto", value = isTRUE(p$tonic$anti_burst_veto %||% FALSE))
     updateCheckboxInput(session, "tonic_use_saved_ranges", value = isTRUE(p$tonic$adaptive_use_train_ranges %||% TRUE))
     updateCheckboxInput(session, "tonic_ranges_hard", value = isTRUE(p$tonic$adaptive_train_ranges_hard %||% FALSE))
     updateNumericInput(session, "hf_T_high_max", value = (p$highfreq$T_high_max %||% p$highfreq$ISI_abs_max %||% 0.020) * f)
@@ -1257,7 +2669,7 @@ server <- function(input, output, session) {
     updateNumericInput(session, "hf_stable_mm", value = p$highfreq$stable_MM_max %||% p$highfreq$MM_stable_max %||% 1.25)
     updateNumericInput(session, "hf_tonic_min_floor", value = (p$highfreq$tonic_min_ISI_floor_sec %||% 0.010) * f)
     updateNumericInput(session, "hf_tonic_low_tail", value = p$highfreq$tonic_low_tail_fraction_max %||% 0.05)
-    updateCheckboxInput(session, "hf_tonic_burst_core_veto", value = isTRUE(p$highfreq$tonic_burst_core_veto %||% TRUE))
+    updateCheckboxInput(session, "hf_tonic_burst_core_veto", value = isTRUE(p$highfreq$tonic_burst_core_veto %||% FALSE))
     updateNumericInput(session, "hf_irregular_cv", value = p$highfreq$irregular_CV_min %||% 0.35)
     updateNumericInput(session, "hf_irregular_lv", value = p$highfreq$irregular_LV_min %||% 0.50)
     updateNumericInput(session, "hf_irregular_mm", value = p$highfreq$irregular_MM_min %||% 1.50)
@@ -1324,9 +2736,25 @@ server <- function(input, output, session) {
 	      updateSelectInput(session, "event_grammar_threshold_source_mode", selected = "manual")
 	    }
 	    if (isTRUE(notify)) {
-	      suffix <- if (isTRUE(prefer_manual_thresholds)) "\u4E8B\u4EF6\u8BED\u6CD5\u9608\u503C\u5DF2\u5207\u5230 MANUAL \u4F18\u5148\u3002" else "\u5DF2\u4FDD\u7559\u5F53\u524D\u9608\u503C\u6765\u6E90\u4F18\u5148\u7EA7\u3002"
+	      suffix <- if (isTRUE(prefer_manual_thresholds)) {
+	        ui_current_copy(
+	          "\u4E8B\u4EF6\u8BED\u6CD5\u9608\u503C\u5DF2\u5207\u5230 MANUAL \u4F18\u5148\u3002",
+	          "Event-grammar thresholds now prioritize MANUAL values."
+	        )
+	      } else {
+	        ui_current_copy(
+	          "\u5DF2\u4FDD\u7559\u5F53\u524D\u9608\u503C\u6765\u6E90\u4F18\u5148\u7EA7\u3002",
+	          "The current threshold-source priority was preserved."
+	        )
+	      }
 	      showNotification(
-	        paste0("\u5DF2\u4ECE pooled MANUAL \u6807\u7B7E\u4F30\u8BA1\u53C2\u6570\u5E76\u5199\u5165 UI\u3002\u5DF2\u4FDD\u7559 pattern-specific ISI gates\u3002", suffix),
+	        paste(
+	          ui_current_copy(
+            "\u5DF2\u6839\u636E\u5408\u5E76\u540E\u7684 MANUAL \u6807\u7B7E\u4F30\u8BA1\u53C2\u6570\u5E76\u5199\u5165\u754C\u9762\u3002\u5DF2\u4FDD\u7559\u5404\u6A21\u5F0F\u4E13\u5C5E\u7684 ISI \u95E8\u63A7\u3002",
+	            "Parameters were estimated from pooled MANUAL labels and written to the UI. Pattern-specific ISI gates were preserved."
+	          ),
+	          suffix
+	        ),
 	        type = "message",
 	        duration = 8
 	      )
@@ -1357,7 +2785,13 @@ server <- function(input, output, session) {
 	    tryCatch({
 	      estimate_manual_params_into_ui(prefer_manual_thresholds = FALSE, notify = TRUE)
 	    }, error = function(e) {
-	      showNotification(paste0("\u53C2\u6570\u4F30\u8BA1\u5931\u8D25\uFF1A", e$message), type = "error", duration = 10)
+	      showNotification(
+	        paste(
+	          ui_current_copy("\u53C2\u6570\u4F30\u8BA1\u5931\u8D25\u3002", "Parameter estimation failed."),
+	          ui_condition_detail(e)
+	        ),
+	        type = "error", duration = 10
+	      )
 	    })
 	  })
 
@@ -1365,20 +2799,30 @@ server <- function(input, output, session) {
 	    tryCatch({
 	      estimate_manual_params_into_ui(prefer_manual_thresholds = TRUE, notify = TRUE)
 	    }, error = function(e) {
-	      showNotification(paste0("\u4ECE MANUAL \u66F4\u65B0\u53C2\u6570\u5931\u8D25\uFF1A", e$message), type = "error", duration = 10)
+	      showNotification(
+	        paste(
+	          ui_current_copy("\u4ECE MANUAL \u66F4\u65B0\u53C2\u6570\u5931\u8D25\u3002", "Updating parameters from MANUAL labels failed."),
+	          ui_condition_detail(e)
+	        ),
+	        type = "error", duration = 10
+	      )
 	    })
 	  })
   
   observeEvent(input$apply_estimated_to_ui, {
     ds <- current_dataset()
     p <- ds$params_est
-    validate(need(!is.null(p), "No estimated parameters available yet."))
+    validate(need(!is.null(p), ui_text("no_estimated_params")))
     apply_params_to_ui(p, preserve_pattern_isi_limits = TRUE)
   })
   
 
   output$methodological_warning <- renderText({
-    stpd_methodological_warning()
+    lines <- stpd_methodological_warning(as_vector = TRUE)
+    if (identical(ui_language(), "en")) {
+      lines <- vapply(lines, stpd_i18n_translate_text, character(1), lang = "en")
+    }
+    paste(lines, collapse = "\n")
   })
   output$preset_catalog_table <- renderDT({
     datatable(preset_catalog(), options = list(pageLength = 5, scrollX = TRUE), rownames = FALSE)
@@ -1787,7 +3231,7 @@ server <- function(input, output, session) {
         MM_stable_max = safe_ui_value(input$hf_stable_mm, 1.25),
         tonic_min_ISI_floor_sec = safe_ui_value(input$hf_tonic_min_floor, 10) / f,
         tonic_low_tail_fraction_max = safe_ui_value(input$hf_tonic_low_tail, 0.05),
-        tonic_burst_core_veto = isTRUE(input$hf_tonic_burst_core_veto %||% TRUE),
+        tonic_burst_core_veto = isTRUE(input$hf_tonic_burst_core_veto %||% FALSE),
         tonic_burst_core_veto_min_isi_n = 2L,
         irregular_CV_min = safe_ui_value(input$hf_irregular_cv, 0.35),
         irregular_LV_min = safe_ui_value(input$hf_irregular_lv, 0.50),
@@ -1928,7 +3372,10 @@ server <- function(input, output, session) {
 	    input$validate_params_now
 	    p <- read_params_from_ui()
 	    issues <- tryCatch(stpd_validate_params(p), error = function(e) {
-	      data.frame(severity = "error", path = "parameter_validation", issue = e$message, stringsAsFactors = FALSE)
+	      data.frame(
+	        severity = "error", path = "parameter_validation",
+	        issue = ui_condition_detail(e), stringsAsFactors = FALSE
+	      )
 	    })
 	    list(params = p, issues = issues, summary = stpd_parameter_validation_summary(p, issues = issues))
 	  })
@@ -1939,7 +3386,12 @@ server <- function(input, output, session) {
 	  })
 
 	  output$contract_parameter_controls <- renderUI({
-	    stpd_contract_ui_controls(prefix = "contract_param_", ui_level = contract_ui_level())
+	    stpd_contract_ui_controls(
+	      prefix = "contract_param_",
+	      ui_level = contract_ui_level(),
+	      lang = ui_language(),
+	      current_values = isolate(shiny::reactiveValuesToList(input))
+	    )
 	  })
 
 	  output$parameter_validation_summary <- renderText({
@@ -1956,13 +3408,17 @@ server <- function(input, output, session) {
 	    if (!is.null(rv$last_param_yaml_import)) {
 	      imp <- rv$last_param_yaml_import
 	      imp_err <- if (!is.null(imp$validation) && nrow(imp$validation) > 0) sum(imp$validation$severity == "error", na.rm = TRUE) else 0L
-	      import_txt <- paste0("\nLast YAML import: ", imp$status %||% "", " | ", imp$name %||% "", " | ", imp$params_hash %||% "", " | errors=", imp_err)
+	      import_txt <- paste0("\n", ui_text(
+	        "last_yaml_import_summary",
+	        status = imp$status %||% "", name = imp$name %||% "",
+	        hash = imp$params_hash %||% "", errors = imp_err
+	      ))
 	    }
-	    paste0(
-	      "Current params_hash: ", hash, "\n",
-	      "Validation total: ", errors, " error(s), ", warnings, " warning(s), ", infos, " info item(s).\n",
-	      "Visible at ", contract_ui_level(), ": errors always shown; ", visible_warnings, " warning(s), ", visible_infos, " info item(s).",
-	      import_txt
+	    ui_text(
+	      "parameter_validation_summary",
+	      hash = hash, errors = errors, warnings = warnings, infos = infos,
+	      level = contract_ui_level(), visible_warnings = visible_warnings,
+	      visible_infos = visible_infos, import = import_txt
 	    )
 	  })
 
@@ -1978,19 +3434,20 @@ server <- function(input, output, session) {
 	      issues <- rbind(imp[, names(issues), drop = FALSE], issues)
 	    }
 	    if (is.null(issues) || nrow(issues) == 0) {
-	      issues <- data.frame(severity = "ok", path = "", issue = "No parameter contract issues.", stringsAsFactors = FALSE)
+	      issues <- data.frame(severity = "ok", path = "", issue = ui_text("no_parameter_contract_issues"), stringsAsFactors = FALSE)
 	    }
 	    issues <- stpd_parameter_issue_table(issues, ui_level = contract_ui_level())
 	    if (nrow(issues) == 0) {
-	      issues <- data.frame(severity = "ok", path = "", issue = paste0("No visible parameter contract issues at level: ", contract_ui_level()), ui_level = contract_ui_level(), section = "", stringsAsFactors = FALSE)
+	      issues <- data.frame(severity = "ok", path = "", issue = ui_text("no_visible_parameter_contract_issues", level = contract_ui_level()), ui_level = contract_ui_level(), section = "", stringsAsFactors = FALSE)
 	    }
+	    issues <- stpd_ui_localize_parameter_issues(issues, lang = ui_language())
 		    datatable(issues, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
 		  })
 	
 		  output$parameter_change_preview_table <- renderDT({
 		    dat <- tryCatch(
 		      stpd_parameter_change_preview(parameter_validation_bundle()$params),
-		      error = function(e) data.frame(message = paste0("Parameter change preview failed: ", e$message), stringsAsFactors = FALSE)
+	      error = function(e) data.frame(message = ui_text("parameter_change_preview_failed", detail = ui_condition_detail(e)), stringsAsFactors = FALSE)
 		    )
 		    datatable(dat, options = list(pageLength = 8, scrollX = TRUE), rownames = FALSE)
 		  })
@@ -1998,17 +3455,30 @@ server <- function(input, output, session) {
 		  output$parameter_delta_preview_train_selector <- renderUI({
 		    td <- tryCatch(current_trains(), error = function(e) list())
 		    choices <- names(td)
-		    if (length(choices) == 0) return(tags$div(class = "small-note", "\u8BF7\u5148\u52A0\u8F7D\u6570\u636E\u96C6\u3002"))
-		    selected <- tryCatch(intersect(displayed_train_names() %||% head(choices, 1), choices), error = function(e) head(choices, 1))
+	    if (length(choices) == 0) return(tags$div(class = "small-note", ui_current_copy(
+	      "\u8BF7\u5148\u52A0\u8F7D\u6570\u636E\u96C6\u3002",
+	      "Please load a dataset first."
+	    )))
+	    fallback_selected <- tryCatch(
+	      intersect(displayed_train_names() %||% head(choices, 1), choices),
+	      error = function(e) head(choices, 1)
+	    )
+	    selected <- intersect(
+	      as.character(ui_control_remembered("parameter_delta_preview_trains", fallback_selected)),
+	      choices
+	    )
 		    if (length(selected) == 0) selected <- head(choices, 1)
-		    selectizeInput(
-		      "parameter_delta_preview_trains",
-		      "\u9884\u89C8 train(s)",
-		      choices = choices,
-		      selected = head(selected, safe_int(input$parameter_delta_preview_max_trains %||% 3L, 3L)),
-		      multiple = TRUE,
-		      options = list(maxItems = 20, placeholder = "\u9009\u62E9\u5C11\u91CF train \u505A dry-run \u5DEE\u5F02\u9884\u89C8")
-		    )
+	    selectizeInput(
+	      "parameter_delta_preview_trains",
+	      ui_current_copy("\u9884\u89C8 train", "Preview trains"),
+	      choices = choices,
+	      selected = head(selected, safe_int(input$parameter_delta_preview_max_trains %||% 3L, 3L)),
+	      multiple = TRUE,
+	      options = list(maxItems = 20, placeholder = ui_current_copy(
+	        "\u9009\u62E9\u5C11\u91CF train \u505A\u8BD5\u8FD0\u884C\u5DEE\u5F02\u9884\u89C8",
+	        "Select a small number of trains for the dry-run difference preview"
+	      ))
+	    )
 		  })
 	
 		  observeEvent(input$run_parameter_delta_preview, {
@@ -2017,7 +3487,17 @@ server <- function(input, output, session) {
 		    issues <- stpd_validate_params(p_current)
 		    if (any(issues$severity == "error", na.rm = TRUE)) {
 		      bad <- issues[issues$severity == "error", , drop = FALSE]
-		      showNotification(paste0("\u5F53\u524D\u53C2\u6570\u6709 contract error\uFF0C\u5DF2\u963B\u6B62\u5DEE\u5F02\u9884\u89C8\uFF1A", paste(head(paste(bad$path, bad$issue, sep = " - "), 3), collapse = "; ")), type = "error", duration = 10)
+		      bad_zh <- stpd_ui_localize_parameter_issues(bad, lang = "zh")
+		      bad_en <- stpd_ui_localize_parameter_issues(bad, lang = "en")
+		      detail_zh <- paste(head(paste(bad_zh$path, bad_zh$issue, sep = " - "), 3), collapse = "; ")
+		      detail_en <- paste(head(paste(bad_en$path, bad_en$issue, sep = " - "), 3), collapse = "; ")
+		      showNotification(
+		        ui_current_copy(
+		          paste0("\u5F53\u524D\u53C2\u6570\u5B58\u5728 contract \u9519\u8BEF\uFF0C\u5DF2\u963B\u6B62\u5DEE\u5F02\u9884\u89C8\uFF1A", detail_zh),
+		          paste0("Parameter-contract errors blocked the difference preview: ", detail_en)
+		        ),
+		        type = "error", duration = 10
+		      )
 		      return()
 		    }
 		    p_baseline <- if (identical(input$parameter_delta_preview_baseline %||% "default", "last_run") && !is.null(ds$params_last)) ds$params_last else default_params_sec()
@@ -2026,7 +3506,7 @@ server <- function(input, output, session) {
 		    max_tr <- safe_int(input$parameter_delta_preview_max_trains %||% 3L, 3L)
 		    iou_min <- suppressWarnings(as.numeric(input$parameter_delta_preview_iou %||% 0.25))
 		    tryCatch({
-		      withProgress(message = "\u6B63\u5728\u8FD0\u884C\u5C40\u90E8 dry-run \u5DEE\u5F02\u9884\u89C8", value = 0.1, {
+		      withProgress(message = ui_current_copy("\u6B63\u5728\u8FD0\u884C\u5C40\u90E8\u8BD5\u8FD0\u884C\u5DEE\u5F02\u9884\u89C8", "Running the local dry-run difference preview"), value = 0.1, {
 		        preview <- stpd_parameter_delta_preview(
 		          ds,
 		          params_current = p_current,
@@ -2038,25 +3518,53 @@ server <- function(input, output, session) {
 		          lock_manual = TRUE,
 		          collect_diagnostics = FALSE
 		        )
-		        incProgress(0.9, detail = "\u5DF2\u5B8C\u6210 baseline/current AUTO \u4E8B\u4EF6 IoU \u5BF9\u6BD4")
+		        incProgress(0.9, detail = ui_current_copy("\u5DF2\u5B8C\u6210\u57FA\u7EBF/\u5F53\u524D AUTO Event/State \u5BF9\u6BD4", "Completed the baseline/current AUTO Event/State comparison"))
 		        rv$parameter_delta_preview <- preview
 		        changed <- preview$summary$value[preview$summary$metric == "changed_event_n"][1] %||% "0"
-		        rv$parameter_delta_preview_status <- paste0(
-		          "Dry-run \u9884\u89C8\u5B8C\u6210\uFF1A", length(preview$selected_trains), " train(s), AUTO source, IoU>=",
-		          preview$iou_min, ", changed_event_n=", changed,
-		          "\u3002\u6B63\u5F0F ds$results \u672A\u88AB\u8986\u76D6\u3002"
+		        changed_state <- preview$summary$value[preview$summary$metric == "changed_state_episode_n"][1] %||% "0"
+		        changed_support <- preview$summary$value[preview$summary$metric == "changed_state_direct_support_isi_n"][1] %||% "0"
+		        rv$parameter_delta_preview_status <- ui_bilingual_value(
+		          paste0(
+		            "\u5C40\u90E8\u8BD5\u8FD0\u884C\u9884\u89C8\u5B8C\u6210\uFF1A", length(preview$selected_trains),
+		            " \u6761 train\uFF1B\u6765\u6E90=AUTO\uFF1BIoU\u2265", preview$iou_min,
+		            "\uFF1B\u53D8\u5316 Event=", changed,
+		            "\uFF1B\u53D8\u5316 State episode=", changed_state,
+		            "\uFF1B\u53D8\u5316 direct-support ISI=", changed_support,
+		            "\u3002\u6B63\u5F0F ds$results \u672A\u88AB\u8986\u76D6\u3002"
+		          ),
+		          paste0(
+		            "Local dry-run preview complete: ", length(preview$selected_trains),
+		            " train(s); source=AUTO; IoU>=", preview$iou_min,
+		            "; changed Event count=", changed,
+		            "; changed State episode count=", changed_state,
+		            "; changed direct-support ISI count=", changed_support,
+		            ". The formal ds$results object was not overwritten."
+		          )
 		        )
 		      })
-		      showNotification(rv$parameter_delta_preview_status, type = "message", duration = 8)
+		      showNotification(ui_bilingual_current(rv$parameter_delta_preview_status), type = "message", duration = 8)
 		    }, error = function(e) {
-		      rv$parameter_delta_preview_status <- paste0("\u5C40\u90E8\u5DEE\u5F02\u9884\u89C8\u5931\u8D25\uFF1A", e$message)
+		      rv$parameter_delta_preview_status <- ui_bilingual_value(
+		        paste(
+		          "\u5C40\u90E8\u5DEE\u5F02\u9884\u89C8\u5931\u8D25\u3002",
+		          stpd_ui_condition_detail(e, lang = "zh")
+		        ),
+		        paste(
+		          "The local difference preview failed.",
+		          stpd_ui_condition_detail(e, lang = "en")
+		        )
+		      )
 		      rv$parameter_delta_preview <- NULL
-		      showNotification(rv$parameter_delta_preview_status, type = "error", duration = 10)
+		      showNotification(ui_bilingual_current(rv$parameter_delta_preview_status), type = "error", duration = 10)
 		    })
 		  }, ignoreNULL = TRUE)
-	
+
 		  output$parameter_delta_preview_status <- renderText({
-		    rv$parameter_delta_preview_status %||% "\u5C1A\u672A\u8FD0\u884C\u5C40\u90E8\u5DEE\u5F02\u91CD\u8DD1\u9884\u89C8\u3002"
+		    value <- rv$parameter_delta_preview_status %||% ui_bilingual_value(
+		      "\u5C1A\u672A\u8FD0\u884C\u5C40\u90E8\u5DEE\u5F02\u91CD\u8DD1\u9884\u89C8\u3002",
+		      "No local difference-rerun preview has been run yet."
+		    )
+		    ui_bilingual_current(value)
 		  })
 	
 		  output$parameter_delta_preview_summary_table <- renderDT({
@@ -2079,6 +3587,38 @@ server <- function(input, output, session) {
 		      data.frame(message = "\u672A\u53D1\u73B0\u65B0\u589E\u3001\u6D88\u5931\u3001\u6807\u7B7E\u53D8\u5316\u6216\u8FB9\u754C\u53D8\u5316\u4E8B\u4EF6\u3002", stringsAsFactors = FALSE)
 		    } else preview$event_diff
 		    datatable(dat, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE, selection = "single")
+		  })
+
+		  output$parameter_delta_preview_state_counts_table <- renderDT({
+		    preview <- rv$parameter_delta_preview
+		    dat <- if (is.null(preview) || is.null(preview$state_counts) || nrow(preview$state_counts) == 0) {
+		      data.frame(message = "\u6682\u65E0 Tonic / Broad HFS State \u6570\u91CF\u5DEE\u5F02\u3002", stringsAsFactors = FALSE)
+		    } else preview$state_counts
+		    datatable(dat, options = list(pageLength = 8, scrollX = TRUE), rownames = FALSE)
+		  })
+
+		  output$parameter_delta_preview_state_episodes_table <- renderDT({
+		    preview <- rv$parameter_delta_preview
+		    dat <- if (is.null(preview) || is.null(preview$state_episode_diff) || nrow(preview$state_episode_diff) == 0) {
+		      data.frame(message = "\u672A\u53D1\u73B0 Tonic / Broad HFS State episode \u65B0\u589E\u3001\u6D88\u5931\u6216\u8FB9\u754C\u53D8\u5316\u3002", stringsAsFactors = FALSE)
+		    } else preview$state_episode_diff
+		    datatable(dat, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+		  })
+
+		  output$parameter_delta_preview_state_direct_support_table <- renderDT({
+		    preview <- rv$parameter_delta_preview
+		    dat <- if (is.null(preview) || is.null(preview$state_direct_support_diff) || nrow(preview$state_direct_support_diff) == 0) {
+		      data.frame(message = "\u672A\u53D1\u73B0 Tonic / Broad HFS direct-support ISI \u53D8\u5316\u3002", stringsAsFactors = FALSE)
+		    } else preview$state_direct_support_diff
+		    datatable(dat, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+		  })
+
+		  output$parameter_delta_preview_overlap_resolution_table <- renderDT({
+		    preview <- rv$parameter_delta_preview
+		    dat <- if (is.null(preview) || is.null(preview$overlap_resolution_diff) || nrow(preview$overlap_resolution_diff) == 0) {
+		      data.frame(message = "\u672A\u53D1\u73B0 Tonic\u2013HFS \u8FB9\u754C\u4EF2\u88C1\u53D8\u5316\u3002", stringsAsFactors = FALSE)
+		    } else preview$overlap_resolution_diff
+		    datatable(dat, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
 		  })
 
 		  jump_to_parameter_delta_row <- function(row) {
@@ -2146,7 +3686,7 @@ server <- function(input, output, session) {
 		  output$parameter_roundtrip_report_table <- renderDT({
 		    p <- parameter_validation_bundle()$params
 	    dat <- tryCatch(stpd_parameter_yaml_roundtrip_report(p, source = "shiny_ui_probe"),
-	                    error = function(e) data.frame(check = "yaml_roundtrip", status = "error", detail = e$message, stringsAsFactors = FALSE))
+	                    error = function(e) data.frame(check = "yaml_roundtrip", status = "error", detail = ui_condition_detail(e), stringsAsFactors = FALSE))
 	    datatable(dat, options = list(pageLength = 5, scrollX = TRUE), rownames = FALSE)
 	  })
 
@@ -2162,7 +3702,13 @@ server <- function(input, output, session) {
 	          params_hash = imported$params_hash,
 	          validation = imported$validation
 	        )
-	        showNotification(paste0("\u53C2\u6570 YAML \u5BFC\u5165\u88AB\u62D2\u7EDD\uFF1A", err_n, " \u4E2A contract error\u3002\u8BF7\u67E5\u770B\u9A8C\u8BC1\u9762\u677F\u3002"), type = "error", duration = 8)
+	        showNotification(
+	          ui_current_copy(
+	            paste0("\u53C2\u6570 YAML \u5BFC\u5165\u88AB\u62D2\u7EDD\uFF1A", err_n, " \u4E2A contract \u9519\u8BEF\u3002\u8BF7\u67E5\u770B\u9A8C\u8BC1\u9762\u677F\u3002"),
+	            paste0("Parameter YAML import was rejected: ", err_n, " contract error(s). Review the validation panel.")
+	          ),
+	          type = "error", duration = 8
+	        )
 	        return()
 	      }
 	      apply_params_to_ui(imported$params, preserve_pattern_isi_limits = FALSE)
@@ -2172,10 +3718,22 @@ server <- function(input, output, session) {
 	        params_hash = imported$params_hash,
 	        validation = imported$validation
 	      )
-	      showNotification(paste0("\u5DF2\u5BFC\u5165\u53C2\u6570 YAML \u5E76\u56DE\u586B UI\uFF1A", input$params_yaml_in$name, "\u3002"), type = "message", duration = 6)
+	      showNotification(
+	        ui_current_copy(
+	          paste0("\u5DF2\u5BFC\u5165\u53C2\u6570 YAML \u5E76\u56DE\u586B UI\uFF1A", input$params_yaml_in$name, "\u3002"),
+	          paste0("Parameter YAML was imported and applied to the UI: ", input$params_yaml_in$name, ".")
+	        ),
+	        type = "message", duration = 6
+	      )
 	    }, error = function(e) {
 	      rv$last_param_yaml_import <- list(status = "error", name = input$params_yaml_in$name %||% "", params_hash = "", validation = data.frame())
-	      showNotification(paste0("\u53C2\u6570 YAML \u5BFC\u5165\u5931\u8D25\uFF1A", e$message), type = "error", duration = 10)
+	      showNotification(
+	        paste(
+	          ui_current_copy("\u53C2\u6570 YAML \u5BFC\u5165\u5931\u8D25\u3002", "Parameter YAML import failed."),
+	          ui_condition_detail(e)
+	        ),
+	        type = "error", duration = 10
+	      )
 	    })
 	  }, ignoreNULL = TRUE)
 
@@ -2203,15 +3761,69 @@ server <- function(input, output, session) {
     before <- before[pats]; after <- after[pats]
     before[is.na(before)] <- 0L; after[is.na(after)] <- 0L
     lines <- c(
-      paste0("Last detector run: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
-      if (nzchar(scope_txt)) paste0("Scope: ", scope_txt) else NULL,
-      "Event count change:"
+      ui_text("detector_last_run", time = format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+      if (nzchar(scope_txt)) ui_text("scope_label", scope = scope_txt) else NULL,
+      ui_text("event_count_change")
     )
     for (pat in pats) lines <- c(lines, sprintf("  %-15s %6d -> %6d  (%+d)", pat, before[pat], after[pat], after[pat] - before[pat]))
     paste(lines, collapse = "\n")
   }
 
   stpd_server_install_detection_module(environment())
+
+  # The detection module also reports near-miss rerun failures.  Store those
+  # failures in both UI languages so a later language switch never reuses the
+  # language that happened to be active when the error occurred.
+  detector_notify_error_base <- detector_notify_error
+  detector_notify_error <- function(e, prefix = "\u68C0\u6D4B\u5668\u8FD0\u884C\u5931\u8D25",
+                                    status = c("detector", "batch", "parameter_sensitivity", "near_miss")) {
+    status <- match.arg(status)
+    if (!identical(status, "near_miss")) {
+      return(detector_notify_error_base(e, prefix = prefix, status = status))
+    }
+
+    prefix_zh <- as.character(prefix %||% "Near-miss \u64CD\u4F5C\u5931\u8D25")[1]
+    prefix_en <- switch(
+      prefix_zh,
+      "Near-miss \u9608\u503C\u5DF2\u5E94\u7528\uFF0C\u4F46\u91CD\u8DD1\u68C0\u6D4B\u5931\u8D25" =
+        "The near-miss threshold was applied, but detector rerun failed",
+      "Near-miss \u9608\u503C\u5DF2\u5E94\u7528\uFF0C\u4F46\u91CD\u8DD1\u68C0\u6D4B\u672A\u5B8C\u6210" =
+        "The near-miss threshold was applied, but detector rerun did not complete",
+      "Near-miss operation failed"
+    )
+    raw_detail <- conditionMessage(e)
+    if (identical(raw_detail, "detector_runner_unavailable")) {
+      detail_zh <- stpd_ui_condition_detail(
+        simpleError(stpd_ui_copy("detector_runner_unavailable", lang = "zh")),
+        lang = "zh"
+      )
+      detail_en <- stpd_ui_condition_detail(
+        simpleError(stpd_ui_copy("detector_runner_unavailable", lang = "en")),
+        lang = "en"
+      )
+    } else {
+      # Unknown low-level diagnostics are deliberately preserved verbatim;
+      # only their explicit technical-detail label is localized.
+      detail_zh <- stpd_ui_condition_detail(e, lang = "zh")
+      detail_en <- stpd_ui_condition_detail(e, lang = "en")
+    }
+    qc_zh <- if (isTRUE(stpd_error_mentions_qc(e))) {
+      "\u68C0\u6D4B\u524D QC \u53D1\u73B0\u6570\u636E\u5B8C\u6574\u6027\u95EE\u9898\uFF1B\u8BF7\u5230\u201C\u6570\u636E QC\u201D\u67E5\u770B\u660E\u7EC6\u3002"
+    } else ""
+    qc_en <- if (isTRUE(stpd_error_mentions_qc(e))) {
+      "Pre-detection QC found a data-integrity problem; inspect the Data QC page."
+    } else ""
+    zh <- paste(c(paste0(prefix_zh, "\u3002"), qc_zh, detail_zh), collapse = "\n")
+    en <- paste(c(paste0(prefix_en, "."), qc_en, detail_en), collapse = "\n")
+    zh <- paste(Filter(nzchar, strsplit(zh, "\n", fixed = TRUE)[[1]]), collapse = "\n")
+    en <- paste(Filter(nzchar, strsplit(en, "\n", fixed = TRUE)[[1]]), collapse = "\n")
+    near_miss_summary_set(zh, en)
+    showNotification(near_miss_summary_current(), type = "error", duration = 15)
+    if (isTRUE(stpd_error_mentions_qc(e))) {
+      updateTabsetPanel(session, "main_tabs", selected = "\u6570\u636E QC")
+    }
+    invisible(NULL)
+  }
 
   # ----------------------------------------------------------
   # Histogram data
@@ -2270,24 +3882,20 @@ server <- function(input, output, session) {
 	    n_all <- if (is.null(nm_all)) 0L else nrow(nm_all)
 	    n_filtered <- if (is.null(nm_filtered)) 0L else nrow(nm_filtered)
 	    if (n_all == 0L) {
-	      return(paste0(
-	        "No near-miss candidates have been generated. Run the detector first. ",
-	        "If this remains empty, the current data/parameters have no candidates close to a threshold boundary, ",
-	        "or the near-miss generation limits are too narrow."
-	      ))
+	      return(ui_text("no_near_miss_generated"))
 	    }
 	    if (n_filtered == 0L) {
 	      pat <- input$near_miss_pattern %||% "all"
 	      cat <- input$near_miss_category %||% "all"
 	      par <- input$near_miss_parameter %||% "all"
 	      max_rel <- safe_ui_value(input$near_miss_filter_relax, 0.25)
-	      return(paste0(
-	        "Generated ", n_all, " near-miss candidates, but 0 match the current filters. Filters: pattern=", pat,
-	        ", category=", cat, ", parameter=", par, ", relative_change <= ", signif(max_rel, 4),
-	        ". Set pattern/category/parameter to all, or increase the allowed relative adjustment."
+	      return(ui_text(
+	        "no_near_miss_after_filter",
+	        total = n_all, pattern = pat, category = cat, parameter = par,
+	        relative = signif(max_rel, 4)
 	      ))
 	    }
-	    paste0("Near-miss candidates: ", n_filtered, " filtered / ", n_all, " total.")
+	    ui_text("near_miss_count", filtered = n_filtered, total = n_all)
 	  }
 
   enrich_near_miss_for_display <- function(nm, ds) {
@@ -2426,12 +4034,12 @@ server <- function(input, output, session) {
       " | ", nm_label$parameter,
       " | \u0394=", round(100 * nm_label$relative_change, 1), "%",
       " | ", nm_label$train,
-      " | aligned ", round(nm_label$start_aligned_sec_display * f, if (identical(u, "ms")) 1 else 4),
+      " | ", ui_current_copy("\u5BF9\u9F50", "aligned"), " ", round(nm_label$start_aligned_sec_display * f, if (identical(u, "ms")) 1 else 4),
       "-", round(nm_label$end_aligned_sec_display * f, if (identical(u, "ms")) 1 else 4), " ", u,
-      " | spikes=", nm_label$n_spikes_display,
-      " | dur=", round(nm_label$duration_sec_display * f, if (identical(u, "ms")) 1 else 4), " ", u
+      " | ", ui_current_copy("spike \u6570=", "spikes="), nm_label$n_spikes_display,
+      " | ", ui_current_copy("\u6301\u7EED\u65F6\u95F4=", "duration="), round(nm_label$duration_sec_display * f, if (identical(u, "ms")) 1 else 4), " ", u
     )
-    selectizeInput("near_miss_selected_id", "Candidate", choices = setNames(as.character(nm$nm_id), labs),
+    selectizeInput("near_miss_selected_id", ui_current_copy("\u5019\u9009", "Candidate"), choices = setNames(as.character(nm$nm_id), labs),
                    selected = as.character(min(rv$near_miss_idx %||% 1L, nrow(nm))), options = list(maxOptions = 1000))
   })
   
@@ -2536,7 +4144,11 @@ server <- function(input, output, session) {
   })
   
   output$detector_before_after_summary <- renderText({
-    rv$last_detector_summary %||% "\u5C1A\u65E0\u68C0\u6D4B\u5668\u91CD\u8DD1\u6458\u8981\u3002"
+    if (exists("detector_summary_current", mode = "function", inherits = TRUE)) {
+      detector_summary_current(rv$last_detector_summary, lang = ui_language())
+    } else {
+      ui_text_record(rv$last_detector_summary_record, "detector_not_run_summary")
+    }
   })
 
 	  output$near_miss_details <- renderText({
@@ -2550,23 +4162,29 @@ server <- function(input, output, session) {
       if (length(x) == 0 || !is.finite(x[1])) return("NA")
       as.character(signif(x[1], digits))
     }
-	    paste0(
-      "Candidate: ", row$nm_id, "\n",
-      "Pattern/category: ", row$pattern, " / ", row$category, "\n",
-      "Train\uFF1A", row$train, " | timestamp ", near_miss_detail_fmt(row_display$start_timestamp_sec_display * f), "-", near_miss_detail_fmt(row_display$end_timestamp_sec_display * f), " ", u,
-      " | aligned ", near_miss_detail_fmt(row_display$start_aligned_sec_display * f), "-", near_miss_detail_fmt(row_display$end_aligned_sec_display * f), " ", u, "\n",
-      "Spikes/ISI: ", row_display$n_spikes_display, " / ", row_display$n_isi_display,
-      " | duration: ", near_miss_detail_fmt(row_display$duration_sec_display * f), " ", u,
-      " | rate: ", near_miss_detail_fmt(row_display$mean_rate_hz_display), " Hz",
-      " | CV/LV/MM: ", near_miss_detail_fmt(row_display$CV_display, 4), " / ", near_miss_detail_fmt(row_display$LV_display, 4), " / ", near_miss_detail_fmt(row_display$MM_display, 4), "\n",
-      "\u53C2\u6570\uFF1A", row$parameter, " (", row$direction, ")\n",
-      "Current value: ", signif(row$current_value, 6), "\n",
-      "Required value: ", signif(row$required_value, 6), "\n",
-      "Relative adjustment: ", round(100 * row$relative_change, 2), "%\n",
-      "Failure count: ", row$failure_count, "\n",
-      "Reason: ", row$reason, "\n",
-      "Details: ", row$details
-    )
+	    ui_text(
+	      "near_miss_detail",
+	      id = row$nm_id, pattern = row$pattern, category = row$category,
+	      train = row$train,
+	      start = near_miss_detail_fmt(row_display$start_timestamp_sec_display * f),
+	      end = near_miss_detail_fmt(row_display$end_timestamp_sec_display * f),
+	      aligned_start = near_miss_detail_fmt(row_display$start_aligned_sec_display * f),
+	      aligned_end = near_miss_detail_fmt(row_display$end_aligned_sec_display * f),
+	      unit = u, spikes = row_display$n_spikes_display, isi = row_display$n_isi_display,
+	      duration = near_miss_detail_fmt(row_display$duration_sec_display * f),
+	      rate = near_miss_detail_fmt(row_display$mean_rate_hz_display),
+	      cv = near_miss_detail_fmt(row_display$CV_display, 4),
+	      lv = near_miss_detail_fmt(row_display$LV_display, 4),
+	      mm = near_miss_detail_fmt(row_display$MM_display, 4),
+	      parameter = row$parameter, direction = row$direction,
+	      current = signif(row$current_value, 6), required = signif(row$required_value, 6),
+	      relative = round(100 * row$relative_change, 2), failures = row$failure_count,
+	      reason = stpd_ui_localize_table_copy(
+	        data.frame(reason = as.character(row$reason), stringsAsFactors = FALSE),
+	        lang = ui_language()
+	      )$reason[[1L]],
+	      details = row$details
+	    )
   })
   
 	  output$near_miss_table <- renderDT({
@@ -2627,6 +4245,8 @@ server <- function(input, output, session) {
       "relative_change_pct", "failure_count", "score", "reason", "details"
     )
     show <- show[, ordered_cols, drop = FALSE]
+    names(show)[names(show) == "reason"] <- ui_current_copy("\u539F\u56E0", "reason")
+    names(show)[names(show) == "details"] <- ui_current_copy("\u6280\u672F\u8BE6\u60C5", "technical_details")
     datatable(show, rownames = FALSE, selection = "single",
               options = list(pageLength = 12, scrollX = TRUE))
   })
@@ -2646,21 +4266,25 @@ server <- function(input, output, session) {
       lo <- br[ii]; hi <- br[ii+1]
       sub <- nm[x >= lo & x < hi, , drop = FALSE]
       if (nrow(sub) == 0) {
-        hover[ii] <- paste0("[", lo, ", ", hi, ") %<br>\u8BA1\u6570: 0")
+        hover[ii] <- paste0(
+          "[", lo, ", ", hi, ") %",
+          ui_current_copy("<br>\u8BA1\u6570\uFF1A0", "<br>Count: 0")
+        )
       } else {
         head_sub <- head(sub, 8)
         items <- paste0(head_sub$nm_id, " | ", head_sub$pattern, "/", head_sub$category, " | ",
                         head_sub$parameter, " | ", head_sub$train, " | ISI ",
                         head_sub$start_isi, "-", head_sub$end_isi)
-        hover[ii] <- paste0("[", lo, ", ", hi, ") %<br>\u8BA1\u6570: ", nrow(sub),
+        hover[ii] <- paste0("[", lo, ", ", hi, ") %",
+                            ui_current_copy("<br>\u8BA1\u6570\uFF1A", "<br>Count: "), nrow(sub),
                             "<br>", paste(items, collapse = "<br>"),
-                            if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, " more") else "")
+                            if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, ui_current_copy(" \u9879", " more")) else "")
       }
     }
     dd$hover <- hover
     plot_ly(dd, x = ~mid, y = ~count, type = "bar", hoverinfo = "text", text = ~hover) %>%
-      layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = "\u6240\u9700\u76F8\u5BF9\u9608\u503C\u8C03\u6574\uFF08%\uFF09"),
-             yaxis = list(title = "Near-miss \u5019\u9009"),
+      layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = ui_current_copy("\u6240\u9700\u76F8\u5BF9\u9608\u503C\u8C03\u6574\uFF08%\uFF09", "Required relative threshold adjustment (%)")),
+             yaxis = list(title = ui_current_copy("Near-miss \u5019\u9009", "Near-miss candidates")),
              margin = list(l = 60, r = 20, t = 30, b = 60)) %>%
       config(displaylogo = FALSE)
   })
@@ -2745,6 +4369,9 @@ server <- function(input, output, session) {
            "tonic_LV_core" = "tonic.LV_core",
            "tonic_seed_ratio" = "tonic.seed_ratio",
            "tonic_mm_max" = "tonic.tonic_mm_max",
+           "tonic_mm_relax_lv_max" = "tonic.tonic_mm_relax_lv_max",
+           "tonic_mm_relax_cv_max" = "tonic.tonic_mm_relax_cv_max",
+           "tonic_mm_relaxed_max" = "tonic.tonic_mm_relaxed_max",
            "tonic_mm_min" = "tonic.tonic_mm_min",
            "pause_alpha" = "pause.alpha",
            "pause_T_seed" = "pause.T_seed",
@@ -2805,8 +4432,11 @@ server <- function(input, output, session) {
     out
   }
 
-  format_before_after_summary <- function(before, after, row) {
-    if (is.null(before) || is.null(after) || nrow(before) == 0 || nrow(after) == 0) return("\u65E0 before/after \u6458\u8981\u53EF\u7528\u3002")
+  format_before_after_summary <- function(before, after, row, lang = ui_language()) {
+    copy <- function(zh, en) ui_current_copy(zh, en, lang = lang)
+    if (is.null(before) || is.null(after) || nrow(before) == 0 || nrow(after) == 0) {
+      return(copy("\u65E0\u53EF\u7528\u7684\u91CD\u8DD1\u524D/\u540E\u6458\u8981\u3002", "No before/after rerun summary is available."))
+    }
     m <- merge(before, after, by = "pattern", all = TRUE, suffixes = c("_before", "_after"))
     m$n_events_before[is.na(m$n_events_before)] <- 0L
     m$n_events_after[is.na(m$n_events_after)] <- 0L
@@ -2814,14 +4444,20 @@ server <- function(input, output, session) {
     param_txt <- if (!is.null(row) && nrow(row) > 1L) {
       vals <- signif(suppressWarnings(as.numeric(row$required_value)), 6)
       bits <- paste0(as.character(row$parameter), "=", vals)
-      paste0("\u53C2\u6570\uFF1Aapplied ", nrow(row), " companion threshold(s): ", paste(bits, collapse = "; "))
+      copy(
+        paste0("\u53C2\u6570\uFF1A\u5DF2\u5E94\u7528 ", nrow(row), " \u4E2A\u914D\u5957\u9608\u503C\uFF1A", paste(bits, collapse = "; ")),
+        paste0("Parameters: applied ", nrow(row), " companion threshold(s): ", paste(bits, collapse = "; "))
+      )
     } else {
-      paste0("\u53C2\u6570\uFF1A", as.character(row$parameter[1]), " | required value: ", signif(as.numeric(row$required_value[1]), 6))
+      copy(
+        paste0("\u53C2\u6570\uFF1A", as.character(row$parameter[1]), " | \u6240\u9700\u503C\uFF1A", signif(as.numeric(row$required_value[1]), 6)),
+        paste0("Parameter: ", as.character(row$parameter[1]), " | required value: ", signif(as.numeric(row$required_value[1]), 6))
+      )
     }
     lines <- c(
-      "Threshold applied and detector re-run.",
+      copy("\u5DF2\u5E94\u7528\u9608\u503C\u5E76\u91CD\u8DD1\u68C0\u6D4B\u5668\u3002", "Threshold applied and detector rerun completed."),
       param_txt,
-      "Event counts before -> after (delta):"
+      copy("\u4E8B\u4EF6\u6570\uFF1A\u91CD\u8DD1\u524D -> \u91CD\u8DD1\u540E\uFF08\u5DEE\u503C\uFF09\uFF1A", "Event counts before -> after (delta):")
     )
     for (ii in seq_len(nrow(m))) {
       lines <- c(lines, paste0("  ", m$pattern[ii], ": ", m$n_events_before[ii], " -> ", m$n_events_after[ii],
@@ -2830,7 +4466,8 @@ server <- function(input, output, session) {
 	    paste(lines, collapse = "\n")
 	  }
 
-  near_miss_candidate_label_summary <- function(ds, row, params = NULL) {
+	  near_miss_candidate_label_summary <- function(ds, row, params = NULL, lang = ui_language()) {
+	    copy <- function(zh, en) ui_current_copy(zh, en, lang = lang)
     if (is.null(ds) || is.null(row) || nrow(row) == 0 || is.null(ds$trains)) return("")
     tr <- as.character(row$train[1] %||% "")
     if (!nzchar(tr) || !(tr %in% names(ds$trains))) return("")
@@ -2849,39 +4486,44 @@ server <- function(input, output, session) {
     auto_lab <- mode_nonempty_label(dat$pattern_auto[idx])
     final_lab <- mode_nonempty_label(final[idx])
     manual_lab <- mode_nonempty_label(dat$pattern_manual[idx])
-    printable <- function(x) if (nzchar(x %||% "")) x else "(none)"
+    printable <- function(x) if (nzchar(x %||% "")) x else copy("<\u65E0>", "(none)")
     expected_ok <- if (identical(expected, "burst")) {
       final_lab %in% c("burst", "long_burst", "possible_burst")
     } else {
       identical(final_lab, expected)
     }
     status <- if (isTRUE(expected_ok)) {
-      "\u5019\u9009\u5DF2\u5199\u6210\u76EE\u6807\u6A21\u5F0F\u3002"
+      copy("\u5019\u9009\u5DF2\u5199\u6210\u76EE\u6807\u6A21\u5F0F\u3002", "The candidate was written as the target pattern.")
     } else {
-      "\u5019\u9009\u91CD\u8DD1\u540E\u4ECD\u672A\u5199\u6210\u76EE\u6807\u6A21\u5F0F\uFF1B\u8FD8\u6709\u9608\u503C\u4E4B\u5916\u7684\u95E8\u63A7\u3001\u4EF2\u88C1\u6216\u6700\u5C0F\u4E8B\u4EF6\u89C4\u5219\u5728\u963B\u65AD\u3002"
+      copy(
+        "\u5019\u9009\u91CD\u8DD1\u540E\u4ECD\u672A\u5199\u6210\u76EE\u6807\u6A21\u5F0F\uFF1B\u8FD8\u6709\u9608\u503C\u4E4B\u5916\u7684\u95E8\u63A7\u3001\u4EF2\u88C1\u6216\u6700\u5C0F\u4E8B\u4EF6\u89C4\u5219\u5728\u963B\u65AD\u3002",
+        "The candidate was still not written as the target pattern after rerun; a non-threshold gate, arbitration rule, or minimum-event rule is still blocking it."
+      )
     }
     paste(
-      "\u9009\u4E2D\u5019\u9009\u91CD\u8DD1\u540E\u6807\u7B7E\uFF1A",
+      copy("\u9009\u4E2D\u5019\u9009\u91CD\u8DD1\u540E\u6807\u7B7E\uFF1A", "Selected candidate labels after rerun:"),
       paste0("  expected: ", printable(expected)),
       paste0("  AUTO: ", printable(auto_lab)),
       paste0("  MANUAL: ", printable(manual_lab)),
       paste0("  FINAL: ", printable(final_lab)),
-      paste0("  status: ", status),
+      paste0(copy("  \u72B6\u6001\uFF1A", "  status: "), status),
       sep = "\n"
     )
   }
 
   near_miss_final_auto_gate <- function(ds, row, params = NULL) {
     if (is.null(ds) || is.null(row) || nrow(row) == 0 || is.null(ds$trains)) {
-      return(list(pass = TRUE, reason = "no_candidate_context"))
+      return(list(pass = TRUE, reason = "no_candidate_context", reason_zh = "no_candidate_context", reason_en = "no_candidate_context"))
     }
     tr <- near_miss_chr1(row$train)
-    if (!nzchar(tr) || !(tr %in% names(ds$trains))) return(list(pass = TRUE, reason = "candidate_train_not_found"))
+    if (!nzchar(tr) || !(tr %in% names(ds$trains))) {
+      return(list(pass = TRUE, reason = "candidate_train_not_found", reason_zh = "candidate_train_not_found", reason_en = "candidate_train_not_found"))
+    }
     dat <- ds$trains[[tr]]
     sidx <- suppressWarnings(as.integer(row$start_isi[1]))
     eidx <- suppressWarnings(as.integer(row$end_isi[1]))
     if (!is.finite(sidx) || !is.finite(eidx) || eidx < sidx || sidx < 2L || eidx > nrow(dat)) {
-      return(list(pass = TRUE, reason = "candidate_range_not_checkable"))
+      return(list(pass = TRUE, reason = "candidate_range_not_checkable", reason_zh = "candidate_range_not_checkable", reason_en = "candidate_range_not_checkable"))
     }
     params <- params %||% read_params_from_ui()
     lab <- near_miss_chr1(row$pattern, "burst")
@@ -2907,13 +4549,24 @@ server <- function(input, output, session) {
     dur_ok <- !is.finite(min_dur) || min_dur <= 0 || (is.finite(dur) && dur >= min_dur)
     isi_gate <- stpd_pattern_isi_gate_pass(isi[idx], lab, params, min_isi_sec = min_isi)
     isi_ok <- isTRUE(isi_gate$pass)
-    reasons <- c(
+    reasons_en <- c(
       if (!size_ok) paste0("minimum size gate: n_spikes=", n_spikes, ", required=", min_spk),
       if (!dur_ok) paste0("minimum duration gate: duration=", signif(dur, 5), " s, required=", signif(min_dur, 5), " s"),
       if (!isi_ok) paste0("pattern ISI gate: ", isi_gate$reason)
     )
-    if (length(reasons) == 0) reasons <- "final AUTO gate pass"
-    list(pass = isTRUE(size_ok && dur_ok && isi_ok), reason = paste(reasons, collapse = "; "))
+    reasons_zh <- c(
+      if (!size_ok) paste0("\u6700\u5C0F\u89C4\u6A21\u95E8\u63A7\uFF1An_spikes=", n_spikes, "\uFF0C\u8981\u6C42=", min_spk),
+      if (!dur_ok) paste0("\u6700\u5C0F\u6301\u7EED\u65F6\u95F4\u95E8\u63A7\uFF1A\u6301\u7EED\u65F6\u95F4=", signif(dur, 5), " s\uFF0C\u8981\u6C42=", signif(min_dur, 5), " s"),
+      if (!isi_ok) paste0("\u6A21\u5F0F ISI \u95E8\u63A7\uFF1A", isi_gate$reason)
+    )
+    if (length(reasons_en) == 0) reasons_en <- "final AUTO gate pass"
+    if (length(reasons_zh) == 0) reasons_zh <- "\u6700\u7EC8 AUTO \u95E8\u63A7\u901A\u8FC7"
+    list(
+      pass = isTRUE(size_ok && dur_ok && isi_ok),
+      reason = paste(reasons_en, collapse = "; "),
+      reason_zh = paste(reasons_zh, collapse = "\uFF1B"),
+      reason_en = paste(reasons_en, collapse = "; ")
+    )
   }
 
   near_miss_prune_candidate <- function(ds, row) {
@@ -2947,14 +4600,14 @@ server <- function(input, output, session) {
   }
 
   near_miss_accept_candidate_as_manual <- function(row, action = "\u63A5\u53D7 near-miss \u5019\u9009") {
-    validate(need(!is.null(row) && nrow(row) >= 1, "No near-miss candidate selected."))
+    validate(need(!is.null(row) && nrow(row) >= 1, ui_text("no_near_miss_selected")))
     ds <- current_dataset()
     tr <- near_miss_chr1(row$train)
-    validate(need(tr %in% names(ds$trains), "Selected candidate train not found."))
+    validate(need(tr %in% names(ds$trains), ui_text("candidate_train_not_found")))
     dat <- ds$trains[[tr]]
     sidx <- suppressWarnings(as.integer(row$start_isi[1]))
     eidx <- suppressWarnings(as.integer(row$end_isi[1]))
-    validate(need(is.finite(sidx) && is.finite(eidx) && sidx >= 2 && eidx <= nrow(dat), "Invalid candidate ISI range."))
+    validate(need(is.finite(sidx) && is.finite(eidx) && sidx >= 2 && eidx <= nrow(dat), ui_text("invalid_candidate_isi_range")))
     lab <- near_miss_chr1(row$pattern, "burst")
     allowed <- c("burst", "long_burst", "possible_burst", "tonic", "high_frequency_tonic", "high_frequency_spiking", "pause", "others")
     if (!(lab %in% allowed)) lab <- "burst"
@@ -2974,59 +4627,103 @@ server <- function(input, output, session) {
     list(dataset = ds, train = tr, start_isi = sidx, end_isi = eidx, label = lab, n_isi = length(idx))
   }
 
-  output$near_miss_rerun_summary <- renderText({ rv$near_miss_rerun_summary %||% "" })
+  output$near_miss_rerun_summary <- renderText({
+    near_miss_summary_current(lang = ui_language())
+  })
 
 	  observeEvent(input$near_miss_apply_threshold, {
 	    row <- current_near_miss_row()
 	    companion_rows <- near_miss_companion_rows(row)
 	    rows_to_apply <- near_miss_applicable_rows(companion_rows)
-	    validate(need(!is.null(rows_to_apply) && nrow(rows_to_apply) > 0, "No applicable near-miss threshold is selected."))
+	    validate(need(!is.null(rows_to_apply) && nrow(rows_to_apply) > 0, ui_text("no_applicable_near_miss_threshold")))
     p_before <- read_params_from_ui()
     companion_param_n <- length(near_miss_distinct_parameters(companion_rows))
 	    final_gate <- near_miss_final_auto_gate(current_dataset(), row, params = p_before)
 	    needs_manual_review <- companion_param_n > 1L || !isTRUE(final_gate$pass)
 		    if (isTRUE(needs_manual_review)) {
-      review_action <- if (companion_param_n > 1L) "\u591A\u9608\u503C near-miss \u590D\u6838\u901A\u8FC7" else "\u6700\u7EC8 gate near-miss \u590D\u6838\u901A\u8FC7"
-		      res <- near_miss_accept_candidate_as_manual(row, action = review_action)
-	      vals <- signif(suppressWarnings(as.numeric(rows_to_apply$required_value)), 6)
-	      params_txt <- paste0(as.character(rows_to_apply$parameter), "=", vals, collapse = "; ")
-      reason_txt <- paste(c(
-        if (companion_param_n > 1L) paste0("\u9700\u8981 ", companion_param_n, " \u4E2A\u9608\u503C\u540C\u65F6\u653E\u5BBD"),
-        if (!isTRUE(final_gate$pass)) paste0("\u5355\u72EC\u8C03\u9608\u503C\u540E\u4ECD\u4F1A\u88AB\u6700\u7EC8 AUTO gate \u963B\u65AD\uFF1A", final_gate$reason)
-      ), collapse = "\uFF1B")
-	      rv$near_miss_rerun_summary <- paste(
-	        paste0("\u8BE5 near-miss \u5019\u9009\u4E0D\u9002\u5408\u4F5C\u4E3A\u5355\u4E2A\u5168\u5C40\u9608\u503C\u8C03\u6574\uFF08", reason_txt, "\uFF09\uFF0C\u672C\u6B21\u672A\u4FEE\u6539\u4EFB\u4F55\u53C2\u6570\u3002"),
-	        paste0("\u6D89\u53CA\u9608\u503C\uFF1A", params_txt),
-	        paste0("\u5DF2\u5C06 ", res$train, " ISI ", res$start_isi, "-", res$end_isi,
-	               " \u5199\u4E3A MANUAL ", res$label, "\uFF08\u6700\u7EC8\u6807\u7B7E\u4F1A\u4F7F\u7528\u8BE5\u590D\u6838\u7ED3\u679C\uFF09\u3002"),
-	        sep = "\n"
-	      )
-	      showNotification(
-	        paste0("\u8BE5\u5019\u9009\u4E0D\u662F\u5355\u9608\u503C\u60C5\u5F62\uFF1B\u5DF2\u6539\u4E3A\u76F4\u63A5\u63A5\u53D7\u4E3A MANUAL ", res$label, "\uFF0C\u672A\u6539\u5168\u5C40\u9608\u503C\u3002"),
-	        type = "message",
-	        duration = 8
-	      )
+	      ok <- run_manual_ui_action({
+          review_action <- if (companion_param_n > 1L) "\u591A\u9608\u503C near-miss \u590D\u6838\u901A\u8FC7" else "\u6700\u7EC8\u95E8\u63A7 near-miss \u590D\u6838\u901A\u8FC7"
+		        res <- near_miss_accept_candidate_as_manual(row, action = review_action)
+	        vals <- signif(suppressWarnings(as.numeric(rows_to_apply$required_value)), 6)
+	        params_txt <- paste0(as.character(rows_to_apply$parameter), "=", vals, collapse = "; ")
+          reason_zh <- paste(c(
+            if (companion_param_n > 1L) paste0("\u9700\u8981 ", companion_param_n, " \u4E2A\u9608\u503C\u540C\u65F6\u653E\u5BBD"),
+            if (!isTRUE(final_gate$pass)) paste0("\u5355\u72EC\u8C03\u9608\u503C\u540E\u4ECD\u4F1A\u88AB\u6700\u7EC8 AUTO \u95E8\u63A7\u963B\u65AD\uFF1A", final_gate$reason_zh)
+          ), collapse = "\uFF1B")
+          reason_en <- paste(c(
+            if (companion_param_n > 1L) paste0(companion_param_n, " thresholds must be relaxed together"),
+            if (!isTRUE(final_gate$pass)) paste0(
+              "the final AUTO gate would still block the candidate after changing the threshold alone: ",
+              final_gate$reason_en
+            )
+          ), collapse = "; ")
+	        near_miss_summary_set(
+	          paste(
+	            paste0("\u8BE5 near-miss \u5019\u9009\u4E0D\u9002\u5408\u4F5C\u4E3A\u5355\u4E2A\u5168\u5C40\u9608\u503C\u8C03\u6574\uFF08", reason_zh, "\uFF09\uFF0C\u672C\u6B21\u672A\u4FEE\u6539\u4EFB\u4F55\u53C2\u6570\u3002"),
+	            paste0("\u6D89\u53CA\u9608\u503C\uFF1A", params_txt),
+	            paste0("\u5DF2\u5C06 ", res$train, " ISI ", res$start_isi, "-", res$end_isi,
+	                   " \u5199\u4E3A MANUAL ", res$label, "\uFF08\u6700\u7EC8\u6807\u7B7E\u4F1A\u4F7F\u7528\u8BE5\u590D\u6838\u7ED3\u679C\uFF09\u3002"),
+	            sep = "\n"
+	          ),
+	          paste(
+	            paste0("This near-miss candidate is not suitable for a single global-threshold adjustment (", reason_en, "); no parameter was changed."),
+	            paste0("Thresholds involved: ", params_txt),
+	            paste0(res$train, " ISI ", res$start_isi, "-", res$end_isi,
+	                   " was written as MANUAL ", res$label, " (the final label will use this review decision)."),
+	            sep = "\n"
+	          )
+	        )
+	        showNotification(
+	          ui_current_copy(
+	            paste0("\u8BE5\u5019\u9009\u4E0D\u662F\u5355\u9608\u503C\u60C5\u5F62\uFF1B\u5DF2\u6539\u4E3A\u76F4\u63A5\u63A5\u53D7\u4E3A MANUAL ", res$label, "\uFF0C\u672A\u6539\u5168\u5C40\u9608\u503C\u3002"),
+	            paste0("This candidate is not a single-threshold case; it was accepted directly as MANUAL ", res$label, " without changing a global threshold.")
+	          ),
+	          type = "message",
+	          duration = 8
+	        )
+	      }, prefix = "near-miss MANUAL \u63A5\u53D7\u5931\u8D25")
+	      if (!isTRUE(ok)) {
+	        near_miss_summary_set(
+	          "near-miss MANUAL \u63A5\u53D7\u672A\u5B8C\u6210\uFF1B\u672A\u66F4\u6539\u9608\u503C\u6216\u6807\u7B7E\u3002\u8BF7\u67E5\u770B\u901A\u77E5\u540E\u91CD\u8BD5\u3002",
+	          "The near-miss MANUAL acceptance did not complete; no threshold or label was changed. Review the notification and try again."
+	        )
+	        return(invisible(NULL))
+	      }
 	      return(invisible(NULL))
 	    }
 	    p_after <- apply_near_miss_thresholds_to_params(p_before, rows_to_apply)
-    ok <- apply_near_miss_threshold_to_ui(rows_to_apply, params = p_before)
-    if (!isTRUE(ok)) {
-      showNotification("\u65E0\u6CD5\u81EA\u52A8\u5E94\u7528\u8BE5\u9608\u503C\u3002", type = "warning", duration = 5)
-      return()
-    }
+	    ok <- apply_near_miss_threshold_to_ui(rows_to_apply, params = p_before)
+	    if (!isTRUE(ok)) {
+	      near_miss_summary_set(
+	        "\u65E0\u6CD5\u81EA\u52A8\u5E94\u7528\u5EFA\u8BAE\u9608\u503C\uFF1B\u68C0\u6D4B\u5668\u672A\u91CD\u8DD1\uFF0CAUTO \u6807\u7B7E\u672A\u66F4\u65B0\u3002",
+	        "The suggested threshold could not be applied automatically; the detector was not rerun and AUTO labels were not updated."
+	      )
+	      showNotification(
+	        ui_current_copy("\u65E0\u6CD5\u81EA\u52A8\u5E94\u7528\u8BE5\u9608\u503C\u3002", "The threshold could not be applied automatically."),
+	        type = "warning", duration = 5
+	      )
+	      return()
+	    }
+	    # The UI values have changed, but the scientific result has not yet
+	    # changed.  Record that intermediate state before any later validation
+	    # can abort the rerun, so an older success summary can never survive.
+	    near_miss_summary_set(
+	      "\u5EFA\u8BAE\u9608\u503C\u5DF2\u5E94\u7528\u5230 UI\uFF1B\u68C0\u6D4B\u5668\u5C1A\u672A\u91CD\u8DD1\uFF0CAUTO \u6807\u7B7E\u5C1A\u672A\u6839\u636E\u65B0\u9608\u503C\u66F4\u65B0\u3002",
+	      "The suggested threshold was applied to the UI; the detector has not yet been rerun and AUTO labels have not yet been updated from the new threshold."
+	    )
 
-    if (isTRUE(input$near_miss_apply_and_rerun)) {
+	    if (isTRUE(input$near_miss_apply_and_rerun)) {
       ds <- current_dataset()
       selected_only <- isTRUE(input$detector_selected_only)
       target_trains <- names(ds$trains)
       if (selected_only) {
         target_trains <- intersect(displayed_train_names() %||% character(0), names(ds$trains))
-        validate(need(length(target_trains) > 0, "No selected trains to run detector on."))
+        validate(need(length(target_trains) > 0, ui_text("no_selected_trains")))
       }
       before <- summarize_events_for_threshold_preview(ds, p_before, target_trains = if (selected_only) target_trains else NULL)
       run_detector <- get0("run_detector_from_ui", mode = "function", inherits = TRUE)
       if (!is.function(run_detector)) {
-        detector_notify_error(simpleError("Detector runner is not available in the current Shiny session."), prefix = "Near-miss \u9608\u503C\u5DF2\u5E94\u7528\uFF0C\u4F46\u91CD\u8DD1\u68C0\u6D4B\u5931\u8D25", status = "near_miss")
+	        detector_notify_error(simpleError("detector_runner_unavailable"), prefix = "Near-miss \u9608\u503C\u5DF2\u5E94\u7528\uFF0C\u4F46\u91CD\u8DD1\u68C0\u6D4B\u5931\u8D25", status = "near_miss")
         return(invisible(NULL))
       }
       run_result <- tryCatch(
@@ -3045,31 +4742,82 @@ server <- function(input, output, session) {
           NULL
         }
       )
-      if (is.null(run_result) || is.null(run_result$dataset)) {
-        return(invisible(NULL))
-      }
+	      if (is.null(run_result) || is.null(run_result$dataset)) {
+	        near_miss_summary_set(
+	          "\u5EFA\u8BAE\u9608\u503C\u5DF2\u5E94\u7528\u5230 UI\uFF0C\u4F46\u68C0\u6D4B\u5668\u91CD\u8DD1\u672A\u5B8C\u6210\uFF1BAUTO \u6807\u7B7E\u672A\u6839\u636E\u65B0\u9608\u503C\u66F4\u65B0\u3002\u8BF7\u67E5\u770B\u901A\u77E5\u540E\u91CD\u8BD5\u3002",
+	          "The suggested threshold was applied to the UI, but the detector rerun did not complete; AUTO labels were not updated from the new threshold. Review the notification and try again."
+	        )
+	        return(invisible(NULL))
+	      }
 	      ds_new <- run_result$dataset
 	      after <- summarize_events_for_threshold_preview(ds_new, run_result$params %||% p_after, target_trains = if (selected_only) run_result$target_trains else NULL)
-      candidate_summary <- near_miss_candidate_label_summary(ds_new, rows_to_apply, params = run_result$params %||% p_after)
+	      candidate_summary_zh <- near_miss_candidate_label_summary(
+	        ds_new, rows_to_apply, params = run_result$params %||% p_after, lang = "zh"
+	      )
+	      candidate_summary_en <- near_miss_candidate_label_summary(
+	        ds_new, rows_to_apply, params = run_result$params %||% p_after, lang = "en"
+	      )
 	      rv$near_miss_idx <- 1L
 	      rv$preview_candidate <- NULL
 	      rv$distribution_evidence_selected_row <- NULL
 	      updateCheckboxInput(session, "show_near_miss_preview", value = FALSE)
-	      rv$near_miss_rerun_summary <- paste(c(format_before_after_summary(before, after, rows_to_apply), candidate_summary[nzchar(candidate_summary)]), collapse = "\n\n")
-	      showNotification(paste0("\u5DF2\u5E94\u7528 ", nrow(rows_to_apply), " \u4E2A\u5EFA\u8BAE\u9608\u503C\u5E76\u91CD\u8DD1\u68C0\u6D4B\u5668\u3002\u65E7 near-miss \u9884\u89C8\u6807\u8BB0\u5DF2\u6E05\u9664\u3002"), type = "message", duration = 7)
+	      near_miss_summary_set(
+	        paste(c(
+	          format_before_after_summary(before, after, rows_to_apply, lang = "zh"),
+	          candidate_summary_zh[nzchar(candidate_summary_zh)]
+	        ), collapse = "\n\n"),
+	        paste(c(
+	          format_before_after_summary(before, after, rows_to_apply, lang = "en"),
+	          candidate_summary_en[nzchar(candidate_summary_en)]
+	        ), collapse = "\n\n")
+	      )
+	      showNotification(
+	        ui_current_copy(
+	          paste0("\u5DF2\u5E94\u7528 ", nrow(rows_to_apply), " \u4E2A\u5EFA\u8BAE\u9608\u503C\u5E76\u91CD\u8DD1\u68C0\u6D4B\u5668\u3002\u65E7 near-miss \u9884\u89C8\u6807\u8BB0\u5DF2\u6E05\u9664\u3002"),
+	          paste0("Applied ", nrow(rows_to_apply), " suggested threshold(s) and reran the detector. The old near-miss preview marker was cleared.")
+	        ),
+	        type = "message", duration = 7
+	      )
 	      updateTabsetPanel(session, "main_tabs", selected = "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE")
-    } else {
-      rv$near_miss_rerun_summary <- paste0("\u5EFA\u8BAE\u9608\u503C\u4EC5\u5E94\u7528\u5230 UI\uFF0C\u68C0\u6D4B\u5668\u672A\u91CD\u8DD1\u3002\u5DF2\u5E94\u7528 ", nrow(rows_to_apply), " \u4E2A companion threshold(s)\u3002")
-      showNotification(paste0("\u5EFA\u8BAE\u9608\u503C\u5DF2\u5E94\u7528\u5230 UI\uFF08", nrow(rows_to_apply), " \u4E2A\uFF09\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u4EE5\u66F4\u65B0 AUTO \u6807\u7B7E\u3002"), type = "message", duration = 5)
-      updateTabsetPanel(session, "main_tabs", selected = "\u68C0\u6D4B\u5668 / \u53C2\u6570")
-    }
+	    } else {
+	      near_miss_summary_set(
+	        paste0("\u5EFA\u8BAE\u9608\u503C\u4EC5\u5E94\u7528\u5230 UI\uFF0C\u68C0\u6D4B\u5668\u672A\u91CD\u8DD1\u3002\u5DF2\u5E94\u7528 ", nrow(rows_to_apply), " \u4E2A\u914D\u5957\u9608\u503C\u3002"),
+	        paste0("The suggested threshold(s) were applied only to the UI; the detector was not rerun. Applied ", nrow(rows_to_apply), " companion threshold(s).")
+	      )
+	      showNotification(
+	        ui_current_copy(
+	          paste0("\u5EFA\u8BAE\u9608\u503C\u5DF2\u5E94\u7528\u5230 UI\uFF08", nrow(rows_to_apply), " \u4E2A\uFF09\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u4EE5\u66F4\u65B0 AUTO \u6807\u7B7E\u3002"),
+	          paste0("Applied ", nrow(rows_to_apply), " suggested threshold(s) to the UI. Rerun the detector to update AUTO labels.")
+	        ),
+	        type = "message", duration = 5
+	      )
+	      updateTabsetPanel(session, "main_tabs", selected = "\u68C0\u6D4B\u5668 / \u53C2\u6570")
+	    }
 	  })
 	  observeEvent(input$near_miss_accept_manual, {
-	    row <- current_near_miss_row()
-	    res <- near_miss_accept_candidate_as_manual(row)
-	    rv$near_miss_rerun_summary <- paste0("\u5DF2\u5C06 ", res$train, " ISI ", res$start_isi, "-", res$end_isi,
-	                                         " \u63A5\u53D7\u4E3A MANUAL ", res$label, "\uFF0C\u672A\u6539\u53D8\u4EFB\u4F55\u9608\u503C\u3002")
-	    showNotification(paste0("\u5DF2\u5C06\u6240\u9009 near-miss \u5019\u9009\u63A5\u53D7\u4E3A MANUAL ", res$label, "."), type = "message", duration = 5)
+	    ok <- run_manual_ui_action({
+	      row <- current_near_miss_row()
+	      res <- near_miss_accept_candidate_as_manual(row)
+	      near_miss_summary_set(
+	        paste0("\u5DF2\u5C06 ", res$train, " ISI ", res$start_isi, "-", res$end_isi,
+	               " \u63A5\u53D7\u4E3A MANUAL ", res$label, "\uFF0C\u672A\u6539\u53D8\u4EFB\u4F55\u9608\u503C\u3002"),
+	        paste0("Accepted ", res$train, " ISI ", res$start_isi, "-", res$end_isi,
+	               " as MANUAL ", res$label, " without changing any threshold.")
+	      )
+	      showNotification(
+	        ui_current_copy(
+	          paste0("\u5DF2\u5C06\u6240\u9009 near-miss \u5019\u9009\u63A5\u53D7\u4E3A MANUAL ", res$label, "\u3002"),
+	          paste0("Accepted the selected near-miss candidate as MANUAL ", res$label, ".")
+	        ),
+	        type = "message", duration = 5
+	      )
+	    }, prefix = "near-miss MANUAL \u63A5\u53D7\u5931\u8D25")
+	    if (!isTRUE(ok)) {
+	      near_miss_summary_set(
+	        "near-miss MANUAL \u63A5\u53D7\u672A\u5B8C\u6210\uFF1B\u672A\u66F4\u6539\u9608\u503C\u6216\u6807\u7B7E\u3002\u8BF7\u67E5\u770B\u901A\u77E5\u540E\u91CD\u8BD5\u3002",
+	        "The near-miss MANUAL acceptance did not complete; no threshold or label was changed. Review the notification and try again."
+	      )
+	    }
 	  })
   
   hist_bundle <- reactive({
@@ -3115,19 +4863,22 @@ server <- function(input, output, session) {
   
   build_hist_hover <- function(df, bins, value_col = "value", unit = "ms", max_items = 10) {
     htexts <- character(length(bins) - 1)
+    count_label <- ui_current_copy("\u8BA1\u6570", "Count")
     for (i in seq_len(length(bins) - 1)) {
       lo <- bins[i]
       hi <- bins[i + 1]
       sub <- df[df[[value_col]] >= lo & df[[value_col]] < hi, , drop = FALSE]
       if (nrow(sub) == 0) {
-        htexts[i] <- paste0("[", signif(lo, 4), ", ", signif(hi, 4), ") ", unit, "<br>\u8BA1\u6570: 0")
+        htexts[i] <- paste0("[", signif(lo, 4), ", ", signif(hi, 4), ") ", unit, "<br>", count_label, ": 0")
       } else {
         head_sub <- head(sub, max_items)
         items <- paste0(head_sub$dataset, " | ", head_sub$train, " | ", head_sub$pattern,
                         " | [", round(head_sub$start_time_out, 3), ", ", round(head_sub$end_time_out, 3), "] ", unit)
-        more <- if (nrow(sub) > max_items) paste0("<br>... +", nrow(sub) - max_items, " more") else ""
+        more <- if (nrow(sub) > max_items) {
+          paste0("<br>... +", nrow(sub) - max_items, ui_current_copy(" \u9879", " more"))
+        } else ""
         htexts[i] <- paste0("[", signif(lo, 4), ", ", signif(hi, 4), ") ", unit,
-                            "<br>\u8BA1\u6570: ", nrow(sub), "<br>", paste(items, collapse = "<br>"), more)
+                            "<br>", count_label, ": ", nrow(sub), "<br>", paste(items, collapse = "<br>"), more)
       }
     }
     htexts
@@ -3141,9 +4892,9 @@ server <- function(input, output, session) {
     
     if (ht == "logisi") {
       lg <- hb$logisi
-      validate(need(nrow(lg) > 0, "No logISI data available."))
+      validate(need(nrow(lg) > 0, ui_text("no_logisi_data")))
       lg$label <- lg$source_label
-      lg$label[lg$label == ""] <- "\u672A\u6807\u8BB0"
+      lg$label[lg$label == ""] <- ui_current_copy("\u672A\u6807\u8BB0", "Unlabeled")
       
       br <- seq(floor(min(lg$log10_ISI, na.rm = TRUE) / 0.1) * 0.1,
                 ceiling(max(lg$log10_ISI, na.rm = TRUE) / 0.1) * 0.1 + 0.1,
@@ -3182,15 +4933,18 @@ server <- function(input, output, session) {
           annotations <- lapply(vv, `[[`, "annotation")
         }
       }
-      p <- layout(p, hoverlabel = stpd_hoverlabel_style(), barmode = "stack", xaxis = list(title = "log10(ISI [s])"), yaxis = list(title = "\u8BA1\u6570"),
+      p <- layout(p, hoverlabel = stpd_hoverlabel_style(), barmode = "stack", xaxis = list(title = "log10(ISI [s])"), yaxis = list(title = ui_current_copy("\u8BA1\u6570", "Count")),
                   shapes = shapes, annotations = annotations, margin = list(l = 60, r = 20, t = 40, b = 60))
       return(config(p, displaylogo = FALSE))
     }
     
     df <- hb$intervals[[ht]]
-    validate(need(!is.null(df) && nrow(df) > 0, "\u8BE5\u533A\u95F4\u7C7B\u578B\u65E0\u6570\u636E\u3002"))
+    validate(need(
+      !is.null(df) && nrow(df) > 0,
+      ui_current_copy("\u8BE5\u533A\u95F4\u7C7B\u578B\u65E0\u6570\u636E\u3002", "No data are available for this interval type.")
+    ))
     bw <- as.numeric(input$hist_bin)
-    validate(need(is.finite(bw) && bw > 0, "Bin width must be > 0."))
+    validate(need(is.finite(bw) && bw > 0, ui_text("bin_width_positive")))
     
     if ("value" %in% colnames(df)) {
       df <- df %>% mutate(value_out = value, start_time_out = start_time_sec * f, end_time_out = end_time_sec * f)
@@ -3201,7 +4955,7 @@ server <- function(input, output, session) {
       x <- df$value_out[is.finite(df$value_out)]
       u_hist <- u
     }
-    validate(need(length(x) > 0, "No finite values to plot."))
+    validate(need(length(x) > 0, ui_text("no_finite_values_plot")))
     
     lo <- min(x); hi <- max(x)
     if (lo == hi) { lo <- lo - bw; hi <- hi + bw }
@@ -3211,7 +4965,7 @@ server <- function(input, output, session) {
     dd$hover <- build_hist_hover(df, br, value_col = "value_out", unit = u_hist, max_items = 10)
     
     plot_ly(dd, x = ~mid, y = ~count, type = "bar", hoverinfo = "text", text = ~hover) %>%
-      layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ht, " (", u_hist, ")")), yaxis = list(title = "\u8BA1\u6570"),
+      layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ht, " (", u_hist, ")")), yaxis = list(title = ui_current_copy("\u8BA1\u6570", "Count")),
              margin = list(l = 60, r = 20, t = 40, b = 60)) %>%
       config(displaylogo = FALSE)
   })
@@ -3301,7 +5055,7 @@ server <- function(input, output, session) {
 
   output$dataset_isi_seed_band_table <- DT::renderDT({
     vals_by_train <- dataset_isi_values_by_train()
-    if (length(vals_by_train) == 0) return(DT::datatable(data.frame(message = "\u65E0\u6709\u6548 ISI\u3002"), options = list(dom = "t"), rownames = FALSE))
+    if (length(vals_by_train) == 0) return(datatable(data.frame(message = "\u65E0\u6709\u6548 ISI\u3002"), options = list(dom = "t"), rownames = FALSE))
     pcur <- threshold_current_params_for_hist()
     eg <- pcur$event_grammar %||% list()
     b <- (eg$effective_bands %||% list())$burst %||% list()
@@ -3332,13 +5086,13 @@ server <- function(input, output, session) {
       data.frame(train = tr, n_valid_ISI = n, seed_low_percentile = round(seed_low_pct, 2), seed_high_percentile = round(seed_high_pct, 2), seed_band_fraction = round(seed_frac, 2), seed_run_count = length(rl), max_seed_run_length = max_run, median_ISI = round(med * f, 4), q10_ISI = round(q10 * f, 4), q25_ISI = round(q25 * f, 4), q90_ISI = round(q90 * f, 4), pause_fraction_at_pause_seed = round(pause_frac, 2), phenotype_hint = hint, unit = u, stringsAsFactors = FALSE)
     })
     out <- dplyr::bind_rows(rows)
-    DT::datatable(out, rownames = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE))
+    datatable(out, rownames = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE))
   })
 
   output$threshold_table <- DT::renderDT({
     pcur <- threshold_current_params_for_hist()
     tb <- (pcur$event_grammar %||% list())$threshold_table %||% data.frame()
-    if (is.null(tb) || nrow(tb) == 0) return(DT::datatable(data.frame(message = "\u5C1A\u65E0\u9608\u503C\u89E3\u6790\u7ED3\u679C\u3002"), options = list(dom = "t"), rownames = FALSE))
+    if (is.null(tb) || nrow(tb) == 0) return(datatable(data.frame(message = "\u5C1A\u65E0\u9608\u503C\u89E3\u6790\u7ED3\u679C\u3002"), options = list(dom = "t"), rownames = FALSE))
     f <- unit_factor(); u <- unit_label()
     out <- tb
     is_ratio <- out$field == "contrast_S"
@@ -3351,27 +5105,35 @@ server <- function(input, output, session) {
       out[[sub("_sec$", "_value", nm)]] <- round(scale_event_grammar_threshold(out[[nm]]), 6)
     }
     out$unit <- ifelse(out$field == "contrast_S", "ratio", u)
-    keep <- intersect(c("pattern_label", "field", "user_value", "manual_value", "histogram_value", "default_value", "effective_value", "unit", "source"), names(out))
-    DT::datatable(out[, keep, drop = FALSE], rownames = FALSE, filter = "top", options = list(pageLength = 20, scrollX = TRUE))
+    keep <- intersect(c(
+      "pattern_label", "field", "user_value", "manual_value",
+      "histogram_value", "default_value", "effective_value", "unit",
+      "source", "histogram_available", "histogram_status",
+      "histogram_reason", "histogram_separation_method"
+    ), names(out))
+    datatable(out[, keep, drop = FALSE], rownames = FALSE, filter = "top", options = list(pageLength = 20, scrollX = TRUE))
   })
 
   output$event_grammar_manual_structure_table <- DT::renderDT({
     pcur <- threshold_current_params_for_hist()
     mt <- (pcur$event_grammar %||% list())$manual_event_table %||% data.frame()
-    if (is.null(mt) || nrow(mt) == 0) return(DT::datatable(data.frame(message = "\u5C1A\u65E0\u624B\u52A8\u6A21\u5F0F\u4E8B\u4EF6\u3002\u624B\u52A8\u6807\u8BB0 burst / HF / tonic / pause \u540E\u4F1A\u5728\u6B64\u663E\u793A\u7ED3\u6784\u5B66\u4E60\u7ED3\u679C\u3002"), options = list(dom = "t"), rownames = FALSE))
+    if (is.null(mt) || nrow(mt) == 0) return(datatable(data.frame(message = "\u5C1A\u65E0\u624B\u52A8\u6A21\u5F0F\u4E8B\u4EF6\u3002\u624B\u52A8\u6807\u8BB0 burst / HF / tonic / pause \u540E\u4F1A\u5728\u6B64\u663E\u793A\u7ED3\u6784\u5B66\u4E60\u7ED3\u679C\u3002"), options = list(dom = "t"), rownames = FALSE))
     f <- unit_factor(); u <- unit_label()
     out <- mt
     for (nm in intersect(c("intra_q05_sec", "intra_q10_sec", "intra_q40_sec", "intra_q90_sec", "intra_q95_sec", "intra_max_sec", "pre_gap_sec", "post_gap_sec"), names(out))) {
       out[[sub("_sec$", paste0("_", u), nm)]] <- round(out[[nm]] * f, 6)
     }
     keep <- intersect(c("train", "pattern", "start_isi", "end_isi", "n_spikes", paste0("intra_q90_", u), paste0("intra_q95_", u), paste0("pre_gap_", u), paste0("post_gap_", u), "pre_ratio_q90", "post_ratio_q90", "min_flank_ratio_q90", "boundary_type"), names(out))
-    DT::datatable(out[, keep, drop = FALSE], rownames = FALSE, filter = "top", options = list(pageLength = 12, scrollX = TRUE))
+    datatable(out[, keep, drop = FALSE], rownames = FALSE, filter = "top", options = list(pageLength = 12, scrollX = TRUE))
   })
 
   observeEvent(input$event_grammar_apply_hist_suggestions, {
     pcur <- threshold_current_params_for_hist()
     tb <- (pcur$event_grammar %||% list())$threshold_table %||% data.frame()
-    validate(need(!is.null(tb) && nrow(tb) > 0, "\u6CA1\u6709\u53EF\u5E94\u7528\u7684 histogram \u5EFA\u8BAE\u3002"))
+    validate(need(
+      !is.null(tb) && nrow(tb) > 0,
+      ui_current_copy("\u6CA1\u6709\u53EF\u5E94\u7528\u7684\u76F4\u65B9\u56FE\u5EFA\u8BAE\u3002", "No histogram suggestions are available to apply.")
+    ))
     f <- unit_factor()
     get_hist <- function(pat, fld, default = NA_real_) {
       row <- tb[tb$pattern == pat & tb$field == fld, , drop = FALSE]
@@ -3384,10 +5146,16 @@ server <- function(input, output, session) {
     updateNumericInput(session, "event_grammar_user_burst_seed_upper", value = get_hist("burst", "seed_upper_sec", 0.010 * f))
     updateNumericInput(session, "event_grammar_user_burst_bridge", value = get_hist("burst", "bridge_upper_sec", 0.015 * f))
     updateNumericInput(session, "event_grammar_user_burst_S", value = get_hist("burst", "contrast_S", 2.5))
-    updateCheckboxInput(session, "event_grammar_user_hfs_enable", value = TRUE)
-    updateNumericInput(session, "event_grammar_user_hfs_seed_lower", value = get_hist("high_frequency_spiking", "seed_lower_sec", 0.001 * f))
-    updateNumericInput(session, "event_grammar_user_hfs_seed_upper", value = get_hist("high_frequency_spiking", "seed_upper_sec", 0.020 * f))
-    updateNumericInput(session, "event_grammar_user_hfs_bridge", value = get_hist("high_frequency_spiking", "bridge_upper_sec", 0.030 * f))
+    hfs_hist_meta <- (pcur$event_grammar$histogram_suggest %||%
+      list())$high_frequency_spiking %||% list()
+    hfs_can_promote <- isTRUE(hfs_hist_meta$available) &&
+      isTRUE(hfs_hist_meta$promotable_to_user_override)
+    if (hfs_can_promote) {
+      updateCheckboxInput(session, "event_grammar_user_hfs_enable", value = TRUE)
+      updateNumericInput(session, "event_grammar_user_hfs_seed_lower", value = get_hist("high_frequency_spiking", "seed_lower_sec", 0.001 * f))
+      updateNumericInput(session, "event_grammar_user_hfs_seed_upper", value = get_hist("high_frequency_spiking", "seed_upper_sec", 0.020 * f))
+      updateNumericInput(session, "event_grammar_user_hfs_bridge", value = get_hist("high_frequency_spiking", "bridge_upper_sec", 0.030 * f))
+    }
     updateCheckboxInput(session, "event_grammar_user_hft_enable", value = TRUE)
     updateNumericInput(session, "event_grammar_user_hft_seed_lower", value = get_hist("high_frequency_tonic", "seed_lower_sec", 0.010 * f))
     updateNumericInput(session, "event_grammar_user_hft_seed_upper", value = get_hist("high_frequency_tonic", "seed_upper_sec", 0.030 * f))
@@ -3400,15 +5168,35 @@ server <- function(input, output, session) {
     updateNumericInput(session, "event_grammar_user_pause_seed_lower", value = get_hist("pause", "seed_lower_sec", 0.100 * f))
     updateNumericInput(session, "event_grammar_user_pause_seed_upper", value = get_hist("pause", "seed_upper_sec", 0.150 * f))
     updateNumericInput(session, "event_grammar_user_pause_bridge", value = get_hist("pause", "bridge_upper_sec", 0.150 * f))
-    showNotification("\u5DF2\u5C06 histogram \u81EA\u52A8\u5EFA\u8BAE\u5199\u5165\u7528\u6237\u81EA\u5B9A\u4E49\u9608\u503C\u3002\u8BF7\u68C0\u67E5\u540E\u8FD0\u884C\u68C0\u6D4B\u5668\u3002", type = "message", duration = 6)
+    hfs_note <- if (hfs_can_promote) {
+      ""
+    } else {
+      ui_current_copy(
+        "Broad HFS \u4EC5\u4E3A\u9700\u5C40\u90E8\u80CC\u666F\u9A8C\u8BC1\u7684\u81EA\u52A8\u5019\u9009\uFF0C\u672A\u63D0\u5347\u4E3A\u7528\u6237\u786C\u9608\u503C\u3002",
+        "The Broad-HFS value is an auto proposal requiring local-background validation and was not promoted to a user hard threshold."
+      )
+    }
+    showNotification(paste(
+      ui_current_copy(
+        "\u5DF2\u5C06\u53EF\u5B89\u5168\u5E94\u7528\u7684\u76F4\u65B9\u56FE\u5EFA\u8BAE\u5199\u5165\u7528\u6237\u81EA\u5B9A\u4E49\u9608\u503C\u3002\u8BF7\u68C0\u67E5\u540E\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+        "Safely promotable histogram suggestions were written to the custom thresholds. Review them before running the detector."
+      ),
+      hfs_note
+    ), type = "message", duration = 8)
   })
 
   output$dataset_isi_hist_plot <- renderPlotly({
     vals_by_train <- dataset_isi_values_by_train()
-    validate(need(length(vals_by_train) > 0, "\u5F53\u524D\u6570\u636E\u96C6\u6CA1\u6709\u6709\u6548 ISI\u3002"))
+    validate(need(
+      length(vals_by_train) > 0,
+      ui_current_copy("\u5F53\u524D\u6570\u636E\u96C6\u6CA1\u6709\u6709\u6548 ISI\u3002", "The current dataset has no valid ISIs.")
+    ))
     all_vals <- unlist(vals_by_train, use.names = FALSE)
     all_vals <- all_vals[is.finite(all_vals) & all_vals >= min_valid_isi_sec()]
-    validate(need(length(all_vals) > 0, "\u5F53\u524D\u6570\u636E\u96C6\u6CA1\u6709\u6709\u9650\u6709\u6548 ISI\u3002"))
+    validate(need(
+      length(all_vals) > 0,
+      ui_current_copy("\u5F53\u524D\u6570\u636E\u96C6\u6CA1\u6709\u6709\u9650\u6709\u6548 ISI\u3002", "The current dataset has no finite valid ISIs.")
+    ))
     pcur <- threshold_current_params_for_hist()
     tb <- (pcur$event_grammar %||% list())$threshold_table %||% data.frame()
     f <- unit_factor(); u <- unit_label()
@@ -3446,23 +5234,28 @@ server <- function(input, output, session) {
     balanced_fraction <- if (!is.null(mat) && nrow(mat) > 0) colMeans(mat, na.rm = TRUE) else rep(0, length(br) - 1)
     dd <- data.frame(mid = (br[-length(br)] + br[-1]) / 2 * f, bin_left = br[-length(br)] * f, bin_right = br[-1] * f,
                      raw_count = raw_count, raw_fraction = raw_fraction, balanced_fraction = balanced_fraction, stringsAsFactors = FALSE)
-    dd$hover <- paste0("ISI bin: [", signif(dd$bin_left, 4), ", ", signif(dd$bin_right, 4), ") ", u,
-                       "<br>Raw count: ", dd$raw_count,
-                       "<br>Raw fraction: ", signif(dd$raw_fraction * 100, 4), "%",
-                       "<br>Train-balanced fraction: ", signif(dd$balanced_fraction * 100, 4), "%")
+    dd$hover <- paste0(
+      ui_current_copy("ISI \u5206\u7BB1\uFF1A[", "ISI bin: ["),
+      signif(dd$bin_left, 4), ", ", signif(dd$bin_right, 4), ") ", u,
+      ui_current_copy("<br>\u539F\u59CB\u8BA1\u6570\uFF1A", "<br>Raw count: "), dd$raw_count,
+      ui_current_copy("<br>\u539F\u59CB\u6BD4\u4F8B\uFF1A", "<br>Raw fraction: "), signif(dd$raw_fraction * 100, 4), "%",
+      ui_current_copy("<br>Train \u7B49\u6743\u6BD4\u4F8B\uFF1A", "<br>Train-balanced fraction: "), signif(dd$balanced_fraction * 100, 4), "%"
+    )
     mode <- input$dataset_isi_hist_mode %||% "overlay"
     log_y <- isTRUE(input$dataset_isi_hist_log_y)
     p <- plot_ly(); bar_width <- bin_sec * f * 0.90
     if (identical(mode, "raw")) {
       y <- dd$raw_count; if (log_y) y[y <= 0] <- NA_real_
-      p <- add_bars(p, data = dd, x = ~mid, y = y, width = bar_width, name = "\u539F\u59CB\u5408\u5E76\u8BA1\u6570", hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(80,80,80,0.70)")); y_title <- "\u539F\u59CB\u5408\u5E76\u8BA1\u6570"
+      y_title <- ui_current_copy("\u539F\u59CB\u5408\u5E76\u8BA1\u6570", "Raw pooled count")
+      p <- add_bars(p, data = dd, x = ~mid, y = y, width = bar_width, name = y_title, hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(80,80,80,0.70)"))
     } else if (identical(mode, "balanced")) {
       y <- dd$balanced_fraction; if (log_y) y[y <= 0] <- NA_real_
-      p <- add_bars(p, data = dd, x = ~mid, y = y, width = bar_width, name = "Train-balanced fraction", hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(138,127,255,0.70)")); y_title <- "\u6BCF\u6761 train \u5E73\u5747\u6BD4\u4F8B"
+      balanced_label <- ui_current_copy("Train \u7B49\u6743\u6BD4\u4F8B", "Train-balanced fraction")
+      p <- add_bars(p, data = dd, x = ~mid, y = y, width = bar_width, name = balanced_label, hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(138,127,255,0.70)")); y_title <- balanced_label
     } else {
       y1 <- dd$raw_fraction; y2 <- dd$balanced_fraction; if (log_y) { y1[y1 <= 0] <- NA_real_; y2[y2 <= 0] <- NA_real_ }
-      p <- add_bars(p, data = dd, x = ~mid, y = y1, width = bar_width, name = "Raw pooled fraction", hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(80,80,80,0.50)"))
-      p <- add_bars(p, data = dd, x = ~mid, y = y2, width = bar_width, name = "Train-balanced fraction", hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(138,127,255,0.50)")); y_title <- "\u6BD4\u4F8B"
+      p <- add_bars(p, data = dd, x = ~mid, y = y1, width = bar_width, name = ui_current_copy("\u539F\u59CB\u5408\u5E76\u6BD4\u4F8B", "Raw pooled fraction"), hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(80,80,80,0.50)"))
+      p <- add_bars(p, data = dd, x = ~mid, y = y2, width = bar_width, name = ui_current_copy("Train \u7B49\u6743\u6BD4\u4F8B", "Train-balanced fraction"), hoverinfo = "text", text = ~hover, textposition = "none", marker = list(color = "rgba(138,127,255,0.50)")); y_title <- ui_current_copy("\u6BD4\u4F8B", "Fraction")
     }
     shapes <- list(); annotations <- list()
     add_line <- function(x_sec, color, label, dash = "dash") {
@@ -3496,8 +5289,8 @@ server <- function(input, output, session) {
       }
     }
     if (isTRUE(input$dataset_isi_hist_show_qc)) {
-      add_line(min_valid_isi_sec(), "#666666", "artifact/min valid", "dash")
-      add_line(refractory_suspect_sec(), "#999999", "refractory-suspect", "dot")
+      add_line(min_valid_isi_sec(), "#666666", ui_current_copy("\u4F2A\u8FF9/\u6700\u5C0F\u6709\u6548 ISI", "artifact/minimum valid ISI"), "dash")
+      add_line(refractory_suspect_sec(), "#999999", ui_current_copy("\u4E0D\u5E94\u671F\u53EF\u7591 ISI", "refractory-suspect ISI"), "dot")
     }
     yaxis <- list(title = y_title); if (log_y) yaxis$type <- "log"
     p %>% layout(hoverlabel = stpd_hoverlabel_style(), barmode = if (identical(mode, "overlay")) "overlay" else "group",
@@ -3534,22 +5327,22 @@ server <- function(input, output, session) {
   
   structure_values_current <- reactive({
     df <- structure_tables_current()
-    validate(need(!is.null(df) && nrow(df) > 0, "No structure candidates. Run detector or adjust structure parameters."))
+    validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_structure_candidates")))
     if (!isTRUE(input$structure_include_reject)) df <- df %>% filter(structure_class != "reject")
-    validate(need(nrow(df) > 0, "No structure candidates after current filter."))
+    validate(need(nrow(df) > 0, ui_text("no_structure_after_filter")))
     f <- unit_factor()
     u <- unit_label()
     typ <- input$structure_diag_type %||% "core_q_hist"
     if (typ == "core_q_hist") {
-      df$value <- df$core_q_ISI_sec * f; unit <- u; label <- "Structure core q90 ISI"
+      df$value <- df$core_q_ISI_sec * f; unit <- u; label <- ui_current_copy("\u7ED3\u6784\u6838\u5FC3 q90 ISI", "Structure core q90 ISI")
     } else if (typ == "core_q_pct_hist") {
-      df$value <- df$core_q_ISI_pct; unit <- "%"; label <- "Structure core q90 percentile within train"
+      df$value <- df$core_q_ISI_pct; unit <- "%"; label <- ui_current_copy("train \u5185\u7ED3\u6784\u6838\u5FC3 q90 ISI \u767E\u5206\u4F4D", "Structure core q90 percentile within train")
     } else if (typ == "edge_min_hist") {
-      df$value <- df$edge_contrast_min_q; unit <- "ratio"; label <- "Structure edge contrast min"
+      df$value <- df$edge_contrast_min_q; unit <- "ratio"; label <- ui_current_copy("\u7ED3\u6784\u8FB9\u754C\u5BF9\u6BD4\u5EA6 min", "Structure edge contrast min")
     } else if (typ == "edge_geom_hist") {
-      df$value <- df$edge_contrast_geom_q; unit <- "ratio"; label <- "Structure edge contrast geom"
+      df$value <- df$edge_contrast_geom_q; unit <- "ratio"; label <- ui_current_copy("\u7ED3\u6784\u8FB9\u754C\u5BF9\u6BD4\u5EA6 geom", "Structure edge contrast geom")
     } else {
-      df$value <- df$core_q_ISI_sec * f; unit <- u; label <- "Structure core q90 ISI"
+      df$value <- df$core_q_ISI_sec * f; unit <- u; label <- ui_current_copy("\u7ED3\u6784\u6838\u5FC3 q90 ISI", "Structure core q90 ISI")
     }
     list(df = df, unit = unit, label = label, type = typ)
   })
@@ -3557,7 +5350,7 @@ server <- function(input, output, session) {
   output$structure_meta_table <- renderDT({
     sv <- structure_values_current()
     df <- sv$df
-    if (nrow(df) == 0) return(datatable(data.frame(message = "No structure candidates."), options = list(dom = "t")))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_structure_candidates")), options = list(dom = "t")))
     summary_df <- df %>%
       group_by(structure_class) %>%
       summarise(
@@ -3576,7 +5369,7 @@ server <- function(input, output, session) {
     typ <- sv$type
     f <- unit_factor()
     u <- unit_label()
-    validate(need(nrow(df) > 0, "No structure candidates to plot."))
+    validate(need(nrow(df) > 0, ui_text("no_structure_to_plot")))
     
     if (typ == "core_range") {
       topn <- min(300L, nrow(df))
@@ -3587,22 +5380,22 @@ server <- function(input, output, session) {
       dd$core_med_out <- dd$core_median_ISI_sec * f
       dd$core_q_out <- dd$core_q_ISI_sec * f
       txt <- paste0(
-        "Train\uFF1A", dd$train,
-        "<br>Structure: ", dd$structure_id,
-        "<br>Class: ", dd$structure_class,
-        "<br>Time: [", round(dd$start_time_sec, 4), ", ", round(dd$end_time_sec, 4), "] s",
-        "<br>Core range: ", round(dd$core_min_out, 3), "-", round(dd$core_max_out, 3), " ", u,
-        "<br>Median/q90: ", round(dd$core_med_out, 3), " / ", round(dd$core_q_out, 3), " ", u,
-        "<br>Pre/Post ISI\uFF1A", round(dd$pre_ISI_sec * f, 3), " / ", round(dd$post_ISI_sec * f, 3), " ", u,
-        "<br>Edge min/geom: ", signif(dd$edge_contrast_min_q, 4), " / ", signif(dd$edge_contrast_geom_q, 4)
+        ui_current_copy("Train\uFF1A", "Train: "), dd$train,
+        ui_current_copy("<br>\u7ED3\u6784\uFF1A", "<br>Structure: "), dd$structure_id,
+        ui_current_copy("<br>\u7C7B\u522B\uFF1A", "<br>Class: "), dd$structure_class,
+        ui_current_copy("<br>\u65F6\u95F4\uFF1A[", "<br>Time: ["), round(dd$start_time_sec, 4), ", ", round(dd$end_time_sec, 4), "] s",
+        ui_current_copy("<br>\u6838\u5FC3\u8303\u56F4\uFF1A", "<br>Core range: "), round(dd$core_min_out, 3), "-", round(dd$core_max_out, 3), " ", u,
+        ui_current_copy("<br>\u4E2D\u4F4D\u6570/q90\uFF1A", "<br>Median/q90: "), round(dd$core_med_out, 3), " / ", round(dd$core_q_out, 3), " ", u,
+        ui_current_copy("<br>\u524D/\u540E ISI\uFF1A", "<br>Pre/Post ISI: "), round(dd$pre_ISI_sec * f, 3), " / ", round(dd$post_ISI_sec * f, 3), " ", u,
+        ui_current_copy("<br>\u8FB9\u754C min/geom\uFF1A", "<br>Edge min/geom: "), signif(dd$edge_contrast_min_q, 4), " / ", signif(dd$edge_contrast_geom_q, 4)
       )
       p <- plot_ly()
       p <- add_segments(p, data = dd, x = ~core_min_out, xend = ~core_max_out, y = ~yidx, yend = ~yidx,
                         type = "scatter", mode = "lines", text = txt, hoverinfo = "text", showlegend = FALSE)
-      p <- add_markers(p, data = dd, x = ~core_med_out, y = ~yidx, name = "median", text = txt, hoverinfo = "text")
+      p <- add_markers(p, data = dd, x = ~core_med_out, y = ~yidx, name = ui_current_copy("\u4E2D\u4F4D\u6570", "median"), text = txt, hoverinfo = "text")
       p <- add_markers(p, data = dd, x = ~core_q_out, y = ~yidx, name = "q90", text = txt, hoverinfo = "text")
-      return(layout(p, hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0("Core ISI range (", u, ")")),
-                    yaxis = list(title = "Structure candidates sorted by q90", showticklabels = FALSE),
+      return(layout(p, hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ui_current_copy("\u6838\u5FC3 ISI \u8303\u56F4", "Core ISI range"), " (", u, ")")),
+                    yaxis = list(title = ui_current_copy("\u6309 q90 \u6392\u5E8F\u7684\u7ED3\u6784\u5019\u9009", "Structure candidates sorted by q90"), showticklabels = FALSE),
                     margin = list(l = 60, r = 20, t = 40, b = 60)) %>% config(displaylogo = FALSE))
     }
     
@@ -3610,20 +5403,20 @@ server <- function(input, output, session) {
       dd <- df
       dd$core_q_out <- dd$core_q_ISI_sec * f
       yval <- if (typ == "core_q_duration") dd$duration_sec * f else dd$LV
-      ylab <- if (typ == "core_q_duration") paste0("Duration (", u, ")") else "LV"
+      ylab <- if (typ == "core_q_duration") paste0(ui_current_copy("\u6301\u7EED\u65F6\u95F4", "Duration"), " (", u, ")") else "LV"
       dd$yval <- yval
       txt <- paste0(
-        "Train\uFF1A", dd$train,
-        "<br>Structure: ", dd$structure_id,
-        "<br>Class: ", dd$structure_class,
-        "<br>Time: [", round(dd$start_time_sec, 4), ", ", round(dd$end_time_sec, 4), "] s",
-        "<br>Core q90: ", round(dd$core_q_out, 3), " ", u,
-        "<br>", ylab, ": ", signif(dd$yval, 4),
-        "<br>Edge min/geom: ", signif(dd$edge_contrast_min_q, 4), " / ", signif(dd$edge_contrast_geom_q, 4)
+        ui_current_copy("Train\uFF1A", "Train: "), dd$train,
+        ui_current_copy("<br>\u7ED3\u6784\uFF1A", "<br>Structure: "), dd$structure_id,
+        ui_current_copy("<br>\u7C7B\u522B\uFF1A", "<br>Class: "), dd$structure_class,
+        ui_current_copy("<br>\u65F6\u95F4\uFF1A[", "<br>Time: ["), round(dd$start_time_sec, 4), ", ", round(dd$end_time_sec, 4), "] s",
+        ui_current_copy("<br>\u6838\u5FC3 q90\uFF1A", "<br>Core q90: "), round(dd$core_q_out, 3), " ", u,
+        "<br>", ylab, ui_current_copy("\uFF1A", ": "), signif(dd$yval, 4),
+        ui_current_copy("<br>\u8FB9\u754C min/geom\uFF1A", "<br>Edge min/geom: "), signif(dd$edge_contrast_min_q, 4), " / ", signif(dd$edge_contrast_geom_q, 4)
       )
       return(plot_ly(dd, x = ~core_q_out, y = ~yval, type = "scatter", mode = "markers",
                      text = txt, hoverinfo = "text", color = ~structure_class) %>%
-               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0("Core q90 ISI (", u, ")")),
+               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ui_current_copy("\u6838\u5FC3 q90 ISI", "Core q90 ISI"), " (", u, ")")),
                       yaxis = list(title = ylab),
                       margin = list(l = 60, r = 20, t = 40, b = 60)) %>%
                config(displaylogo = FALSE))
@@ -3631,13 +5424,16 @@ server <- function(input, output, session) {
     
     if (typ == "core_q_impact") {
       x <- sort(df$core_q_ISI_sec[is.finite(df$core_q_ISI_sec)] * f)
-      validate(need(length(x) > 0, "No finite core q values."))
+      validate(need(length(x) > 0, ui_text("no_finite_core_q")))
       dd <- data.frame(cutoff = x, count = seq_along(x))
-      txt <- paste0("Cutoff: ", round(dd$cutoff, 3), " ", u, "<br>Accepted structures if q90 <= cutoff: ", dd$count)
+      txt <- paste0(
+        ui_current_copy("\u622A\u6B62\u503C\uFF1A", "Cutoff: "), round(dd$cutoff, 3), " ", u,
+        ui_current_copy("<br>q90 <= \u622A\u6B62\u503C\u65F6\u63A5\u53D7\u7684\u7ED3\u6784\u6570\uFF1A", "<br>Accepted structures if q90 <= cutoff: "), dd$count
+      )
       return(plot_ly(dd, x = ~cutoff, y = ~count, type = "scatter", mode = "lines+markers",
                      text = txt, hoverinfo = "text") %>%
-               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0("Core q90 cutoff (", u, ")")),
-                      yaxis = list(title = "Cumulative candidate count"),
+               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ui_current_copy("\u6838\u5FC3 q90 \u622A\u6B62\u503C", "Core q90 cutoff"), " (", u, ")")),
+                      yaxis = list(title = ui_current_copy("\u7D2F\u8BA1\u5019\u9009\u6570", "Cumulative candidate count")),
                       margin = list(l = 60, r = 20, t = 40, b = 60)) %>%
                config(displaylogo = FALSE))
     }
@@ -3652,7 +5448,7 @@ server <- function(input, output, session) {
                                               train = df$train[ii], structure_id = df$structure_id[ii], structure_class = df$structure_class[ii])
       }
       ddlong <- if (length(rows) > 0) bind_rows(rows) else data.frame(value = numeric(), weight = numeric())
-      validate(need(nrow(ddlong) > 0, "No weighted core ISI values."))
+      validate(need(nrow(ddlong) > 0, ui_text("no_weighted_core_isi")))
       bw <- safe_ui_value(input$structure_bin, 1)
       lo <- min(ddlong$value); hi <- max(ddlong$value)
       if (lo == hi) { lo <- lo - bw; hi <- hi + bw }
@@ -3664,17 +5460,17 @@ server <- function(input, output, session) {
       }
       hh <- data.frame(mid = (head(br, -1) + tail(br, -1)) / 2, count = counts)
       return(plot_ly(hh, x = ~mid, y = ~count, type = "bar") %>%
-               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0("Weighted core ISI (", u, ")")),
-                      yaxis = list(title = "Weighted count; each structure sums to 1"),
+               layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(ui_current_copy("\u52A0\u6743\u6838\u5FC3 ISI", "Weighted core ISI"), " (", u, ")")),
+                      yaxis = list(title = ui_current_copy("\u52A0\u6743\u8BA1\u6570\uFF08\u6BCF\u4E2A\u7ED3\u6784\u7684\u6743\u91CD\u548C\u4E3A 1\uFF09", "Weighted count; each structure sums to 1")),
                       margin = list(l = 60, r = 20, t = 40, b = 60)) %>%
                config(displaylogo = FALSE))
     }
     
     # Default histogram.
     bw <- safe_ui_value(input$structure_bin, 1)
-    validate(need(is.finite(bw) && bw > 0, "Bin width must be > 0."))
+    validate(need(is.finite(bw) && bw > 0, ui_text("bin_width_positive")))
     x <- sv$df$value[is.finite(sv$df$value)]
-    validate(need(length(x) > 0, "No finite values."))
+    validate(need(length(x) > 0, ui_text("no_finite_values_plot")))
     lo <- min(x); hi <- max(x)
     if (lo == hi) { lo <- lo - bw; hi <- hi + bw }
     br <- seq(floor(lo / bw) * bw, ceiling(hi / bw) * bw + bw, by = bw)
@@ -3682,13 +5478,16 @@ server <- function(input, output, session) {
     hover <- character(length(br) - 1L)
     for (ii in seq_len(length(br) - 1L)) {
       sub <- df[sv$df$value >= br[ii] & sv$df$value < br[ii + 1L], , drop = FALSE]
-      txt <- paste0("[", signif(br[ii], 4), ", ", signif(br[ii + 1L], 4), ") ", sv$unit, "<br>\u8BA1\u6570: ", nrow(sub))
+      txt <- paste0(
+        "[", signif(br[ii], 4), ", ", signif(br[ii + 1L], 4), ") ", sv$unit,
+        ui_current_copy("<br>\u8BA1\u6570\uFF1A", "<br>Count: "), nrow(sub)
+      )
       if (nrow(sub) > 0) {
         hs <- head(sub, 8)
-        items <- paste0(hs$train, " | structure ", hs$structure_id, " | ", hs$structure_class,
+        items <- paste0(hs$train, ui_current_copy(" | \u7ED3\u6784 ", " | structure "), hs$structure_id, " | ", hs$structure_class,
                         " | q90=", signif(hs$core_q_ISI_sec * f, 4), " ", u,
                         " | [", round(hs$start_time_sec, 3), ", ", round(hs$end_time_sec, 3), "] s")
-        more <- if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, " more") else ""
+        more <- if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, ui_current_copy(" \u9879", " more")) else ""
         txt <- paste0(txt, "<br>", paste(items, collapse = "<br>"), more)
       }
       hover[ii] <- txt
@@ -3696,7 +5495,7 @@ server <- function(input, output, session) {
     dd <- data.frame(mid = h$mids, count = h$counts, hover = hover)
     plot_ly(dd, x = ~mid, y = ~count, type = "bar", text = ~hover, hoverinfo = "text") %>%
       layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(sv$label, " (", sv$unit, ")")),
-             yaxis = list(title = "\u8BA1\u6570"),
+             yaxis = list(title = ui_current_copy("\u8BA1\u6570", "Count")),
              margin = list(l = 60, r = 20, t = 40, b = 60)) %>%
       config(displaylogo = FALSE)
   })
@@ -3704,7 +5503,7 @@ server <- function(input, output, session) {
   output$structure_table <- renderDT({
     df <- structure_tables_current()
     if (!isTRUE(input$structure_include_reject)) df <- df %>% filter(structure_class != "reject")
-    if (nrow(df) == 0) return(datatable(data.frame(message = "No structure candidates."), options = list(dom = "t")))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_structure_candidates")), options = list(dom = "t")))
     f <- unit_factor()
     nmax <- safe_int(input$structure_table_n, 100L)
     show <- df %>%
@@ -3774,15 +5573,15 @@ server <- function(input, output, session) {
     
     if (ht %in% c("seed_q", "seed_duration", "seed_edge_min", "seed_edge_geom", "seed_mm", "seed_lv")) {
       df <- tb$seeds
-      validate(need(!is.null(df) && nrow(df) > 0, "No structure seed diagnostics yet. Run detector first."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_structure_seed_diagnostics")))
       if (ht == "seed_q") {
-        df$value <- df$q_ISI_sec * f; unit <- u; label <- "Seed q90 ISI"
+        df$value <- df$q_ISI_sec * f; unit <- u; label <- ui_current_copy("Seed q90 ISI", "Seed q90 ISI")
       } else if (ht == "seed_duration") {
-        df$value <- df$duration_sec * f; unit <- u; label <- "Seed duration"
+        df$value <- df$duration_sec * f; unit <- u; label <- ui_current_copy("Seed \u6301\u7EED\u65F6\u95F4", "Seed duration")
       } else if (ht == "seed_edge_min") {
-        df$value <- df$edge_contrast_min_q; unit <- "ratio"; label <- "Seed edge contrast min"
+        df$value <- df$edge_contrast_min_q; unit <- "ratio"; label <- ui_current_copy("Seed \u8FB9\u754C\u5BF9\u6BD4\u5EA6 min", "Seed edge contrast min")
       } else if (ht == "seed_edge_geom") {
-        df$value <- df$edge_contrast_geom_q; unit <- "ratio"; label <- "Seed edge contrast geom"
+        df$value <- df$edge_contrast_geom_q; unit <- "ratio"; label <- ui_current_copy("Seed \u8FB9\u754C\u5BF9\u6BD4\u5EA6 geom", "Seed edge contrast geom")
       } else if (ht == "seed_mm") {
         df$value <- df$MM; unit <- "ratio"; label <- "Seed MM"
       } else {
@@ -3791,32 +5590,32 @@ server <- function(input, output, session) {
       df$row_type <- "seed"
     } else if (ht %in% c("bridge_raw", "bridge_ratio_maxseed", "bridge_ratio_geomseed", "bridge_merged_edge_min", "bridge_merged_edge_geom")) {
       df <- tb$bridges
-      validate(need(!is.null(df) && nrow(df) > 0, "No structure bridge diagnostics yet. Run detector first."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_structure_bridge_diagnostics")))
       if (!include_reject) df <- df %>% filter(bridge_class != "reject")
-      validate(need(nrow(df) > 0, "No bridge rows after current filter."))
+      validate(need(nrow(df) > 0, ui_text("no_bridge_after_filter")))
       if (ht == "bridge_raw") {
-        df$value <- df$bridge_ISI_max_sec * f; unit <- u; label <- "Bridge raw max ISI"
+        df$value <- df$bridge_ISI_max_sec * f; unit <- u; label <- ui_current_copy("Bridge \u539F\u59CB\u6700\u5927 ISI", "Bridge raw max ISI")
       } else if (ht == "bridge_ratio_maxseed") {
-        df$value <- df$bridge_ratio_max_seed_q; unit <- "ratio"; label <- "Bridge / inflated max(seed q90)"
+        df$value <- df$bridge_ratio_max_seed_q; unit <- "ratio"; label <- ui_current_copy("Bridge / \u653E\u5927\u540E max(seed q90)", "Bridge / inflated max(seed q90)")
       } else if (ht == "bridge_ratio_geomseed") {
-        df$value <- df$bridge_ratio_geom_seed_q; unit <- "ratio"; label <- "Bridge / inflated geom(seed q90)"
+        df$value <- df$bridge_ratio_geom_seed_q; unit <- "ratio"; label <- ui_current_copy("Bridge / \u653E\u5927\u540E geom(seed q90)", "Bridge / inflated geom(seed q90)")
       } else if (ht == "bridge_merged_edge_min") {
-        df$value <- df$merged_edge_contrast_min_q; unit <- "ratio"; label <- "Bridge merged edge contrast min"
+        df$value <- df$merged_edge_contrast_min_q; unit <- "ratio"; label <- ui_current_copy("Bridge \u5408\u5E76\u540E\u8FB9\u754C\u5BF9\u6BD4\u5EA6 min", "Bridge merged edge contrast min")
       } else {
-        df$value <- df$merged_edge_contrast_geom_q; unit <- "ratio"; label <- "Bridge merged edge contrast geom"
+        df$value <- df$merged_edge_contrast_geom_q; unit <- "ratio"; label <- ui_current_copy("Bridge \u5408\u5E76\u540E\u8FB9\u754C\u5BF9\u6BD4\u5EA6 geom", "Bridge merged edge contrast geom")
       }
       df$row_type <- "bridge"
     } else {
       df <- tb$candidates
-      validate(need(!is.null(df) && nrow(df) > 0, "No structure final candidate diagnostics yet. Run detector first."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_structure_final_diagnostics")))
       if (!include_reject) df <- df %>% filter(class != "reject")
-      validate(need(nrow(df) > 0, "No candidate rows after current filter."))
+      validate(need(nrow(df) > 0, ui_text("no_candidate_after_filter")))
       if (ht == "cand_edge_min") {
-        df$value <- if ("edge_contrast_min_seed_q" %in% names(df)) df$edge_contrast_min_seed_q else df$edge_contrast_min_q; unit <- "ratio"; label <- "Final candidate seed-core edge contrast min"
+        df$value <- if ("edge_contrast_min_seed_q" %in% names(df)) df$edge_contrast_min_seed_q else df$edge_contrast_min_q; unit <- "ratio"; label <- ui_current_copy("\u6700\u7EC8\u5019\u9009 seed-core \u8FB9\u754C\u5BF9\u6BD4\u5EA6 min", "Final candidate seed-core edge contrast min")
       } else if (ht == "cand_score") {
-        df$value <- df$score; unit <- "score"; label <- "Final candidate score"
+        df$value <- df$score; unit <- "score"; label <- ui_current_copy("\u6700\u7EC8\u5019\u9009\u5F97\u5206", "Final candidate score")
       } else {
-        df$value <- df$duration_sec * f; unit <- u; label <- "Final candidate duration"
+        df$value <- df$duration_sec * f; unit <- u; label <- ui_current_copy("\u6700\u7EC8\u5019\u9009\u6301\u7EED\u65F6\u95F4", "Final candidate duration")
       }
       df$row_type <- "candidate"
     }
@@ -3827,7 +5626,7 @@ server <- function(input, output, session) {
   output$diag_meta_table <- renderDT({
     dv <- diag_values_current()
     df <- dv$df
-    if (nrow(df) == 0) return(datatable(data.frame(message = "No finite diagnostic values."), options = list(dom = "t")))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_finite_diagnostics")), options = list(dom = "t")))
     summary_df <- data.frame(
       row_type = unique(df$row_type)[1],
       n = nrow(df),
@@ -3843,9 +5642,9 @@ server <- function(input, output, session) {
   output$diag_plot <- renderPlotly({
     dv <- diag_values_current()
     df <- dv$df
-    validate(need(nrow(df) > 0, "No diagnostic values to plot."))
+    validate(need(nrow(df) > 0, ui_text("no_diagnostics_to_plot")))
     bw <- safe_ui_value(input$diag_bin, 0.25)
-    validate(need(is.finite(bw) && bw > 0, "Bin width must be > 0."))
+    validate(need(is.finite(bw) && bw > 0, ui_text("bin_width_positive")))
     x <- df$value[is.finite(df$value)]
     lo <- min(x); hi <- max(x)
     if (lo == hi) { lo <- lo - bw; hi <- hi + bw }
@@ -3855,20 +5654,26 @@ server <- function(input, output, session) {
     hover <- character(length(br) - 1L)
     for (ii in seq_len(length(br) - 1L)) {
       sub <- df[df$value >= br[ii] & df$value < br[ii + 1L], , drop = FALSE]
-      txt <- paste0("[", signif(br[ii], 4), ", ", signif(br[ii + 1L], 4), ") ", dv$unit, "<br>\u8BA1\u6570: ", nrow(sub))
+      txt <- paste0(
+        "[", signif(br[ii], 4), ", ", signif(br[ii + 1L], 4), ") ", dv$unit,
+        ui_current_copy("<br>\u8BA1\u6570\uFF1A", "<br>Count: "), nrow(sub)
+      )
       if (nrow(sub) > 0) {
         hs <- head(sub, 8)
         if (unique(df$row_type)[1] == "seed") {
           items <- paste0(hs$train, " | seed ", hs$seed_id, " | q90=", signif(hs$q_ISI_sec, 4), " s | [", round(hs$start_time_sec, 3), ", ", round(hs$end_time_sec, 3), "] s")
         } else if (unique(df$row_type)[1] == "bridge") {
-          items <- paste0(hs$train, " | bridge ", hs$bridge_id, " | class=", hs$bridge_class,
-                          " | ratio=", signif(hs$bridge_ratio_max_seed_q, 4),
-                          " | L/R seed=", hs$left_seed_id, "/", hs$right_seed_id)
+          items <- paste0(hs$train, " | bridge ", hs$bridge_id,
+                          ui_current_copy(" | \u7C7B\u522B=", " | class="), hs$bridge_class,
+                          ui_current_copy(" | \u6BD4\u503C=", " | ratio="), signif(hs$bridge_ratio_max_seed_q, 4),
+                          ui_current_copy(" | \u5DE6/\u53F3 seed=", " | L/R seed="), hs$left_seed_id, "/", hs$right_seed_id)
         } else {
-          items <- paste0(hs$train, " | cand ", hs$candidate_id, " | class=", hs$class,
-                          " | score=", signif(hs$score, 4), " | [", round(hs$start_time_sec, 3), ", ", round(hs$end_time_sec, 3), "] s")
+          items <- paste0(hs$train, " | cand ", hs$candidate_id,
+                          ui_current_copy(" | \u7C7B\u522B=", " | class="), hs$class,
+                          ui_current_copy(" | \u5F97\u5206=", " | score="), signif(hs$score, 4),
+                          " | [", round(hs$start_time_sec, 3), ", ", round(hs$end_time_sec, 3), "] s")
         }
-        more <- if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, " more") else ""
+        more <- if (nrow(sub) > 8) paste0("<br>... +", nrow(sub) - 8, ui_current_copy(" \u9879", " more")) else ""
         txt <- paste0(txt, "<br>", paste(items, collapse = "<br>"), more)
       }
       hover[ii] <- txt
@@ -3876,7 +5681,7 @@ server <- function(input, output, session) {
     dd <- data.frame(mid = h$mids, count = h$counts, hover = hover)
     plot_ly(dd, x = ~mid, y = ~count, type = "bar", hoverinfo = "text", text = ~hover) %>%
       layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = paste0(dv$label, " (", dv$unit, ")")),
-             yaxis = list(title = "\u8BA1\u6570"), margin = list(l = 60, r = 20, t = 35, b = 60)) %>%
+             yaxis = list(title = ui_current_copy("\u8BA1\u6570", "Count")), margin = list(l = 60, r = 20, t = 35, b = 60)) %>%
       config(displaylogo = FALSE)
   })
   
@@ -3885,72 +5690,72 @@ server <- function(input, output, session) {
     mode <- input$diag_scatter_type %||% "seed_pct_score"
     if (mode == "seed_pct_score") {
       df <- ds$results$seed_candidates
-      validate(need(!is.null(df) && nrow(df) > 0, "No seed candidates available."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_seed_candidates")))
       x <- suppressWarnings(as.numeric(df$q_ISI_pct))
       y <- suppressWarnings(as.numeric(df$seed_score))
       keep <- is.finite(x) & is.finite(y)
-      validate(need(any(keep), "No finite seed q90 percentile / score pairs."))
+      validate(need(any(keep), ui_text("no_finite_seed_pairs")))
       dd <- df[keep, , drop = FALSE]
       dd$x <- x[keep]; dd$y <- y[keep]
       plot_ly(dd, x = ~x, y = ~y, type = "scatter", mode = "markers",
               color = ~seed_source,
               hoverinfo = "text",
-              text = ~paste0("Train\uFF1A", train,
+              text = ~paste0(ui_current_copy("Train\uFF1A", "Train: "), train,
                              "<br>Seed: ", seed_id,
-                             "<br>\u6765\u6E90\uFF1A", seed_source,
-                             "<br>q90 pct: ", round(x, 2), "%",
-                             "<br>Score: ", round(y, 4),
+                             ui_current_copy("<br>\u6765\u6E90\uFF1A", "<br>Source: "), seed_source,
+                             ui_current_copy("<br>q90 \u767E\u5206\u4F4D\uFF1A", "<br>q90 percentile: "), round(x, 2), "%",
+                             ui_current_copy("<br>\u5F97\u5206\uFF1A", "<br>Score: "), round(y, 4),
                              "<br>ISI\uFF1A", start_isi, "-", end_isi)) %>%
-        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = "Seed q90 ISI percentile within train (%)"),
-               yaxis = list(title = "Seed score"),
+        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = ui_current_copy("train \u5185 Seed q90 ISI \u767E\u5206\u4F4D\uFF08%\uFF09", "Seed q90 ISI percentile within train (%)")),
+               yaxis = list(title = ui_current_copy("Seed \u5F97\u5206", "Seed score")),
                margin = list(l = 60, r = 20, t = 30, b = 60)) %>%
         config(displaylogo = FALSE)
     } else if (mode == "bridge_pct_ratio") {
       df <- ds$results$bridge_candidates
-      validate(need(!is.null(df) && nrow(df) > 0, "No bridge candidates available."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_bridge_candidates")))
       if (!isTRUE(input$diag_show_reject)) df <- df %>% filter(bridge_class != "reject")
       x <- suppressWarnings(as.numeric(df$bridge_ISI_max_pct))
       y <- suppressWarnings(as.numeric(df$bridge_ratio_max_seed_q))
       keep <- is.finite(x) & is.finite(y)
-      validate(need(any(keep), "No finite bridge percentile / ratio pairs."))
+      validate(need(any(keep), ui_text("no_finite_bridge_pairs")))
       dd <- df[keep, , drop = FALSE]
       dd$x <- x[keep]; dd$y <- y[keep]
       plot_ly(dd, x = ~x, y = ~y, type = "scatter", mode = "markers",
               color = ~bridge_class,
               hoverinfo = "text",
-              text = ~paste0("Train\uFF1A", train,
+              text = ~paste0(ui_current_copy("Train\uFF1A", "Train: "), train,
                              "<br>Bridge: ", bridge_id,
-                             "<br>Class: ", bridge_class,
-                             "<br>\u539F\u56E0\uFF1A", bridge_reason,
-                             "<br>Bridge pct: ", round(x, 2), "%",
-                             "<br>Bridge ratio: ", round(y, 4),
-                             "<br>Left/right seed: ", left_seed_id, "/", right_seed_id)) %>%
-        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = "Bridge ISI max percentile within train (%)"),
-               yaxis = list(title = "Bridge / inflated max(seed q90)"),
+                             ui_current_copy("<br>\u7C7B\u522B\uFF1A", "<br>Class: "), bridge_class,
+                             ui_current_copy("<br>\u539F\u56E0\uFF1A", "<br>Reason: "), bridge_reason,
+                             ui_current_copy("<br>Bridge \u767E\u5206\u4F4D\uFF1A", "<br>Bridge percentile: "), round(x, 2), "%",
+                             ui_current_copy("<br>Bridge \u6BD4\u503C\uFF1A", "<br>Bridge ratio: "), round(y, 4),
+                             ui_current_copy("<br>\u5DE6/\u53F3 seed\uFF1A", "<br>Left/right seed: "), left_seed_id, "/", right_seed_id)) %>%
+        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = ui_current_copy("train \u5185 Bridge \u6700\u5927 ISI \u767E\u5206\u4F4D\uFF08%\uFF09", "Bridge ISI max percentile within train (%)")),
+               yaxis = list(title = ui_current_copy("Bridge / \u653E\u5927\u540E max(seed q90)", "Bridge / inflated max(seed q90)")),
                margin = list(l = 60, r = 20, t = 30, b = 60)) %>%
         config(displaylogo = FALSE)
     } else {
       df <- ds$results$burst_candidates
-      validate(need(!is.null(df) && nrow(df) > 0, "No final burst candidates available."))
+      validate(need(!is.null(df) && nrow(df) > 0, ui_text("no_final_burst_candidates")))
       if (!isTRUE(input$diag_show_reject)) df <- df %>% filter(class != "reject")
       x <- suppressWarnings(as.numeric(df$edge_contrast_geom_q))
       y <- suppressWarnings(as.numeric(df$score))
       keep <- is.finite(x) & is.finite(y)
-      validate(need(any(keep), "No finite final edge contrast / score pairs."))
+      validate(need(any(keep), ui_text("no_finite_final_pairs")))
       dd <- df[keep, , drop = FALSE]
       dd$x <- x[keep]; dd$y <- y[keep]
       plot_ly(dd, x = ~x, y = ~y, type = "scatter", mode = "markers",
               color = ~class,
               hoverinfo = "text",
-              text = ~paste0("Train\uFF1A", train,
-                             "<br>Candidate: ", candidate_id,
-                             "<br>Class: ", class,
-                             "<br>Score: ", round(y, 4),
-                             "<br>Edge geom: ", round(x, 4),
+              text = ~paste0(ui_current_copy("Train\uFF1A", "Train: "), train,
+                             ui_current_copy("<br>\u5019\u9009\uFF1A", "<br>Candidate: "), candidate_id,
+                             ui_current_copy("<br>\u7C7B\u522B\uFF1A", "<br>Class: "), class,
+                             ui_current_copy("<br>\u5F97\u5206\uFF1A", "<br>Score: "), round(y, 4),
+                             ui_current_copy("<br>\u8FB9\u754C geom\uFF1A", "<br>Edge geom: "), round(x, 4),
                              "<br>ISI\uFF1A", start_isi, "-", end_isi,
-                             "<br>\u539F\u56E0\uFF1A", reject_reason)) %>%
-        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = "Final candidate edge contrast geom/q"),
-               yaxis = list(title = "Final candidate score"),
+                             ui_current_copy("<br>\u539F\u56E0\uFF1A", "<br>Reason: "), reject_reason)) %>%
+        layout(hoverlabel = stpd_hoverlabel_style(), xaxis = list(title = ui_current_copy("\u6700\u7EC8\u5019\u9009\u8FB9\u754C\u5BF9\u6BD4\u5EA6 geom/q", "Final candidate edge contrast geom/q")),
+               yaxis = list(title = ui_current_copy("\u6700\u7EC8\u5019\u9009\u5F97\u5206", "Final candidate score")),
                margin = list(l = 60, r = 20, t = 30, b = 60)) %>%
         config(displaylogo = FALSE)
     }
@@ -3959,7 +5764,7 @@ server <- function(input, output, session) {
   output$diag_table <- renderDT({
     dv <- diag_values_current()
     df <- dv$df
-    if (nrow(df) == 0) return(datatable(data.frame(message = "No diagnostic rows."), options = list(dom = "t")))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_diagnostic_rows")), options = list(dom = "t")))
     show <- df %>% arrange(value) %>% head(500)
     # Convert selected time columns to current display unit while leaving raw seconds columns available in source names.
     f <- unit_factor()
@@ -3971,9 +5776,16 @@ server <- function(input, output, session) {
   
   output$qc_table <- renderDT({
     ds <- current_dataset()
-    # Recompute QC for the current artifact/min-valid-ISI threshold; stored QC may come from an older threshold.
-    q <- validate_dataset_quality_impl(ds$trains, min_isi_sec = min_valid_isi_sec(), unit_hint = ds$meta$unit_in %||% "s", refractory_suspect_sec = refractory_suspect_sec(), display_unit = qc_isi_unit())
-    if (is.null(q) || nrow(q) == 0) return(datatable(data.frame(message = "No QC rows."), options = list(dom = "t")))
+    # Import already computes and stores the QC table before the dataset is
+    # exposed to the rest of the UI.  Reusing it is important: opening the QC
+    # tab must not run a second full pass over every train while the raster and
+    # profile reactives are also warming up.  Fall back to recomputation only
+    # for legacy/in-memory datasets that predate the cached quality field.
+    q <- ds$quality
+    if (!is.data.frame(q)) {
+      q <- validate_dataset_quality_impl(ds$trains, min_isi_sec = min_valid_isi_sec(), unit_hint = ds$meta$unit_in %||% "s", refractory_suspect_sec = refractory_suspect_sec(), display_unit = qc_isi_unit())
+    }
+    if (is.null(q) || nrow(q) == 0) return(datatable(data.frame(message = ui_text("no_qc_rows")), options = list(dom = "t")))
     show <- q
     if (!("firing_rate_Hz" %in% names(show)) && "mean_rate_Hz" %in% names(show)) show$firing_rate_Hz <- show$mean_rate_Hz
     level_rank <- c(error = 1, warning = 2, ok = 3)
@@ -3984,7 +5796,20 @@ server <- function(input, output, session) {
                    "qc_time_unit", "raw_min_ISI", "artifact_threshold", "refractory_suspect_threshold",
                    "n_artifact_ISI", "artifact_fraction", "n_refractory_suspect_ISI", "n_valid_ISI", "percentile_status")
     show <- show[, intersect(preferred, names(show)), drop = FALSE]
-    if ("warning_level" %in% names(show)) show$warning_level <- toupper(show$warning_level)
+    if ("warning_message" %in% names(show)) {
+      show$warning_message <- stpd_ui_qc_warning_message(show$warning_message, lang = ui_language())
+    }
+    if ("warning_level" %in% names(show)) {
+      if (identical(ui_language(), "en")) {
+        show$warning_level <- toupper(show$warning_level)
+      } else {
+        level_zh <- c(error = "\u9519\u8BEF", warning = "\u8B66\u544A", ok = "\u901A\u8FC7")
+        raw_level <- as.character(show$warning_level)
+        localized <- unname(level_zh[raw_level])
+        localized[is.na(localized)] <- raw_level[is.na(localized)]
+        show$warning_level <- localized
+      }
+    }
     datatable(show, rownames = FALSE,
               options = list(pageLength = 20, scrollX = TRUE))
   })
@@ -3992,16 +5817,22 @@ server <- function(input, output, session) {
 
   output$artifact_isi_details_table <- renderDT({
     ds <- current_dataset()
-    details <- artifact_isi_details(ds$trains, min_isi_sec = min_valid_isi_sec(), display_unit = qc_isi_unit())
+    details <- ds$quality_artifact_details
+    if (!is.data.frame(details)) {
+      details <- artifact_isi_details(ds$trains, min_isi_sec = min_valid_isi_sec(), display_unit = qc_isi_unit())
+    }
     if (is.null(details) || nrow(details) == 0) {
-      return(datatable(data.frame(message = "No artifact ISIs below the current threshold."), options = list(dom = "t")))
+      return(datatable(data.frame(message = ui_text("no_artifact_isi")), options = list(dom = "t")))
     }
     datatable(details, rownames = FALSE, options = list(pageLength = 20, scrollX = TRUE))
   })
 
   output$duplicate_timestamp_details_table <- renderDT({
     ds <- current_dataset()
-    details <- duplicate_timestamp_details(ds$trains, display_unit = qc_isi_unit())
+    details <- ds$quality_duplicate_details
+    if (!is.data.frame(details)) {
+      details <- duplicate_timestamp_details(ds$trains, display_unit = qc_isi_unit())
+    }
     if (is.null(details) || nrow(details) == 0) {
       return(datatable(data.frame(message = "\u5F53\u524D\u6570\u636E\u96C6\u4E2D\u6CA1\u6709\u5B8C\u5168\u91CD\u590D timestamp\u3002"), options = list(dom = "t")))
     }
@@ -4014,25 +5845,51 @@ server <- function(input, output, session) {
     p <- read_params_from_ui()
     target_trains <- intersect(displayed_train_names() %||% names(ds$trains), names(ds$trains))
     if (length(target_trains) == 0) target_trains <- names(ds$trains)
-    withProgress(message = "Evaluating detector against MANUAL labels", value = 0.2, {
+    withProgress(message = ui_text("evaluating_manual"), value = 0.2, {
       rv$manual_detector_eval <- evaluate_detector_against_manual(
         ds, p, selected_trains = target_trains, min_isi_sec = p$detector$min_valid_isi_sec,
         use_learned_ranges = !identical(input$eval_learned_ranges_mode %||% "use", "disable"),
         metric_mode = input$manual_eval_metric_mode %||% "strict_high_confidence"
       )
+	      dataset_identity <- current_ui_dataset_identity() %||%
+	        stpd_ui_dataset_identity(ds, rv$current_id)
+	      run_identity <- ui_run_identity_for(ds, rv$current_id, dataset_identity)
+	      scored_trains <- if (is.data.frame(rv$manual_detector_eval$predictions) &&
+	          "train" %in% names(rv$manual_detector_eval$predictions)) {
+	        unique(as.character(rv$manual_detector_eval$predictions$train))
+	      } else {
+	        character()
+	      }
+	      scored_trains <- sort(unique(scored_trains[
+	        !is.na(scored_trains) & nzchar(scored_trains)
+	      ]), method = "radix")
+	      rv$manual_detector_eval_identity <- stpd_ui_validation_identity(
+	        rv$manual_detector_eval,
+	        dataset_identity = dataset_identity,
+	        run_identity = run_identity,
+	        selected_trains = scored_trains,
+	        truth_dependencies = "manual",
+	        source_kind = "shadow_independent",
+	        source_params_sha256 = stpd_ui_state_params_sha256(p),
+	        dataset = ds
+	      )
+	      rv$manual_detector_eval[["ui_identity"]] <- rv$manual_detector_eval_identity
+	      ds$results <- ds$results %||% list()
+	      ds$results$manual_detector_eval_ui <- rv$manual_detector_eval
+	      set_dataset(rv$current_id, ds)
       incProgress(1)
     })
     if (is.null(rv$manual_detector_eval) || nrow(rv$manual_detector_eval$metrics) == 0) {
-      showNotification("No manually labeled valid ISIs found for evaluation.", type = "warning", duration = 6)
+      showNotification(ui_text("no_manual_valid_isi"), type = "warning", duration = 6)
     } else {
-      showNotification("Manual-vs-detector evaluation finished. Open the Manual-vs-detector report tab.", type = "message", duration = 6)
-      updateTabsetPanel(session, "main_tabs", selected = "\u624B\u52A8\u6807\u8BB0 vs \u68C0\u6D4B\u5668\u62A5\u544A")
+      showNotification(ui_text("manual_evaluation_finished"), type = "message", duration = 6)
+      updateTabsetPanel(session, "main_tabs", selected = "\u624B\u52A8\u6807\u8BB0\u4E0E\u68C0\u6D4B\u5668\u62A5\u544A")
     }
   })
 
   output$manual_detector_meta <- renderDT({
     ev <- rv$manual_detector_eval
-    meta <- if (is.null(ev) || is.null(ev$meta)) data.frame(message = "No manual-vs-detector evaluation yet.") else ev$meta
+    meta <- if (is.null(ev) || is.null(ev$meta)) data.frame(message = ui_text("no_manual_evaluation")) else ev$meta
     datatable(meta, rownames = FALSE, options = list(dom = "t", scrollX = TRUE))
   })
 
@@ -4055,7 +5912,7 @@ server <- function(input, output, session) {
   observeEvent(input$run_scientific_validation, {
     ds <- current_dataset()
     p <- read_params_from_ui()
-    withProgress(message = "Running scientific validation report", value = 0.1, {
+    withProgress(message = ui_text("running_scientific_validation"), value = 0.1, {
       rv$scientific_validation <- stpd_scientific_validation_report(
         ds, p,
         validation_fraction = input$sci_val_fraction %||% 0.25,
@@ -4064,17 +5921,44 @@ server <- function(input, output, session) {
         metric_mode = input$sci_val_metric_mode %||% "strict_high_confidence",
         use_learned_ranges = isTRUE(input$sci_val_use_learned_ranges)
       )
-      ds$results$scientific_validation <- rv$scientific_validation
+	      dataset_identity <- current_ui_dataset_identity() %||%
+	        stpd_ui_dataset_identity(ds, rv$current_id)
+	      run_identity <- ui_run_identity_for(ds, rv$current_id, dataset_identity)
+	      validation_trains <- if (is.data.frame(rv$scientific_validation$split) &&
+	          all(c("train", "split") %in% names(rv$scientific_validation$split))) {
+	        split_rows <- rv$scientific_validation$split
+	        unique(as.character(split_rows$train[
+	          as.character(split_rows$split) %in% c("calibration", "validation")
+	        ]))
+	      } else {
+	        character()
+	      }
+	      validation_trains <- sort(unique(validation_trains[
+	        !is.na(validation_trains) & nzchar(validation_trains)
+	      ]), method = "radix")
+	      rv$scientific_validation_identity <- stpd_ui_validation_identity(
+	        rv$scientific_validation,
+	        dataset_identity = dataset_identity,
+	        run_identity = run_identity,
+	        selected_trains = validation_trains,
+	        truth_dependencies = "manual",
+	        source_kind = "shadow_independent",
+	        source_params_sha256 = stpd_ui_state_params_sha256(p),
+	        dataset = ds
+	      )
+	      rv$scientific_validation[["ui_identity"]] <- rv$scientific_validation_identity
+	      ds$results <- ds$results %||% list()
+	      ds$results[["scientific_validation"]] <- rv$scientific_validation
       set_dataset(rv$current_id, ds)
       incProgress(1)
     })
-    showNotification("Scientific validation report finished. Open the Scientific validation tab.", type = "message", duration = 6)
+    showNotification(ui_text("scientific_validation_finished"), type = "message", duration = 6)
     updateTabsetPanel(session, "main_tabs", selected = "\u79D1\u5B66\u9A8C\u8BC1")
   })
 
   output$scientific_validation_meta <- renderDT({
     r <- rv$scientific_validation
-    datatable(if (is.null(r) || is.null(r$meta)) data.frame(message = "No scientific validation report yet.") else r$meta,
+    datatable(if (is.null(r) || is.null(r$meta)) data.frame(message = ui_text("no_scientific_validation")) else r$meta,
               rownames = FALSE, options = list(dom = "t", scrollX = TRUE))
   })
   output$scientific_validation_split <- renderDT({
@@ -4106,39 +5990,77 @@ server <- function(input, output, session) {
 	  output$parameter_sensitivity_train_selector <- renderUI({
 	    ds <- tryCatch(current_dataset(), error = function(e) NULL)
 	    if (is.null(ds) || is.null(ds$trains) || length(ds$trains) == 0) {
-	      return(tags$div(class = "small-note", "\u8BF7\u5148\u52A0\u8F7D\u6570\u636E\u96C6\u3002"))
+	      return(tags$div(class = "small-note", ui_current_copy(
+	        "\u8BF7\u5148\u52A0\u8F7D\u6570\u636E\u96C6\u3002",
+	        "Please load a dataset first."
+	      )))
 	    }
 	    choices <- names(ds$trains)
-	    selected <- intersect(tryCatch(displayed_train_names(), error = function(e) choices), choices)
+	    fallback_selected <- intersect(
+	      tryCatch(displayed_train_names(), error = function(e) choices),
+	      choices
+	    )
+	    selected <- intersect(
+	      as.character(ui_control_remembered("parameter_sensitivity_trains", fallback_selected)),
+	      choices
+	    )
 	    if (length(selected) == 0) selected <- choices
 	    max_tr <- safe_int(input$parameter_sensitivity_max_trains %||% 3L, 3L)
 	    selectizeInput(
 	      "parameter_sensitivity_trains",
-	      "\u7528\u4E8E\u654F\u611F\u6027\u626B\u63CF\u7684 trains",
+	      ui_current_copy("\u7528\u4E8E\u654F\u611F\u6027\u626B\u63CF\u7684 trains", "Trains for the sensitivity scan"),
 	      choices = choices,
 	      selected = head(selected, max_tr),
 	      multiple = TRUE,
-	      options = list(placeholder = "\u9009\u62E9\u542B MANUAL \u6807\u7B7E\u7684 train")
+	      options = list(placeholder = ui_current_copy(
+	        "\u9009\u62E9\u542B MANUAL \u6807\u7B7E\u7684 train",
+	        "Select trains containing MANUAL labels"
+	      ))
 	    )
 	  })
 
 	  output$parameter_sensitivity_path_selector <- renderUI({
-	    schema <- tryCatch(stpd_contract_ui_schema(ui_level = "basic"), error = function(e) data.frame())
-	    schema <- schema[as.character(schema$type %||% "") %in% c("numeric", "integer", "logical"), , drop = FALSE]
+	    scope <- as.character(input$parameter_sensitivity_scope %||% "basic")[1L]
+	    if (!scope %in% c("basic", "tonic_regularization")) scope <- "basic"
+	    schema <- tryCatch(
+	      stpd_parameter_sensitivity_schema(scope),
+	      error = function(e) data.frame()
+	    )
 	    if (is.null(schema) || nrow(schema) == 0) {
-	      return(tags$div(class = "small-note", "\u6CA1\u6709\u53EF\u626B\u63CF\u7684 Basic \u53C2\u6570\u3002"))
+      return(tags$div(class = "small-note", ui_current_copy(
+	        "\u6CA1\u6709\u53EF\u626B\u63CF\u7684\u53C2\u6570\u3002",
+	        "No parameters are available for this scan scope."
+      )))
 	    }
 	    max_p <- safe_int(input$parameter_sensitivity_max_params %||% 6L, 6L)
-	    default_paths <- stpd_basic_sensitivity_paths(max_params = max_p)
-	    labels <- paste0(schema$label %||% schema$path, " \u2014 ", schema$path)
+	    default_paths <- if (identical(scope, "tonic_regularization")) {
+	      stpd_tonic_sensitivity_paths(max_params = max_p)
+	    } else {
+	      stpd_basic_sensitivity_paths(max_params = max_p)
+	    }
+	    labels <- vapply(seq_len(nrow(schema)), function(ii) {
+	      path <- as.character(schema$path[ii])
+	      label <- stpd_schema_ui_locale_text(
+	        as.character((schema$label %||% schema$path)[ii]),
+	        lang = ui_language(),
+	        fallback = path
+	      )
+	      paste0(label, " \u2014 ", path)
+	    }, character(1))
 	    choices <- stats::setNames(as.character(schema$path), labels)
 	    selectizeInput(
 	      "parameter_sensitivity_paths",
-	      "\u626B\u63CF\u7684 Basic \u53C2\u6570",
+	      ui_current_copy("\u8981\u626B\u63CF\u7684\u53C2\u6570", "Parameters to scan"),
 	      choices = choices,
-	      selected = intersect(default_paths, as.character(schema$path)),
+	      selected = intersect(
+	        as.character(ui_control_remembered("parameter_sensitivity_paths", default_paths)),
+	        as.character(schema$path)
+	      ),
 	      multiple = TRUE,
-	      options = list(placeholder = "\u9009\u62E9\u8981\u505A\u5C0F\u8303\u56F4 sweep \u7684\u53C2\u6570")
+      options = list(placeholder = ui_current_copy(
+        "\u9009\u62E9\u8981\u8FDB\u884C\u5C0F\u8303\u56F4\u626B\u63CF\u7684\u53C2\u6570",
+        "Select parameters for a small sweep"
+      ))
 	    )
 	  })
 
@@ -4148,14 +6070,21 @@ server <- function(input, output, session) {
 	    target <- intersect(input$parameter_sensitivity_trains %||% character(0), names(ds$trains))
 	    if (length(target) == 0) target <- intersect(tryCatch(displayed_train_names(), error = function(e) names(ds$trains)), names(ds$trains))
 	    if (length(target) == 0) target <- names(ds$trains)
-	    paths <- input$parameter_sensitivity_paths %||% stpd_basic_sensitivity_paths(max_params = input$parameter_sensitivity_max_params %||% 6L)
+	    scope <- as.character(input$parameter_sensitivity_scope %||% "basic")[1L]
+	    if (!scope %in% c("basic", "tonic_regularization")) scope <- "basic"
+	    paths <- input$parameter_sensitivity_paths %||% if (identical(scope, "tonic_regularization")) {
+	      stpd_tonic_sensitivity_paths(max_params = input$parameter_sensitivity_max_params %||% 6L)
+	    } else {
+	      stpd_basic_sensitivity_paths(max_params = input$parameter_sensitivity_max_params %||% 6L)
+	    }
 	    scan_error <- NULL
 	    tryCatch(
-	      withProgress(message = "Running event-level parameter sensitivity scan", value = 0.1, {
+	      withProgress(message = ui_text("running_parameter_sensitivity"), value = 0.1, {
 	        rv$parameter_sensitivity <- stpd_parameter_sensitivity_scan(
 	          ds, p,
 	          selected_trains = target,
 	          paths = paths,
+	          path_scope = scope,
 	          max_params = input$parameter_sensitivity_max_params %||% 6L,
 	          max_trains = input$parameter_sensitivity_max_trains %||% 3L,
 	          relative_step = input$parameter_sensitivity_relative_step %||% 0.25,
@@ -4177,42 +6106,130 @@ server <- function(input, output, session) {
 	    }
 	    scan <- rv$parameter_sensitivity
 	    changed <- if (!is.null(scan$summary) && nrow(scan$summary) > 0) {
-	      sum(suppressWarnings(as.numeric(scan$summary$changed_event_n)) > 0, na.rm = TRUE)
+	      event_changed <- suppressWarnings(as.numeric(scan$summary$changed_event_n)) > 0
+	      state_changed <- suppressWarnings(as.numeric(scan$summary$changed_state_episode_n)) > 0
+	      support_changed <- suppressWarnings(as.numeric(scan$summary$changed_state_direct_support_isi_n)) > 0
+	      conflict_changed <- suppressWarnings(as.numeric(scan$summary$changed_overlap_resolution_n)) > 0
+	      sum(event_changed | state_changed | support_changed | conflict_changed, na.rm = TRUE)
 	    } else 0L
-	    rv$parameter_sensitivity_status <- paste0(
-	      "\u5DF2\u5B8C\u6210\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\uFF1A",
-	      length(scan$paths %||% character(0)), " \u4E2A\u53C2\u6570\uFF0C",
-	      length(scan$selected_trains %||% character(0)), " \u6761 train\uFF1B",
-	      changed, " \u4E2A\u53D8\u4F53\u4EA7\u751F\u4E8B\u4EF6\u5DEE\u5F02\u3002"
+	    invalid_n <- if (!is.null(scan$summary) && nrow(scan$summary) > 0) {
+	      sum(as.character(scan$summary$variant_status %||% "") != "valid_contract" &
+	            as.character(scan$summary$variant_id %||% "") != "baseline_current",
+	          na.rm = TRUE)
+	    } else 0L
+	    rv$parameter_sensitivity_status <- ui_bilingual_value(
+	      paste0(
+	        "\u5DF2\u5B8C\u6210\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\uFF1A",
+	        length(scan$paths %||% character(0)), " \u4E2A\u53C2\u6570\uFF0C",
+	        length(scan$selected_trains %||% character(0)), " \u6761 train\uFF1B",
+	        changed, " \u4E2A\u53D8\u4F53\u4EA7\u751F Event/State/\u51B2\u7A81\u88C1\u51B3\u5DEE\u5F02\uFF1B",
+	        invalid_n, " \u4E2A\u53D8\u4F53\u56E0\u53C2\u6570\u5408\u540C\u672A\u5B9E\u9645\u8FD0\u884C\u3002\u672C\u7ED3\u679C\u4E3A non-authoritative dry-run\u3002"
+	      ),
+	      paste0(
+	        "Parameter-sensitivity scan complete: ",
+	        length(scan$paths %||% character(0)), " parameter(s), ",
+	        length(scan$selected_trains %||% character(0)), " train(s); ",
+	        changed, " variant(s) produced Event/State/conflict-resolution differences; ",
+	        invalid_n, " variant(s) were not run because of parameter-contract constraints. This is a non-authoritative dry-run."
+	      )
 	    )
-	    showNotification(rv$parameter_sensitivity_status, type = "message", duration = 8)
+	    showNotification(ui_bilingual_current(rv$parameter_sensitivity_status), type = "message", duration = 8)
 	    updateTabsetPanel(session, "main_tabs", selected = "\u79D1\u5B66\u9A8C\u8BC1")
 	  })
 
+	  observe({
+	    scan <- rv$parameter_sensitivity
+	    if (is.null(scan) || is.null(scan$meta) || nrow(scan$meta) == 0L) {
+	      return(invisible(NULL))
+	    }
+	    current_hash <- tryCatch(
+	      stpd_parameter_sensitivity_context_hash(
+	        current_dataset(), read_params_from_ui(),
+	        scan$selected_trains %||% character(),
+	        use_learned_ranges = isTRUE(input$sci_val_use_learned_ranges)
+	      ),
+	      error = function(e) NA_character_
+	    )
+	    frozen_hash <- as.character(scan$meta$context_sha256[1] %||% "")
+	    if (is.na(current_hash) || !nzchar(current_hash) ||
+	        !identical(current_hash, frozen_hash)) {
+	      rv$parameter_sensitivity <- NULL
+	      rv$parameter_sensitivity_status <- ui_bilingual_value(
+	        "\u6570\u636E\u3001\u6B63\u5F0F\u68C0\u6D4B\u72B6\u6001\u6216\u53C2\u6570\u5DF2\u53D8\u5316\uFF1B\u65E7\u9608\u503C\u9884\u89C8\u5DF2\u4F5C\u5E9F\uFF0C\u8BF7\u91CD\u65B0\u8FD0\u884C\u3002",
+	        "The data, formal detector state, or parameters changed; the old threshold preview was invalidated. Please rerun it."
+	      )
+	    }
+	    invisible(NULL)
+	  })
+
 	  output$parameter_sensitivity_status <- renderText({
-	    rv$parameter_sensitivity_status %||% "\u5C1A\u672A\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u626B\u63CF\u3002"
+	    value <- rv$parameter_sensitivity_status %||% ui_bilingual_value(
+	      "\u5C1A\u672A\u8FD0\u884C Event/State \u53C2\u6570\u9608\u503C\u9884\u89C8\u3002",
+	      "No Event/State parameter-threshold preview has been run yet."
+	    )
+	    ui_bilingual_current(value)
+	  })
+
+	  output$parameter_sensitivity_meta_table <- renderDT({
+	    scan <- rv$parameter_sensitivity
+	    dat <- if (is.null(scan) || is.null(scan$meta) || nrow(scan$meta) == 0L) {
+	      data.frame(message = ui_current_copy(
+	        "\u5C1A\u65E0\u53EF\u5BA1\u8BA1\u7684 dry-run \u6765\u6E90\u8BB0\u5F55\u3002",
+	        "No auditable dry-run provenance is available."
+	      ), stringsAsFactors = FALSE)
+	    } else scan$meta
+	    datatable(dat, rownames = FALSE, options = list(pageLength = 5, scrollX = TRUE))
 	  })
 
 	  output$parameter_sensitivity_metric_plot <- renderPlotly({
 	    scan <- rv$parameter_sensitivity
 	    validate(need(!is.null(scan) && !is.null(scan$summary) && nrow(scan$summary) > 0,
-	                  "\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u540E\u663E\u793A\u6307\u6807\u66F2\u7EBF\u3002"))
+	                  ui_current_copy(
+	                    "\u8FD0\u884C Event/State \u53C2\u6570\u9608\u503C\u9884\u89C8\u540E\u663E\u793A\u6307\u6807\u66F2\u7EBF\u3002",
+	                    "Run the Event/State parameter-threshold preview to display metric curves."
+	                  )))
 	    dat <- scan$summary
 	    dat <- dat[nzchar(as.character(dat$parameter_path %||% "")), , drop = FALSE]
 	    metric <- as.character(input$parameter_sensitivity_plot_metric %||% "macro_F1")[1]
-	    if (!metric %in% c("macro_F1", "macro_precision", "macro_recall")) metric <- "macro_F1"
-	    validate(need(nrow(dat) > 0 && metric %in% names(dat), "\u6CA1\u6709\u53EF\u7ED8\u5236\u7684\u53C2\u6570\u53D8\u4F53\u3002"))
+	    allowed_metrics <- c(
+	      "macro_F1", "macro_precision", "macro_recall",
+	      "current_tonic_state_episode_n", "current_tonic_direct_support_isi_n",
+	      "current_broad_hfs_state_episode_n", "current_broad_hfs_direct_support_isi_n",
+	      "changed_overlap_resolution_n"
+	    )
+	    if (!metric %in% allowed_metrics) metric <- "macro_F1"
+	    validate(need(nrow(dat) > 0 && metric %in% names(dat), ui_current_copy(
+	      "\u6CA1\u6709\u53EF\u7ED8\u5236\u7684\u53C2\u6570\u53D8\u4F53\u3002",
+	      "No parameter variants are available to plot."
+	    )))
 	    dat$variant_numeric <- suppressWarnings(as.numeric(dat$variant_value))
 	    dat$metric_value <- suppressWarnings(as.numeric(dat[[metric]]))
 	    dat <- dat[is.finite(dat$variant_numeric) & is.finite(dat$metric_value), , drop = FALSE]
-	    validate(need(nrow(dat) > 0, "\u654F\u611F\u6027\u7ED3\u679C\u4E2D\u6CA1\u6709\u6709\u9650\u7684\u6570\u503C\u6307\u6807\u3002"))
+	    validate(need(nrow(dat) > 0, ui_current_copy(
+	      "\u654F\u611F\u6027\u7ED3\u679C\u4E2D\u6CA1\u6709\u6709\u9650\u7684\u6570\u503C\u6307\u6807\u3002",
+	      "The sensitivity results contain no finite numeric metrics."
+	    )))
+	    dat$parameter_label <- vapply(seq_len(nrow(dat)), function(i) {
+	      stpd_schema_ui_locale_text(
+	        dat$parameter_label[[i]],
+	        lang = ui_language(),
+	        fallback = as.character(dat$parameter_path[[i]])
+	      )
+	    }, character(1))
 	    dat$hover_text <- paste0(
-	      "\u53C2\u6570\uFF1A", dat$parameter_label,
-	      "<br>Path\uFF1A", dat$parameter_path,
-	      "<br>\u53D8\u4F53\u503C\uFF1A", dat$variant_value,
-	      "<br>", metric, "\uFF1A", signif(dat$metric_value, 4),
-	      "<br>\u4E8B\u4EF6\u5DEE\u5F02\uFF1A", dat$changed_event_n
+	      ui_current_copy("\u53C2\u6570\uFF1A", "Parameter: "), dat$parameter_label,
+	      ui_current_copy("<br>\u8DEF\u5F84\uFF1A", "<br>Path: "), dat$parameter_path,
+	      ui_current_copy("<br>\u53D8\u4F53\u503C\uFF1A", "<br>Variant value: "), dat$variant_value,
+	      ui_current_copy("<br>\u68C0\u6D4B\u5668\u5B9E\u9645\u503C\uFF1A", "<br>Detector-applied value: "), dat$effective_variant_value,
+	      ui_current_copy("<br>\u79D1\u5B66\u65B9\u5411\uFF1A", "<br>Scientific direction: "), dat$scientific_direction,
+	      ui_current_copy("<br>\u53D8\u4F53\u72B6\u6001\uFF1A", "<br>Variant status: "), dat$variant_status,
+	      "<br>", metric, ui_current_copy("\uFF1A", ": "), signif(dat$metric_value, 4),
+	      ui_current_copy("<br>Event \u5DEE\u5F02\uFF1A", "<br>Event differences: "), dat$changed_event_n,
+	      ui_current_copy("<br>State episode \u5DEE\u5F02\uFF1A", "<br>State episode differences: "), dat$changed_state_episode_n,
+	      ui_current_copy("<br>Direct-support ISI \u5DEE\u5F02\uFF1A", "<br>Direct-support ISI differences: "), dat$changed_state_direct_support_isi_n,
+	      ui_current_copy("<br>Tonic\u2013HFS \u51B2\u7A81\u88C1\u51B3\u5DEE\u5F02\uFF1A", "<br>Tonic\u2013HFS conflict-resolution differences: "), dat$changed_overlap_resolution_n
 	    )
+	    probability_metric <- metric %in% c("macro_F1", "macro_precision", "macro_recall")
 	    plot_ly(
 	      dat,
 	      x = ~variant_numeric,
@@ -4225,8 +6242,8 @@ server <- function(input, output, session) {
 	    ) %>%
 	      layout(
 	        hoverlabel = stpd_hoverlabel_style(),
-	        xaxis = list(title = "\u53C2\u6570\u53D8\u4F53\u503C"),
-	        yaxis = list(title = metric, range = c(0, 1)),
+	        xaxis = list(title = ui_current_copy("\u53C2\u6570\u53D8\u4F53\u503C", "Parameter variant value")),
+	        yaxis = if (probability_metric) list(title = metric, range = c(0, 1)) else list(title = metric, rangemode = "tozero"),
 	        legend = list(orientation = "h", x = 0, y = -0.25),
 	        margin = list(l = 60, r = 20, t = 20, b = 80)
 	      ) %>%
@@ -4236,8 +6253,47 @@ server <- function(input, output, session) {
 	  output$parameter_sensitivity_summary_table <- renderDT({
 	    scan <- rv$parameter_sensitivity
 	    dat <- if (is.null(scan) || is.null(scan$summary) || nrow(scan$summary) == 0) {
-	      data.frame(message = "\u8FD0\u884C\u4E8B\u4EF6\u7EA7\u53C2\u6570\u654F\u611F\u6027\u540E\u663E\u793A\u6458\u8981\u3002", stringsAsFactors = FALSE)
+	      data.frame(message = ui_current_copy(
+	        "\u8FD0\u884C Event/State \u53C2\u6570\u9608\u503C\u9884\u89C8\u540E\u663E\u793A\u6458\u8981\u3002",
+	        "Run the Event/State parameter-threshold preview to display the summary."
+	      ), stringsAsFactors = FALSE)
 	    } else scan$summary
+	    datatable(dat, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+	  })
+
+	  output$parameter_sensitivity_state_episode_table <- renderDT({
+	    scan <- rv$parameter_sensitivity
+	    dat <- if (is.null(scan) || is.null(scan$state_episode_differences) ||
+	               nrow(scan$state_episode_differences) == 0L) {
+	      data.frame(message = ui_current_copy(
+	        "\u6CA1\u6709 State episode \u53D8\u5316\u3002",
+	        "No State-episode differences."
+	      ), stringsAsFactors = FALSE)
+	    } else scan$state_episode_differences
+	    datatable(dat, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+	  })
+
+	  output$parameter_sensitivity_state_support_table <- renderDT({
+	    scan <- rv$parameter_sensitivity
+	    dat <- if (is.null(scan) || is.null(scan$state_direct_support_differences) ||
+	               nrow(scan$state_direct_support_differences) == 0L) {
+	      data.frame(message = ui_current_copy(
+	        "\u6CA1\u6709 State direct-support ISI \u53D8\u5316\u3002",
+	        "No State direct-support ISI differences."
+	      ), stringsAsFactors = FALSE)
+	    } else scan$state_direct_support_differences
+	    datatable(dat, rownames = FALSE, options = list(pageLength = 20, scrollX = TRUE))
+	  })
+
+	  output$parameter_sensitivity_overlap_resolution_table <- renderDT({
+	    scan <- rv$parameter_sensitivity
+	    dat <- if (is.null(scan) || is.null(scan$overlap_resolution_differences) ||
+	               nrow(scan$overlap_resolution_differences) == 0L) {
+	      data.frame(message = ui_current_copy(
+	        "\u6CA1\u6709 Tonic\u2013HFS \u51B2\u7A81\u88C1\u51B3\u53D8\u5316\u3002",
+	        "No Tonic\u2013HFS conflict-resolution differences."
+	      ), stringsAsFactors = FALSE)
+	    } else scan$overlap_resolution_differences
 	    datatable(dat, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
 	  })
 
@@ -4268,12 +6324,12 @@ server <- function(input, output, session) {
 
 	  observeEvent(input$run_all_datasets, {
     tryCatch({
-      validate(need(length(rv$datasets) > 0, "No datasets loaded."))
-      p <- read_params_from_ui()
+      validate(need(length(rv$datasets) > 0, ui_text("no_datasets_loaded")))
+      p <- effective_params_for_detector(read_params_from_ui())
       ids <- names(rv$datasets)
       failures <- list()
       ok_n <- 0L
-      withProgress(message = "Batch running detector on all loaded datasets", value = 0, {
+      withProgress(message = ui_text("batch_running"), value = 0, {
         for (ii in seq_along(ids)) {
           id <- ids[ii]
           incProgress(1 / max(1, length(ids)), detail = id)
@@ -4286,50 +6342,370 @@ server <- function(input, output, session) {
             failures[[id]] <- conditionMessage(res)
             next
           }
-          rv$datasets[[id]] <- normalize_dataset(res)
+          res <- normalize_dataset(res)
+          rv$datasets[[id]] <- res
+          run_identities <- rv$ui_run_identity_by_dataset %||% list()
+          run_identities[[id]] <- stpd_ui_run_identity(
+            res, params = p, dataset_id = id,
+            selected_trains = names(res$trains)
+          )
+          rv$ui_run_identity_by_dataset <- run_identities
           ok_n <- ok_n + 1L
         }
       })
       if (length(failures) > 0) {
         first <- paste(utils::head(paste0(names(failures), ": ", unlist(failures, use.names = FALSE)), 3L), collapse = " | ")
-        rv$batch_status <- paste0(
-          "\u6279\u5904\u7406\u5B8C\u6210\u4F46\u6709\u6570\u636E\u96C6\u88AB\u8DF3\u8FC7\uFF1A\u6210\u529F ",
-          ok_n, " / ", length(ids), "\uFF1B\u5931\u8D25 ", length(failures), "\u3002", first
+        rv$batch_status_record <- list(
+          key = "batch_partial",
+          args = list(
+            ok = ok_n, total = length(ids), failed = length(failures),
+            detail = first
+          )
         )
+        rv$batch_status <- ui_text_record(rv$batch_status_record, "batch_not_started")
         showNotification(stpd_shiny_detector_error_message(simpleError(rv$batch_status), prefix = "\u6279\u5904\u7406\u672A\u5B8C\u5168\u6210\u529F"), type = "error", duration = 15)
         if (any(vapply(failures, function(x) stpd_error_mentions_qc(simpleError(x)), logical(1)))) {
           updateTabsetPanel(session, "main_tabs", selected = "\u6570\u636E QC")
         }
       } else {
-        rv$batch_status <- paste0("Last batch run: ", length(ids), " dataset(s), ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+        rv$batch_status_record <- list(
+          key = "batch_last_run",
+          args = list(
+            n = length(ids), time = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+          )
+        )
+        rv$batch_status <- ui_text_record(rv$batch_status_record, "batch_not_started")
         showNotification(rv$batch_status, type = "message", duration = 7)
       }
     },
     shiny.silent.error = function(e) detector_notify_error(e, prefix = "\u6279\u5904\u7406\u672A\u5B8C\u6210", status = "batch"),
     error = function(e) detector_notify_error(e, prefix = "\u6279\u5904\u7406\u5931\u8D25", status = "batch"))
   })
-  output$batch_status <- renderText({ rv$batch_status %||% "\u5C1A\u672A\u8FD0\u884C\u6279\u5904\u7406\u3002" })
+  output$batch_status <- renderText({
+    ui_text_record(rv$batch_status_record, "batch_not_started")
+  })
+
+	  batch_export_code_copy <- function(code, lang = ui_language()) {
+	    code <- as.character(code %||% "")[1]
+	    if (is.na(code)) code <- ""
+	    copy <- switch(
+	      code,
+	      batch_export_no_datasets = c(
+	        zh = "\u5F53\u524D\u6CA1\u6709\u53EF\u7528\u4E8E\u6279\u91CF\u6B63\u5F0F\u5BFC\u51FA\u7684\u6570\u636E\u96C6\u3002",
+	        en = "No datasets are available for formal batch export."
+	      ),
+	      batch_export_dataset_ids_invalid = c(
+	        zh = "\u6BCF\u4E2A\u6570\u636E\u96C6\u90FD\u5FC5\u987B\u5177\u6709\u975E\u7A7A\u4E14\u552F\u4E00\u7684 ID\u3002",
+	        en = "Every dataset must have a non-empty, unique ID."
+	      ),
+	      batch_export_dataset_invalid = c(
+	        zh = "\u6570\u636E\u96C6\u7ED3\u6784\u4E0D\u5B8C\u6574\uFF0C\u65E0\u6CD5\u8FDB\u884C\u6B63\u5F0F\u5BFC\u51FA\u3002",
+	        en = "The dataset structure is incomplete and cannot be formally exported."
+	      ),
+	      batch_export_params_missing = c(
+	        zh = "\u7F3A\u5C11\u8BE5\u6570\u636E\u96C6\u7684\u6709\u6548\u53C2\u6570\u5FEB\u7167\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "A valid parameter snapshot is missing for this dataset. Rerun the detector."
+	      ),
+	      batch_export_params_effective_mismatch = c(
+	        zh = "\u5F53\u524D\u53C2\u6570\u4E0E\u68C0\u6D4B\u65F6\u51BB\u7ED3\u7684\u6709\u6548\u53C2\u6570\u4E0D\u4E00\u81F4\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "The current parameters do not match the effective parameters frozen at detection time. Rerun the detector."
+	      ),
+	      batch_export_run_identity_missing = c(
+	        zh = "\u7F3A\u5C11\u8BE5\u6570\u636E\u96C6\u7684\u6B63\u5F0F\u8FD0\u884C\u8EAB\u4EFD\u5FEB\u7167\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "The formal-run identity snapshot is missing for this dataset. Rerun the detector."
+	      ),
+	      batch_export_detector_output_identity_missing = c(
+	        zh = "\u7F3A\u5C11\u8BE5\u6570\u636E\u96C6\u7684\u68C0\u6D4B\u7ED3\u679C\u8EAB\u4EFD\u5FEB\u7167\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "The detector-output identity snapshot is missing for this dataset. Rerun the detector."
+	      ),
+	      batch_export_blocked = c(
+	        zh = "\u81F3\u5C11\u4E00\u4E2A\u6570\u636E\u96C6\u672A\u901A\u8FC7\u6B63\u5F0F\u6279\u91CF\u5BFC\u51FA\u95E8\u63A7\u3002",
+	        en = "At least one dataset failed the formal batch-export gate."
+	      ),
+	      batch_export_ready = c(
+	        zh = "\u6240\u6709\u6570\u636E\u96C6\u5747\u5DF2\u901A\u8FC7\u6B63\u5F0F\u6279\u91CF\u5BFC\u51FA\u95E8\u63A7\u3002",
+	        en = "All datasets passed the formal batch-export gate."
+	      ),
+	      zip_file_missing_or_empty = c(
+	        zh = "\u751F\u6210\u7684 ZIP \u6587\u4EF6\u4E0D\u5B58\u5728\u3001\u4E0D\u662F\u666E\u901A\u6587\u4EF6\u6216\u5185\u5BB9\u4E3A\u7A7A\u3002",
+	        en = "The generated ZIP is missing, is not a regular file, or is empty."
+	      ),
+	      zip_requested_member_unsafe = c(
+	        zh = "ZIP \u6821\u9A8C\u6E05\u5355\u4E2D\u5305\u542B\u4E0D\u5B89\u5168\u7684\u6587\u4EF6\u8DEF\u5F84\u3002",
+	        en = "The ZIP verification list contains an unsafe file path."
+	      ),
+	      zip_unreadable = c(
+	        zh = "\u65E0\u6CD5\u8BFB\u53D6\u751F\u6210\u7684 ZIP \u76EE\u5F55\u3002",
+	        en = "The generated ZIP directory cannot be read."
+	      ),
+	      zip_unsafe_member = c(
+	        zh = "\u751F\u6210\u7684 ZIP \u4E2D\u5305\u542B\u4E0D\u5B89\u5168\u7684\u7EDD\u5BF9\u8DEF\u5F84\u6216\u4E0A\u7EA7\u76EE\u5F55\u8DEF\u5F84\u3002",
+	        en = "The generated ZIP contains an unsafe absolute or parent-directory path."
+	      ),
+	      zip_duplicate_member = c(
+	        zh = "\u751F\u6210\u7684 ZIP \u4E2D\u5305\u542B\u91CD\u590D\u6587\u4EF6\u540D\u3002",
+	        en = "The generated ZIP contains duplicate member names."
+	      ),
+	      zip_required_file_missing = c(
+	        zh = "\u751F\u6210\u7684 ZIP \u7F3A\u5C11\u4E00\u4E2A\u6216\u591A\u4E2A\u5FC5\u9700\u6587\u4EF6\u3002",
+	        en = "The generated ZIP is missing one or more required files."
+	      ),
+	      zip_sentinel_missing = c(
+	        zh = "\u751F\u6210\u7684 ZIP \u7F3A\u5C11\u4E00\u4E2A\u6216\u591A\u4E2A\u5B8C\u6574\u6027\u54E8\u5175\u6587\u4EF6\u3002",
+	        en = "The generated ZIP is missing one or more integrity sentinel files."
+	      ),
+	      zip_verification_workspace_failed = c(
+	        zh = "\u65E0\u6CD5\u521B\u5EFA ZIP \u5B8C\u6574\u6027\u6821\u9A8C\u6240\u9700\u7684\u4E34\u65F6\u5DE5\u4F5C\u533A\u3002",
+	        en = "A temporary workspace for ZIP integrity verification could not be created."
+	      ),
+	      zip_invalid_archive = c(
+	        zh = "\u751F\u6210\u7684\u6587\u4EF6\u4E0D\u662F\u53EF\u5B89\u5168\u89E3\u538B\u7684\u6709\u6548 ZIP\u3002",
+	        en = "The generated file is not a valid ZIP that can be safely extracted."
+	      ),
+	      zip_required_file_not_extracted = c(
+	        zh = "ZIP \u4E2D\u7684\u4E00\u4E2A\u6216\u591A\u4E2A\u5FC5\u9700\u6587\u4EF6\u65E0\u6CD5\u89E3\u538B\u3002",
+	        en = "One or more required ZIP files could not be extracted."
+	      ),
+	      zip_sentinel_empty = c(
+	        zh = "ZIP \u4E2D\u7684\u4E00\u4E2A\u6216\u591A\u4E2A\u5B8C\u6574\u6027\u54E8\u5175\u6587\u4EF6\u4E3A\u7A7A\u6216\u89E3\u538B\u540E\u7F3A\u5931\u3002",
+	        en = "One or more ZIP integrity sentinel files are empty or missing after extraction."
+	      ),
+	      zip_valid = c(
+	        zh = "ZIP \u5DF2\u901A\u8FC7\u76EE\u5F55\u3001\u89E3\u538B\u548C\u5FC5\u9700\u6587\u4EF6\u5B8C\u6574\u6027\u6821\u9A8C\u3002",
+	        en = "The ZIP passed directory, extraction, and required-file integrity checks."
+	      ),
+	      NULL
+	    )
+	    if (is.null(copy) && startsWith(code, "batch_export_formal_export_")) {
+	      copy <- c(
+	        zh = "\u8BE5\u6570\u636E\u96C6\u7684\u6B63\u5F0F\u8FD0\u884C\u72B6\u6001\u6216\u6765\u6E90\u8EAB\u4EFD\u5DF2\u5931\u6548\u3002\u8BF7\u5BF9\u5168\u90E8 trains \u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "This dataset's formal-run state or provenance identity is no longer current. Rerun the detector for all trains."
+	      )
+	    }
+	    if (is.null(copy) && startsWith(code, "batch_export_detector_output_")) {
+	      copy <- c(
+	        zh = "\u68C0\u6D4B\u7ED3\u679C\u4E0E\u6B63\u5F0F\u8FD0\u884C\u65F6\u4FDD\u5B58\u7684\u7ED3\u679C\u8EAB\u4EFD\u4E0D\u4E00\u81F4\u6216\u65E0\u6CD5\u9A8C\u8BC1\u3002\u8BF7\u5BF9\u5168\u90E8 trains \u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u5668\u3002",
+	        en = "The detector results differ from, or cannot be verified against, the identity saved at formal run time. Rerun the detector for all trains."
+	      )
+	    }
+	    if (is.null(copy)) {
+	      copy <- c(
+	        zh = "\u65E0\u6CD5\u6839\u636E\u6B64\u72B6\u6001\u786E\u8BA4\u5BFC\u51FA\u5B8C\u6574\u6027\uFF1B\u64CD\u4F5C\u5DF2\u5B89\u5168\u505C\u6B62\u3002",
+	        en = "Export integrity cannot be confirmed from this state; the operation was stopped safely."
+	      )
+	    }
+	    if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      unname(copy[["en"]])
+	    } else {
+	      unname(copy[["zh"]])
+	    }
+	  }
+
+	  batch_export_technical_detail <- function(detail, lang = ui_language()) {
+	    detail <- as.character(detail %||% character())
+	    detail <- detail[!is.na(detail)]
+	    detail <- trimws(gsub("[\\r\\n\\t]+", " ", detail, perl = TRUE))
+	    detail <- unique(detail[nzchar(detail)])
+	    if (length(detail) == 0L) return("")
+	    stpd_ui_copy(
+	      "technical_detail", lang = lang,
+	      detail = paste(detail, collapse = " | ")
+	    )
+	  }
+
+	  batch_export_plan_failure_message <- function(plan, lang = ui_language()) {
+	    plan <- plan %||% list()
+	    failures <- plan$failures %||% data.frame()
+	    first_failure <- NULL
+	    if (is.data.frame(failures) && nrow(failures) > 0L) {
+	      first_failure <- failures[1L, , drop = FALSE]
+	    }
+	    code <- if (!is.null(first_failure) && "code" %in% names(first_failure)) {
+	      as.character(first_failure$code[[1L]])
+	    } else {
+	      as.character(plan$code %||% "batch_export_blocked")[1]
+	    }
+	    if (is.na(code) || !nzchar(code)) code <- "batch_export_blocked"
+	    dataset_id <- if (!is.null(first_failure) &&
+	        "dataset_id" %in% names(first_failure)) {
+	      as.character(first_failure$dataset_id[[1L]])
+	    } else {
+	      ""
+	    }
+	    if (is.na(dataset_id)) dataset_id <- ""
+	    dataset_id <- trimws(gsub("[\\r\\n\\t]+", " ", dataset_id, perl = TRUE))
+	    heading <- if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      "Formal batch export was stopped; no batch results were written."
+	    } else {
+	      "\u6279\u91CF\u6B63\u5F0F\u5BFC\u51FA\u5DF2\u505C\u6B62\uFF1B\u672A\u5199\u51FA\u4EFB\u4F55\u6279\u91CF\u7ED3\u679C\u3002"
+	    }
+	    scope <- if (!nzchar(dataset_id)) {
+	      ""
+	    } else if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      paste0("Dataset \u201C", dataset_id, "\u201D: ")
+	    } else {
+	      paste0("\u6570\u636E\u96C6\u201C", dataset_id, "\u201D\uFF1A")
+	    }
+	    code_label <- if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      paste0(" (Code: ", code, ")")
+	    } else {
+	      paste0("\uFF08\u72B6\u6001\u7801\uFF1A", code, "\uFF09")
+	    }
+	    raw_detail <- c(plan$detail %||% character())
+	    if (!is.null(first_failure) && "detail" %in% names(first_failure)) {
+	      raw_detail <- c(raw_detail, as.character(first_failure$detail[[1L]]))
+	    }
+	    lines <- c(
+	      heading,
+	      paste0(scope, batch_export_code_copy(code, lang), code_label),
+	      batch_export_technical_detail(raw_detail, lang)
+	    )
+	    paste(lines[nzchar(lines)], collapse = "\n")
+	  }
+
+	  batch_zip_failure_message <- function(checked, lang = ui_language()) {
+	    checked <- checked %||% list()
+	    code <- as.character(checked$code %||% "zip_verification_failed")[1]
+	    if (is.na(code) || !nzchar(code)) code <- "zip_verification_failed"
+	    heading <- if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      "The batch ZIP failed post-generation integrity verification and will not be offered for download."
+	    } else {
+	      "\u6279\u91CF ZIP \u672A\u901A\u8FC7\u751F\u6210\u540E\u7684\u5B8C\u6574\u6027\u6821\u9A8C\uFF0C\u56E0\u6B64\u4E0D\u4F1A\u63D0\u4F9B\u4E0B\u8F7D\u3002"
+	    }
+	    code_label <- if (identical(as.character(lang %||% "zh")[1], "en")) {
+	      paste0(" (Code: ", code, ")")
+	    } else {
+	      paste0("\uFF08\u72B6\u6001\u7801\uFF1A", code, "\uFF09")
+	    }
+	    lines <- c(
+	      heading,
+	      paste0(batch_export_code_copy(code, lang), code_label),
+	      batch_export_technical_detail(checked$reason %||% character(), lang)
+	    )
+	    paste(lines[nzchar(lines)], collapse = "\n")
+	  }
 
   output$download_batch_results_zip <- downloadHandler(
     filename = function() paste0("SpikeTrainDetector_batch_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip"),
     content = function(file) {
-      validate(need(length(rv$datasets) > 0, "No datasets loaded."))
-      p <- current_param_for_tables()
-      root <- file.path(tempdir(), paste0("spike_detector_batch_", format(Sys.time(), "%Y%m%d_%H%M%S")))
-      dir.create(root, recursive = TRUE, showWarnings = FALSE)
-      for (id in names(rv$datasets)) {
-        ds <- normalize_dataset(rv$datasets[[id]])
-        safe_id <- gsub("[^A-Za-z0-9_\\-\\.]", "_", id)
-        out_dir <- file.path(root, safe_id)
-        stpd_export_results(ds, p, out_dir = out_dir, dataset_name = ds$meta$display_name %||% id, time_unit = input$time_unit %||% "ms")
-        ev <- evaluate_detector_against_manual(ds, p, selected_trains = names(ds$trains), min_isi_sec = p$detector$min_valid_isi_sec, metric_mode = "strict_high_confidence")
+      validate(need(length(rv$datasets) > 0, ui_text("no_datasets_loaded")))
+      ids <- names(rv$datasets)
+      validate(need(
+        !is.null(ids) && length(ids) == length(rv$datasets) &&
+          !anyNA(ids) && all(nzchar(ids)) && !anyDuplicated(ids),
+        ui_text("batch_export_unique_ids")
+      ))
+      datasets <- lapply(rv$datasets, normalize_dataset)
+      params_by_dataset <- lapply(datasets, function(ds) {
+        ds$params_effective %||% NULL
+      })
+      run_identities <- rv$ui_run_identity_by_dataset %||% list()
+      expected_outputs <- lapply(ids, function(id) {
+        (run_identities[[id]] %||% list())$detector_output_identity %||% NULL
+      })
+      names(expected_outputs) <- ids
+      root <- stpd_ui_export_temp_path(
+        prefix = "spike_detector_batch", create = "directory"
+      )
+      on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+      plan <- stpd_ui_batch_export_plan(
+        datasets = datasets,
+        params_by_dataset = params_by_dataset,
+        run_identities = run_identities,
+        expected_detector_outputs = expected_outputs,
+        dataset_ids = ids,
+        output_root = root
+      )
+      validate(need(
+        isTRUE(plan$eligible),
+        batch_export_plan_failure_message(plan)
+      ))
+
+      manifest_rows <- vector("list", length(ids))
+      for (ii in seq_along(ids)) {
+        id <- ids[[ii]]
+        entry <- plan$entries[[id]]
+        ds <- datasets[[id]]
+        p <- entry$params
+        out_dir <- entry$output_dir
+        dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+        validation <- (ds$results %||% list())[["scientific_validation"]] %||% NULL
+        validation_identity <- (validation %||% list())[["ui_identity"]] %||% NULL
+        validation_decision <- stpd_ui_validation_export_decision(
+          ds = ds, validation = validation, params = p,
+          dataset_id = id, run_identity = entry$run_identity,
+          validation_identity = validation_identity,
+          stale_policy = "omit"
+        )
+        ds_export <- ds
+        if (!isTRUE(validation_decision$include) &&
+            is.list(ds_export$results)) {
+          ds_export$results[["scientific_validation"]] <- NULL
+        }
+        stpd_export_results(
+          ds_export, p, out_dir = out_dir,
+          dataset_name = ds$meta$display_name %||% id,
+          time_unit = input$time_unit %||% "ms"
+        )
+        validation_status <- data.frame(
+          artifact = validation_decision$artifact_name,
+          action = validation_decision$action,
+          code = validation_decision$code,
+          reason = validation_decision$reason,
+          stringsAsFactors = FALSE
+        )
+        write_csv_safe(
+          validation_status,
+          file.path(out_dir, "Validation_export_status.csv"),
+          row.names = FALSE, fileEncoding = "UTF-8"
+        )
+        ev <- evaluate_detector_against_manual(
+          ds, p, selected_trains = names(ds$trains),
+          min_isi_sec = p$detector$min_valid_isi_sec,
+          metric_mode = "strict_high_confidence"
+        )
         if (!is.null(ev$meta) && nrow(ev$meta) > 0) write_csv_safe(ev$meta, file.path(out_dir, "Manual_vs_detector_meta.csv"), row.names = FALSE, fileEncoding = "UTF-8")
         if (!is.null(ev$metrics) && nrow(ev$metrics) > 0) write_csv_safe(ev$metrics, file.path(out_dir, "Manual_vs_detector_metrics.csv"), row.names = FALSE, fileEncoding = "UTF-8")
         if (!is.null(ev$confusion) && nrow(ev$confusion) > 0) write_csv_safe(ev$confusion, file.path(out_dir, "Manual_vs_detector_confusion.csv"), row.names = FALSE, fileEncoding = "UTF-8")
         if (!is.null(ev$events) && nrow(ev$events) > 0) write_csv_safe(ev$events, file.path(out_dir, "Manual_vs_detector_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+        manifest_rows[[ii]] <- data.frame(
+          dataset_id = id,
+          dataset_name = entry$dataset_name,
+          directory_name = entry$directory_name,
+          run_id = stpd_ui_state_chr(entry$run_identity$run_id),
+          params_sha256 = entry$params_sha256,
+          detector_output_sha256 = stpd_ui_state_chr(
+            entry$detector_output_state$current_sha256
+          ),
+          validation_action = validation_decision$action,
+          validation_code = validation_decision$code,
+          stringsAsFactors = FALSE
+        )
       }
-      old <- setwd(root); on.exit(setwd(old), add = TRUE)
+      manifest <- do.call(rbind, manifest_rows)
+      write_csv_safe(
+        manifest, file.path(root, "Batch_export_manifest.csv"),
+        row.names = FALSE, fileEncoding = "UTF-8"
+      )
+      old <- setwd(root)
+      on.exit(setwd(old), add = TRUE)
       utils::zip(zipfile = file, files = list.files(root, recursive = TRUE))
+      required <- c(
+        "Batch_export_manifest.csv",
+        file.path(manifest$directory_name, "Detector_run_metadata.csv"),
+        file.path(manifest$directory_name, "Export_run_metadata.csv"),
+        file.path(manifest$directory_name, "ISI_labels_final.csv"),
+        file.path(manifest$directory_name, "Validation_export_status.csv")
+      )
+      checked <- stpd_ui_validate_zip_archive(
+        file, required_files = required,
+        sentinel_files = required
+      )
+      validate(need(
+	        isTRUE(checked$valid),
+	        batch_zip_failure_message(checked)
+	      ))
     }
   )
 
@@ -4339,32 +6715,77 @@ server <- function(input, output, session) {
   events_bundle_current <- reactive({
     ds <- current_dataset()
     p <- current_param_for_tables()
+    source <- input$events_view %||% "auto"
     b <- derive_interval_tables(
       ds$trains,
-      source = input$events_view %||% "audit_final",
+      source = source,
       auto_others = isTRUE(input$auto_others),
       dataset_map = setNames(rep(ds$meta$display_name, length(ds$trains)), names(ds$trains)),
       min_isi_sec = min_valid_isi_sec(),
       contrast_q = p$burst$contrast_q %||% 0.90,
       context_k = p$burst$context_k %||% 5L
     )
-    if ((input$events_view %||% "audit_final") %in% c("final", "audit_final")) {
+    if (source %in% c("final", "audit_final")) {
       run_id <- (ds$results$run_metadata$run_id %||% "ui_view")[1]
       phash <- (ds$results$run_metadata$params_hash %||% compute_params_hash(p))[1]
       b$events <- enrich_events_with_pause_thresholds(b$events, ds$trains, run_id = run_id, params_hash = phash)
     }
     b
   })
-  
-  stpd_server_install_ml_module(environment())
 
-
+  orientation_events_current <- reactive({
+    ds <- current_dataset()
+    source <- input$events_view %||% "auto"
+    ev <- events_bundle_current()$events %||% data.frame()
+    dataset_identity <- tryCatch(
+      stpd_ui_dataset_identity(ds, rv$current_id),
+      error = function(e) NULL
+    )
+    run_identity <- tryCatch(
+      ui_run_identity_for(ds, rv$current_id, dataset_identity),
+      error = function(e) NULL
+    )
+    run_state <- tryCatch(current_ui_run_state(), error = function(e) NULL)
+    scoped <- stpd_orientation_event_scope(
+      ev, source = source, run_state = run_state,
+      run_identity = run_identity
+    )
+    ev <- scoped$events
+    if (!is.data.frame(ev) || nrow(ev) == 0L) {
+      return(list(
+        events = data.frame(), display = data.frame(), source = source,
+        run_code = scoped$run_code, scope_label = scoped$scope_label,
+        scope_status = scoped$status, current = scoped$current
+      ))
+    }
+    ord <- order(
+      as.character(ev$dataset %||% ""),
+      as.character(ev$train %||% ""),
+      suppressWarnings(as.numeric(ev$start_time_sec %||% NA_real_)),
+      as.character(ev$pattern %||% ""),
+      as.character(ev$event_id %||% ""),
+      na.last = TRUE
+    )
+    ev <- ev[ord, , drop = FALSE]
+    display <- stpd_orientation_event_display_model(
+      ev,
+      source = source,
+      dataset_id = rv$current_id %||% ds$meta$display_name %||% "ui_dataset",
+      time_unit = input$time_unit %||% "ms",
+      mode = input$events_detail_mode %||% "compact"
+    )
+    list(
+      events = ev, display = display, source = source,
+      run_code = scoped$run_code, scope_label = scoped$scope_label,
+      scope_status = scoped$status, current = scoped$current
+    )
+  })
 
   output$posthoc_fragment_audit_table <- renderDT({
     ds <- current_dataset()
     pf <- ds$results$posthoc_fragment_audit %||% data.frame()
     if (is.null(pf) || nrow(pf) == 0) {
-      return(datatable(data.frame(message = "No post-overlap minimum-size fragments were removed in the latest AUTO run."), options = list(dom = "t")))
+      return(datatable(data.frame(message = ui_text("no_post_overlap_fragments")), options = list(dom = "t")))
     }
     f <- unit_factor()
     pf_show <- pf
@@ -4375,33 +6796,162 @@ server <- function(input, output, session) {
   })
 
   output$events_table <- renderDT({
-    eb <- events_bundle_current()
-    ev <- eb$events
-    if (nrow(ev) == 0) {
-      return(datatable(data.frame(message = paste0("No events found for source: ", input$events_view %||% "audit_final")), options = list(dom = "t")))
+    current <- orientation_events_current()
+    ev_show <- current$display
+    english_ui <- identical(input$ui_language %||% "zh", "en")
+    if (nrow(ev_show) == 0) {
+      state_note <- if (identical(current$source, "auto") &&
+          identical(current$scope_status, "partial_current")) {
+        if (english_ui) {
+          paste0("Latest AUTO scope ", current$scope_label,
+                 ": no intervals were found in the analyzed trains.")
+        } else {
+          paste0("\u6700\u8fd1 AUTO \u8fd0\u884c\u8303\u56f4 ", current$scope_label,
+                 "\uff1a\u5df2\u5206\u6790 trains \u4e2d\u672a\u53d1\u73b0\u533a\u95f4\u3002")
+        }
+      } else if (identical(current$source, "auto") &&
+          current$scope_status %in% c(
+            "historical_scoped", "historical_unverified"
+          )) {
+        if (english_ui) {
+          paste0("AUTO rows are not current (", current$run_code,
+                 "). Run the detector to create a current interval table.")
+        } else {
+          paste0("AUTO \u533a\u95f4\u4e0d\u662f\u5f53\u524d\u7ed3\u679c\uff08", current$run_code,
+                 "\uff09\u3002\u8bf7\u8fd0\u884c\u68c0\u6d4b\u4ee5\u751f\u6210\u5f53\u524d\u533a\u95f4\u8868\u3002")
+        }
+      } else {
+        if (english_ui) {
+          ui_text("no_intervals_for_source", source = current$source)
+        } else {
+          paste0("\u8be5\u6765\u6e90\u672a\u53d1\u73b0\u533a\u95f4\uff1a", current$source)
+        }
+      }
+      return(datatable(
+        data.frame(message = state_note),
+        options = list(dom = "t"), rownames = FALSE
+      ))
     }
-    f <- unit_factor()
-    ev_show <- ev %>%
-      mutate(start_time = start_time_sec * f, end_time = end_time_sec * f, duration = duration_sec * f,
-             pre_ISI = pre_ISI_sec * f, post_ISI = post_ISI_sec * f,
-             context_pre_ISI = context_pre_ISI_sec * f, context_post_ISI = context_post_ISI_sec * f,
-             mean_ISI = mean_ISI_sec * f, median_ISI = median_ISI_sec * f,
-             min_ISI = min_ISI_sec * f, max_ISI = max_ISI_sec * f, core_q_ISI = core_q_ISI_sec * f) %>%
-      arrange(dataset, train, start_time_sec, pattern, event_id) %>%
-      select(dataset, train, pattern, event_id,
-             start_spike_idx, end_spike_idx, n_spikes, n_isi,
-             start_time, end_time, duration,
-             pre_ISI, post_ISI, context_pre_ISI, context_post_ISI,
-             mean_ISI, median_ISI, min_ISI, max_ISI, core_q_ISI,
-             MM, LV, CV, Pre_LV, After_LV,
-	             n_flank, n_flank_ctx,
-	             contrast_min_q, contrast_geom_q, contrast_pct_q,
-	             contrast_min_ctx_q, contrast_geom_ctx_q, contrast_pct_ctx_q,
-	             label_source, user_promoted_possible_burst, n_user_promoted_isi,
-	             auto_pattern_majority, user_override_reason,
-	             auto_score)
-    datatable(ev_show, rownames = FALSE, options = list(pageLength = 25, scrollX = TRUE))
+    dataset_name <- as.character(current_dataset()$meta$display_name %||% rv$current_id %||% "")[1]
+    currentness <- if (!identical(current$source, "auto")) {
+      if (english_ui) "Legacy single-label view" else "Legacy \u5355\u6807\u7b7e\u89c6\u56fe"
+    } else if (isTRUE(current$current)) {
+      if (english_ui) paste0("latest run scope ", current$scope_label) else
+        paste0("\u6700\u8fd1\u8fd0\u884c\u8303\u56f4 ", current$scope_label)
+    } else {
+      if (english_ui) paste0("not current: ", current$run_code) else
+        paste0("\u975e\u5f53\u524d\u7ed3\u679c\uff1a", current$run_code)
+    }
+    interval_count <- if (english_ui) {
+      paste0(nrow(ev_show), " interval(s)")
+    } else {
+      paste0(nrow(ev_show), " \u4e2a\u533a\u95f4")
+    }
+    datatable(
+      ev_show,
+      rownames = FALSE,
+      selection = "single",
+      caption = tags$caption(
+        style = "caption-side:top;text-align:left;",
+        paste0(dataset_name, " \u00B7 source=", current$source, " \u00B7 ",
+               currentness, " \u00B7 ", interval_count)
+      ),
+      options = list(
+        pageLength = 15,
+        scrollX = TRUE,
+        order = list(list(3, "asc"), list(7, "asc")),
+        columnDefs = list(list(targets = c(0, 1, 2), visible = FALSE))
+      ),
+      callback = DT::JS(
+        "table.on('click', 'tbody tr', function() {",
+        "  var row = table.row(this).data();",
+        "  if (!row || !row[0]) return;",
+        "  Shiny.setInputValue('events_table_row_key', {key: row[0], nonce: Date.now()}, {priority: 'event'});",
+        "});"
+      )
+    )
   })
+
+  observeEvent(input$events_table_row_key, {
+    payload <- input$events_table_row_key
+    key <- if (is.list(payload)) as.character(payload$key %||% "")[1] else as.character(payload %||% "")[1]
+    if (!nzchar(key)) return()
+    current <- orientation_events_current()
+    if (identical(current$source, "auto") &&
+        current$scope_status %in% c(
+          "historical_scoped", "historical_unverified"
+        )) {
+      showNotification(
+        "\u8BE5 AUTO \u533A\u95F4\u6765\u81EA\u5DF2\u8FC7\u671F\u7684\u6700\u8FD1\u8FD0\u884C\u8303\u56F4\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u540E\u518D\u5B9A\u4F4D\u3002",
+        type = "warning", duration = 7
+      )
+      return()
+    }
+    hit <- match(key, current$display$event_row_key %||% character())
+    if (!is.finite(hit) || hit < 1L || hit > nrow(current$events)) {
+      showNotification("\u6240\u9009\u533A\u95F4\u5DF2\u8FC7\u671F\uFF1B\u8BF7\u5728\u5F53\u524D\u8868\u683C\u4E2D\u91CD\u65B0\u9009\u62E9\u3002", type = "warning", duration = 5)
+      return()
+    }
+    ds <- current_dataset()
+    row <- current$events[hit, , drop = FALSE]
+    plan <- stpd_orientation_event_jump_plan(
+      row,
+      ds,
+      source = current$source,
+      dataset_id = rv$current_id %||% ds$meta$display_name %||% "ui_dataset",
+      display_unit = input$time_unit %||% "ms",
+      min_padding_sec = current_param_for_tables()$burst$preview_pad_sec %||% 0.150,
+      padding_multiplier = 1
+    )
+    if (!isTRUE(plan$valid)) {
+      showNotification(paste0("\u65E0\u6CD5\u5B9A\u4F4D\u6240\u9009\u533A\u95F4\uFF1A", plan$reason), type = "warning", duration = 5)
+      return()
+    }
+    filtered <- tryCatch(metadata_filtered_train_names(), error = function(e) names(ds$trains))
+    if (!(plan$train %in% filtered)) {
+      showNotification("\u6240\u9009 train \u5DF2\u88AB\u5F53\u524D\u5143\u6570\u636E\u8FC7\u6EE4\u5668\u6392\u9664\uFF1B\u672A\u81EA\u52A8\u6539\u52A8\u8FC7\u6EE4\u6761\u4EF6\u3002", type = "warning", duration = 6)
+      return()
+    }
+    if (identical(input$train_display_mode %||% "paged_all", "selected_only")) {
+      updateSelectizeInput(
+        session, "trains",
+        selected = unique(c(plan$train, intersect(input$trains %||% character(), filtered)))
+      )
+    } else {
+      per <- max(1L, safe_int(input$visible_trains_per_page, 10L))
+      pos <- match(plan$train, filtered)
+      if (is.finite(pos)) updateNumericInput(session, "train_page", value = max(1L, ceiling(pos / per)))
+    }
+    jump_choice <- input$events_jump_target %||% "automatic"
+    target_tab <- switch(
+      jump_choice,
+      raw = "\u539F\u59CB\u65F6\u95F4\u6233\u56FE",
+      aligned = "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE",
+      plan$target_tab
+    )
+    rv$event_table_focus <- list(
+      key = key, dataset_id = rv$current_id, source = current$source,
+      train = plan$train, target_tab = target_tab,
+      run_id = as.character((ds$results$run_metadata$run_id %||% "")[1]),
+      params_hash = as.character((ds$results$run_metadata$params_hash %||% "")[1])
+    )
+    updateRadioButtons(session, "pattern_view", selected = current$source)
+    session$onFlushed(function() {
+      f <- unit_factor()
+      if (identical(target_tab, "\u539F\u59CB\u65F6\u95F4\u6233\u56FE")) {
+        rv$raw_view_x <- plan$raw_window_sec
+        updateSliderInput(session, "raw_xrange", value = plan$raw_window_sec * f)
+      } else {
+        aligned <- plan$aligned_window_sec * f
+        rv$view_align_x <- aligned
+        update_xrange_slider_input("xrange", value = aligned)
+        update_xrange_slider_input("xrange_plot", value = aligned)
+        sync_xrange_length_inputs(aligned)
+      }
+      updateTabsetPanel(session, "main_tabs", selected = target_tab)
+    }, once = TRUE)
+    showNotification("\u5DF2\u5B9A\u4F4D\u5230\u6240\u9009\u68C0\u6D4B\u533A\u95F4\u7684 timestamp \u7A97\u53E3\u3002", type = "message", duration = 4)
+  }, ignoreInit = TRUE)
   
   stpd_server_install_export_module(environment())
 
@@ -4438,41 +6988,41 @@ server <- function(input, output, session) {
 
   output$misi_support_report_table <- DT::renderDT({
     res <- tryCatch(misi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run Mean-ISI support to generate report."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "Mean-ISI", artifact = if (identical(ui_language(), "en")) "the report" else "\u62A5\u544A")), options = list(pageLength = 5)))
     df <- res$support_report %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "Run Mean-ISI support to generate report."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("run_support_for", method = "Mean-ISI", artifact = if (identical(ui_language(), "en")) "the report" else "\u62A5\u544A")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("threshold_sec", "burst_isi_q50_sec", "burst_isi_q90_sec", "burst_isi_q95_sec", "burst_isi_max_sec", "suggested_burst_max_ISI_sec", "mean_duration_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE))
   })
 
   output$misi_threshold_table <- DT::renderDT({
     res <- tryCatch(misi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run Mean-ISI support to generate threshold table."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "Mean-ISI", artifact = if (identical(ui_language(), "en")) "the threshold table" else "\u9608\u503C\u8868")), options = list(pageLength = 5)))
     df <- res$thresholds %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "No threshold table yet."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_support_artifact", artifact = if (identical(ui_language(), "en")) "threshold table" else "\u9608\u503C\u8868")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("threshold_sec", "mean_isi_sec", "ML_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE))
   })
 
   output$misi_burst_table <- DT::renderDT({
     res <- tryCatch(misi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run Mean-ISI support to generate burst candidates."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "Mean-ISI", artifact = if (identical(ui_language(), "en")) "burst candidates" else "burst \u5019\u9009")), options = list(pageLength = 5)))
     df <- res$bursts %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "No MISI support burst candidates."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_support_artifact", artifact = if (identical(ui_language(), "en")) "Mean-ISI support burst candidates" else "Mean-ISI \u652F\u6301\u5C42 burst \u5019\u9009")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("duration_sec", "mean_ISI_sec", "median_ISI_sec", "q90_ISI_sec", "q95_ISI_sec", "max_ISI_sec", "min_ISI_sec", "ML_sec", "mean_all_ISI_sec", "pre_ISI_sec", "post_ISI_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 12, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 12, scrollX = TRUE))
   })
 
   output$download_misi_support_zip <- downloadHandler(
@@ -4528,6 +7078,88 @@ server <- function(input, output, session) {
 
   logisi_support_result <- eventReactive(input$run_logisi_support, {
     compute_logisi_support_now()
+  }, ignoreInit = TRUE)
+
+  apply_support_threshold_result <- function(support, method) {
+    p <- read_params_from_ui()
+    p <- stpd_apply_support_threshold_to_params(
+      params = p,
+      support = support,
+      method = method,
+      activate = TRUE
+    )
+    ds <- current_dataset()
+    ds$params_est <- p
+    rv$prefer_params_est_once <- TRUE
+    set_dataset(rv$current_id, ds)
+    apply_params_to_ui(p, preserve_pattern_isi_limits = TRUE)
+
+    usr <- (p$event_grammar$user %||% list())$burst %||% list()
+    f <- unit_factor()
+    updateSelectInput(session, "event_grammar_threshold_source_mode", selected = "user")
+    updateCheckboxInput(session, "event_grammar_user_burst_enable", value = TRUE)
+    updateNumericInput(session, "event_grammar_user_burst_seed_lower", value = as.numeric(usr$seed_lower_sec) * f)
+    updateNumericInput(session, "event_grammar_user_burst_seed_upper", value = as.numeric(usr$seed_upper_sec) * f)
+    updateNumericInput(session, "event_grammar_user_burst_bridge", value = as.numeric(usr$bridge_upper_sec) * f)
+    updateNumericInput(session, "event_grammar_user_burst_S", value = as.numeric(usr$contrast_S))
+
+    imported <- p$metadata$support_threshold_import
+    method_label <- if (identical(method, "mean_isi")) "Mean-ISI" else "LogISI"
+    showNotification(
+      ui_current_copy(
+        paste0(method_label, " \u9608\u503C\u5DF2\u5BFC\u5165\u5F53\u524D burst \u53C2\u6570\u5E93\uFF08",
+               round(imported$threshold_sec * f, 6), " ", unit_label(),
+               "\uFF09\u3002\u8BF7\u91CD\u65B0\u8FD0\u884C\u68C0\u6D4B\u4EE5\u751F\u6210\u65B0 AUTO \u7ED3\u679C\u3002"),
+        paste0(method_label, " threshold was imported into the current Burst parameter store (",
+               round(imported$threshold_sec * f, 6), " ", unit_label(),
+               "). Rerun detection to generate new AUTO results.")
+      ),
+      type = "message",
+      duration = 8
+    )
+    invisible(p)
+  }
+
+  observeEvent(input$apply_misi_support_params, {
+    support <- tryCatch(misi_support_result(), error = function(e) NULL)
+    if (is.null(support)) {
+      showNotification(
+        ui_current_copy("\u8BF7\u5148\u8FD0\u884C Mean-ISI \u652F\u6301\u3002", "Run Mean-ISI support before importing its threshold."),
+        type = "warning", duration = 6
+      )
+      return(invisible(NULL))
+    }
+    tryCatch(
+      apply_support_threshold_result(support, "mean_isi"),
+      error = function(e) showNotification(
+        paste0(
+          ui_current_copy("Mean-ISI \u9608\u503C\u672A\u5BFC\u5165\u3002\u6280\u672F\u8BE6\u60C5\uFF1A", "Mean-ISI threshold was not imported. Technical details: "),
+          conditionMessage(e)
+        ),
+        type = "error", duration = 10
+      )
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$apply_logisi_support_params, {
+    support <- tryCatch(logisi_support_result(), error = function(e) NULL)
+    if (is.null(support)) {
+      showNotification(
+        ui_current_copy("\u8BF7\u5148\u8FD0\u884C LogISI \u652F\u6301\u3002", "Run LogISI support before importing its threshold."),
+        type = "warning", duration = 6
+      )
+      return(invisible(NULL))
+    }
+    tryCatch(
+      apply_support_threshold_result(support, "logisi"),
+      error = function(e) showNotification(
+        paste0(
+          ui_current_copy("LogISI \u9608\u503C\u672A\u5BFC\u5165\u3002\u6280\u672F\u8BE6\u60C5\uFF1A", "LogISI threshold was not imported. Technical details: "),
+          conditionMessage(e)
+        ),
+        type = "error", duration = 10
+      )
+    )
   }, ignoreInit = TRUE)
 
   # ----------------------------------------------------------
@@ -4598,18 +7230,18 @@ server <- function(input, output, session) {
         x_isi_start_plot = isi_start_timestamp_sec,
         x_isi_end_plot = isi_end_timestamp_sec
       )
-      x_title <- "Original spike timestamp (s)"
+      x_title <- ui_current_copy("\u539F\u59CB spike \u65F6\u95F4\u6233\uFF08s\uFF09", "Original spike timestamp (s)")
     } else {
       dat_plot <- dat_all %>% mutate(
         x_spike_plot = time_align_sec * f,
         x_isi_start_plot = isi_start_align_sec * f,
         x_isi_end_plot = isi_end_align_sec * f
       )
-      x_title <- paste0("\u5BF9\u9F50\u65F6\u95F4\uFF08", u, ")")
+      x_title <- paste0(ui_current_copy("\u5BF9\u9F50\u65F6\u95F4", "Aligned time"), " (", u, ")")
     }
 
     axis_tbl <- dat_plot %>% dplyr::distinct(train, train_label, train_order, y) %>% dplyr::arrange(y)
-    validate(need(nrow(axis_tbl) > 0, "No visible spike trains."))
+    validate(need(nrow(axis_tbl) > 0, ui_text("no_visible_trains")))
     selected <- as.character(axis_tbl$train)
 
     dat_view <- dat_plot[dat_plot$train %in% selected &
@@ -4619,12 +7251,12 @@ server <- function(input, output, session) {
                            !is.na(dat_plot$isi_start_align_sec) &
                            dat_plot$isi_end_align_sec >= draw_sec_pad[1] &
                            dat_plot$isi_start_align_sec <= draw_sec_pad[2], , drop = FALSE]
-    validate(need(nrow(dat_view) > 0 || nrow(isi_view) > 0, "No spikes/ISI in the support overlay window."))
+    validate(need(nrow(dat_view) > 0 || nrow(isi_view) > 0, ui_text("no_support_window_data")))
 
     support_b <- support_burst_overlay_rows()
-    validate(need(nrow(support_b) > 0, "No support burst ISI strips yet. Click Run Mean-ISI support and/or Run LogISI support in the left panel, then keep the corresponding Overlay support detections checkbox selected."))
+    validate(need(nrow(support_b) > 0, ui_text("no_support_strips")))
     support_b <- support_b[as.character(support_b$train) %in% selected, , drop = FALSE]
-    validate(need(nrow(support_b) > 0, "No support burst ISI strips for the currently visible spike trains. Either run support on more trains by turning off 'Run on currently visible trains only', or select trains that contain support candidates."))
+    validate(need(nrow(support_b) > 0, ui_text("no_support_visible_trains")))
 
     first_tbl <- dat_plot %>%
       group_by(train) %>%
@@ -4648,7 +7280,7 @@ server <- function(input, output, session) {
     if (sync_window) {
       support_b <- support_b[support_b$end_align_sec >= draw_sec_pad[1] & support_b$start_align_sec <= draw_sec_pad[2], , drop = FALSE]
     }
-    validate(need(nrow(support_b) > 0, "No support burst ISI strips in the current time window. Uncheck 'Sync with main raster time-window' or zoom the main raster to a window containing support candidates."))
+    validate(need(nrow(support_b) > 0, ui_text("no_support_time_window")))
 
     support_b$method_offset <- ifelse(as.character(support_b$support_method) == "misi", 0.18 * step, -0.18 * step)
     support_b$y_support <- support_b$y_base + support_b$method_offset
@@ -4657,17 +7289,17 @@ server <- function(input, output, session) {
     support_b$x0_plot <- if (identical(x_mode, "timestamp")) support_b$start_time_sec else support_b$start_align_sec * f
     support_b$x1_plot <- if (identical(x_mode, "timestamp")) support_b$end_time_sec else support_b$end_align_sec * f
     support_b$hover_text <- paste0(
-      "Support burst candidate<br>",
-      "Method: ", support_b$support_method_label,
-      "<br>Train\uFF1A", support_b$train_label,
-      "<br>Start timestamp: ", round(support_b$start_time_sec, 6), " s",
-      "<br>End timestamp: ", round(support_b$end_time_sec, 6), " s",
-      "<br>Start ISI index: ", support_b$start_isi,
-      "<br>End ISI index: ", support_b$end_isi,
-      "<br>Spikes: ", support_b$n_spikes,
-      "<br>Duration: ", round(support_b$duration_ms, 3), " ms",
-      "<br>Support threshold: ", round(support_b$threshold_ms, 3), " ms",
-      "<br>Status: ", as.character(support_b$threshold_status %||% "")
+      ui_current_copy("\u8F85\u52A9 burst \u5019\u9009<br>", "Support burst candidate<br>"),
+      ui_current_copy("\u65B9\u6CD5\uFF1A", "Method: "), support_b$support_method_label,
+      ui_current_copy("<br>Train\uFF1A", "<br>Train: "), support_b$train_label,
+      ui_current_copy("<br>\u8D77\u59CB\u65F6\u95F4\u6233\uFF1A", "<br>Start timestamp: "), round(support_b$start_time_sec, 6), " s",
+      ui_current_copy("<br>\u7ED3\u675F\u65F6\u95F4\u6233\uFF1A", "<br>End timestamp: "), round(support_b$end_time_sec, 6), " s",
+      ui_current_copy("<br>\u8D77\u59CB ISI \u7D22\u5F15\uFF1A", "<br>Start ISI index: "), support_b$start_isi,
+      ui_current_copy("<br>\u7ED3\u675F ISI \u7D22\u5F15\uFF1A", "<br>End ISI index: "), support_b$end_isi,
+      ui_current_copy("<br>Spike \u6570\uFF1A", "<br>Spikes: "), support_b$n_spikes,
+      ui_current_copy("<br>\u6301\u7EED\u65F6\u95F4\uFF1A", "<br>Duration: "), round(support_b$duration_ms, 3), " ms",
+      ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), round(support_b$threshold_ms, 3), " ms",
+      ui_current_copy("<br>\u72B6\u6001\uFF1A", "<br>Status: "), as.character(support_b$threshold_status %||% "")
     )
 
     # canonical6: draw support detections as ISI-segment strips.
@@ -4739,24 +7371,24 @@ server <- function(input, output, session) {
     })
     support_isi <- support_isi[!vapply(support_isi, is.null, logical(1))]
     support_isi <- if (length(support_isi)) dplyr::bind_rows(support_isi) else data.frame()
-    validate(need(nrow(support_isi) > 0, "Support candidates exist, but no included ISI intervals could be mapped to the visible spike trains. This usually indicates an index/time mismatch in the support result."))
+    validate(need(nrow(support_isi) > 0, ui_text("support_mapping_mismatch")))
     if (nrow(support_isi) > 0) {
       support_isi$hover_text <- paste0(
-        "Support burst ISI segment<br>",
-        "Method: ", support_isi$support_method_label,
-        "<br>Train\uFF1A", support_isi$train_label,
-        "<br>ISI index: ", support_isi$isi_index,
-        "<br>Left spike idx: ", support_isi$left_spike_idx,
-        "<br>Right spike idx: ", support_isi$right_spike_idx,
-        "<br>Left timestamp: ", round(support_isi$isi_start_timestamp_sec, 6), " s",
-        "<br>Right timestamp: ", round(support_isi$isi_end_timestamp_sec, 6), " s",
-        "<br>ISI duration: ", round(support_isi$isi_duration_ms, 3), " ms",
-        "<br>Parent candidate: ISI ", support_isi$parent_start_isi, "-", support_isi$parent_end_isi,
-        "<br>Parent ISIs: ", support_isi$parent_n_isi,
-        "<br>Parent spikes: ", support_isi$parent_n_spikes,
-        "<br>Parent duration: ", round(support_isi$parent_duration_ms, 3), " ms",
-        "<br>Support threshold: ", round(support_isi$parent_threshold_ms, 3), " ms",
-        "<br>Status: ", support_isi$parent_status
+        ui_current_copy("\u8F85\u52A9 burst ISI \u7247\u6BB5<br>", "Support burst ISI segment<br>"),
+        ui_current_copy("\u65B9\u6CD5\uFF1A", "Method: "), support_isi$support_method_label,
+        ui_current_copy("<br>Train\uFF1A", "<br>Train: "), support_isi$train_label,
+        ui_current_copy("<br>ISI \u7D22\u5F15\uFF1A", "<br>ISI index: "), support_isi$isi_index,
+        ui_current_copy("<br>\u5DE6\u4FA7 spike \u7D22\u5F15\uFF1A", "<br>Left spike index: "), support_isi$left_spike_idx,
+        ui_current_copy("<br>\u53F3\u4FA7 spike \u7D22\u5F15\uFF1A", "<br>Right spike index: "), support_isi$right_spike_idx,
+        ui_current_copy("<br>\u5DE6\u4FA7\u65F6\u95F4\u6233\uFF1A", "<br>Left timestamp: "), round(support_isi$isi_start_timestamp_sec, 6), " s",
+        ui_current_copy("<br>\u53F3\u4FA7\u65F6\u95F4\u6233\uFF1A", "<br>Right timestamp: "), round(support_isi$isi_end_timestamp_sec, 6), " s",
+        ui_current_copy("<br>ISI \u6301\u7EED\u65F6\u95F4\uFF1A", "<br>ISI duration: "), round(support_isi$isi_duration_ms, 3), " ms",
+        ui_current_copy("<br>\u7236\u5019\u9009\uFF1AISI ", "<br>Parent candidate: ISI "), support_isi$parent_start_isi, "-", support_isi$parent_end_isi,
+        ui_current_copy("<br>\u7236\u5019\u9009 ISI \u6570\uFF1A", "<br>Parent ISIs: "), support_isi$parent_n_isi,
+        ui_current_copy("<br>\u7236\u5019\u9009 spike \u6570\uFF1A", "<br>Parent spikes: "), support_isi$parent_n_spikes,
+        ui_current_copy("<br>\u7236\u5019\u9009\u6301\u7EED\u65F6\u95F4\uFF1A", "<br>Parent duration: "), round(support_isi$parent_duration_ms, 3), " ms",
+        ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), round(support_isi$parent_threshold_ms, 3), " ms",
+        ui_current_copy("<br>\u72B6\u6001\uFF1A", "<br>Status: "), support_isi$parent_status
       )
     }
 
@@ -4773,7 +7405,12 @@ server <- function(input, output, session) {
     full_limit <- safe_int(input$plot_max_visible_spikes_full, 50000L)
     draw_base_spikes <- visible_spike_n <= full_limit
     base_df <- if (draw_base_spikes) dat_view else dat_view[0, , drop = FALSE]
-    lod_note <- if (!draw_base_spikes) paste0("Large support overlay window: ", visible_spike_n, " visible spikes; base spike ticks are suppressed. Zoom in or reduce the window to show spikes.") else ""
+    lod_note <- if (!draw_base_spikes) {
+      ui_current_copy(
+        paste0("\u8F85\u52A9\u53E0\u52A0\u7A97\u53E3\u8F83\u5927\uFF1A\u5F53\u524D\u53EF\u89C1 ", visible_spike_n, " \u4E2A spike\uFF0C\u5DF2\u9690\u85CF\u57FA\u7840 spike \u523B\u7EBF\u3002\u8BF7\u653E\u5927\u6216\u7F29\u5C0F\u65F6\u95F4\u7A97\u53E3\u4EE5\u663E\u793A spike\u3002"),
+        paste0("Large support overlay window: ", visible_spike_n, " visible spikes; base spike ticks are suppressed. Zoom in or reduce the window to show spikes.")
+      )
+    } else ""
 
     p <- plot_ly(source = "support_raster")
     if (nrow(base_df) > 0) {
@@ -4786,10 +7423,10 @@ server <- function(input, output, session) {
         line = list(width = base_spike_line_width(), color = "#000000", dash = "solid"),
         hoverinfo = "text",
         text = ~paste0(
-          "Train\uFF1A", train_label,
-          "<br>Spike \u7D22\u5F15\uFF1A", idx,
-          "<br>Timestamp\uFF1A", round(timestamp_sec, 6), " s",
-          "<br>Aligned time: ", round(time_align_sec * f, 6), " ", u
+          ui_current_copy("Train\uFF1A", "Train: "), train_label,
+          ui_current_copy("<br>Spike \u7D22\u5F15\uFF1A", "<br>Spike index: "), idx,
+          ui_current_copy("<br>\u65F6\u95F4\u6233\uFF1A", "<br>Timestamp: "), round(timestamp_sec, 6), " s",
+          ui_current_copy("<br>\u5BF9\u9F50\u65F6\u95F4\uFF1A", "<br>Aligned time: "), round(time_align_sec * f, 6), " ", u
         ),
         name = "Spike", showlegend = FALSE,
         inherit = FALSE
@@ -4810,11 +7447,11 @@ server <- function(input, output, session) {
           line = list(width = pattern_strip_line_width(), color = st$color, dash = st$dash),
           hoverinfo = "text",
           text = ~paste0(
-            "Current AUTO burst-family label<br>",
-            "\u6A21\u5F0F\uFF1A", pattern_auto_chr,
-            "<br>Train\uFF1A", train_label,
-            "<br>Left timestamp: ", round(isi_start_timestamp_sec, 6), " s",
-            "<br>Right timestamp: ", round(isi_end_timestamp_sec, 6), " s"
+            ui_text("current_auto_burst_label"), "<br>",
+            ui_current_copy("\u6A21\u5F0F\uFF1A", "Pattern: "), pattern_auto_chr,
+            ui_current_copy("<br>Train\uFF1A", "<br>Train: "), train_label,
+            ui_current_copy("<br>\u5DE6\u4FA7\u65F6\u95F4\u6233\uFF1A", "<br>Left timestamp: "), round(isi_start_timestamp_sec, 6), " s",
+            ui_current_copy("<br>\u53F3\u4FA7\u65F6\u95F4\u6233\uFF1A", "<br>Right timestamp: "), round(isi_end_timestamp_sec, 6), " s"
           ),
           name = paste0("AUTO ", pat), showlegend = FALSE,
           inherit = FALSE
@@ -4823,8 +7460,14 @@ server <- function(input, output, session) {
     }
 
     method_levels <- c("misi", "logisi")
-    method_names <- c(misi = "Mean-ISI support ISI strip (#8A7FFF)", logisi = "LogISI / newBD support ISI strip (#F58E90)")
-    method_span_names <- c(misi = "Mean-ISI translucent event envelope", logisi = "LogISI / newBD translucent event envelope")
+    method_names <- c(
+      misi = ui_current_copy("Mean-ISI \u8F85\u52A9 ISI \u6761\u5E26 (#8A7FFF)", "Mean-ISI support ISI strip (#8A7FFF)"),
+      logisi = ui_current_copy("LogISI / newBD \u8F85\u52A9 ISI \u6761\u5E26 (#F58E90)", "LogISI / newBD support ISI strip (#F58E90)")
+    )
+    method_span_names <- c(
+      misi = ui_current_copy("Mean-ISI \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "Mean-ISI translucent event envelope"),
+      logisi = ui_current_copy("LogISI / newBD \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "LogISI / newBD translucent event envelope")
+    )
     method_colors <- c(misi = "#8A7FFF", logisi = "#F58E90")
 
     if (isTRUE(input$support_overlay_show_span_strips)) {
@@ -4892,7 +7535,7 @@ server <- function(input, output, session) {
       showlegend = TRUE,
       legend = list(orientation = "h", x = 0, y = 1.08),
       xaxis = list(title = x_title, range = x_range, exponentformat = "none", separatethousands = FALSE),
-      yaxis = list(title = list(text = "Spike train\uFF08\u8BB0\u5F55\u6761\u76EE\uFF09", standoff = 40), tickmode = "array",
+      yaxis = list(title = list(text = ui_current_copy("Spike train\uFF08\u8BB0\u5F55\u6761\u76EE\uFF09", "Spike train (recording)"), standoff = 40), tickmode = "array",
                    tickvals = y_tickvals, ticktext = y_ticktext, tickfont = list(size = tick_font_size),
                    range = y_range, zeroline = FALSE, automargin = TRUE),
       margin = list(l = 220, r = 20, t = 60, b = 50),
@@ -4904,49 +7547,49 @@ server <- function(input, output, session) {
 
   output$logisi_support_report_table <- DT::renderDT({
     res <- tryCatch(logisi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run LogISI support to generate report."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "LogISI", artifact = if (identical(ui_language(), "en")) "the report" else "\u62A5\u544A")), options = list(pageLength = 5)))
     df <- res$support_report %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "Run LogISI support to generate report."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("run_support_for", method = "LogISI", artifact = if (identical(ui_language(), "en")) "the report" else "\u62A5\u544A")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("threshold_sec", "burst_isi_q50_sec", "burst_isi_q90_sec", "burst_isi_q95_sec", "burst_isi_max_sec", "suggested_burst_max_ISI_sec", "mean_duration_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE))
   })
 
   output$logisi_threshold_table <- DT::renderDT({
     res <- tryCatch(logisi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run LogISI support to generate threshold table."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "LogISI", artifact = if (identical(ui_language(), "en")) "the threshold table" else "\u9608\u503C\u8868")), options = list(pageLength = 5)))
     df <- res$thresholds %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "No LogISI threshold table yet."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_support_artifact", artifact = if (identical(ui_language(), "en")) "LogISI threshold table" else "LogISI \u9608\u503C\u8868")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("threshold_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE))
   })
 
   output$logisi_burst_table <- DT::renderDT({
     res <- tryCatch(logisi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run LogISI support to generate burst candidates."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "LogISI", artifact = if (identical(ui_language(), "en")) "burst candidates" else "burst \u5019\u9009")), options = list(pageLength = 5)))
     df <- res$bursts %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "No LogISI support burst candidates."), options = list(pageLength = 5)))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_support_artifact", artifact = if (identical(ui_language(), "en")) "LogISI support burst candidates" else "LogISI support burst \u5019\u9009")), options = list(pageLength = 5)))
     factor <- if (identical(input$time_unit %||% "ms", "ms")) 1000 else 1
     unit <- input$time_unit %||% "ms"
     for (nm in intersect(c("duration_sec", "mean_ISI_sec", "median_ISI_sec", "q90_ISI_sec", "q95_ISI_sec", "max_ISI_sec", "min_ISI_sec", "pre_ISI_sec", "post_ISI_sec", "ISIth_sec", "maxISI1_sec", "maxISI2_sec"), names(df))) {
       df[[sub("_sec$", paste0("_", unit), nm)]] <- df[[nm]] * factor
     }
-    DT::datatable(df, options = list(pageLength = 12, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 12, scrollX = TRUE))
   })
 
   output$logisi_hist_table <- DT::renderDT({
     res <- tryCatch(logisi_support_result(), error = function(e) NULL)
-    if (is.null(res)) return(DT::datatable(data.frame(message = "Run LogISI support to generate logISIH table."), options = list(pageLength = 5)))
+    if (is.null(res)) return(datatable(data.frame(message = ui_text("run_support_for", method = "LogISI", artifact = if (identical(ui_language(), "en")) "the logISIH table" else "logISIH \u8868")), options = list(pageLength = 5)))
     df <- res$logisih %||% data.frame()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(message = "No logISIH table available."), options = list(pageLength = 5)))
-    DT::datatable(df, options = list(pageLength = 12, scrollX = TRUE))
+    if (nrow(df) == 0) return(datatable(data.frame(message = ui_text("no_support_artifact", artifact = if (identical(ui_language(), "en")) "logISIH table" else "logISIH \u8868")), options = list(pageLength = 5)))
+    datatable(df, options = list(pageLength = 12, scrollX = TRUE))
   })
 
   output$download_logisi_support_zip <- downloadHandler(

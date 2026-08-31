@@ -8,6 +8,7 @@ license: MIT
 authors:
   - given-names: Houchun
     family-names: Zhou
+    alias: Zhou Houchun
 repository-code: "https://github.com/zhouhouchun/SpikeTrainPatternDetector-STPD"
 url: "https://www.spiketrain.studio"
 abstract: "Spike Train Pattern Detector is a Shiny-based spike-train firing-pattern detector and semi-supervised review platform for data quality control, candidate event generation, eventness auditing, support-layer threshold analyses, train-wise parameter review, and reproducible export reports."

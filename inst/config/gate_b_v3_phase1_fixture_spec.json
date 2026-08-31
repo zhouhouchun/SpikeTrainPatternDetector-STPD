@@ -1,0 +1,530 @@
+{
+  "schema": "stpd_gate_b_v3_phase1_fixture_spec_1",
+  "plan_sha256": "eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5",
+  "normative_contract_sha256": "81aa7f48411e774b0b1faa45e19b45f591891bb368d72bfd06401555ee01e8f4",
+  "release_evidence": false,
+  "fixtures": [
+    {
+      "contract_id": "GB3-ATT-001",
+      "fixture_id": "acceptance_gb3_19",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"evidence_valid\":false,\"export_allowed\":false,\"promotion_allowed\":false},\"outcome\":\"promotion_and_export_forbidden\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-19\",\"status\":\"pass\"}",
+      "expected_result_hash": "32e043c55c4a39d2ecd987ea5a6be1de41a59a5308b3911852ef4177a61e31ae"
+    },
+    {
+      "contract_id": "GB3-ATT-001",
+      "fixture_id": "contract_gb3_att_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"attestation_guard\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "5a2418b77ca2ad8576f36184574d0670bc1e2d6c528e9b95aa5c29d783dc094f"
+    },
+    {
+      "contract_id": "GB3-BLIND-001",
+      "fixture_id": "contract_gb3_blind_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"label_blind_manifest\",\"observation\":12,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "da3220eec0b0fb693d5491d9e6bce966d82dc80289598066b79c885dd2cda998"
+    },
+    {
+      "contract_id": "GB3-CAND-001",
+      "fixture_id": "acceptance_gb3_24",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"closure_ok\":false,\"failure_code\":\"candidate_expected_set_invalid\",\"missing\":[\"accepted_event_candidate\"]},\"outcome\":\"candidate_expected_set_rejects_reseal\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-24\",\"status\":\"pass\"}",
+      "expected_result_hash": "c14bc11b9873116ebc13a088b42a04989e1f4fa01c2a1ebb775b1489cd14b17d"
+    },
+    {
+      "contract_id": "GB3-CAND-001",
+      "fixture_id": "contract_gb3_cand_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"candidate_universe\",\"observation\":20,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "0632adcf53546a25fb33edf902d19752a5c704164321187fd981319413735865"
+    },
+    {
+      "contract_id": "GB3-CONS-001",
+      "fixture_id": "contract_gb3_cons_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"consumer_negotiation\",\"observation\":12,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "f2fcb85e4e4811c8876cc4324c4d4d83af4b97ff6eb18787c375a4a07f332679"
+    },
+    {
+      "contract_id": "GB3-CTX-001",
+      "fixture_id": "acceptance_gb3_12",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"states\":2,\"unowned\":[2]},\"outcome\":\"hard_boundary_no_active_support\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-12\",\"status\":\"pass\"}",
+      "expected_result_hash": "7eec914a8f7cf325f0acfcb71d5c8b8b6d943c218bf50dae65bf7021e0507291"
+    },
+    {
+      "contract_id": "GB3-CTX-001",
+      "fixture_id": "contract_gb3_ctx_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"scientific_context\",\"observation\":28,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "e03f9d4f019ed2c8d7050f2776f21f04b78d4cc9d19e18076698d0bd42abd607"
+    },
+    {
+      "contract_id": "GB3-EVT-001",
+      "fixture_id": "contract_gb3_evt_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"event_selector\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "b60a204de0fce9ddd70f59453ffae87acae435680d0110d1866cc26bce1b13b4"
+    },
+    {
+      "contract_id": "GB3-EXP-001",
+      "fixture_id": "contract_gb3_exp_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"atomic_export\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "d9ffd59376fe35ffbbef6a30ba08d3b84e685e19f92ab5695a418751f632f8d6"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_17",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"final_equals_auto\":true,\"history_n\":2,\"nontarget_unchanged\":true},\"outcome\":\"final_confirm_revoke_preserves_nontarget_bytes\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-17\",\"status\":\"pass\"}",
+      "expected_result_hash": "6907c424357f2f3a3588e7f87383e9ef845c3267199303bee3ec3f8040494e5f"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_28",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"auto_unchanged\":true,\"failure_code\":\"unsupported_transition_for_schema_v1\",\"status\":\"failed_closed\"},\"outcome\":\"unsupported_transition_for_schema\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-28\",\"status\":\"pass\"}",
+      "expected_result_hash": "b9c446f1479deb34f229684d37af4db901d882caf3faa0d088f1048ff9e84c97"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_29",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"failure_code\":\"unsupported_transition_for_schema_v1\",\"parent_restored\":false,\"product_unchanged\":true,\"status\":\"failed_closed\"},\"outcome\":\"projection_reject_preserves_bytes\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-29\",\"status\":\"pass\"}",
+      "expected_result_hash": "0750dc6afde89795db284504634376240bd2ed80fced50724c6c9692e08cf8cc"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_30",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"candidate_evidence_unchanged\":true,\"children\":[[1,2],[4,5]],\"connector_unclassified\":true},\"outcome\":\"state_split_two_children\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-30\",\"status\":\"pass\"}",
+      "expected_result_hash": "6d425236249e61010f6559a23ca14134b46bc355bd4fc71d15fbad5f2b08e91b"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "acceptance_gb3_31",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"failure_code\":\"review_event_conflict\",\"geometry_unchanged\":true,\"status\":\"failed_closed\"},\"outcome\":\"review_event_conflict_typed_reject\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-31\",\"status\":\"pass\"}",
+      "expected_result_hash": "db01ccfdc1c4e9464e247f3e8bb72f746897d11018ac9cdf44710ebf1a2e45d1"
+    },
+    {
+      "contract_id": "GB3-FINAL-001",
+      "fixture_id": "contract_gb3_final_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"final_history\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "a668139494c458fa1072d22852ba20e29018aca182abd595658c13880e3a7db3"
+    },
+    {
+      "contract_id": "GB3-GEO-001",
+      "fixture_id": "contract_gb3_geo_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"geometry\",\"observation\":21,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "b2c4e80ba7e960aab50c38c8f753bc91ee7400bcad2525b6fed331cf2bd60aea"
+    },
+    {
+      "contract_id": "GB3-GEO-002",
+      "fixture_id": "contract_gb3_geo_002",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"episode_partition\",\"observation\":2,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "49a279830bcc75a8003845c085b3ec5e54545245896565e03f76df82f29be623"
+    },
+    {
+      "contract_id": "GB3-GEO-003",
+      "fixture_id": "contract_gb3_geo_003",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"per_isi_roles\",\"observation\":2,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "d30196c9fb33e4969759d4c56e817f21bf9602ffbe9727d414b749848f2f67ac"
+    },
+    {
+      "contract_id": "GB3-GUARD-001",
+      "fixture_id": "acceptance_gb3_20",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"estimand\":\"exploratory_technical_agreement\",\"performance_eligible\":false},\"outcome\":\"exploratory_technical_agreement_only\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-20\",\"status\":\"pass\"}",
+      "expected_result_hash": "35e2a367bd010a216bcc85a7acbd8345f54d630df7ecd2d546bf0603d2426fc2"
+    },
+    {
+      "contract_id": "GB3-GUARD-001",
+      "fixture_id": "contract_gb3_guard_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"gate_c_guard\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "a01800d6a36ee9c470a6e167407bbdae03536726dfc1060f515f620a767f4feb"
+    },
+    {
+      "contract_id": "GB3-HASH-001",
+      "fixture_id": "contract_gb3_hash_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"jcs_hash_dag\",\"observation\":67,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "71fd71caf922f5c43a8b161e10089e317b7a179f9389f17ccb7192e203af8f45"
+    },
+    {
+      "contract_id": "GB3-ID-001",
+      "fixture_id": "contract_gb3_id_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"entity_identity\",\"observation\":29,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "46fb0ef0a4f14a3f20186ea93405eb3749f62e30052406d23320e7ae25b8a398"
+    },
+    {
+      "contract_id": "GB3-MIG-001",
+      "fixture_id": "acceptance_gb3_18",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"product_status\":\"requires_redetection\"},\"outcome\":\"requires_redetection\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-18\",\"status\":\"pass\"}",
+      "expected_result_hash": "878586cdff73cafbed2db47d7bbde0b937a179525b8bde9d04fb705ac9fb21d1"
+    },
+    {
+      "contract_id": "GB3-MIG-001",
+      "fixture_id": "contract_gb3_mig_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"migration_guard\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "2bb36fdb91cd5b4c605bca5bfbe862bfbda5b95d03a5f66ad49155adad74ebd9"
+    },
+    {
+      "contract_id": "GB3-PRIV-001",
+      "fixture_id": "acceptance_gb3_26",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"rejected_fields\":[\"host_path\",\"patient_id\"],\"valid\":false},\"outcome\":\"privacy_redaction_rejects\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-26\",\"status\":\"pass\"}",
+      "expected_result_hash": "b8f65bd55bc3e933a269a5c3a514fbb184b1e9c89a43d56497975e5a6060b43e"
+    },
+    {
+      "contract_id": "GB3-PRIV-001",
+      "fixture_id": "contract_gb3_priv_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"privacy_redaction\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "df115b9b460cb3747371a2778872c6053c8fa043fd930f783500cdf91faff161"
+    },
+    {
+      "contract_id": "GB3-REF-001",
+      "fixture_id": "acceptance_gb3_23",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"estimand\":\"workflow_agreement\",\"performance_eligible\":false},\"outcome\":\"workflow_agreement_only\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-23\",\"status\":\"pass\"}",
+      "expected_result_hash": "978ba6fdd802001b872380b3852fa6a6b427942ea31c8aaed5012e6699c9f6a8"
+    },
+    {
+      "contract_id": "GB3-REF-001",
+      "fixture_id": "contract_gb3_ref_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"reference_blinding\",\"observation\":5,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "361beb6e8f7f339cd9aae9faf35570776167468c6206200876b992d6fe0f4970"
+    },
+    {
+      "contract_id": "GB3-REG-001",
+      "fixture_id": "contract_gb3_reg_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"registry_fk\",\"observation\":45,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "e31f7e77d328cce755d4be85e97d0e1a50c1cad71d65bb474a5e523abb66d30c"
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "acceptance_gb3_10",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"relations\":[{\"direct_overlap\":0,\"episode_overlap\":1,\"event\":\"ev_1\",\"state\":\"se_1\"}],\"segments\":[{\"end\":2,\"role\":\"direct_support\",\"start\":1,\"state_id\":\"se_1\"},{\"end\":3,\"role\":\"tolerated_connector\",\"start\":3,\"state_id\":\"se_1\"},{\"end\":5,\"role\":\"direct_support\",\"start\":4,\"state_id\":\"se_1\"}]},\"outcome\":\"connector_overlap_partition_closes\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-10\",\"status\":\"pass\"}",
+      "expected_result_hash": "462678335f84b7fce2fd5586aa4173fc384ef7c758cd71262eae4e2f44f1e0c4"
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "acceptance_gb3_16",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"closure_ok\":false,\"failure_code\":\"state_event_relationship_closure_invalid\"},\"outcome\":\"relationship_expected_set_rejects_reseal\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-16\",\"status\":\"pass\"}",
+      "expected_result_hash": "c7c5e857b2d6bd38b3ae9bbd946f42dba11547737385b09d7254c98f873d908d"
+    },
+    {
+      "contract_id": "GB3-REL-001",
+      "fixture_id": "contract_gb3_rel_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"relationship_closure\",\"observation\":2,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "f33af8f7b7f577fb0e38000ecfd562e5f72a5b8d09740d02fb7caf2c20d0caf2"
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "acceptance_gb3_07",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"link_status\":\"algorithmic_candidate\",\"links\":1,\"states\":2},\"outcome\":\"two_states_one_gap_link_candidate_only\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-07\",\"status\":\"pass\"}",
+      "expected_result_hash": "5a66567118be0b2b35450c6a056b682f586f38c8ef1e2a4749560cdfb4d005f7"
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "acceptance_gb3_15",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"links\":2,\"recursive_link\":false,\"states\":3},\"outcome\":\"no_recursive_transitive_episode_merge\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-15\",\"status\":\"pass\"}",
+      "expected_result_hash": "11978f072929662415104b74a9b673c6703d2ac8acc2f5bf9a02b25daf6ce64f"
+    },
+    {
+      "contract_id": "GB3-REL-002",
+      "fixture_id": "contract_gb3_rel_002",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"episode_link_closure\",\"observation\":5,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "c84e79d328bcc6a4eb9aa7b97c39a8321d4f35ee1df2f1750f804aca13089ace"
+    },
+    {
+      "contract_id": "GB3-RES-001",
+      "fixture_id": "acceptance_gb3_25",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"code\":\"resource_budget_exceeded\",\"published\":0,\"staging_absent\":true,\"status\":\"failed_closed\",\"truncated\":false},\"outcome\":\"resource_budget_failed_closed_without_truncation\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-25\",\"status\":\"pass\"}",
+      "expected_result_hash": "975e1ace0e6d7f76351b734edde92342172631be15ab1579e33475e8eb2503da"
+    },
+    {
+      "contract_id": "GB3-RES-001",
+      "fixture_id": "contract_gb3_res_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"resource_budget\",\"observation\":9,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "fd7539b2cb8520e6247d5ba19d71010ff04c96f449fe92b7a80b6d176095b591"
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_01",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"direct_n\":3,\"events\":0,\"segments\":1,\"states\":1,\"valid\":true},\"outcome\":\"one_hf_irregular_episode_all_direct_zero_event\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-01\",\"status\":\"pass\"}",
+      "expected_result_hash": "188627a331170239913a066ec93088d653ca94f6e03b140170e912be8a8d1649"
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_13",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"frequency_class\":\"high\",\"regularity_class\":\"regular\",\"state_class\":\"high_frequency_tonic\",\"valid\":true},\"outcome\":\"high_regular_maps_hft\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-13\",\"status\":\"pass\"}",
+      "expected_result_hash": "96be7ffa0c86927ff0d595b06f03ca2a62bbb84c87056bfb395f3388fc3f35c8"
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "acceptance_gb3_14",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"frequency_class\":\"non_high\",\"regularity_class\":\"regular\",\"state_class\":\"tonic\",\"valid\":true},\"outcome\":\"non_high_regular_maps_tonic\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-14\",\"status\":\"pass\"}",
+      "expected_result_hash": "419367d47f37a40bd8445d776b10536f7f9aa709b826748999e678a382bbb3a8"
+    },
+    {
+      "contract_id": "GB3-SCI-001",
+      "fixture_id": "contract_gb3_sci_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"state_axis_grid\",\"observation\":9,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "e41a7a1f5ec1e01485601816e42c53f13e72fdb1a6dc95b35bead6c3218eed33"
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "acceptance_gb3_06",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"pause_owned\":false,\"states\":2},\"outcome\":\"canonical_pause_splits_even_below_tolerance\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-06\",\"status\":\"pass\"}",
+      "expected_result_hash": "e0f5b0826ae5a52776ef90543345e29362ab7c6a1ba7eb42257f9a279581a5a5"
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "acceptance_gb3_08",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"links\":0,\"states\":1,\"unowned\":[1,2,3]},\"outcome\":\"short_fragment_rejected_no_link\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-08\",\"status\":\"pass\"}",
+      "expected_result_hash": "1da2d3fc8406cb9f54dd32548e8540253fe26cd6087dabe36715feba56379df5"
+    },
+    {
+      "contract_id": "GB3-SCI-002",
+      "fixture_id": "contract_gb3_sci_002",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"pause_hard_boundary\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "f9bacceb564e03f50c792271ab15c83c615aa26a885a50efea09a2e131b38a09"
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_02",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"episode_assignment\":[1,1,1,1,1],\"segment_roles\":[\"direct_support\",\"tolerated_connector\",\"direct_support\"],\"states\":1},\"outcome\":\"one_episode_two_direct_one_connector\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-02\",\"status\":\"pass\"}",
+      "expected_result_hash": "108bf447c7a55dd7a59490213b79e40773b279ff91795b2a5b27f8e1ca8936fd"
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_03",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"connected\":true,\"states\":1},\"outcome\":\"equal_tolerated_gap_connects\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-03\",\"status\":\"pass\"}",
+      "expected_result_hash": "3b229c91299767709a23001cfa36055667cb22c82b8aaef1aa9147e8a61f1653"
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_04",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"connector_owned\":false,\"states\":2},\"outcome\":\"equal_hard_break_splits\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-04\",\"status\":\"pass\"}",
+      "expected_result_hash": "8bb44c351883b0cbe516448b41b1c036ab94184ea08776515ac951687f201406"
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "acceptance_gb3_05",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"connector_assignment\":[0,0],\"states\":2},\"outcome\":\"gap_budget_plus_one_splits\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-05\",\"status\":\"pass\"}",
+      "expected_result_hash": "b4978aa1db9e3d9078257f240602f09b5847d4aa4a06f2e99e8c7064493aff4a"
+    },
+    {
+      "contract_id": "GB3-SCI-003",
+      "fixture_id": "contract_gb3_sci_003",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"connector_nonrecursive\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "06f170b1cecfac73183461b996f64f19f9395e7a7cb39b18157d46e1cb1a10f0"
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "acceptance_gb3_09",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"assignment\":[1,1,1,1,1,1],\"relations\":[{\"direct_overlap\":3,\"episode_overlap\":3,\"event\":\"ev_1\",\"state\":\"se_1\"}],\"states\":1},\"outcome\":\"hf_state_unchanged_one_episode_relation\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-09\",\"status\":\"pass\"}",
+      "expected_result_hash": "c0dc88d5e9a2af65ec8dcd34f2779abbb43740cb2f931b08f61e871d11657780"
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "acceptance_gb3_11",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"ranges\":[[1,2],[5,7]],\"states\":2,\"unowned\":[3,4]},\"outcome\":\"hft_or_tonic_split_then_full_redetection\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-11\",\"status\":\"pass\"}",
+      "expected_result_hash": "7c5e592da18286827f5d6a7fc4e97cf763b81222c2ccc32c84a17756043af86f"
+    },
+    {
+      "contract_id": "GB3-SCI-004",
+      "fixture_id": "contract_gb3_sci_004",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"burst_hf_coexistence\",\"observation\":1,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "111c2af37d503136463ce84f51590ddb2452842400404dac76161297b7a0283e"
+    },
+    {
+      "contract_id": "GB3-STATUS-001",
+      "fixture_id": "acceptance_gb3_27",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"invalid_scope_rejected\":true,\"valid_matrix_rows\":9},\"outcome\":\"status_matrix_exact\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-27\",\"status\":\"pass\"}",
+      "expected_result_hash": "22920a7a8f29b7da42247fa20ade8504fce81add33b15cb0c61f5934d064b958"
+    },
+    {
+      "contract_id": "GB3-STATUS-001",
+      "fixture_id": "contract_gb3_status_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"status_matrix\",\"observation\":9,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "a0e7ce5907313d2319fb0122865134351dbcf1a5f2d2f3ff6bdda0d9d22eefe9"
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "acceptance_gb3_21",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"dataset_root_changed\":true,\"instance_ids\":[\"b167e0b264a835439066789c60699955f75ffb4a884637073a3b9d19ee8676b5\",\"1f9bfa28c5ee5771e77659ab2d9c8f08572c38b79b49ec413f20e184a4ce42f9\"],\"original_train_instance_unchanged\":true,\"unique\":true,\"values\":[0.2,0.25]},\"outcome\":\"scope_instances_independent\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-21\",\"status\":\"pass\"}",
+      "expected_result_hash": "27e368fce3925d263313270f3639b49f36d2b93162b5c8b4bd8c25dce138663a"
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "acceptance_gb3_22",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"observed\":{\"overlap\":[\"p2\"],\"status\":\"failed_closed\"},\"outcome\":\"group_overlap_failed_closed\",\"release_evidence_created\":false,\"scenario_id\":\"GB3-22\",\"status\":\"pass\"}",
+      "expected_result_hash": "5584d9ccb5eddd4b118bb1a1216e640dae136cb109a3c6e8f99dae4c062fdc49"
+    },
+    {
+      "contract_id": "GB3-THR-001",
+      "fixture_id": "contract_gb3_thr_001",
+      "repository_relative_test_path": "tests/testthat/test_gate_b_v3_phase1_contract.R",
+      "test_name": "Gate B v3 phase-1 executable fixture matrix",
+      "expected_result_schema": "stpd_gate_b_v3_phase1_expected_result_v1",
+      "expected_result_json": "{\"authority_granted\":false,\"component\":\"threshold_provenance\",\"observation\":3,\"release_evidence_created\":false,\"status\":\"pass\"}",
+      "expected_result_hash": "2cbc28554774307055288633706772a6eff9496dbe9223ab2d5e216373af2497"
+    }
+  ]
+}

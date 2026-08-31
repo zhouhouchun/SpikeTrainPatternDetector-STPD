@@ -723,7 +723,7 @@ derive_highfreq_isi_ranges_from_manual <- function(ds,
   for (tr in names(ds$trains)) {
     dat <- ds$trains[[tr]]
     if (is.null(dat$pattern_manual) || is.null(dat$ISI_sec)) next
-    labs <- normalize_pattern_label(dat$pattern_manual, fill_blank_others = FALSE)
+    labs <- stpd_normalize_pattern_label(dat$pattern_manual, fill_blank_others = FALSE)
     valid <- is.finite(dat$ISI_sec) & dat$ISI_sec >= min_isi_sec
     vals <- dat$ISI_sec[valid & labs %in% hf_labels]
     if (length(vals) == 0) next

@@ -1,0 +1,2664 @@
+"Train_ID","Axis","Pattern","start_isi","end_isi","repeat_id"
+"LT1D01.404_nw-7","state_hf_family","high_frequency_spiking",131,184,1
+"LT1D01.404_nw-7","state_hf_family","tonic",113,119,1
+"LT1D01.404_nw-7","state_hf_family","tonic",260,263,1
+"LT1D01.404_nw-7","state_hf_family","tonic",330,334,1
+"LT1D01.404_nw-7","state_hf_family","tonic",594,597,1
+"LT1D01.404_nw-7","state_hf_family","tonic",661,664,1
+"LT1D01.404_nw-7","state_hf_family","tonic",666,669,1
+"LT1D01.404_nw-7","state_hf_family","tonic",792,796,1
+"LT1D01.404_nw-7","state_hf_family","tonic",938,941,1
+"LT1D01.404_nw-7","state_hf_family","tonic",947,950,1
+"LT1D01.404_nw-7","state_hf_family","tonic",1019,1022,1
+"LT1D01.404_nw-7","state_hf_family","tonic",1225,1228,1
+"LT1D01.404_nw-7","state_hf_family","tonic",1289,1292,1
+"LT1D01.404_nw-7","state_strict","high_frequency_spiking",131,184,1
+"LT1D01.404_nw-7","state_strict","tonic",113,119,1
+"LT1D01.404_nw-7","state_strict","tonic",260,263,1
+"LT1D01.404_nw-7","state_strict","tonic",330,334,1
+"LT1D01.404_nw-7","state_strict","tonic",594,597,1
+"LT1D01.404_nw-7","state_strict","tonic",661,664,1
+"LT1D01.404_nw-7","state_strict","tonic",666,669,1
+"LT1D01.404_nw-7","state_strict","tonic",792,796,1
+"LT1D01.404_nw-7","state_strict","tonic",938,941,1
+"LT1D01.404_nw-7","state_strict","tonic",947,950,1
+"LT1D01.404_nw-7","state_strict","tonic",1019,1022,1
+"LT1D01.404_nw-7","state_strict","tonic",1225,1228,1
+"LT1D01.404_nw-7","state_strict","tonic",1289,1292,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",8,16,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",18,31,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",34,39,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",43,48,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",51,56,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",70,74,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",76,80,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",84,86,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",92,96,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",102,108,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",110,117,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",126,128,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",130,131,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",133,134,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",136,140,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",142,153,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",160,166,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",168,172,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",216,218,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",229,233,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",271,276,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",299,304,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",308,314,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",357,364,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",448,454,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",456,469,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",471,478,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",498,504,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",506,513,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",567,575,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",606,614,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",616,624,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",626,627,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",629,634,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",636,641,1
+"LT1D01.687_nw-7 (flag 1)","event","burst",662,674,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",5,5,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",7,7,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",17,17,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",40,40,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",42,42,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",49,50,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",57,58,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",60,60,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",63,63,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",65,66,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",68,69,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",75,75,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",81,81,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",83,83,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",87,87,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",91,91,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",97,97,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",99,99,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",101,101,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",109,109,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",120,120,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",125,125,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",129,129,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",132,132,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",135,135,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",154,154,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",158,159,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",167,167,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",305,305,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",307,307,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",470,470,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",479,479,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",497,497,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",514,514,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",566,566,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",576,576,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",615,615,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",625,625,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",635,635,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",661,661,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",675,675,1
+"LT1D01.687_nw-7 (flag 1)","event","pause",677,677,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",70,74,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",212,215,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",237,248,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",283,286,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",313,316,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",326,330,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",377,380,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",401,406,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",411,416,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",431,434,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",491,496,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",525,529,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",679,683,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",753,757,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",782,786,1
+"LT1D01.687_nw-7 (flag 1)","state_hf_family","tonic",792,795,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",70,74,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",212,215,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",237,248,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",283,286,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",313,316,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",326,330,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",377,380,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",401,406,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",411,416,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",431,434,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",491,496,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",525,529,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",679,683,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",753,757,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",782,786,1
+"LT1D01.687_nw-7 (flag 1)","state_strict","tonic",792,795,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",2,7,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",10,14,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",20,26,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",28,30,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",34,39,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",59,66,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",76,82,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",84,94,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",96,100,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",105,111,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",113,120,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",139,143,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",147,150,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",152,153,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",155,159,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",161,163,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",166,168,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",170,176,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",181,187,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",189,193,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",200,204,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",210,211,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",217,219,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",225,229,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",233,234,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",245,247,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",261,262,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",277,278,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",291,295,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",302,305,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",313,315,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",336,339,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",352,356,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",363,364,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",371,375,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",385,390,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",392,398,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",402,406,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",408,414,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",416,420,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",424,426,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",428,430,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",432,435,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",437,443,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",445,449,1
+"LT1D01.687_nw-7 (flag 2)","event","burst",453,460,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",15,15,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",19,19,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",27,27,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",31,33,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",58,58,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",67,67,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",69,69,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",73,75,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",95,95,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",101,101,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",104,104,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",121,121,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",125,127,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",132,133,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",137,138,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",144,144,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",146,146,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",151,151,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",154,154,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",160,160,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",164,165,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",169,169,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",177,178,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",180,180,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",194,195,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",199,199,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",205,206,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",209,209,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",212,212,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",214,216,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",220,224,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",232,232,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",235,235,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",240,240,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",242,242,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",244,244,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",250,251,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",255,258,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",260,260,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",263,263,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",265,265,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",267,268,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",270,271,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",273,273,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",276,276,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",279,280,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",283,283,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",285,285,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",287,287,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",289,290,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",296,299,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",301,301,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",306,306,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",308,309,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",311,312,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",316,316,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",318,320,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",323,324,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",326,326,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",330,331,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",334,334,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",340,342,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",344,345,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",347,349,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",351,351,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",357,357,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",362,362,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",365,365,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",367,367,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",369,370,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",376,380,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",384,384,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",391,391,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",399,399,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",401,401,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",407,407,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",421,421,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",423,423,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",427,427,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",431,431,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",436,436,1
+"LT1D01.687_nw-7 (flag 2)","event","pause",450,450,1
+"LT1D01.687_nw-7 (flag 2)","state_hf_family","tonic",116,119,1
+"LT1D01.687_nw-7 (flag 2)","state_strict","tonic",116,119,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","high_frequency_spiking",670,688,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",43,47,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",142,145,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",167,170,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",186,190,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",295,298,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",361,365,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",393,397,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",468,471,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",600,607,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",689,696,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",718,721,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",811,816,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",924,927,1
+"LT1D01.917_nw-7 (flag 1)","state_hf_family","tonic",1017,1022,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","high_frequency_spiking",670,688,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",43,47,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",142,145,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",167,170,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",186,190,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",295,298,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",361,365,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",393,397,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",468,471,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",600,607,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",689,696,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",718,721,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",811,816,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",924,927,1
+"LT1D01.917_nw-7 (flag 1)","state_strict","tonic",1017,1022,1
+"LT1D01_687_nw_7_09_1_1","event","burst",2,6,1
+"LT1D01_687_nw_7_09_1_1","event","burst",12,18,1
+"LT1D01_687_nw_7_09_1_1","event","burst",20,27,1
+"LT1D01_687_nw_7_09_1_1","event","burst",36,38,1
+"LT1D01_687_nw_7_09_1_1","event","burst",40,41,1
+"LT1D01_687_nw_7_09_1_1","event","burst",43,44,1
+"LT1D01_687_nw_7_09_1_1","event","burst",46,50,1
+"LT1D01_687_nw_7_09_1_1","event","burst",52,63,1
+"LT1D01_687_nw_7_09_1_1","event","burst",70,76,1
+"LT1D01_687_nw_7_09_1_1","event","burst",78,82,1
+"LT1D01_687_nw_7_09_1_1","event","burst",126,128,1
+"LT1D01_687_nw_7_09_1_1","event","burst",139,143,1
+"LT1D01_687_nw_7_09_1_1","event","burst",181,186,1
+"LT1D01_687_nw_7_09_1_1","event","burst",209,214,1
+"LT1D01_687_nw_7_09_1_1","event","burst",218,224,1
+"LT1D01_687_nw_7_09_1_1","event","burst",267,274,1
+"LT1D01_687_nw_7_09_1_1","event","burst",358,364,1
+"LT1D01_687_nw_7_09_1_1","event","burst",366,379,1
+"LT1D01_687_nw_7_09_1_1","event","burst",381,388,1
+"LT1D01_687_nw_7_09_1_1","event","burst",408,414,1
+"LT1D01_687_nw_7_09_1_1","event","burst",416,423,1
+"LT1D01_687_nw_7_09_1_1","event","burst",477,485,1
+"LT1D01_687_nw_7_09_1_1","event","burst",516,524,1
+"LT1D01_687_nw_7_09_1_1","event","burst",526,534,1
+"LT1D01_687_nw_7_09_1_1","event","burst",536,537,1
+"LT1D01_687_nw_7_09_1_1","event","burst",539,544,1
+"LT1D01_687_nw_7_09_1_1","event","burst",546,551,1
+"LT1D01_687_nw_7_09_1_1","event","burst",572,584,1
+"LT1D01_687_nw_7_09_1_1","event","pause",7,7,1
+"LT1D01_687_nw_7_09_1_1","event","pause",9,9,1
+"LT1D01_687_nw_7_09_1_1","event","pause",11,11,1
+"LT1D01_687_nw_7_09_1_1","event","pause",19,19,1
+"LT1D01_687_nw_7_09_1_1","event","pause",30,30,1
+"LT1D01_687_nw_7_09_1_1","event","pause",35,35,1
+"LT1D01_687_nw_7_09_1_1","event","pause",39,39,1
+"LT1D01_687_nw_7_09_1_1","event","pause",42,42,1
+"LT1D01_687_nw_7_09_1_1","event","pause",45,45,1
+"LT1D01_687_nw_7_09_1_1","event","pause",64,64,1
+"LT1D01_687_nw_7_09_1_1","event","pause",68,69,1
+"LT1D01_687_nw_7_09_1_1","event","pause",77,77,1
+"LT1D01_687_nw_7_09_1_1","event","pause",215,215,1
+"LT1D01_687_nw_7_09_1_1","event","pause",217,217,1
+"LT1D01_687_nw_7_09_1_1","event","pause",380,380,1
+"LT1D01_687_nw_7_09_1_1","event","pause",389,389,1
+"LT1D01_687_nw_7_09_1_1","event","pause",407,407,1
+"LT1D01_687_nw_7_09_1_1","event","pause",424,424,1
+"LT1D01_687_nw_7_09_1_1","event","pause",476,476,1
+"LT1D01_687_nw_7_09_1_1","event","pause",486,486,1
+"LT1D01_687_nw_7_09_1_1","event","pause",525,525,1
+"LT1D01_687_nw_7_09_1_1","event","pause",535,535,1
+"LT1D01_687_nw_7_09_1_1","event","pause",545,545,1
+"LT1D01_687_nw_7_09_1_1","event","pause",571,571,1
+"LT1D01_687_nw_7_09_1_1","event","pause",585,585,1
+"LT1D01_687_nw_7_09_1_1","event","pause",587,587,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",122,125,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",151,158,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",193,196,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",223,226,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",236,240,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",287,291,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",311,316,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",341,344,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",401,404,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",435,439,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",555,558,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",589,593,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",633,636,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",702,705,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",774,777,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",779,783,1
+"LT1D01_687_nw_7_09_1_1","state_hf_family","tonic",835,838,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",122,125,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",151,158,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",193,196,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",223,226,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",236,240,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",287,291,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",311,316,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",341,344,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",401,404,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",435,439,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",555,558,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",589,593,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",633,636,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",702,705,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",774,777,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",779,783,1
+"LT1D01_687_nw_7_09_1_1","state_strict","tonic",835,838,1
+"LT1D01_687_nw_7_09_1_2","event","burst",28,30,1
+"LT1D01_687_nw_7_09_1_2","event","burst",35,38,1
+"LT1D01_687_nw_7_09_1_2","event","burst",41,58,1
+"LT1D01_687_nw_7_09_1_2","event","burst",60,68,1
+"LT1D01_687_nw_7_09_1_2","event","burst",70,78,1
+"LT1D01_687_nw_7_09_1_2","event","burst",80,90,1
+"LT1D01_687_nw_7_09_1_2","event","burst",92,93,1
+"LT1D01_687_nw_7_09_1_2","event","burst",248,256,1
+"LT1D01_687_nw_7_09_1_2","event","burst",258,267,1
+"LT1D01_687_nw_7_09_1_2","event","burst",269,273,1
+"LT1D01_687_nw_7_09_1_2","event","burst",279,285,1
+"LT1D01_687_nw_7_09_1_2","event","burst",287,289,1
+"LT1D01_687_nw_7_09_1_2","event","burst",293,298,1
+"LT1D01_687_nw_7_09_1_2","event","burst",318,325,1
+"LT1D01_687_nw_7_09_1_2","event","burst",335,341,1
+"LT1D01_687_nw_7_09_1_2","event","burst",343,353,1
+"LT1D01_687_nw_7_09_1_2","event","burst",355,359,1
+"LT1D01_687_nw_7_09_1_2","event","burst",364,370,1
+"LT1D01_687_nw_7_09_1_2","event","burst",372,379,1
+"LT1D01_687_nw_7_09_1_2","event","burst",382,383,1
+"LT1D01_687_nw_7_09_1_2","event","burst",398,402,1
+"LT1D01_687_nw_7_09_1_2","event","burst",406,409,1
+"LT1D01_687_nw_7_09_1_2","event","burst",411,412,1
+"LT1D01_687_nw_7_09_1_2","event","burst",414,418,1
+"LT1D01_687_nw_7_09_1_2","event","burst",420,422,1
+"LT1D01_687_nw_7_09_1_2","event","burst",425,427,1
+"LT1D01_687_nw_7_09_1_2","event","burst",429,435,1
+"LT1D01_687_nw_7_09_1_2","event","burst",440,446,1
+"LT1D01_687_nw_7_09_1_2","event","burst",448,452,1
+"LT1D01_687_nw_7_09_1_2","event","burst",459,463,1
+"LT1D01_687_nw_7_09_1_2","event","burst",469,470,1
+"LT1D01_687_nw_7_09_1_2","event","burst",476,478,1
+"LT1D01_687_nw_7_09_1_2","event","burst",484,488,1
+"LT1D01_687_nw_7_09_1_2","event","burst",492,493,1
+"LT1D01_687_nw_7_09_1_2","event","burst",504,506,1
+"LT1D01_687_nw_7_09_1_2","event","burst",520,521,1
+"LT1D01_687_nw_7_09_1_2","event","burst",536,537,1
+"LT1D01_687_nw_7_09_1_2","event","burst",550,554,1
+"LT1D01_687_nw_7_09_1_2","event","pause",34,34,1
+"LT1D01_687_nw_7_09_1_2","event","pause",39,40,1
+"LT1D01_687_nw_7_09_1_2","event","pause",69,69,1
+"LT1D01_687_nw_7_09_1_2","event","pause",79,79,1
+"LT1D01_687_nw_7_09_1_2","event","pause",91,91,1
+"LT1D01_687_nw_7_09_1_2","event","pause",94,94,1
+"LT1D01_687_nw_7_09_1_2","event","pause",135,135,1
+"LT1D01_687_nw_7_09_1_2","event","pause",167,167,1
+"LT1D01_687_nw_7_09_1_2","event","pause",198,198,1
+"LT1D01_687_nw_7_09_1_2","event","pause",247,247,1
+"LT1D01_687_nw_7_09_1_2","event","pause",257,257,1
+"LT1D01_687_nw_7_09_1_2","event","pause",274,274,1
+"LT1D01_687_nw_7_09_1_2","event","pause",278,278,1
+"LT1D01_687_nw_7_09_1_2","event","pause",286,286,1
+"LT1D01_687_nw_7_09_1_2","event","pause",290,292,1
+"LT1D01_687_nw_7_09_1_2","event","pause",317,317,1
+"LT1D01_687_nw_7_09_1_2","event","pause",326,326,1
+"LT1D01_687_nw_7_09_1_2","event","pause",328,328,1
+"LT1D01_687_nw_7_09_1_2","event","pause",332,334,1
+"LT1D01_687_nw_7_09_1_2","event","pause",354,354,1
+"LT1D01_687_nw_7_09_1_2","event","pause",360,360,1
+"LT1D01_687_nw_7_09_1_2","event","pause",363,363,1
+"LT1D01_687_nw_7_09_1_2","event","pause",380,380,1
+"LT1D01_687_nw_7_09_1_2","event","pause",384,386,1
+"LT1D01_687_nw_7_09_1_2","event","pause",391,392,1
+"LT1D01_687_nw_7_09_1_2","event","pause",396,397,1
+"LT1D01_687_nw_7_09_1_2","event","pause",403,403,1
+"LT1D01_687_nw_7_09_1_2","event","pause",405,405,1
+"LT1D01_687_nw_7_09_1_2","event","pause",410,410,1
+"LT1D01_687_nw_7_09_1_2","event","pause",413,413,1
+"LT1D01_687_nw_7_09_1_2","event","pause",419,419,1
+"LT1D01_687_nw_7_09_1_2","event","pause",423,424,1
+"LT1D01_687_nw_7_09_1_2","event","pause",428,428,1
+"LT1D01_687_nw_7_09_1_2","event","pause",436,437,1
+"LT1D01_687_nw_7_09_1_2","event","pause",439,439,1
+"LT1D01_687_nw_7_09_1_2","event","pause",453,454,1
+"LT1D01_687_nw_7_09_1_2","event","pause",458,458,1
+"LT1D01_687_nw_7_09_1_2","event","pause",464,465,1
+"LT1D01_687_nw_7_09_1_2","event","pause",468,468,1
+"LT1D01_687_nw_7_09_1_2","event","pause",471,471,1
+"LT1D01_687_nw_7_09_1_2","event","pause",473,475,1
+"LT1D01_687_nw_7_09_1_2","event","pause",479,483,1
+"LT1D01_687_nw_7_09_1_2","event","pause",491,491,1
+"LT1D01_687_nw_7_09_1_2","event","pause",494,494,1
+"LT1D01_687_nw_7_09_1_2","event","pause",499,499,1
+"LT1D01_687_nw_7_09_1_2","event","pause",501,501,1
+"LT1D01_687_nw_7_09_1_2","event","pause",503,503,1
+"LT1D01_687_nw_7_09_1_2","event","pause",509,510,1
+"LT1D01_687_nw_7_09_1_2","event","pause",514,517,1
+"LT1D01_687_nw_7_09_1_2","event","pause",519,519,1
+"LT1D01_687_nw_7_09_1_2","event","pause",522,522,1
+"LT1D01_687_nw_7_09_1_2","event","pause",524,524,1
+"LT1D01_687_nw_7_09_1_2","event","pause",526,527,1
+"LT1D01_687_nw_7_09_1_2","event","pause",529,530,1
+"LT1D01_687_nw_7_09_1_2","event","pause",532,532,1
+"LT1D01_687_nw_7_09_1_2","event","pause",535,535,1
+"LT1D01_687_nw_7_09_1_2","event","pause",538,539,1
+"LT1D01_687_nw_7_09_1_2","event","pause",542,542,1
+"LT1D01_687_nw_7_09_1_2","event","pause",544,544,1
+"LT1D01_687_nw_7_09_1_2","event","pause",546,546,1
+"LT1D01_687_nw_7_09_1_2","event","pause",548,549,1
+"LT1D01_687_nw_7_09_1_2","event","pause",555,558,1
+"LT1D01_687_nw_7_09_1_2","event","pause",560,560,1
+"LT1D01_687_nw_7_09_1_2","state_hf_family","tonic",342,345,1
+"LT1D01_687_nw_7_09_1_2","state_hf_family","tonic",362,362,1
+"LT1D01_687_nw_7_09_1_2","state_hf_family","tonic",364,365,1
+"LT1D01_687_nw_7_09_1_2","state_hf_family","tonic",375,378,1
+"LT1D01_687_nw_7_09_1_2","state_strict","tonic",342,345,1
+"LT1D01_687_nw_7_09_1_2","state_strict","tonic",362,362,1
+"LT1D01_687_nw_7_09_1_2","state_strict","tonic",364,365,1
+"LT1D01_687_nw_7_09_1_2","state_strict","tonic",375,378,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",4,8,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",28,32,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",45,54,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",56,60,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",66,76,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",81,89,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",91,101,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",104,109,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",157,165,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",167,171,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",173,178,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",180,193,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",236,252,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",254,264,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",266,267,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",273,275,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",288,289,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",319,324,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",328,332,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",337,338,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",352,359,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",364,371,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",383,388,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",390,395,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",401,406,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",440,448,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",450,452,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",454,461,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",469,475,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",478,483,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",490,495,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",497,498,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",501,502,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",504,510,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",512,517,1
+"LT1D02.236_nw-7 (flag 1)","event","burst",520,526,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",2,3,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",9,9,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",13,15,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",18,19,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",21,21,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",24,25,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",33,33,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",36,36,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",40,41,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",44,44,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",55,55,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",65,65,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",77,77,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",80,80,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",90,90,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",103,103,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",110,110,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",137,138,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",156,156,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",166,166,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",172,172,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",179,179,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",194,194,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",196,196,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",235,235,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",253,253,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",265,265,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",268,272,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",276,277,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",279,280,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",285,285,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",290,290,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",292,292,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",311,311,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",313,313,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",315,315,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",317,318,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",326,326,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",333,333,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",335,336,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",339,339,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",342,343,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",345,345,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",348,349,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",351,351,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",360,360,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",363,363,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",389,389,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",396,396,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",400,400,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",407,407,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",409,409,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",411,411,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",413,418,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",437,437,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",449,449,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",453,453,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",462,462,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",467,468,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",476,476,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",484,484,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",486,486,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",488,489,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",496,496,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",503,503,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",511,511,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",518,519,1
+"LT1D02.236_nw-7 (flag 1)","event","pause",527,527,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",12,12,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",27,30,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",60,63,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",105,108,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",174,178,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",180,186,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",222,226,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",238,242,1
+"LT1D02.236_nw-7 (flag 1)","state_hf_family","tonic",391,394,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",12,12,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",27,30,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",60,63,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",105,108,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",174,178,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",180,186,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",222,226,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",238,242,1
+"LT1D02.236_nw-7 (flag 1)","state_strict","tonic",391,394,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",26,35,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",40,46,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",48,56,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",61,62,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",64,66,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",68,80,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",82,91,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",96,97,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",99,100,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",102,107,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",130,142,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",149,153,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",155,159,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",164,175,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",178,186,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",188,197,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",239,247,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",249,250,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",254,256,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",258,264,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",267,278,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",280,281,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",324,328,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",330,336,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",339,341,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",344,346,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",349,354,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",379,382,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",384,389,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",391,395,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",397,402,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",409,414,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",416,417,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",419,422,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",424,431,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",433,439,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",442,451,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",455,457,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",459,464,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",466,472,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",476,481,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",483,495,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",497,498,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",501,510,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",514,525,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",527,528,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",564,570,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",593,597,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",599,600,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",665,672,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",674,681,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",687,697,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",699,704,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",726,730,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",732,734,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",757,769,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",796,802,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",808,816,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",818,824,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",862,863,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",899,908,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",939,947,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",973,986,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1019,1024,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1027,1037,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1040,1041,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1044,1045,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1052,1060,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1068,1070,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1101,1103,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1110,1117,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1121,1128,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1135,1142,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1191,1195,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1236,1240,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1260,1261,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1267,1274,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1279,1285,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1287,1291,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1293,1298,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1306,1308,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1310,1314,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1326,1331,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1370,1372,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1375,1380,1
+"LT1D03.010_nw-7 (flag 1)","event","burst",1382,1386,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",36,36,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",39,39,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",57,57,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",59,59,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",63,63,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",92,92,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",94,95,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",98,98,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",101,101,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",109,109,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",128,128,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",143,143,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",145,145,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",147,148,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",162,163,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",176,177,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",187,187,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",198,198,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",220,220,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",238,238,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",248,248,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",251,253,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",257,257,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",265,266,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",279,279,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",282,283,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",299,299,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",323,323,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",329,329,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",337,337,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",343,343,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",348,348,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",355,355,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",372,373,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",376,378,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",383,383,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",403,403,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",405,405,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",408,408,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",415,415,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",418,418,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",423,423,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",432,432,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",440,441,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",452,454,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",458,458,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",473,473,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",475,475,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",482,482,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",496,496,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",499,500,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",526,526,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",529,529,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",531,531,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",533,534,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",598,598,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",621,621,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",664,664,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",673,673,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",682,682,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",686,686,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",698,698,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",725,725,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",731,731,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",735,735,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",770,770,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",788,788,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",817,817,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",861,861,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",864,864,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",898,898,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",909,909,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",911,911,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",935,935,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",938,938,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",948,948,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",969,969,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",972,972,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",989,989,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1010,1011,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1015,1015,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1018,1018,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1025,1025,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1039,1039,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1042,1043,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1046,1046,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1049,1049,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1051,1051,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1061,1061,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1078,1078,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1096,1096,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1098,1098,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1104,1104,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1107,1107,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1118,1118,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1120,1120,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1129,1129,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1134,1134,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1143,1143,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1190,1190,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1196,1196,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1219,1219,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1235,1235,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1241,1241,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1259,1259,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1262,1262,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1266,1266,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1275,1275,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1286,1286,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1309,1309,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1315,1315,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1319,1319,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1322,1323,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1369,1369,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1373,1374,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1381,1381,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1387,1387,1
+"LT1D03.010_nw-7 (flag 1)","event","pause",1391,1391,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",22,26,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",81,84,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",390,393,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",459,463,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",491,494,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",511,519,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",554,558,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",703,707,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",869,872,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",1277,1280,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",1295,1299,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",1327,1330,1
+"LT1D03.010_nw-7 (flag 1)","state_hf_family","tonic",1350,1353,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",22,26,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",81,84,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",390,393,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",459,463,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",491,494,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",511,519,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",554,558,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",703,707,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",869,872,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",1277,1280,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",1295,1299,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",1327,1330,1
+"LT1D03.010_nw-7 (flag 1)","state_strict","tonic",1350,1353,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",135,140,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",244,252,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",284,288,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",347,352,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",422,436,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",438,446,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",860,865,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",926,933,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",935,939,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1067,1072,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1074,1079,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1131,1135,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1229,1233,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1237,1241,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1243,1247,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1376,1388,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1453,1458,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1494,1499,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1502,1511,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1527,1532,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1536,1540,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1542,1549,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1636,1651,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1653,1657,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1659,1670,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1675,1680,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1731,1738,1
+"LT1D03.775_nw-7 (flag 1)","event","burst",1753,1765,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",68,68,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",207,207,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",242,243,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",253,253,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",289,289,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",447,447,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",866,866,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1073,1073,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1138,1138,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1175,1175,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1195,1195,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1234,1234,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1236,1236,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1242,1242,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1306,1306,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1327,1327,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1329,1329,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1375,1375,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1389,1389,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1500,1501,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1533,1534,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1541,1541,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1550,1550,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1593,1593,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1652,1652,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1671,1671,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1674,1674,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1681,1681,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1712,1712,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1714,1714,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1730,1730,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1752,1752,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1766,1766,1
+"LT1D03.775_nw-7 (flag 1)","event","pause",1768,1768,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","high_frequency_spiking",181,205,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","high_frequency_spiking",638,681,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",144,149,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",156,160,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",217,220,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",290,293,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",348,351,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",360,366,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",568,571,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",717,722,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",818,821,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",894,898,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1030,1033,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1035,1039,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1059,1062,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1111,1114,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1221,1226,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1313,1326,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1391,1395,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1437,1440,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1542,1546,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1601,1606,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1608,1613,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1677,1680,1
+"LT1D03.775_nw-7 (flag 1)","state_hf_family","tonic",1715,1718,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","high_frequency_spiking",181,205,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","high_frequency_spiking",638,681,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",144,149,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",156,160,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",217,220,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",290,293,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",348,351,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",360,366,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",568,571,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",717,722,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",818,821,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",894,898,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1030,1033,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1035,1039,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1059,1062,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1111,1114,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1221,1226,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1313,1326,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1391,1395,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1437,1440,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1542,1546,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1601,1606,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1608,1613,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1677,1680,1
+"LT1D03.775_nw-7 (flag 1)","state_strict","tonic",1715,1718,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",4,11,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",15,21,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",24,28,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",41,45,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",49,54,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",56,62,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",66,70,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",72,86,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",88,95,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",99,105,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",109,118,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",139,146,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",148,153,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",173,179,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",185,189,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",191,196,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",198,203,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",205,213,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",215,222,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",227,235,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",237,242,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",246,254,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",256,260,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",262,272,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",274,278,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",280,285,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",291,296,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",299,304,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",306,310,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",314,318,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",320,332,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",334,338,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",341,351,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",353,357,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",362,366,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",368,377,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",379,388,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",393,400,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",402,417,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",420,424,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",428,438,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",440,445,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",447,451,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",453,457,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",459,463,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",465,475,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",482,484,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",486,493,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",495,500,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",502,511,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",513,517,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",519,523,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",525,536,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",539,545,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",547,551,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",555,560,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",563,564,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",566,569,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",571,582,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",584,591,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",593,598,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",604,609,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",611,615,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",617,622,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",628,633,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",640,647,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",649,653,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",655,660,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",662,666,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",668,672,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",679,683,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",685,689,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",691,701,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",703,721,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",726,730,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",732,739,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",741,745,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",750,754,1
+"LT1D04.464_nw-7 (flag 1)","event","burst",756,762,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",3,3,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",12,14,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",23,23,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",46,46,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",48,48,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",55,55,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",63,63,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",65,65,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",87,87,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",98,98,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",119,119,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",138,138,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",154,154,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",172,172,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",190,190,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",197,197,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",204,204,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",214,214,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",223,223,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",226,226,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",236,236,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",243,243,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",245,245,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",273,273,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",288,288,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",290,290,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",298,298,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",305,305,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",333,333,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",339,340,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",352,352,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",358,358,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",392,392,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",401,401,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",419,419,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",427,427,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",439,439,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",446,446,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",452,452,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",476,476,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",478,478,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",481,481,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",485,485,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",494,494,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",518,518,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",524,524,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",537,538,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",554,554,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",561,562,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",565,565,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",570,570,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",592,592,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",610,610,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",616,616,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",623,624,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",627,627,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",634,634,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",648,648,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",654,654,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",661,661,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",673,673,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",675,675,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",678,678,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",684,684,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",690,690,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",702,702,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",722,722,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",724,724,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",740,740,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",746,746,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",748,749,1
+"LT1D04.464_nw-7 (flag 1)","event","pause",755,755,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",21,22,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",24,27,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",76,79,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",96,97,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",99,100,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",131,134,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",161,164,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",177,182,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",250,255,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",257,261,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",265,271,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",313,316,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",330,332,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",342,346,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",348,351,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",369,373,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",378,382,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",389,391,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",393,395,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",421,426,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",440,444,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",501,504,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",506,512,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",530,533,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",632,633,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",635,641,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",647,647,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",649,652,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",656,659,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",663,668,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",682,683,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",685,686,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",745,745,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",747,747,1
+"LT1D04.464_nw-7 (flag 1)","state_hf_family","tonic",750,753,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",21,22,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",24,27,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",76,79,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",96,97,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",99,100,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",131,134,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",161,164,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",177,182,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",250,255,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",257,261,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",265,271,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",313,316,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",330,332,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",342,346,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",348,351,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",369,373,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",378,382,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",389,391,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",393,395,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",421,426,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",440,444,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",501,504,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",506,512,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",530,533,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",632,633,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",635,641,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",647,647,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",649,652,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",656,659,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",663,668,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",682,683,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",685,686,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",745,745,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",747,747,1
+"LT1D04.464_nw-7 (flag 1)","state_strict","tonic",750,753,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",2,8,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",113,120,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",470,472,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",516,524,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",526,538,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",541,549,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",622,634,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",697,710,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",735,743,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",969,988,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1042,1065,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1068,1076,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1078,1079,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1081,1085,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1087,1104,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1251,1253,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1370,1378,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1405,1414,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1432,1437,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1439,1451,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1453,1464,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1466,1479,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1516,1531,1
+"LT1D04.934_nw-7 (flag 1)","event","burst",1566,1583,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",66,66,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",208,208,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",261,261,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",263,263,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",284,284,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",539,539,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",621,621,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",711,711,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",909,909,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1066,1067,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1086,1086,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1105,1105,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1128,1128,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1349,1349,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1379,1379,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1431,1431,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1452,1452,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1465,1465,1
+"LT1D04.934_nw-7 (flag 1)","event","pause",1532,1532,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","high_frequency_spiking",840,908,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",32,35,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",76,80,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",113,117,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",312,315,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",760,763,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",835,839,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",957,964,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",983,986,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1062,1065,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1192,1197,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1290,1296,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1332,1335,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1342,1345,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1365,1368,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1433,1436,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1473,1476,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1647,1650,1
+"LT1D04.934_nw-7 (flag 1)","state_hf_family","tonic",1657,1662,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","high_frequency_spiking",840,908,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",32,35,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",76,80,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",113,117,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",312,315,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",760,763,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",835,839,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",957,964,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",983,986,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1062,1065,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1192,1197,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1290,1296,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1332,1335,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1342,1345,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1365,1368,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1433,1436,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1473,1476,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1647,1650,1
+"LT1D04.934_nw-7 (flag 1)","state_strict","tonic",1657,1662,1
+"LT1D06_308_nw_8_09_1_1","event","burst",29,33,1
+"LT1D06_308_nw_8_09_1_1","event","burst",35,43,1
+"LT1D06_308_nw_8_09_1_1","event","burst",285,289,1
+"LT1D06_308_nw_8_09_1_1","event","burst",440,447,1
+"LT1D06_308_nw_8_09_1_1","event","burst",682,688,1
+"LT1D06_308_nw_8_09_1_1","event","pause",28,28,1
+"LT1D06_308_nw_8_09_1_1","event","pause",44,44,1
+"LT1D06_308_nw_8_09_1_1","event","pause",46,46,1
+"LT1D06_308_nw_8_09_1_1","event","pause",151,151,1
+"LT1D06_308_nw_8_09_1_1","event","pause",284,284,1
+"LT1D06_308_nw_8_09_1_1","event","pause",661,661,1
+"LT1D06_308_nw_8_09_1_1","event","pause",689,689,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",20,23,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",49,54,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",56,60,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",116,119,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",139,143,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",200,204,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",246,250,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",271,275,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",303,308,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",312,317,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",370,378,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",409,413,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",415,418,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",450,454,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",476,482,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",505,513,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",554,558,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",624,629,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",685,688,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",714,717,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",724,728,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",782,786,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",828,831,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",836,839,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",877,882,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",888,892,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",894,897,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",900,905,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",954,957,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1025,1029,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1139,1142,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1247,1253,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1333,1337,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1422,1425,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1475,1482,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1500,1505,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1512,1515,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1583,1588,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1595,1598,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1645,1653,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1655,1663,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1692,1695,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1700,1713,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1740,1744,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1775,1780,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1804,1807,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1809,1812,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1826,1830,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1859,1863,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1973,1992,1
+"LT1D06_308_nw_8_09_1_1","state_hf_family","tonic",1995,2002,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",20,23,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",49,54,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",56,60,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",116,119,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",139,143,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",200,204,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",246,250,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",271,275,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",303,308,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",312,317,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",370,378,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",409,413,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",415,418,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",450,454,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",476,482,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",505,513,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",554,558,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",624,629,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",685,688,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",714,717,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",724,728,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",782,786,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",828,831,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",836,839,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",877,882,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",888,892,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",894,897,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",900,905,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",954,957,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1025,1029,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1139,1142,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1247,1253,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1333,1337,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1422,1425,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1475,1482,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1500,1505,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1512,1515,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1583,1588,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1595,1598,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1645,1653,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1655,1663,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1692,1695,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1700,1713,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1740,1744,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1775,1780,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1804,1807,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1809,1812,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1826,1830,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1859,1863,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1973,1992,1
+"LT1D06_308_nw_8_09_1_1","state_strict","tonic",1995,2002,1
+"LT1D06_308_nw_8_09_1_2","event","burst",2,11,1
+"LT1D06_308_nw_8_09_1_2","event","burst",13,17,1
+"LT1D06_308_nw_8_09_1_2","event","burst",19,34,1
+"LT1D06_308_nw_8_09_1_2","event","burst",51,56,1
+"LT1D06_308_nw_8_09_1_2","event","burst",62,66,1
+"LT1D06_308_nw_8_09_1_2","event","burst",105,106,1
+"LT1D06_308_nw_8_09_1_2","event","burst",117,119,1
+"LT1D06_308_nw_8_09_1_2","event","burst",127,128,1
+"LT1D06_308_nw_8_09_1_2","event","burst",133,134,1
+"LT1D06_308_nw_8_09_1_2","event","burst",146,149,1
+"LT1D06_308_nw_8_09_1_2","event","burst",151,154,1
+"LT1D06_308_nw_8_09_1_2","event","burst",169,171,1
+"LT1D06_308_nw_8_09_1_2","event","burst",206,208,1
+"LT1D06_308_nw_8_09_1_2","event","burst",233,236,1
+"LT1D06_308_nw_8_09_1_2","event","burst",244,250,1
+"LT1D06_308_nw_8_09_1_2","event","burst",257,258,1
+"LT1D06_308_nw_8_09_1_2","event","burst",260,262,1
+"LT1D06_308_nw_8_09_1_2","event","burst",264,265,1
+"LT1D06_308_nw_8_09_1_2","event","burst",269,275,1
+"LT1D06_308_nw_8_09_1_2","event","burst",286,290,1
+"LT1D06_308_nw_8_09_1_2","event","burst",299,305,1
+"LT1D06_308_nw_8_09_1_2","event","burst",316,317,1
+"LT1D06_308_nw_8_09_1_2","event","burst",320,325,1
+"LT1D06_308_nw_8_09_1_2","event","burst",332,336,1
+"LT1D06_308_nw_8_09_1_2","event","burst",343,348,1
+"LT1D06_308_nw_8_09_1_2","event","burst",356,357,1
+"LT1D06_308_nw_8_09_1_2","event","burst",369,376,1
+"LT1D06_308_nw_8_09_1_2","event","pause",12,12,1
+"LT1D06_308_nw_8_09_1_2","event","pause",35,36,1
+"LT1D06_308_nw_8_09_1_2","event","pause",38,38,1
+"LT1D06_308_nw_8_09_1_2","event","pause",45,46,1
+"LT1D06_308_nw_8_09_1_2","event","pause",48,48,1
+"LT1D06_308_nw_8_09_1_2","event","pause",50,50,1
+"LT1D06_308_nw_8_09_1_2","event","pause",57,57,1
+"LT1D06_308_nw_8_09_1_2","event","pause",59,61,1
+"LT1D06_308_nw_8_09_1_2","event","pause",67,71,1
+"LT1D06_308_nw_8_09_1_2","event","pause",74,76,1
+"LT1D06_308_nw_8_09_1_2","event","pause",78,81,1
+"LT1D06_308_nw_8_09_1_2","event","pause",83,83,1
+"LT1D06_308_nw_8_09_1_2","event","pause",86,86,1
+"LT1D06_308_nw_8_09_1_2","event","pause",88,90,1
+"LT1D06_308_nw_8_09_1_2","event","pause",92,93,1
+"LT1D06_308_nw_8_09_1_2","event","pause",95,95,1
+"LT1D06_308_nw_8_09_1_2","event","pause",97,101,1
+"LT1D06_308_nw_8_09_1_2","event","pause",103,104,1
+"LT1D06_308_nw_8_09_1_2","event","pause",107,107,1
+"LT1D06_308_nw_8_09_1_2","event","pause",109,110,1
+"LT1D06_308_nw_8_09_1_2","event","pause",112,116,1
+"LT1D06_308_nw_8_09_1_2","event","pause",120,120,1
+"LT1D06_308_nw_8_09_1_2","event","pause",123,123,1
+"LT1D06_308_nw_8_09_1_2","event","pause",126,126,1
+"LT1D06_308_nw_8_09_1_2","event","pause",129,130,1
+"LT1D06_308_nw_8_09_1_2","event","pause",132,132,1
+"LT1D06_308_nw_8_09_1_2","event","pause",135,135,1
+"LT1D06_308_nw_8_09_1_2","event","pause",137,137,1
+"LT1D06_308_nw_8_09_1_2","event","pause",139,140,1
+"LT1D06_308_nw_8_09_1_2","event","pause",142,142,1
+"LT1D06_308_nw_8_09_1_2","event","pause",145,145,1
+"LT1D06_308_nw_8_09_1_2","event","pause",150,150,1
+"LT1D06_308_nw_8_09_1_2","event","pause",155,158,1
+"LT1D06_308_nw_8_09_1_2","event","pause",162,163,1
+"LT1D06_308_nw_8_09_1_2","event","pause",165,166,1
+"LT1D06_308_nw_8_09_1_2","event","pause",168,168,1
+"LT1D06_308_nw_8_09_1_2","event","pause",172,175,1
+"LT1D06_308_nw_8_09_1_2","event","pause",178,181,1
+"LT1D06_308_nw_8_09_1_2","event","pause",185,199,1
+"LT1D06_308_nw_8_09_1_2","event","pause",203,203,1
+"LT1D06_308_nw_8_09_1_2","event","pause",205,205,1
+"LT1D06_308_nw_8_09_1_2","event","pause",209,209,1
+"LT1D06_308_nw_8_09_1_2","event","pause",211,211,1
+"LT1D06_308_nw_8_09_1_2","event","pause",213,216,1
+"LT1D06_308_nw_8_09_1_2","event","pause",220,223,1
+"LT1D06_308_nw_8_09_1_2","event","pause",225,230,1
+"LT1D06_308_nw_8_09_1_2","event","pause",237,238,1
+"LT1D06_308_nw_8_09_1_2","event","pause",240,241,1
+"LT1D06_308_nw_8_09_1_2","event","pause",251,254,1
+"LT1D06_308_nw_8_09_1_2","event","pause",256,256,1
+"LT1D06_308_nw_8_09_1_2","event","pause",259,259,1
+"LT1D06_308_nw_8_09_1_2","event","pause",263,263,1
+"LT1D06_308_nw_8_09_1_2","event","pause",266,266,1
+"LT1D06_308_nw_8_09_1_2","event","pause",276,277,1
+"LT1D06_308_nw_8_09_1_2","event","pause",279,280,1
+"LT1D06_308_nw_8_09_1_2","event","pause",282,282,1
+"LT1D06_308_nw_8_09_1_2","event","pause",284,285,1
+"LT1D06_308_nw_8_09_1_2","event","pause",291,291,1
+"LT1D06_308_nw_8_09_1_2","event","pause",295,295,1
+"LT1D06_308_nw_8_09_1_2","event","pause",297,298,1
+"LT1D06_308_nw_8_09_1_2","event","pause",306,306,1
+"LT1D06_308_nw_8_09_1_2","event","pause",308,310,1
+"LT1D06_308_nw_8_09_1_2","event","pause",313,313,1
+"LT1D06_308_nw_8_09_1_2","event","pause",315,315,1
+"LT1D06_308_nw_8_09_1_2","event","pause",318,319,1
+"LT1D06_308_nw_8_09_1_2","event","pause",326,326,1
+"LT1D06_308_nw_8_09_1_2","event","pause",328,328,1
+"LT1D06_308_nw_8_09_1_2","event","pause",331,331,1
+"LT1D06_308_nw_8_09_1_2","event","pause",341,342,1
+"LT1D06_308_nw_8_09_1_2","event","pause",349,349,1
+"LT1D06_308_nw_8_09_1_2","event","pause",353,355,1
+"LT1D06_308_nw_8_09_1_2","event","pause",358,359,1
+"LT1D06_308_nw_8_09_1_2","event","pause",361,362,1
+"LT1D06_308_nw_8_09_1_2","event","pause",364,365,1
+"LT1D06_308_nw_8_09_1_2","event","pause",367,368,1
+"LT1D06_308_nw_8_09_1_2","event","pause",377,378,1
+"LT1D06_308_nw_8_09_1_2","event","pause",380,381,1
+"LT1D06_308_nw_8_09_1_2","event","pause",383,383,1
+"LT1D06_308_nw_8_09_1_2","event","pause",386,387,1
+"LT1D06_308_nw_8_09_1_2","event","pause",389,389,1
+"LT1D06_308_nw_8_09_1_2","event","pause",392,392,1
+"LT1D06_308_nw_8_09_1_2","event","pause",394,394,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",4,11,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",120,125,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",140,142,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",147,151,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",155,159,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",161,169,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",176,181,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",216,220,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",229,230,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",250,255,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",257,263,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",317,326,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",333,334,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",336,347,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",349,364,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",366,374,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",386,409,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",418,423,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",425,433,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",435,437,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",444,454,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",456,467,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",469,475,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",490,496,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",498,506,1
+"RT1D01.597_nw-7 (flag 1)","event","burst",530,542,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",3,3,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",12,12,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",80,81,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",84,85,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",130,130,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",132,132,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",134,135,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",137,139,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",143,143,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",146,146,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",152,152,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",154,154,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",160,160,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",170,170,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",172,172,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",175,175,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",182,182,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",214,215,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",221,221,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",224,224,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",228,228,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",231,231,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",256,256,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",264,264,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",266,266,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",315,316,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",327,328,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",330,330,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",332,332,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",335,335,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",348,348,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",375,375,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",379,381,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",383,383,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",412,412,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",414,415,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",434,434,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",438,438,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",440,440,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",443,443,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",455,455,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",468,468,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",497,497,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",507,507,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",526,529,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",543,543,1
+"RT1D01.597_nw-7 (flag 1)","event","pause",547,547,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",121,124,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",136,136,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",164,167,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",298,301,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",308,312,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",363,366,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",374,374,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",376,378,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",401,405,1
+"RT1D01.597_nw-7 (flag 1)","state_hf_family","tonic",419,422,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",121,124,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",136,136,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",164,167,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",298,301,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",308,312,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",363,366,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",374,374,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",376,378,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",401,405,1
+"RT1D01.597_nw-7 (flag 1)","state_strict","tonic",419,422,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",3,7,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",10,13,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",15,18,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",28,29,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",31,37,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",39,46,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",57,58,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",68,78,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",80,87,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",89,94,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",125,129,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",139,144,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",162,163,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",192,204,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",217,221,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",223,233,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",237,242,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",248,249,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",251,256,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",258,259,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",281,287,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",289,294,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",296,306,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",308,309,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",311,316,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",323,324,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",327,332,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",341,356,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",359,361,1
+"RT1D01.597_nw-7 (flag 2)","event","burst",363,366,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",2,2,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",8,9,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",14,14,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",19,19,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",22,22,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",24,24,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",26,27,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",30,30,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",38,38,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",47,49,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",52,53,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",56,56,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",62,63,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",67,67,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",79,79,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",95,95,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",97,97,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",99,100,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",130,131,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",133,135,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",137,138,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",161,161,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",164,165,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",184,184,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",187,187,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",189,189,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",191,191,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",205,205,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",207,207,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",210,214,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",216,216,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",236,236,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",247,247,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",257,257,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",260,260,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",263,267,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",271,272,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",277,280,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",288,288,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",295,295,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",310,310,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",317,319,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",322,322,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",325,326,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",333,335,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",337,338,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",340,340,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",357,358,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",362,362,1
+"RT1D01.597_nw-7 (flag 2)","event","pause",367,368,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",9,14,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",16,21,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",23,27,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",41,46,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",52,56,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",77,82,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",84,89,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",91,110,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",117,125,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",127,133,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",136,140,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",142,147,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",149,153,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",160,165,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",174,180,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",184,188,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",190,195,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",197,206,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",219,223,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",230,237,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",272,277,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",308,313,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",377,381,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",384,389,1
+"RT1D03.300_nw-7 (flag 1)","event","burst",407,412,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",4,4,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",6,6,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",8,8,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",15,15,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",31,32,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",37,40,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",47,51,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",58,58,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",61,61,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",63,64,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",68,68,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",70,70,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",76,76,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",83,83,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",90,90,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",111,111,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",113,113,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",116,116,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",135,135,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",148,148,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",154,155,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",157,157,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",159,159,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",166,168,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",170,170,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",172,173,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",181,181,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",183,183,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",189,189,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",207,207,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",210,211,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",215,215,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",217,217,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",224,224,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",226,227,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",238,238,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",241,243,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",245,246,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",248,248,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",250,252,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",254,254,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",258,258,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",263,263,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",267,267,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",278,278,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",280,281,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",283,284,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",286,288,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",290,291,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",295,295,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",299,300,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",302,305,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",307,307,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",314,315,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",317,318,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",320,320,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",322,323,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",325,326,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",328,328,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",330,332,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",334,334,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",336,336,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",338,338,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",341,341,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",344,344,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",347,348,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",351,357,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",359,359,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",362,362,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",364,365,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",368,369,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",371,374,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",376,376,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",382,382,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",390,390,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",392,392,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",395,395,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",397,399,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",401,401,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",404,404,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",406,406,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",413,421,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",423,424,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",426,426,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",429,430,1
+"RT1D03.300_nw-7 (flag 1)","event","pause",432,433,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",3,3,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",5,5,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",7,7,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",9,14,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",16,17,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",33,36,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",41,41,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",52,52,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",57,57,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",59,60,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",62,62,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",65,67,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",69,69,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",93,96,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",98,102,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",119,123,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",141,147,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",149,151,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",153,153,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",156,156,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",158,158,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",175,180,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",195,198,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",209,209,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",212,214,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",223,223,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",225,225,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",228,231,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",244,244,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",247,247,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",249,249,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",274,277,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",282,282,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",301,301,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",306,306,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",309,312,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",321,321,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",327,327,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",329,329,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",333,333,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",335,335,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",337,337,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",339,340,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",343,343,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",345,346,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",349,350,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",386,389,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",394,394,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",396,396,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",400,400,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",408,412,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",422,422,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",425,425,1
+"RT1D03.300_nw-7 (flag 1)","state_hf_family","tonic",427,428,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",3,3,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",5,5,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",7,7,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",9,14,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",16,17,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",33,36,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",41,41,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",52,52,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",57,57,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",59,60,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",62,62,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",65,67,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",69,69,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",93,96,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",98,102,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",119,123,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",141,147,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",149,151,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",153,153,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",156,156,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",158,158,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",175,180,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",195,198,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",209,209,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",212,214,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",223,223,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",225,225,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",228,231,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",244,244,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",247,247,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",249,249,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",274,277,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",282,282,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",301,301,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",306,306,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",309,312,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",321,321,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",327,327,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",329,329,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",333,333,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",335,335,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",337,337,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",339,340,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",343,343,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",345,346,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",349,350,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",386,389,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",394,394,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",396,396,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",400,400,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",408,412,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",422,422,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",425,425,1
+"RT1D03.300_nw-7 (flag 1)","state_strict","tonic",427,428,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",14,15,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",107,108,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",110,111,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",118,119,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",141,142,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",145,146,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",161,162,1
+"RT1D03.300_nw-7 (flag 2)","event","burst",197,198,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",2,9,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",11,13,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",16,17,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",19,19,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",21,25,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",27,31,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",33,35,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",37,45,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",47,48,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",50,51,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",53,53,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",55,55,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",58,62,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",64,74,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",76,79,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",81,85,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",89,90,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",94,96,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",98,98,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",100,104,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",106,106,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",109,109,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",112,113,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",115,115,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",117,117,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",120,120,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",122,123,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",125,125,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",127,127,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",131,131,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",134,135,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",137,137,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",140,140,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",143,144,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",148,148,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",150,150,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",152,152,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",154,158,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",160,160,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",163,163,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",165,175,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",178,180,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",182,182,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",184,187,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",189,191,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",193,193,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",195,196,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",199,199,1
+"RT1D03.300_nw-7 (flag 2)","event","pause",201,205,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",50,57,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",60,64,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",104,108,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",118,123,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",138,158,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",179,184,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",200,204,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",206,211,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",217,218,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",220,224,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",226,231,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",257,264,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",268,272,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",274,279,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",282,291,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",293,298,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",300,304,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",306,313,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",316,320,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",322,326,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",329,341,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",345,357,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",362,375,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",378,384,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",401,406,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",408,414,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",426,431,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",467,472,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",476,480,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",482,486,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",488,509,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",511,524,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",569,580,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",586,591,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",593,598,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",600,606,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",608,618,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",621,627,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",629,633,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",635,644,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",648,658,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",660,668,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",674,678,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",680,686,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",690,694,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",697,701,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",703,707,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",709,713,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",716,720,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",722,726,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",728,732,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",734,738,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",760,766,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",769,775,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",779,786,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",788,793,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",797,813,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",815,821,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",823,834,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",836,851,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",853,858,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",860,869,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",871,885,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",887,900,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",903,907,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",909,914,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",925,929,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",931,935,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",940,944,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",947,954,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",956,966,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",968,977,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",979,984,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",986,990,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",992,1005,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1008,1012,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1033,1037,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1039,1051,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1053,1065,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1067,1077,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1079,1090,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1093,1099,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1122,1128,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1149,1162,1
+"RT1D03.744_nw-7 (flag 1)","event","burst",1187,1199,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",22,22,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",47,47,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",65,65,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",67,67,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",83,83,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",102,103,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",117,117,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",137,137,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",159,159,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",161,161,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",177,177,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",212,212,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",216,216,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",219,219,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",232,232,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",252,253,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",256,256,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",281,281,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",314,315,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",321,321,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",327,328,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",342,342,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",344,344,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",358,359,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",376,377,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",398,400,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",407,407,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",425,425,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",446,446,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",464,465,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",473,473,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",487,487,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",510,510,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",525,527,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",546,547,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",549,549,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",568,568,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",581,582,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",585,585,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",592,592,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",607,607,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",619,620,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",628,628,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",645,646,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",669,669,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",672,672,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",687,687,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",696,696,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",702,702,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",708,708,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",715,715,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",727,727,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",733,733,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",757,757,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",759,759,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",768,768,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",776,776,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",787,787,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",794,794,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",796,796,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",814,814,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",822,822,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",835,835,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",901,902,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",924,924,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",946,946,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",955,955,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",967,967,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",978,978,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1006,1006,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1013,1013,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1031,1032,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1038,1038,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1066,1066,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1091,1092,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1121,1121,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1146,1147,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1163,1163,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1186,1186,1
+"RT1D03.744_nw-7 (flag 1)","event","pause",1200,1201,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",2,5,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",56,60,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",69,72,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",116,116,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",118,122,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",178,185,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",187,190,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",220,223,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",254,255,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",257,262,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",267,274,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",287,292,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",299,307,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",313,313,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",316,317,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",322,326,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",329,329,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",360,364,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",378,381,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",447,451,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",480,485,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",488,490,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",528,531,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",554,557,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",572,579,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",597,601,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",626,627,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",629,636,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",647,648,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",653,656,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",688,693,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",718,723,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",766,767,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",769,772,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",785,786,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",788,788,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",862,868,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",875,886,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",925,931,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",933,937,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",956,958,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",979,982,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",984,987,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1036,1037,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1039,1039,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1067,1072,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1098,1101,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1103,1107,1
+"RT1D03.744_nw-7 (flag 1)","state_hf_family","tonic",1164,1167,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",2,5,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",56,60,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",69,72,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",116,116,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",118,122,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",178,185,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",187,190,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",220,223,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",254,255,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",257,262,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",267,274,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",287,292,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",299,307,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",313,313,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",316,317,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",322,326,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",329,329,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",360,364,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",378,381,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",447,451,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",480,485,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",488,490,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",528,531,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",554,557,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",572,579,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",597,601,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",626,627,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",629,636,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",647,648,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",653,656,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",688,693,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",718,723,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",766,767,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",769,772,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",785,786,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",788,788,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",862,868,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",875,886,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",925,931,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",933,937,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",956,958,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",979,982,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",984,987,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1036,1037,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1039,1039,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1067,1072,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1098,1101,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1103,1107,1
+"RT1D03.744_nw-7 (flag 1)","state_strict","tonic",1164,1167,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",23,27,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",38,42,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",78,83,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",93,97,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",104,108,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",113,121,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",128,132,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",137,141,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",147,152,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",161,167,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",169,178,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",180,189,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",199,204,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",216,220,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",228,238,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",244,251,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",256,260,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",264,270,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",275,276,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",304,308,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",320,324,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",326,330,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",341,352,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",363,367,1
+"RT1D06.715_nw-7 (flag 1)","event","burst",399,403,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",2,6,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",8,10,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",12,13,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",16,16,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",18,19,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",22,22,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",28,31,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",33,34,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",36,37,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",43,43,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",45,45,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",47,47,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",49,51,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",53,55,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",57,60,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",62,62,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",65,66,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",68,69,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",71,71,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",73,73,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",75,77,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",84,90,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",98,99,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",101,101,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",109,109,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",111,112,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",122,122,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",125,127,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",133,133,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",136,136,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",142,143,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",145,146,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",153,153,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",155,156,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",158,160,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",168,168,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",190,194,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",196,196,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",198,198,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",205,206,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",208,208,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",210,210,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",221,221,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",223,225,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",227,227,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",239,241,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",243,243,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",255,255,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",261,263,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",271,271,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",273,274,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",277,278,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",283,287,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",289,291,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",293,298,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",309,309,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",315,315,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",318,319,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",333,333,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",335,336,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",340,340,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",353,353,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",355,358,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",362,362,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",371,372,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",374,374,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",376,376,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",378,378,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",381,382,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",385,385,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",388,388,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",390,393,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",398,398,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",404,405,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",408,409,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",411,412,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",414,416,1
+"RT1D06.715_nw-7 (flag 1)","event","pause",418,418,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",7,7,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",44,44,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",46,46,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",64,64,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",67,67,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",70,70,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",74,74,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",91,95,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",110,110,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",132,132,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",134,135,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",137,137,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",207,207,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",209,209,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",216,219,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",226,226,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",281,282,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",299,300,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",367,370,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",380,380,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",383,384,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",386,387,1
+"RT1D06.715_nw-7 (flag 1)","state_hf_family","tonic",394,396,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",7,7,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",44,44,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",46,46,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",64,64,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",67,67,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",70,70,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",74,74,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",91,95,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",110,110,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",132,132,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",134,135,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",137,137,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",207,207,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",209,209,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",216,219,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",226,226,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",281,282,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",299,300,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",367,370,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",380,380,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",383,384,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",386,387,1
+"RT1D06.715_nw-7 (flag 1)","state_strict","tonic",394,396,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",2,11,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",13,21,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",49,61,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",63,64,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",66,71,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",73,78,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",221,227,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",235,240,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",242,245,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",247,253,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",255,267,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",373,377,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",379,387,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",389,399,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",401,405,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",407,417,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",419,429,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",431,443,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",445,451,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",453,459,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",686,691,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",693,698,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",745,747,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",765,771,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",773,774,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",777,786,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",788,792,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",816,819,1
+"RT1D06_441_nw_3_01_1_1-1","event","burst",821,831,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",12,12,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",22,22,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",48,48,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",62,62,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",65,65,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",72,72,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",79,79,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",188,188,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",219,220,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",241,241,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",246,246,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",254,254,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",317,317,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",352,352,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",372,372,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",378,378,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",388,388,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",406,406,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",418,418,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",452,452,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",513,513,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",664,664,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",685,685,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",692,692,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",742,742,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",744,744,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",748,748,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",750,750,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",772,772,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",776,776,1
+"RT1D06_441_nw_3_01_1_1-1","event","pause",787,787,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","high_frequency_spiking",192,218,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","high_frequency_spiking",697,741,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",28,31,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",73,76,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",87,90,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",152,155,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",286,289,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",358,364,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",383,387,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",390,396,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",479,483,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",485,489,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",501,504,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",508,511,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",555,558,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",611,615,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",631,634,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",636,640,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",665,671,1
+"RT1D06_441_nw_3_01_1_1-1","state_hf_family","tonic",763,766,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","high_frequency_spiking",192,218,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","high_frequency_spiking",697,741,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",28,31,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",73,76,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",87,90,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",152,155,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",286,289,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",358,364,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",383,387,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",390,396,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",479,483,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",485,489,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",501,504,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",508,511,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",555,558,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",611,615,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",631,634,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",636,640,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",665,671,1
+"RT1D06_441_nw_3_01_1_1-1","state_strict","tonic",763,766,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",2,7,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",267,274,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",572,576,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",656,665,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",722,724,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",726,738,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",740,745,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",747,752,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",754,757,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",760,772,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",777,814,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",819,824,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",826,831,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",835,836,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",838,842,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",880,887,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",908,911,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",917,919,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",921,933,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",935,941,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",954,959,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",961,962,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",964,966,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",985,986,1
+"RT1D06_441_nw_3_01_1_1-2","event","burst",1007,1012,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",77,77,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",264,264,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",266,266,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",429,429,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",539,539,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",571,571,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",577,577,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",579,579,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",581,581,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",655,655,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",691,691,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",721,721,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",725,725,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",758,759,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",776,776,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",815,815,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",818,818,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",825,825,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",834,834,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",837,837,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",843,843,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",888,888,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",906,907,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",914,914,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",916,916,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",920,920,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",934,934,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",942,942,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",960,960,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",967,967,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",987,987,1
+"RT1D06_441_nw_3_01_1_1-2","event","pause",1006,1006,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","high_frequency_spiking",540,570,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","high_frequency_spiking",582,654,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",38,41,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",199,202,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",231,236,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",294,297,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",314,317,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",340,343,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",457,462,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",494,497,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",512,515,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",521,525,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",531,536,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",700,703,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",760,764,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",838,841,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",846,849,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",863,868,1
+"RT1D06_441_nw_3_01_1_1-2","state_hf_family","tonic",901,905,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","high_frequency_spiking",540,570,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","high_frequency_spiking",582,654,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",38,41,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",199,202,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",231,236,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",294,297,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",314,317,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",340,343,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",457,462,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",494,497,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",512,515,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",521,525,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",531,536,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",700,703,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",760,764,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",838,841,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",846,849,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",863,868,1
+"RT1D06_441_nw_3_01_1_1-2","state_strict","tonic",901,905,1
+"RT1D06_441_nw_3_01_1_2-1","event","burst",25,26,1
+"RT1D06_441_nw_3_01_1_2-1","event","burst",75,78,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",2,3,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",5,6,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",8,16,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",18,24,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",27,32,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",34,35,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",38,41,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",43,43,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",45,45,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",47,47,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",49,53,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",55,72,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",74,74,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",79,80,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",82,84,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",86,88,1
+"RT1D06_441_nw_3_01_1_2-1","event","pause",90,90,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",5,6,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",15,20,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",22,30,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",37,42,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",71,77,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",79,83,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",85,95,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",97,108,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",183,185,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",200,204,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",206,210,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",212,221,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",223,227,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",261,269,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",311,313,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",331,337,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",342,344,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",379,390,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",418,426,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",428,435,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",437,448,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",452,462,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",482,489,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",491,500,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",502,504,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",515,528,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",546,561,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",588,593,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",617,621,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",623,627,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",648,656,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",666,671,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",673,692,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",696,700,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",718,727,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",729,733,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",813,815,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",822,835,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",837,843,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",845,853,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",884,891,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",922,925,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",957,960,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",987,1000,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",1002,1009,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",1011,1024,1
+"RT1D06_441_nw_3_01_1_2-2","event","burst",1051,1057,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",4,4,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",7,7,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",11,11,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",14,14,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",21,21,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",35,36,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",43,43,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",96,96,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",131,131,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",171,171,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",175,175,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",178,178,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",180,181,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",186,186,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",189,189,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",194,194,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",197,197,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",199,199,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",211,211,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",222,222,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",232,236,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",238,238,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",330,330,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",338,338,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",376,376,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",417,417,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",427,427,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",436,436,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",449,449,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",481,481,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",490,490,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",616,616,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",657,657,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",716,716,1
+"RT1D06_441_nw_3_01_1_2-2","event","pause",728,728,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","high_frequency_spiking",243,259,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","high_frequency_spiking",261,298,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","high_frequency_spiking",452,480,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","high_frequency_spiking",666,671,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","high_frequency_spiking",673,715,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",49,52,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",190,193,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",304,308,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",422,425,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",658,665,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",819,822,1
+"RT1D06_441_nw_3_01_1_2-2","state_hf_family","tonic",896,903,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","high_frequency_spiking",243,259,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","high_frequency_spiking",261,298,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","high_frequency_spiking",452,480,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","high_frequency_spiking",666,671,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","high_frequency_spiking",673,715,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",49,52,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",190,193,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",304,308,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",422,425,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",658,665,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",819,822,1
+"RT1D06_441_nw_3_01_1_2-2","state_strict","tonic",896,903,1

@@ -101,11 +101,59 @@ stpd_coerce_params_to_contract <- function(params, schema = stpd_parameter_contr
   out
 }
 
+stpd_yaml_values_equal <- function(x, y) {
+  if (is.null(x) || is.null(y)) return(is.null(x) && is.null(y))
+  isTRUE(all.equal(x, y, check.attributes = FALSE))
+}
+
+# A YAML/API overlay may use either the public `spiketrainpattern` namespace or
+# a supported legacy/runtime alias. Deep-merging it into a complete baseline
+# makes both sides look populated, so a fixed global preference would silently
+# discard one class of partial overrides. Detect which side actually differs
+# from the supplied baseline, copy that explicit value into the canonical
+# namespace, and let productization mirror it back to runtime fields. If a
+# single overlay changes both sides inconsistently, the documented canonical
+# namespace wins; otherwise active runtime precedes the oldest legacy alias.
+stpd_apply_explicit_yaml_alias_overrides <- function(merged, override, baseline) {
+  if (!exists("stpd_product_alias_map", mode = "function") ||
+      !exists("stpd_product_runtime_value", mode = "function")) {
+    return(merged)
+  }
+  override <- override %||% list()
+  baseline <- baseline %||% list()
+  sp_override <- override$spiketrainpattern %||% list()
+  sp_baseline <- baseline$spiketrainpattern %||% list()
+  amap <- stpd_product_alias_map()
+
+  for (ii in seq_len(nrow(amap))) {
+    cpath <- amap$canonical_path[ii]
+    lpath <- amap$legacy_path[ii]
+    cval <- stpd_path_get(sp_override, cpath, NULL)
+    rval <- stpd_product_runtime_value(override, cpath)
+    lval <- stpd_path_get(override, lpath, NULL)
+    cbase <- stpd_path_get(sp_baseline, cpath, NULL)
+    rbase <- stpd_product_runtime_value(baseline, cpath)
+    lbase <- stpd_path_get(baseline, lpath, NULL)
+
+    cchanged <- !is.null(cval) && !stpd_yaml_values_equal(cval, cbase)
+    rchanged <- !is.null(rval) && !stpd_yaml_values_equal(rval, rbase)
+    lchanged <- !is.null(lval) && !stpd_yaml_values_equal(lval, lbase)
+    chosen <- if (cchanged) cval else if (rchanged) rval else if (lchanged) lval else NULL
+    if (!is.null(chosen)) {
+      merged$spiketrainpattern <- stpd_path_set(
+        merged$spiketrainpattern %||% list(), cpath, chosen
+      )
+    }
+  }
+  merged
+}
+
 stpd_prepare_params_for_yaml <- function(params, baseline = default_params_sec(), coerce = TRUE, productize = TRUE) {
   p <- stpd_list_deep_merge(baseline, params %||% list())
+  p <- stpd_apply_explicit_yaml_alias_overrides(p, params %||% list(), baseline)
   if (isTRUE(coerce)) p <- stpd_coerce_params_to_contract(p)
   if (isTRUE(productize) && exists("stpd_productize_params", mode = "function")) {
-    p <- tryCatch(stpd_productize_params(p, prefer = "legacy"), error = function(e) p)
+    p <- tryCatch(stpd_productize_params(p, prefer = "canonical"), error = function(e) p)
   }
   p
 }

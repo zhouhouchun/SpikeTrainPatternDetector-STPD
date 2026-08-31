@@ -1,0 +1,2 @@
+"profile","train_n","spike_n","isi_n","repeat_n","elapsed_median_seconds","elapsed_q25_seconds","elapsed_q75_seconds","elapsed_min_seconds","elapsed_max_seconds","seconds_per_1000_isi_median","isi_per_second_median","approximate_peak_r_heap_mib_max","result_object_mib_median"
+"core",1,1436,1435,3,34.005,33.939,35.134,33.873,36.263,23.6968641114983,42.1996765181591,418.1,14.4397430419922

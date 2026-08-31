@@ -1,0 +1,235 @@
+{
+  "schema": "stpd_publication_readiness_framework_v1",
+  "framework_version": "1.2.0",
+  "authority_scope": "framework_only_no_scientific_or_publication_authority",
+  "stage_count": 12,
+  "current_stage_id": "FRAMEWORK_COMPLETE",
+  "completed_foundations": [
+    {
+      "foundation_id": "reviewer_remediation_p0",
+      "record_type": "historical_foundation",
+      "status": "completed_before_framework",
+      "authority_note": "does_not_complete_any_publication_readiness_stage"
+    },
+    {
+      "foundation_id": "provider_architecture_phase_a_to_f",
+      "record_type": "historical_foundation",
+      "status": "completed_before_framework",
+      "authority_note": "does_not_complete_any_publication_readiness_stage"
+    },
+    {
+      "foundation_id": "threshold_first_through_patch_2b2g",
+      "record_type": "historical_foundation",
+      "status": "completed_before_framework",
+      "authority_note": "does_not_complete_any_publication_readiness_stage"
+    }
+  ],
+  "stages": [
+    {
+      "stage_id": "PR-01",
+      "title": "Gate 1B remaining-root framework",
+      "depends_on": [],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["ordered_remaining_root_registry", "typed_authority_boundaries", "per_root_review_gate"],
+      "stop_checks": ["six_roots_registered_once", "dependencies_are_acyclic_and_serial", "all_unimplemented_roots_remain_non_authoritative", "existing_detector_bytes_unchanged"],
+      "deferred_details": ["root_specific_hook_schemas", "root_specific_replay", "final_candidate_universe_authority"]
+    },
+    {
+      "stage_id": "PR-02",
+      "title": "Gate B v3 contract freeze and approval framework",
+      "depends_on": ["PR-01"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["normative_contract_binding", "schema_registry_fixture_binding", "external_approval_manifest_prototype"],
+      "stop_checks": ["candidate_contract_not_self_promoted", "all_contract_ids_have_fixture_targets", "approval_requires_external_review_bytes"],
+      "deferred_details": ["final_external_signatures", "post_implementation_attestation", "gate_b_promotion"]
+    },
+    {
+      "stage_id": "PR-03",
+      "title": "State support connector and hard-boundary ledger framework",
+      "depends_on": ["PR-02"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "pending",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["direct_support_ledger", "connector_ledger", "hard_boundary_ledger", "split_redetection_lineage"],
+      "stop_checks": ["pause_never_connector", "support_connector_identity_preserved", "split_fragments_require_redetection"],
+      "deferred_details": ["large_scale_performance_tuning", "optional_descriptive_relationships"]
+    },
+    {
+      "stage_id": "PR-04",
+      "title": "AUTO v3 multitrack product framework",
+      "depends_on": ["PR-03"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "pending",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["typed_auto_tables", "per_isi_projection", "parent_bound_validator", "hash_dag_manifest"],
+      "stop_checks": ["event_state_gap_tracks_are_distinct", "pause_and_qc_exclude_active_state_support", "detached_integrity_never_claims_execution_authenticity"],
+      "deferred_details": ["official_release_signature", "nonessential_ui_views"]
+    },
+    {
+      "stage_id": "PR-05",
+      "title": "FINAL v3 and review-transition framework",
+      "depends_on": ["PR-04"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "pending",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["append_only_transition_schema", "compare_and_swap_parent_binding", "deterministic_final_replay", "unsupported_transition_guards"],
+      "stop_checks": ["auto_bytes_immutable", "non_target_tracks_unchanged", "stale_or_cross_dataset_requests_fail_closed"],
+      "deferred_details": ["freeform_split_merge_relabel", "counterfactual_state_restoration"]
+    },
+    {
+      "stage_id": "PR-06",
+      "title": "Evidence export UI migration and signing framework",
+      "depends_on": ["PR-05"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "pending",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["contract_to_test_evidence_map", "atomic_generation_export", "version_negotiating_consumers", "release_attestation_prototype"],
+      "stop_checks": ["missing_evidence_blocks_promotion", "partial_or_stale_exports_fail_closed", "candidate_and_official_views_are_distinct"],
+      "deferred_details": ["production_private_key_operation", "extended_interoperability_formats"]
+    },
+    {
+      "stage_id": "PR-07",
+      "title": "Final synthetic benchmark freeze framework",
+      "depends_on": ["PR-06"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["versioned_input_manifest", "truth_eligibility_table", "scale_pairing_map", "immutable_split_registry"],
+      "stop_checks": ["three_scales_scored_separately", "paired_templates_not_treated_as_independent", "detector_output_not_used_for_truth_eligibility"],
+      "deferred_details": ["additional_mechanism_families", "nonessential_visual_variants"]
+    },
+    {
+      "stage_id": "PR-08",
+      "title": "Synthetic validation pipeline framework",
+      "depends_on": ["PR-07"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["grouped_calibration_evaluation", "event_and_support_metrics", "cluster_bootstrap", "ood_and_spike_perturbation_matrix"],
+      "stop_checks": ["calibration_and_evaluation_groups_disjoint", "oracle_sensitivity_reported_separately", "split_merge_and_boundary_errors_reported"],
+      "deferred_details": ["unbounded_simulation_catalog", "new_biological_claims"]
+    },
+    {
+      "stage_id": "PR-09",
+      "title": "Real-reference freeze and eligibility framework",
+      "depends_on": ["PR-08"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["reference_input_hashes", "annotation_coverage_table", "train_track_eligibility", "single_rater_limitation_record"],
+      "stop_checks": ["blank_labels_follow_frozen_other_policy", "sparse_unreviewed_trains_excluded_per_track", "single_patient_bilateral_scope_explicit"],
+      "deferred_details": ["second_expert_annotation", "external_patient_cohort"]
+    },
+    {
+      "stage_id": "PR-10",
+      "title": "Real-data validation and comparator framework",
+      "depends_on": ["PR-09"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["recording_group_logo", "cluster_bootstrap_intervals", "fair_comparator_protocol", "error_attribution_tables"],
+      "stop_checks": ["label_blind_predictions", "heldout_groups_excluded_from_calibration", "detector_performance_and_adjudicated_agreement_separated"],
+      "deferred_details": ["cross_patient_generalization", "multi_rater_agreement"]
+    },
+    {
+      "stage_id": "PR-11",
+      "title": "Reports performance and software release framework",
+      "depends_on": ["PR-10"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "partial_existing_foundation",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["regenerated_tables_figures", "runtime_memory_budget", "clean_package_build_check", "versioned_release_manifest"],
+      "stop_checks": ["all_report_numbers_source_backed", "final_detector_hash_matches_validation", "formal_exports_are_atomic_and_reproducible"],
+      "deferred_details": ["full_cross_os_matrix", "optional_neo_nwb_spikeinterface_exports"]
+    },
+    {
+      "stage_id": "PR-12",
+      "title": "Manuscript reviewer-response and reproducibility archive framework",
+      "depends_on": ["PR-11"],
+      "framework_status": "reviewed_framework",
+      "review_status": "passed",
+      "scientific_completion_status": "pending",
+      "authority_scope": "none_framework_only_no_completion_claim",
+      "required_outputs": ["revised_manuscript", "reviewer_response_matrix", "claim_evidence_crosswalk", "reproducibility_archive"],
+      "stop_checks": ["claims_match_final_estimands", "single_patient_single_rater_limits_explicit", "all_tables_figures_and_versions_resolve_to_frozen_artifacts"],
+      "deferred_details": ["future_multi_expert_study", "future_external_validation"]
+    }
+  ],
+  "gate1b_remaining_roots": [
+    {
+      "root_id": "final_gap_arbitration_materialization",
+      "depends_on": "post_ownership_pause_proposal_root",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_FINAL_GAP_CLOSURE.md",
+      "closure_record_sha256": "5d70dd7ac5eae7ecc520cb6d21691c9ee68a0dbf2ee365c5f0e70d615a8118a3",
+      "minimum_review_checks": ["exact_candidate_input_binding", "arbitration_replay", "materialized_gap_identity", "collector_off_equivalence"]
+    },
+    {
+      "root_id": "recurrent_pause_state",
+      "depends_on": "final_gap_arbitration_materialization",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_RECURRENT_PAUSE_STATE_CLOSURE.md",
+      "closure_record_sha256": "f3fd90a9cbc64d6a69ce0cf99976fdc91405719c78491d592c64d02189b37fae",
+      "minimum_review_checks": ["post_detection_only", "child_gaps_preserved", "three_long_or_five_ordinary_rule", "no_recursive_parent_growth"]
+    },
+    {
+      "root_id": "broad_hfs_state",
+      "depends_on": "recurrent_pause_state",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_BROAD_HFS_STATE_CLOSURE.md",
+      "closure_record_sha256": "ea3a9c50cef2fee37cf8739c79e7d3d6b17d4ba7c09a5672ea34592f9b2fbb9f",
+      "minimum_review_checks": ["broad_parent_before_subtype", "burst_overlay_non_veto", "pause_excluded_from_direct_support", "support_envelope_metrics_separate"]
+    },
+    {
+      "root_id": "tonic_state",
+      "depends_on": "broad_hfs_state",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_TONIC_STATE_CLOSURE.md",
+      "closure_record_sha256": "1c27201f5c7611216a6c10488abafb8313ca57590791a84170c4f56ba5680882",
+      "minimum_review_checks": ["frequency_regularity_axes", "burst_does_not_automatically_cut_state", "sparse_evidence_abstention", "full_fragment_redetection"]
+    },
+    {
+      "root_id": "nested_hfs_review",
+      "depends_on": "tonic_state",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_NESTED_HFS_REVIEW_CLOSURE.md",
+      "closure_record_sha256": "8358da5749f1a9fd33796828f84287cecfd14bb96a9d9045ca18242c4363bb48",
+      "minimum_review_checks": ["review_not_event", "local_hfs_background_contrast", "no_state_veto", "promotion_requires_separate_authority"]
+    },
+    {
+      "root_id": "complete_candidate_universe_release",
+      "depends_on": "nested_hfs_review",
+      "framework_status": "implementation_reviewed",
+      "scientific_closure_status": "bounded_observer_root_closed_no_performance_claim",
+      "publication_authority": false,
+      "closure_record_path": "validation/threshold_first_phase1/GATE1B_COMPLETE_CANDIDATE_UNIVERSE_RELEASE_CLOSURE.md",
+      "closure_record_sha256": "54b4283e39b281ce6ac0b09729182472337264eeec44c5be2a8d54a4927c9376",
+      "minimum_review_checks": ["all_family_roots_closed", "final_products_bound", "resource_budget_frozen", "publication_authority_still_separate"]
+    }
+  ]
+}

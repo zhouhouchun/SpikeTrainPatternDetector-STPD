@@ -105,6 +105,7 @@ stpd_product_alias_map <- function() {
       "burst.strict_q95_bridge_gate",
       "burst.q95_soft_penalty_weight",
       "burst.dynamic_possible_priority",
+      "burst.classic_min_spikes",
       "burst.classic_max_spikes",
       "burst.long_min_spikes",
       "burst.long_max_spikes",
@@ -118,6 +119,7 @@ stpd_product_alias_map <- function() {
       "high_frequency_spiking.tolerated_gap_isi_sec",
       "high_frequency_spiking.allowed_large_isi_fraction",
       "high_frequency_spiking.max_consecutive_large_isi",
+      "high_frequency_tonic.min_spikes",
       "high_frequency_tonic.min_isi_floor_sec",
       "high_frequency_tonic.max_isi_sec",
       "high_frequency_tonic.bridge_upper_sec",
@@ -125,6 +127,26 @@ stpd_product_alias_map <- function() {
       "high_frequency_tonic.veto_burst_core_run",
       "tonic.min_isi_sec",
       "tonic.max_isi_sec",
+      "tonic.bridge_upper_sec",
+      "tonic.min_spikes",
+      "tonic.lv_max",
+      "tonic.mm_max",
+      "tonic.mm_relax_lv_max",
+      "tonic.mm_relax_cv_max",
+      "tonic.mm_relaxed_max",
+      "tonic.mm_min",
+      "tonic.connector_max_isi_count",
+      "tonic.min_duration_sec",
+      "tonic.short_regular_route_enabled",
+      "tonic.short_regular_min_isi_count",
+      "tonic.short_regular_evidence_n",
+      "tonic.short_regular_group_n",
+      "tonic.short_regular_count_q10_full",
+      "tonic.short_regular_logo_q10_min",
+      "tonic.short_regular_logo_q10_max",
+      "tonic.short_regular_structural_floor_spikes",
+      "tonic.short_regular_mode",
+      "tonic.short_regular_status",
       "pause.min_isi_sec",
       "pause.max_isi_sec",
       "pause.bridge_upper_sec"
@@ -159,6 +181,7 @@ stpd_product_alias_map <- function() {
       "burst.event_grammar_strict_q95_bridge_gate",
       "burst.event_grammar_q95_soft_penalty_weight",
       "burst.event_grammar_dynamic_possible_priority",
+      "burst.G_min",
       "burst.classic_burst_max_spikes",
       "burst.long_burst_min_spikes",
       "burst.long_burst_max_spikes",
@@ -172,13 +195,34 @@ stpd_product_alias_map <- function() {
       "highfreq.spiking_tolerated_gap_ISI_sec",
       "highfreq.spiking_allowed_large_isi_fraction",
       "highfreq.spiking_max_consecutive_large_isi",
+      "highfreq.G_min",
       "highfreq.tonic_min_ISI_floor_sec",
       "highfreq.tonic_max_ISI_sec",
       "highfreq.tonic_bridge_upper_sec",
       "highfreq.tonic_low_tail_fraction_max",
-      "highfreq.tonic_veto_burst_core_run",
+      "highfreq.tonic_burst_core_veto",
       "tonic.T_min",
       "tonic.T_max",
+      "tonic.bridge_upper_sec",
+      "tonic.G_min",
+      "tonic.LV_core",
+      "tonic.tonic_mm_max",
+      "tonic.tonic_mm_relax_lv_max",
+      "tonic.tonic_mm_relax_cv_max",
+      "tonic.tonic_mm_relaxed_max",
+      "tonic.tonic_mm_min",
+      "tonic.connector_max_n",
+      "tonic.D_min",
+      "tonic.short_regular_route_enabled",
+      "tonic.short_regular_min_isi_count",
+      "tonic.short_regular_evidence_n",
+      "tonic.short_regular_group_n",
+      "tonic.short_regular_count_q10_full",
+      "tonic.short_regular_logo_q10_min",
+      "tonic.short_regular_logo_q10_max",
+      "tonic.short_regular_structural_floor_spikes",
+      "tonic.short_regular_mode",
+      "tonic.short_regular_status",
       "pause.T_seed",
       "pause.T_strong",
       "pause.bridge_upper_sec"
@@ -215,6 +259,7 @@ stpd_product_runtime_value <- function(params, canonical_path) {
     "burst.strict_q95_bridge_gate" = stpd_path_get(params, "event_grammar.strict_q95_bridge_gate", NULL),
     "burst.q95_soft_penalty_weight" = stpd_path_get(params, "event_grammar.q95_soft_penalty_weight", NULL),
     "burst.dynamic_possible_priority" = stpd_path_get(params, "event_grammar.dynamic_possible_priority", NULL),
+    "burst.classic_min_spikes" = stpd_path_get(params, "event_core.min_spikes", NULL),
     "burst.classic_max_spikes" = stpd_path_get(params, "event_core.classic_max_spikes", NULL),
     "burst.long_min_spikes" = stpd_path_get(params, "event_core.long_min_spikes", NULL),
     "burst.long_max_spikes" = stpd_path_get(params, "event_core.long_max_spikes", NULL),
@@ -233,6 +278,43 @@ stpd_productize_params <- function(params, prefer = c("canonical", "legacy")) {
   if (is.null(params)) params <- list()
   defs <- stpd_product_schema_defaults()
   sp <- params$spiketrainpattern %||% list()
+  # The neural-network classifier was retired from the product.  Strip its
+  # historical parameter namespace before defaults are filled so old YAML and
+  # saved workspaces cannot keep a dead setting in the effective-parameter
+  # hash or round-trip it back into a new configuration.
+  sp$neural_network <- NULL
+  params$neural_network <- NULL
+  # Migrate the pre-canonical Phase-1B fragment policy only when no canonical
+  # or legacy Tonic value exists. Canonical values always win on conflicts.
+  shadow_mm <- sp$multitrack_shadow %||% list()
+  if (is.null(sp$tonic$mm_relax_lv_max) &&
+      is.null(params$tonic$tonic_mm_relax_lv_max)) {
+    sp$tonic$mm_relax_lv_max <-
+      shadow_mm$tonic_fragment_mm_relax_lv_max
+  }
+  if (is.null(sp$tonic$mm_relax_cv_max) &&
+      is.null(params$tonic$tonic_mm_relax_cv_max)) {
+    sp$tonic$mm_relax_cv_max <-
+      shadow_mm$tonic_fragment_mm_relax_cv_max
+  }
+  if (is.null(sp$tonic$mm_relaxed_max) &&
+      is.null(params$tonic$tonic_mm_relaxed_max)) {
+    sp$tonic$mm_relaxed_max <-
+      shadow_mm$tonic_fragment_mm_relaxed_max
+  }
+  legacy_mm_contract <- (params$tonic %||% list())$mm_relaxation_contract
+  mm_contract <- if (identical(prefer, "canonical")) {
+    stpd_first_nonnull(
+      sp$tonic$mm_relaxation_contract, legacy_mm_contract
+    )
+  } else {
+    stpd_first_nonnull(
+      legacy_mm_contract, sp$tonic$mm_relaxation_contract
+    )
+  }
+  if (!is.null(mm_contract)) {
+    sp$tonic$mm_relaxation_contract <- mm_contract
+  }
   amap <- stpd_product_alias_map()
 
   for (i in seq_len(nrow(amap))) {
@@ -287,7 +369,7 @@ stpd_productize_params <- function(params, prefer = c("canonical", "legacy")) {
   ec$max_bridge_isi_fraction <- sp$burst$max_bridge_isi_fraction
   ec$max_expansion_isi_each_side <- sp$burst$max_expansion_isi_each_side
   ec$max_candidates_per_train <- sp$burst$max_candidates_per_train
-  ec$min_spikes <- stpd_first_nonnull(ec$min_spikes, stpd_path_get(params, "burst.G_min", NULL), 3L)
+  ec$min_spikes <- sp$burst$classic_min_spikes
   ec$classic_max_spikes <- sp$burst$classic_max_spikes
   ec$long_min_spikes <- sp$burst$long_min_spikes
   ec$long_max_spikes <- sp$burst$long_max_spikes
@@ -337,15 +419,63 @@ stpd_productize_params <- function(params, prefer = c("canonical", "legacy")) {
   params$highfreq$spiking_short_upper_sec <- sp$high_frequency_spiking$short_isi_upper_sec
   params$highfreq$spiking_q90_max_ISI_sec <- sp$high_frequency_spiking$q90_isi_max_sec
   params$highfreq$spiking_epoch_bridge_ISI_sec <- sp$high_frequency_spiking$epoch_bridge_isi_sec
+  params$highfreq$spiking_min_spikes <- sp$high_frequency_spiking$min_spikes
+  params$highfreq$spiking_min_duration <- sp$high_frequency_spiking$min_duration_sec
+  params$highfreq$spiking_tolerated_gap_ISI_sec <- sp$high_frequency_spiking$tolerated_gap_isi_sec
+  params$highfreq$spiking_allowed_large_isi_fraction <- sp$high_frequency_spiking$allowed_large_isi_fraction
+  params$highfreq$spiking_max_consecutive_large_isi <- sp$high_frequency_spiking$max_consecutive_large_isi
+  params$highfreq$G_min <- sp$high_frequency_tonic$min_spikes
+  params$highfreq$tonic_min_ISI_floor_sec <- sp$high_frequency_tonic$min_isi_floor_sec
   params$highfreq$T_high_max <- sp$high_frequency_tonic$max_isi_sec
   params$highfreq$ISI_abs_max <- sp$high_frequency_tonic$max_isi_sec
   params$highfreq$tonic_max_ISI_sec <- sp$high_frequency_tonic$max_isi_sec
   params$highfreq$tonic_bridge_upper_sec <- sp$high_frequency_tonic$bridge_upper_sec
-  params$tonic$burst_overlap_guard <- stpd_first_nonnull(sp$tonic$burst_overlap_guard, params$tonic$burst_overlap_guard, TRUE)
+  params$highfreq$tonic_low_tail_fraction_max <- sp$high_frequency_tonic$low_tail_fraction_max
+  params$highfreq$tonic_burst_core_veto <- sp$high_frequency_tonic$veto_burst_core_run
+  params$tonic$T_min <- sp$tonic$min_isi_sec
+  params$tonic$T_max <- sp$tonic$max_isi_sec
+  params$tonic$bridge_upper_sec <- sp$tonic$bridge_upper_sec
+  params$tonic$G_min <- sp$tonic$min_spikes
+  params$tonic$LV_core <- sp$tonic$lv_max
+  params$tonic$tonic_mm_max <- sp$tonic$mm_max
+  params$tonic$tonic_mm_relax_lv_max <- sp$tonic$mm_relax_lv_max
+  params$tonic$tonic_mm_relax_cv_max <- sp$tonic$mm_relax_cv_max
+  params$tonic$tonic_mm_relaxed_max <- sp$tonic$mm_relaxed_max
+  params$tonic$mm_relaxation_contract <-
+    sp$tonic$mm_relaxation_contract
+  params$tonic$tonic_mm_min <- sp$tonic$mm_min
+  params$tonic$connector_max_n <- sp$tonic$connector_max_isi_count
+  params$tonic$D_min <- sp$tonic$min_duration_sec
+  params$tonic$short_regular_route_enabled <-
+    sp$tonic$short_regular_route_enabled
+  params$tonic$short_regular_min_isi_count <-
+    sp$tonic$short_regular_min_isi_count
+  params$tonic$short_regular_evidence_n <-
+    sp$tonic$short_regular_evidence_n
+  params$tonic$short_regular_group_n <- sp$tonic$short_regular_group_n
+  params$tonic$short_regular_count_q10_full <-
+    sp$tonic$short_regular_count_q10_full
+  params$tonic$short_regular_logo_q10_min <-
+    sp$tonic$short_regular_logo_q10_min
+  params$tonic$short_regular_logo_q10_max <-
+    sp$tonic$short_regular_logo_q10_max
+  params$tonic$short_regular_structural_floor_spikes <-
+    sp$tonic$short_regular_structural_floor_spikes
+  params$tonic$short_regular_mode <- sp$tonic$short_regular_mode
+  params$tonic$short_regular_status <- sp$tonic$short_regular_status
+  params$tonic$burst_overlap_guard <- stpd_first_nonnull(sp$tonic$burst_overlap_guard, params$tonic$burst_overlap_guard, FALSE)
   params$tonic$burst_overlap_guard_factor <- stpd_first_nonnull(sp$tonic$burst_overlap_guard_factor, params$tonic$burst_overlap_guard_factor, 1.15)
   params$tonic$burst_overlap_lower_quantile <- stpd_first_nonnull(sp$tonic$burst_overlap_lower_quantile, params$tonic$burst_overlap_lower_quantile, 0.10)
   params$tonic$burst_overlap_low_fraction_max <- stpd_first_nonnull(sp$tonic$burst_overlap_low_fraction_max, params$tonic$burst_overlap_low_fraction_max, 0.05)
   params$tonic$burst_overlap_reference_quantile <- stpd_first_nonnull(sp$tonic$burst_overlap_reference_quantile, params$tonic$burst_overlap_reference_quantile, 0.95)
+  # Keep the historical compatibility-shadow names as mirrors, never as a
+  # second authority.
+  params$spiketrainpattern$multitrack_shadow$tonic_fragment_mm_relax_lv_max <-
+    sp$tonic$mm_relax_lv_max
+  params$spiketrainpattern$multitrack_shadow$tonic_fragment_mm_relax_cv_max <-
+    sp$tonic$mm_relax_cv_max
+  params$spiketrainpattern$multitrack_shadow$tonic_fragment_mm_relaxed_max <-
+    sp$tonic$mm_relaxed_max
   params$detector$stop_on_qc_error <- sp$engine$stop_on_qc_error
   params$detector$freeze_dataset_thresholds <- sp$engine$freeze_dataset_thresholds
   params$detector$honor_manual_lock_for_auto <- sp$engine$honor_manual_lock_for_auto
@@ -374,18 +504,118 @@ stpd_public_parameter_table <- function(params = NULL) {
   add("Burst", "bridge_upper", sp$burst$bridge_upper_sec, "sec")
   add("Burst", "contrast_min", sp$burst$contrast_min, "ratio")
   add("Burst", "possible_contrast_min", sp$burst$possible_contrast_min, "ratio")
+  add("Burst", "classic_min_spikes", sp$burst$classic_min_spikes, "spikes")
+  add("Burst structure-first", "enabled", sp$burst$structure_first_enabled)
+  add("Burst structure-first", "min_isi_count", sp$burst$structure_first_min_isi_count, "ISIs")
+  add("Burst structure-first", "max_isi_count", sp$burst$structure_first_max_isi_count, "ISIs")
+  add("Burst structure-first", "flank_contrast_min", sp$burst$structure_first_contrast_min, "ratio")
+  add("Burst structure-first", "geometric_flank_contrast_min", sp$burst$structure_first_geom_contrast_min, "ratio")
+  add("Burst structure-first", "train_compactness_quantile", sp$burst$structure_first_compactness_quantile, "quantile")
+  add("Burst structure-first", "background_fraction", sp$burst$structure_first_background_fraction, "fraction")
+  add("Burst structure-first", "min_train_valid_isi", sp$burst$structure_first_min_train_valid_isi, "ISIs")
+  add("Burst structure-first", "max_internal_tail_ratio", sp$burst$structure_first_max_internal_tail_ratio, "ratio")
+  add("Burst structure-first", "allow_endpoint", sp$burst$structure_first_allow_endpoint)
   add("HF spiking", "min_spikes", sp$high_frequency_spiking$min_spikes, "spikes")
+  add("HF spiking", "min_duration", sp$high_frequency_spiking$min_duration_sec, "sec")
   add("HF spiking", "short_isi_upper", sp$high_frequency_spiking$short_isi_upper_sec, "sec")
   add("HF spiking", "q90_isi_max", sp$high_frequency_spiking$q90_isi_max_sec, "sec")
+  add("HF spiking", "epoch_bridge_isi", sp$high_frequency_spiking$epoch_bridge_isi_sec, "sec")
   add("HF spiking", "tolerated_gap_isi", sp$high_frequency_spiking$tolerated_gap_isi_sec, "sec")
+  add("HF spiking", "allowed_large_isi_fraction", sp$high_frequency_spiking$allowed_large_isi_fraction, "fraction")
+  add("HF spiking", "max_consecutive_large_isi", sp$high_frequency_spiking$max_consecutive_large_isi, "ISIs")
+  add("HF tonic", "min_spikes", sp$high_frequency_tonic$min_spikes, "spikes")
   add("HF tonic", "min_isi_floor", sp$high_frequency_tonic$min_isi_floor_sec, "sec")
   add("HF tonic", "max_isi", sp$high_frequency_tonic$max_isi_sec, "sec")
+  add("HF tonic", "bridge_upper", sp$high_frequency_tonic$bridge_upper_sec, "sec")
+  add("HF tonic", "low_tail_fraction_max", sp$high_frequency_tonic$low_tail_fraction_max, "fraction")
+  add("HF tonic", "veto_burst_core_run", sp$high_frequency_tonic$veto_burst_core_run)
   add("Tonic", "min_isi", sp$tonic$min_isi_sec, "sec")
   add("Tonic", "max_isi", sp$tonic$max_isi_sec, "sec")
+  add("Tonic", "bridge_upper", sp$tonic$bridge_upper_sec, "sec")
+  add("Tonic", "min_spikes", sp$tonic$min_spikes, "spikes")
+  add("Tonic", "lv_max", sp$tonic$lv_max, "ratio")
+  add("Tonic", "mm_max", sp$tonic$mm_max, "ratio")
+  add("Tonic", "mm_relax_lv_max", sp$tonic$mm_relax_lv_max, "ratio")
+  add("Tonic", "mm_relax_cv_max", sp$tonic$mm_relax_cv_max, "ratio")
+  add("Tonic", "mm_relaxed_max", sp$tonic$mm_relaxed_max, "ratio")
+  add("Tonic", "mm_min", sp$tonic$mm_min, "ratio")
+  add("Tonic", "connector_max_isi_count", sp$tonic$connector_max_isi_count, "ISIs")
+  add("Tonic", "min_duration", sp$tonic$min_duration_sec, "sec")
+  add("Tonic", "short_regular_route_enabled", sp$tonic$short_regular_route_enabled)
+  add("Tonic", "short_regular_min_isi_count", sp$tonic$short_regular_min_isi_count, "ISIs")
+  add("Tonic", "short_regular_evidence_n", sp$tonic$short_regular_evidence_n, "episodes")
+  add("Tonic", "short_regular_group_n", sp$tonic$short_regular_group_n, "groups")
+  add("Tonic", "short_regular_count_q10_full", sp$tonic$short_regular_count_q10_full, "ISIs")
+  add("Tonic", "short_regular_logo_q10_min", sp$tonic$short_regular_logo_q10_min, "ISIs")
+  add("Tonic", "short_regular_logo_q10_max", sp$tonic$short_regular_logo_q10_max, "ISIs")
+  add("Tonic", "short_regular_structural_floor_spikes", sp$tonic$short_regular_structural_floor_spikes, "spikes")
+  add("Tonic", "short_regular_mode", sp$tonic$short_regular_mode)
+  add("Tonic", "short_regular_status", sp$tonic$short_regular_status)
   add("Tonic", "burst_overlap_guard", sp$tonic$burst_overlap_guard)
   add("Tonic", "burst_overlap_guard_factor", sp$tonic$burst_overlap_guard_factor, "ratio")
   add("Pause", "min_isi", sp$pause$min_isi_sec, "sec")
   add("Pause", "max_isi", sp$pause$max_isi_sec, "sec")
+  multitrack <- sp$multitrack_shadow %||% list()
+  multitrack_units <- c(
+    hfs_dominance_group_floor = "groups",
+    hfs_dominance_group_fraction = "groups per ISI",
+    hfs_dominance_distributed_coverage_min = "fraction",
+    hfs_dominance_majority_coverage_min = "fraction",
+    tonic_fragment_min_spikes_floor = "spikes",
+    tonic_fragment_mm_relax_lv_max = "ratio",
+    tonic_fragment_mm_relax_cv_max = "ratio",
+    tonic_fragment_mm_relaxed_max = "ratio",
+    tonic_fragment_seed_fraction_max = "fraction",
+    hft_fragment_min_spikes_floor = "spikes",
+    hft_fragment_low_quantile = "quantile",
+    hft_fragment_high_quantile = "quantile",
+    hfs_fragment_min_spikes_floor = "spikes",
+    hfs_fragment_tolerated_gap_fallback_min_sec = "sec",
+    hfs_fragment_tolerated_gap_fallback_max_sec = "sec",
+    hfs_fragment_tolerated_gap_bridge_multiplier = "ratio",
+    hfs_fragment_tolerated_gap_q90_multiplier = "ratio",
+    hfs_fragment_short_fraction_lower_bound = "fraction",
+    hfs_fragment_allowed_large_fraction_floor = "fraction",
+    hfs_fragment_max_consecutive_large_floor = "ISIs",
+    hfs_fragment_q80_probability = "quantile",
+    hfs_fragment_q90_probability = "quantile",
+    hfs_fragment_short_fraction_min_floor = "fraction",
+    hfs_fragment_short_fraction_relaxation = "fraction",
+    hfs_fragment_q90_short_fraction_min_floor = "fraction",
+    hfs_fragment_q90_short_fraction_relaxation = "fraction",
+    hfs_fragment_bridge_fraction_min_floor = "fraction",
+    hfs_fragment_tolerated_gap_fraction_min = "fraction",
+    variable_hfs_cv_min = "ratio",
+    variable_hfs_lv_min = "ratio",
+    variable_hfs_large_fraction_min = "fraction",
+    variable_hfs_mm_audit_min = "ratio",
+    packet_like_multi_group_min = "groups",
+    packet_like_multi_group_coverage_min = "fraction",
+    packet_like_single_group_min = "groups",
+    packet_like_single_group_coverage_min = "fraction",
+    packet_neighbor_max_gap_isi = "ISIs"
+  )
+  for (name in names(multitrack)) {
+    unit <- unname(multitrack_units[name])
+    if (length(unit) == 0L || is.na(unit)) unit <- ""
+    add("Multi-track shadow", name, multitrack[[name]], unit)
+  }
+  if (exists("stpd_multitrack_policy_hash", mode = "function")) {
+    add(
+      "Multi-track shadow", "multitrack_policy_hash",
+      stpd_multitrack_policy_hash(params), "SHA-256"
+    )
+  }
+  preview <- sp$multitrack_preview %||% list()
+  for (name in names(preview)) {
+    add("Multi-track public preview", name, preview[[name]])
+  }
+  if (exists("stpd_multitrack_preview_hash", mode = "function")) {
+    add(
+      "Multi-track public preview", "preview_policy_hash",
+      stpd_multitrack_preview_hash(params), "SHA-256"
+    )
+  }
   do.call(rbind, rows)
 }
 
@@ -432,16 +662,26 @@ stpd_csv_input_policy_notes <- function() {
 # deprecated compatibility aliases, but new code should prefer these names.
 stpd_run_detector <- function(ds, params = default_params_sec(), selected_trains = NULL,
                               lock_manual = TRUE, collect_diagnostics = TRUE,
-                              strict_params = FALSE, progress_callback = NULL) {
-  stpd_detect(ds, params = params, selected_trains = selected_trains,
-              lock_manual = lock_manual, collect_diagnostics = collect_diagnostics,
-              strict_params = strict_params, progress_callback = progress_callback)
+                              strict_params = FALSE, progress_callback = NULL,
+                              label_blind = FALSE, audit_level = NULL) {
+  args <- list(
+    ds, params = params, selected_trains = selected_trains,
+    lock_manual = lock_manual, collect_diagnostics = collect_diagnostics,
+    strict_params = strict_params, progress_callback = progress_callback,
+    label_blind = label_blind
+  )
+  if (!is.null(audit_level)) args$audit_level <- audit_level
+  do.call(stpd_detect, args)
 }
 
 stpd_detect_patterns <- stpd_run_detector
 
-stpd_generate_candidate_events <- function(ds, params = default_params_sec(), selected_trains = NULL) {
-  stpd_generate_candidates(ds, params = params, selected_trains = selected_trains)
+stpd_generate_candidate_events <- function(ds, params = default_params_sec(), selected_trains = NULL,
+                                           label_blind = FALSE) {
+  stpd_generate_candidates(
+    ds, params = params, selected_trains = selected_trains,
+    label_blind = label_blind
+  )
 }
 
 stpd_compute_candidate_features <- function(ds, candidates = NULL, params = default_params_sec(), selected_trains = NULL) {
@@ -454,17 +694,142 @@ stpd_parameter_report <- function(params = default_params_sec(), baseline = defa
   if (nrow(product) > 0) product else fallback
 }
 
+stpd_parameter_report_flat_with_policy_hash <- function(
+    params = default_params_sec(), baseline = default_params_sec(), preset = NULL) {
+  report <- stpd_parameter_report_flat(params, baseline = baseline, preset = preset)
+  derived_rows <- list()
+  if (exists("stpd_multitrack_policy_hash", mode = "function")) {
+    current_hash <- stpd_multitrack_policy_hash(params)
+    default_hash <- stpd_multitrack_policy_hash(baseline)
+    derived_rows[[length(derived_rows) + 1L]] <- data.frame(
+      path = "spiketrainpattern.multitrack_shadow.multitrack_policy_hash",
+      value_type = "character",
+      default_value = default_hash,
+      current_value = current_hash,
+      changed_from_default = !identical(current_hash, default_hash),
+      preset_value = NA_character_,
+      changed_from_preset = NA,
+      group = "spiketrainpattern",
+      label = "Multi-track policy SHA-256",
+      scientific_note = paste(
+        "Derived SHA-256 of the complete non-authoritative multi-track policy block;",
+        "changes whenever its ontology, version, rule, or threshold changes."
+      ),
+      ui_level = "expert",
+      ui_order = "900129",
+      section = "Public product namespace",
+      section_order = "900",
+      advanced = "TRUE",
+      expert_only = "TRUE",
+      help_text = "Derived provenance value; it is not an editable detector parameter.",
+      control_type = "none",
+      registry_scope = "derived_provenance",
+      stringsAsFactors = FALSE
+    )
+  }
+  if (exists("stpd_multitrack_preview_hash", mode = "function")) {
+    current_hash <- stpd_multitrack_preview_hash(params)
+    default_hash <- stpd_multitrack_preview_hash(baseline)
+    derived_rows[[length(derived_rows) + 1L]] <- data.frame(
+      path = "spiketrainpattern.multitrack_preview.preview_policy_hash",
+      value_type = "character",
+      default_value = default_hash,
+      current_value = current_hash,
+      changed_from_default = !identical(current_hash, default_hash),
+      preset_value = NA_character_,
+      changed_from_preset = NA,
+      group = "spiketrainpattern",
+      label = "Multi-track public-preview policy SHA-256",
+      scientific_note = paste(
+        "Derived SHA-256 of the flag-gated public-preview contract;",
+        "it records both activation state and fixed result-schema identity."
+      ),
+      ui_level = "expert",
+      ui_order = "900130",
+      section = "Public product namespace",
+      section_order = "900",
+      advanced = "TRUE",
+      expert_only = "TRUE",
+      help_text = "Derived preview provenance value; it is not an editable detector parameter.",
+      control_type = "none",
+      registry_scope = "derived_provenance",
+      stringsAsFactors = FALSE
+    )
+  }
+  if (length(derived_rows) == 0L) return(report)
+  dplyr::bind_rows(report, dplyr::bind_rows(derived_rows))
+}
+
+stpd_params_hash_normalize <- function(x, path = "") {
+  # Hash detector configuration, not ephemeral run bookkeeping.  In
+  # particular, dropping an existing params_hash avoids a recursive hash and
+  # makes hashing an already-prepared parameter object idempotent.
+  runtime_only <- c(
+    "params_hash", "parameter_hash", "run_id", "run_timestamp",
+    "started_at", "completed_at", "created_at", "updated_at",
+    "generated_at", "timestamp_utc"
+  )
+
+  if (is.data.frame(x)) {
+    cols <- names(x)
+    cols <- cols[!(tolower(cols) %in% runtime_only)]
+    cols <- sort(cols, method = "radix")
+    out <- lapply(cols, function(nm) stpd_params_hash_normalize(x[[nm]], paste0(path, ".", nm)))
+    names(out) <- cols
+    return(list(`__stpd_type__` = "data.frame", columns = out))
+  }
+
+  if (is.list(x)) {
+    nms <- names(x)
+    if (is.null(nms)) {
+      return(lapply(seq_along(x), function(i) stpd_params_hash_normalize(x[[i]], paste0(path, "[[", i, "]]"))))
+    }
+    keep <- !(tolower(nms) %in% runtime_only)
+    # meta is created by engine preparation and currently contains only
+    # run-time bookkeeping.  It must not distinguish raw from prepared params.
+    if (!nzchar(path)) keep <- keep & nms != "meta"
+    x <- x[keep]
+    nms <- nms[keep]
+    ord <- order(nms, method = "radix")
+    out <- lapply(ord, function(i) stpd_params_hash_normalize(x[[i]], paste0(path, ".", nms[i])))
+    names(out) <- nms[ord]
+    return(out)
+  }
+
+  if (is.factor(x)) x <- as.character(x)
+  if (inherits(x, "POSIXt")) x <- format(x, tz = "UTC", usetz = TRUE)
+  if (inherits(x, "Date")) x <- format(x, "%Y-%m-%d")
+
+  nms <- names(x)
+  attributes(x) <- NULL
+  if (!is.null(nms)) {
+    ord <- order(nms, method = "radix")
+    x <- x[ord]
+    names(x) <- nms[ord]
+  }
+  x
+}
+
 stpd_params_hash <- function(params) {
-  digest::digest(stpd_public_parameter_table(stpd_productize_params(params)), algo = "sha256")
+  effective <- stpd_productize_params(params, prefer = "canonical")
+  normalized <- stpd_params_hash_normalize(effective)
+  digest::digest(normalized, algo = "sha256", serialize = TRUE)
 }
 
 stpd_method_readme <- function() {
   paste(
     "SpikeTrainPatternDetector uses a productized event-grammar detector.",
     "Public configuration lives in params$spiketrainpattern.",
-    "Burst events are seed-centered short-ISI packets with flank contrast.",
+    "Burst detection starts with local flank-separation anchors that do not use the resolved seed/bridge band; threshold-centred packets are evaluated afterward as a fallback layer.",
     "High-frequency spiking is a long high-frequency state, not a long burst.",
     "Diagnostic candidate windows are kept separate from public final results.",
+    "The multi-track Event/State/Gap/Review product is an opt-in, non-authoritative Preview; it stays nested and does not reshape Detector_run_metadata.csv.",
+    "Multitrack_preview.rds is the canonical typed Preview artifact. Preview CSV files are human-readable interchange views with declared types, not the exact reconstruction authority.",
+    "Phase 2B review decisions are post-detection, immutable Review-to-Event transitions. Their track-scoped manual/final products never modify the automatic Preview or legacy single-label outputs.",
+    "A confirmed possible_burst can create a new Event/Burst only when conflict checks pass; an exact same-span automatic Burst is linked instead of counted twice.",
+    "Export_run_metadata.csv review_state_sha256 covers the append-only Phase 2B review state, so both confirmation and later revocation intentionally produce new review-state hashes without changing scientific detector tables.",
+    "A corrupted Phase 2B product fails detector rerun closed so adjudication history is never silently discarded; repair or recovery must be explicit.",
+    "Changing the Preview activation flag changes the effective parameter hash by design, but must not change the legacy scientific payload.",
     sep = "\n"
   )
 }
@@ -618,6 +983,18 @@ stpd_product_apply_manual_lock_to_audit <- function(audit, locked) {
   audit
 }
 
+stpd_product_merge_posthoc_fragment_audits <- function(...) {
+  parts <- list(...)
+  keep <- vapply(
+    parts,
+    function(x) is.data.frame(x) && nrow(x) > 0L,
+    logical(1)
+  )
+  parts <- parts[keep]
+  if (length(parts) == 0L) return(NULL)
+  dplyr::bind_rows(parts)
+}
+
 if (exists("stpd_event_core_params_impl", mode = "function") && !exists("stpd_event_core_params_impl_base", mode = "function")) {
   stpd_event_core_params_impl_base <- stpd_event_core_params_impl
   stpd_event_core_params_impl <- function(dat, params, min_isi_sec = 0.001) {
@@ -632,9 +1009,15 @@ if (exists("stpd_event_core_params_impl", mode = "function") && !exists("stpd_ev
   }
 }
 
-stpd_detect_train_product_hardened <- function(dat, params, min_isi_sec = 0.001, train = "", lock_manual = TRUE) {
+stpd_detect_train_product_hardened <- function(
+    dat, params, min_isi_sec = 0.001, train = "", lock_manual = TRUE,
+    candidate_lineage_collector = NULL) {
   pp <- effective_params_for_detector(params)
-  out <- stpd_detect_train_hf_protected_impl(dat, pp, min_isi_sec = min_isi_sec, train = train, lock_manual = lock_manual)
+  out <- stpd_detect_train_hf_protected_impl(
+    dat, pp, min_isi_sec = min_isi_sec, train = train,
+    lock_manual = lock_manual,
+    candidate_lineage_collector = candidate_lineage_collector
+  )
   honor <- isTRUE((pp$detector %||% list())$honor_manual_lock_for_auto %||% TRUE)
   if (!isTRUE(lock_manual) || !honor || is.null(out) || nrow(out) == 0 || !("pattern_manual" %in% names(out)) || !("pattern_auto" %in% names(out))) return(out)
 
@@ -649,6 +1032,25 @@ stpd_detect_train_product_hardened <- function(dat, params, min_isi_sec = 0.001,
   if (!is.null(audit) && nrow(audit) > 0) {
     attr(out, "candidate_diagnostic_audit") <- stpd_product_apply_manual_lock_to_audit(audit, locked)
   }
+
+  # The independent AUTO detector validates event sizes before the product-level
+  # MANUAL lock is applied. Clearing a locked ISI can split a previously valid
+  # event into undersized AUTO fragments, so validate the remaining fragments
+  # once more and retain audit rows from both validation stages.
+  prior_fragment_audit <- attr(out, "posthoc_fragment_audit")
+  attr(out, "posthoc_fragment_audit") <- NULL
+  out <- stpd_post_validate_auto_event_sizes(
+    out,
+    pp,
+    min_isi_sec = min_isi_sec,
+    lock_manual = TRUE,
+    train = train
+  )
+  manual_lock_fragment_audit <- attr(out, "posthoc_fragment_audit")
+  attr(out, "posthoc_fragment_audit") <- stpd_product_merge_posthoc_fragment_audits(
+    prior_fragment_audit,
+    manual_lock_fragment_audit
+  )
   attr(out, "manual_lock_applied_to_auto") <- TRUE
   out
 }
@@ -656,7 +1058,9 @@ stpd_detect_train_product_hardened <- function(dat, params, min_isi_sec = 0.001,
 if (exists("run_detector_dataset_internal", mode = "function") && !exists("run_detector_dataset_internal_base", mode = "function")) {
   run_detector_dataset_internal_base <- run_detector_dataset_internal
   run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lock_manual = TRUE, collect_diagnostics = TRUE,
-                                            progress_callback = NULL) {
+                                            progress_callback = NULL,
+                                            audit_level = NULL,
+                                            candidate_lineage_collector = NULL) {
     params <- effective_params_for_detector(params)
     if (!is.null(ds) && is.null(ds$trains) && is.list(ds) && length(ds) > 0 &&
         all(vapply(ds, function(x) is.data.frame(x) && all(c("idx", "timestamp_sec", "ISI_sec") %in% names(x)), logical(1)))) {
@@ -664,6 +1068,16 @@ if (exists("run_detector_dataset_internal", mode = "function") && !exists("run_d
     }
     if (is.null(ds) || is.null(ds$trains)) stop("Dataset has no trains.", call. = FALSE)
     if (is.null(ds$results)) ds$results <- list()
+    # Review-to-Event decisions are post-detection products.  Invalidate their
+    # active/final projection before pre-detection QC and dataset threshold
+    # resolution.  The complete product, including its history, stays detached
+    # from the automatic working dataset until the rerun is fully assembled.
+    review_archive <- NULL
+    if (exists("stpd_multitrack_review_detach_for_rerun", mode = "function")) {
+      detached_review <- stpd_multitrack_review_detach_for_rerun(ds)
+      ds <- detached_review$dataset
+      review_archive <- detached_review$archive
+    }
     if (is.null(ds$meta)) ds$meta <- list(display_name = "dataset", unit_in = "s")
     if (is.null(ds$train_settings)) ds$train_settings <- list(burst_isi_ranges = list(), tonic_isi_ranges = list(), pause_isi_ranges = list(), highfreq_isi_ranges = list(), isi_thresholds = list())
     if (is.null(ds$train_settings$isi_thresholds)) ds$train_settings$isi_thresholds <- list()
@@ -684,7 +1098,14 @@ if (exists("run_detector_dataset_internal", mode = "function") && !exists("run_d
       params <- stpd_product_attach_dataset_thresholds(params, ds, target_trains)
     }
 
-    out <- run_detector_dataset_internal_base(
+    # The reproducibility fingerprint must describe the parameters that are
+    # actually executed, including train-specific settings and dataset-frozen
+    # threshold bands.  Preserve the public run identity while replacing the
+    # pre-resolution hash calculated by the outer API.
+    params$meta <- params$meta %||% list()
+    params$meta$params_hash <- stpd_params_hash(params)
+
+    detector_args <- list(
       ds,
       params = params,
       selected_trains = target_trains,
@@ -692,9 +1113,23 @@ if (exists("run_detector_dataset_internal", mode = "function") && !exists("run_d
       collect_diagnostics = collect_diagnostics,
       progress_callback = progress_callback
     )
+    if (!is.null(audit_level)) detector_args$audit_level <- audit_level
+    if (!is.null(candidate_lineage_collector)) {
+      detector_args$candidate_lineage_collector <-
+        candidate_lineage_collector
+    }
+    out <- do.call(run_detector_dataset_internal_base, detector_args)
+    # Preserve the exact post-resolution parameter object that was executed.
+    # The public `params_last` view may later be reduced to the canonical
+    # namespace, but the SHA-256 fingerprint must remain independently
+    # recomputable from a returned/exported immutable payload.
+    out$params_effective <- params
     out$quality_pre_detection <- pre_qc
     out$results$pre_detection_quality <- pre_qc
     if (!is.null((params$event_grammar %||% list())$threshold_table)) out$results$threshold_table <- params$event_grammar$threshold_table
+    if (exists("stpd_multitrack_review_restore_archive", mode = "function")) {
+      out <- stpd_multitrack_review_restore_archive(out, review_archive)
+    }
     out
   }
 }

@@ -1,0 +1,237 @@
+"file","context","test","nb","failed","skipped","error","warning","user","system","real","passed"
+"test_anchor_policy_all_modes.R","anchor_policy_all_modes","manual tonic anchors do not become hard boundaries",3,0,FALSE,FALSE,0,0.369,0.004,0.374,3
+"test_anchor_policy_all_modes.R","anchor_policy_all_modes","manual pause anchors do not become hard boundaries and cannot create pause alone",4,0,FALSE,FALSE,0,0.191,0.002,0.193,4
+"test_anchor_policy_all_modes.R","anchor_policy_all_modes","manual high-frequency anchors support HF candidates without replacing structure",5,0,FALSE,FALSE,0,0.13,0.00299999999999999,0.133,5
+"test_anchor_policy_all_modes.R","anchor_policy_all_modes","manual high-frequency labels derive soft anchors",4,0,FALSE,FALSE,0,0.0129999999999999,0.001,0.0149999999999997,4
+"test_classic_simulated_patterns.R","classic_simulated_patterns","default AUTO detects classic slow tonic, burst, and relative pause structure",10,0,FALSE,FALSE,0,0.925,0.00900000000000001,0.933,10
+"test_classic_simulated_patterns.R","classic_simulated_patterns","compact burst cores can be rescued when local flank contrast is imperfect",3,0,FALSE,FALSE,0,2.087,0.01,2.097,3
+"test_classic_simulated_patterns.R","classic_simulated_patterns","AUTO rescues classic low-ISI burst packets with weak seed-band entry",2,0,FALSE,FALSE,0,0.246,0.00399999999999998,0.251,2
+"test_classic_simulated_patterns.R","classic_simulated_patterns","AUTO keeps tonic tail ISIs out of pause when they match a regular tonic band",3,0,FALSE,FALSE,0,0.224,0.006,0.229,3
+"test_classic_simulated_patterns.R","classic_simulated_patterns","burst episode edge trimming does not block following tonic states",3,0,FALSE,FALSE,0,0.247,0.005,0.252999999999999,3
+"test_classic_simulated_patterns.R","classic_simulated_patterns","AUTO preserves stable tonic cores before short transition ISIs",3,0,FALSE,FALSE,0,0.27,0.006,0.275,3
+"test_classic_simulated_patterns.R","classic_simulated_patterns","sustained borrowed subranges roll back to the intrusion onset",4,0,FALSE,FALSE,0,0.3,0.005,0.306,4
+"test_detection_result_evaluation.R","detection_result_evaluation","standalone evaluation separates event discovery from boundary accuracy",13,0,FALSE,FALSE,0,0.104,0.001,0.106,13
+"test_detection_result_evaluation.R","detection_result_evaluation","strict thresholds and exact boundaries are reported independently",5,0,FALSE,FALSE,0,0.0870000000000006,0.001,0.0879999999999992,5
+"test_detection_result_evaluation.R","detection_result_evaluation","result evaluation is label- and detector-isolated",8,0,FALSE,FALSE,0,0.0179999999999998,0.001,0.0190000000000001,8
+"test_detection_result_evaluation.R","detection_result_evaluation","zero-match event F1 is zero rather than missing",7,0,FALSE,FALSE,0,0.0289999999999999,0.001,0.0309999999999988,7
+"test_detection_result_evaluation.R","detection_result_evaluation","reference fragmentation is independent of one-to-one IoU matching",18,0,FALSE,FALSE,0,0.0270000000000001,0.00199999999999997,0.0279999999999987,18
+"test_detection_result_evaluation.R","detection_result_evaluation","one prediction spanning two references is not a false split",4,0,FALSE,FALSE,0,0.0140000000000002,0.001,0.0150000000000006,4
+"test_event_aligned_activity.R","event_aligned_activity","event-aligned activity builds raster, PSTH, heatmap and synchrony tables",14,0,FALSE,FALSE,0,0.185,0.003,0.188000000000001,14
+"test_event_aligned_activity.R","event_aligned_activity","event-aligned activity handles a single event without dropping array dimensions",6,0,FALSE,FALSE,0,0.125,0.001,0.125999999999999,6
+"test_event_regime_candidates.R","event_regime_candidates","three canonical Bursts create one non-destructive parent envelope",17,0,FALSE,FALSE,0,0.0860000000000003,0.002,0.0869999999999997,17
+"test_event_regime_candidates.R","event_regime_candidates","Pause is interruption but QC/acquisition boundary blocks recurrence",2,0,FALSE,FALSE,0,0.143,0.001,0.144,2
+"test_event_regime_candidates.R","event_regime_candidates","Pause regimes use typed 3-long or 5-ordinary accepted triggers",19,0,FALSE,FALSE,0,0.0599999999999996,0.002,0.0619999999999994,19
+"test_event_regime_candidates.R","event_regime_candidates","selection uses one frozen anchor cadence without recursive budget growth",9,0,FALSE,FALSE,0,0.032,0.001,0.0340000000000007,9
+"test_event_regime_candidates.R","event_regime_candidates","multiplicative time scaling preserves decisions without absolute thresholds",6,0,FALSE,FALSE,0,0.0369999999999999,0.001,0.0389999999999997,6
+"test_event_regime_candidates.R","event_regime_candidates","public detection attaches a parent-hash-bound descriptive product",11,0,FALSE,FALSE,0,4.619,0.037,4.704,11
+"test_event_regime_candidates.R","event_regime_candidates","QC support contamination and boundary ontology fail closed",4,0,FALSE,FALSE,0,0.0139999999999993,0,0.0149999999999988,4
+"test_final_classification.R","final_classification","final classifier preserves strict possible_burst semantics",2,0,FALSE,FALSE,0,0.0700000000000003,0.002,0.0719999999999992,2
+"test_final_classification.R","final_classification","refractory suspect demotes high confidence burst by default",1,0,FALSE,FALSE,0,0.0649999999999995,0.002,0.0660000000000007,1
+"test_golden_cases.R","golden_cases","golden synthetic datasets are constructible",2,0,FALSE,FALSE,0,0.00500000000000078,0.001,0.00500000000000078,2
+"test_golden_cases.R","golden_cases","golden reference detector runs without throwing",2,0,FALSE,FALSE,0,4.034,0.028,4.106,2
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","pause embedded in an HF-spiking state is detected as a pause",5,0,FALSE,FALSE,0,2.228,0.01,2.239,5
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","an isolated supra-Max_ISI connector preserves an HFS episode",5,0,FALSE,FALSE,0,0.141999999999999,0.005,0.148000000000003,5
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","HF-spiking final gate accepts a bounded minority connector",2,0,FALSE,FALSE,0,0.0440000000000005,0.002,0.0459999999999994,2
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","canonical Pause remains a hard HFS boundary",2,0,FALSE,FALSE,0,0.0359999999999978,0.001,0.036999999999999,2
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","connector allowance is not globally capped by the Pause seed",5,0,FALSE,FALSE,0,0.059000000000001,0.002,0.0620000000000012,5
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","a low contextual Pause seed cannot collapse direct HFS support",3,0,FALSE,FALSE,0,0.0509999999999984,0.002,0.0529999999999973,3
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","an accepted canonical Pause remains an instance-level HFS boundary",3,0,FALSE,FALSE,0,0.0609999999999999,0.002,0.0630000000000024,3
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","a remote canonical Pause does not raise the HFS spike-count floor",6,0,FALSE,FALSE,0,0.0670000000000002,0.002,0.0700000000000003,6
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","HFS connector policy is scale-aware but remains below Pause",3,0,FALSE,FALSE,0,0.0339999999999989,0.000999999999999945,0.0350000000000001,3
+"test_hfspiking_pause_coexistence.R","hfspiking_pause_coexistence","too many consecutive moderate gaps do not create HFS",1,0,FALSE,FALSE,0,0.103000000000002,0.004,0.106999999999999,1
+"test_isi_core.R","isi_core","ISI percentile C fallback-compatible function is sane",3,0,FALSE,FALSE,0,0.00399999999999778,0.001,0.00400000000000134,3
+"test_isi_core.R","isi_core","default params and schema are available",3,0,FALSE,FALSE,0,0.0429999999999993,0.002,0.0449999999999982,3
+"test_manual_lock_fragment_validation.R","manual_lock_fragment_validation","MANUAL lock removes undersized AUTO fragments created by trimming",10,0,FALSE,FALSE,0,7.183,0.056,7.331,10
+"test_manual_lock_fragment_validation.R","manual_lock_fragment_validation","posthoc fragment audit merge preserves earlier and MANUAL-lock rows",2,0,FALSE,FALSE,0,0.00200000000000244,0.001,0.00300000000000011,2
+"test_multitrack_final_product.R","multitrack_final_product","Gate B FINAL is exact-parent-bound and pending before promotion",12,0,FALSE,FALSE,0,0.390999999999998,0.00700000000000001,0.396999999999998,12
+"test_multitrack_final_product.R","multitrack_final_product","exact Review migration adds one Burst inside HFS non-destructively",13,0,FALSE,FALSE,0,1.525,0.018,1.544,13
+"test_multitrack_final_product.R","multitrack_final_product","exact automatic Burst is linked and never double counted",4,0,FALSE,FALSE,0,1.133,0.016,1.149,4
+"test_multitrack_final_product.R","multitrack_final_product","revocation is append-only and removes the reviewed Event projection",5,0,FALSE,FALSE,0,1.803,0.027,1.83,5
+"test_multitrack_final_product.R","multitrack_final_product","stale legacy history becomes typed readjudication, never replay",6,0,FALSE,FALSE,0,0.979999999999997,0.014,0.994,6
+"test_multitrack_final_product.R","multitrack_final_product","resealed coordinated relationship and per-ISI tampering is rejected",4,0,FALSE,FALSE,0,1.09,0.017,1.107,4
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","multi-track policy defaults are complete, reportable, and hash-visible",29,0,FALSE,FALSE,0,0.513999999999996,0.00700000000000001,0.521000000000001,29
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","fixed policy identifiers cannot contradict their implemented behavior",12,0,FALSE,FALSE,0,0.448,0.012,0.460000000000001,12
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","Phase 1A ontology and Phase 1B Boolean thresholds use the public policy",10,0,FALSE,FALSE,0,0.111999999999995,0.00499999999999995,0.116999999999997,10
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","partial re-gate inputs fail closed with a typed not-evaluated result",4,0,FALSE,FALSE,0,0.0450000000000017,0.002,0.046999999999997,4
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","Pause-created HFS children inherit accepted parent episode evidence",8,0,FALSE,FALSE,0,0.0850000000000009,0.005,0.0889999999999986,8
+"test_multitrack_policy_contract_phase0b.R","multitrack_policy_contract_phase0b","run metadata and both shadow phases share one policy provenance chain",15,0,FALSE,FALSE,0,6.376,0.052,6.517,15
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","every legacy bulk promotion entry point fails atomically with Phase 2B state",16,0,FALSE,FALSE,0,0.00900000000000034,0.001,0.00800000000000267,16
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","inactive or stale Phase 2B history still closes legacy promotion paths",3,0,FALSE,FALSE,0,0.0219999999999985,0.002,0.0230000000000032,3
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","an unreadable Phase 2B state predicate fails closed",2,0,FALSE,FALSE,0,0.00200000000000244,0,0.00300000000000011,2
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","non-promoting final audit remains available and preserves Phase 2B exactly",4,0,FALSE,FALSE,0,0.0459999999999994,0.001,0.0480000000000018,4
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","Phase 2A Preview alone never blocks legacy behavior",10,0,FALSE,FALSE,0,0.0769999999999982,0.002,0.0790000000000006,10
+"test_multitrack_review_legacy_guards_phase2b.R","multitrack_review_legacy_guards_phase2b","saved legacy TRUE policy is never replayed after Phase 2B begins",3,0,FALSE,FALSE,0,0.00500000000000256,0.001,0.00599999999999312,3
+"test_native_wrappers.R","native_wrappers","native interval overlap wrapper works",3,0,FALSE,FALSE,0,0.00300000000000011,0.001,0.00400000000000489,3
+"test_native_wrappers.R","native_wrappers","structure scan wrapper returns a data frame",1,0,FALSE,FALSE,0,0.00199999999999534,0,0.00300000000000011,1
+"test_native_wrappers.R","native_wrappers","native wrappers bound oversized local and structure windows",3,0,FALSE,FALSE,0,0.00399999999999778,0.001,0.00499999999999545,3
+"test_native_wrappers.R","native_wrappers","structure scan uses R type-7 q90 and includes the penultimate valid core",2,0,FALSE,FALSE,0,0.00200000000000244,0.001,0.00199999999999534,2
+"test_native_wrappers.R","native_wrappers","native prefilters treat Inf thresholds as open upper bounds",4,0,FALSE,FALSE,0,0.00300000000000011,0,0.00300000000000011,4
+"test_native_wrappers.R","native_wrappers","native wrappers reject mismatched paired vector lengths",4,0,FALSE,FALSE,0,0.0360000000000014,0.001,0.036999999999999,4
+"test_native_wrappers.R","native_wrappers","structure scanner rejects unsafe allocation plans before native allocation",5,0,FALSE,FALSE,0,0.00399999999999778,0,0.00499999999999545,5
+"test_parameter_delta_preview.R","parameter_delta_preview","parameter delta preview detects burst gained when seed upper is relaxed",14,0,FALSE,FALSE,0,7.316,0.0539999999999999,7.457,14
+"test_parameter_delta_preview.R","parameter_delta_preview","parameter delta preview detects pause removed when pause threshold is tightened",2,0,FALSE,FALSE,0,7.12,0.053,7.262,2
+"test_parameter_delta_preview.R","parameter_delta_preview","parameter delta preview is a dry-run and does not pollute formal dataset results",4,0,FALSE,FALSE,0,7.239,0.0499999999999999,7.38199999999999,4
+"test_parameter_delta_preview.R","parameter_delta_preview","real-data dry-run preview works on a small loaded subset",3,0,FALSE,FALSE,0,15.478,0.0980000000000001,15.666,3
+"test_parameter_delta_preview.R","parameter_delta_preview","State episode and direct-support helpers keep envelope and support separate",14,0,FALSE,FALSE,0,0.0300000000000011,0.002,0.0330000000000013,14
+"test_parameter_delta_preview.R","parameter_delta_preview","overlap-resolution delta is HFS-rooted and does not double-count peers",10,0,FALSE,FALSE,0,0.0160000000000053,0.002,0.0169999999999959,10
+"test_parameter_delta_preview.R","parameter_delta_preview","real detector fixture reports removed Tonic State without changing legacy API",10,0,FALSE,FALSE,0,6.68299999999999,0.0469999999999999,6.818,10
+"test_pause_error_reviewer.R","pause_error_reviewer","Pause reviewer classifies and groups held-out Pause disagreements",4,0,FALSE,FALSE,0,0.00600000000000023,0.001,0.00800000000000978,4
+"test_pause_error_reviewer.R","pause_error_reviewer","Pause reviewer combines adjacent same-type errors into one review event",4,0,FALSE,FALSE,0,0.0290000000000106,0.001,0.0289999999999964,4
+"test_product_param_scrub.R","product_param_scrub","versioned top-level params do not delete stable burst params",4,0,FALSE,FALSE,0,0.0360000000000014,0.002,0.0389999999999873,4
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","B1 companion leaves the frozen Phase-A contract unchanged",6,0,FALSE,FALSE,0,0.200000000000003,0.001,0.201999999999998,6
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","timestamp leaf uses frozen binary64 little-endian bytes",4,0,FALSE,FALSE,0,0.00699999999999079,0.001,0.00800000000000978,4
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","spine validates original order without repair",21,0,FALSE,FALSE,0,0.414000000000001,0.004,0.417000000000002,21
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","timestamp manifest uses exact UTF-8 bytewise train ordering",2,0,FALSE,FALSE,0,0.128,0,0.128,2
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","snapshot identity is train-order invariant and excludes mutable labels",4,0,FALSE,FALSE,0,0.489000000000004,0.005,0.494,4
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","empty and one-spike trains have identity but no ISI support",8,0,FALSE,FALSE,0,0.717999999999989,0.004,0.721000000000004,8
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","all frozen index conventions map first and last ISI exactly",42,0,FALSE,FALSE,0,1.211,0.004,1.215,42
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","integer closure is applied before coordinate transformation",10,0,FALSE,FALSE,0,1.48400000000001,0.004,1.488,10
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","time spans require unique s, ms, or us boundary matches",17,0,FALSE,FALSE,0,1.194,0.003,1.19799999999999,17
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","normalization audit identities are frozen and Phase-A compatible",7,0,FALSE,FALSE,0,0.64200000000001,0.002,0.643000000000001,7
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","per-ISI input requires exact n-minus-one singleton coverage",12,0,FALSE,FALSE,0,1.056,0.003,1.059,12
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","a record rejection prevents partial normalized geometry",7,0,FALSE,FALSE,0,0.591000000000008,0.002,0.592999999999989,7
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","successful and rejected audits satisfy the frozen Phase-A validator",1,0,FALSE,FALSE,0,0.441999999999993,0.001,0.443000000000012,1
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","source record identity is typed, ordered, and pure-data only",16,0,FALSE,FALSE,0,0.0139999999999958,0.003,0.0169999999999959,16
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","pure-data boundaries reject classed inputs without S3 dispatch",14,0,FALSE,FALSE,0,0.198999999999998,0.003,0.201999999999998,14
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","run context verifies actual spine and dataset identities",7,0,FALSE,FALSE,0,0.63600000000001,0.002,0.638999999999996,7
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","systemic declaration and source-key errors fail before output",6,0,FALSE,FALSE,0,0.555999999999997,0.002,0.557999999999993,6
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","coordinate scalars are strict and integer offsets cannot overflow",3,0,FALSE,FALSE,0,0.718999999999994,0.002,0.721000000000004,3
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","empty batches still verify spine, resolution, and full coverage",17,0,FALSE,FALSE,0,1.16800000000001,0.005,1.173,17
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","spine and provider-run preflights fail with typed errors",9,0,FALSE,FALSE,0,0.336999999999989,0.002,0.340000000000003,9
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","processed-train coverage equals the selected timestamp spine",4,0,FALSE,FALSE,0,0.63300000000001,0.003,0.634999999999991,4
+"test_provider_normalization_phase_b1.R","provider_normalization_phase_b1","atomic rejection materializes as a valid five-table provider bundle",3,0,FALSE,FALSE,0,0.509999999999991,0.001,0.512,3
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","canonical publication validation helper is available",2,0,FALSE,FALSE,0,0.00300000000000011,0.001,0.00400000000000489,2
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","balanced calibration sampling handles singleton groups by position",100,0,FALSE,FALSE,0,0.120999999999995,0.022,0.141999999999996,100
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","review-only Tonic does not perturb other calibration samples",4,0,FALSE,FALSE,0,0.00400000000000489,0.001,0.00500000000000966,4
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","real Tonic references partition into a descriptive review axis",14,0,FALSE,FALSE,0,0.0220000000000056,0.003,0.0250000000000057,14
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","formal Tonic references remain State endpoints",3,0,FALSE,FALSE,0,0.0240000000000009,0.001,0.0259999999999962,3
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","Pause calibration separates canonical entry from contextual lower tail",2,0,FALSE,FALSE,0,0.00200000000000955,0,0.00300000000000011,2
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","review-only Tonic calibration is fail-closed and provenance-explicit",5,0,FALSE,FALSE,0,0.00699999999999079,0.001,0.007000000000005,5
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","frozen result paths and real Tonic semantics fail closed",8,0,FALSE,FALSE,0,0.061000000000007,0.006,0.0660000000000025,8
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","report and manifest require explicit frozen result directories",8,0,FALSE,FALSE,0,0.007000000000005,0.001,0.00800000000000978,8
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","review-only Tonic leaves Burst Pause and HFS calibration unchanged",6,0,FALSE,FALSE,0,2.59999999999999,0.0119999999999999,2.611,6
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","real publication workbook path and SHA are fail-closed",4,0,FALSE,FALSE,0,0.0109999999999957,0.001,0.012999999999991,4
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","real publication entry wires review-only Tonic and workbook contract",5,0,FALSE,FALSE,0,0.00600000000000023,0.001,0.00800000000000978,5
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","Broad-HFS truth excludes canonical Pause from direct support",4,0,FALSE,FALSE,0,0.0189999999999912,0.001,0.019999999999996,4
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","Broad-HFS mapping recognizes the parent episode class",1,0,FALSE,FALSE,0,0.00200000000000955,0,0.00199999999999534,1
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","truth event construction handles a held-out train with no State rows",3,0,FALSE,FALSE,0,0.019999999999996,0.002,0.0210000000000008,3
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","prediction adapter keeps strict support but uses the HF parent envelope",13,0,FALSE,FALSE,0,0.0109999999999957,0.001,0.0109999999999957,13
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","publication F1 is zero when errors exist and no true positive exists",1,0,FALSE,FALSE,0,0.00199999999999534,0,0.00199999999999534,1
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","confirmatory evaluation includes Burst, Pause, and Broad HFS only",4,0,FALSE,FALSE,0,0.0210000000000008,0.001,0.0220000000000056,4
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","publication split exposes the prespecified borrowing ablation",7,0,FALSE,FALSE,0,0.00500000000000966,0.001,0.00600000000000023,7
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","short contextual Pause labels do not collapse Broad-HFS support",6,0,FALSE,FALSE,0,0.00399999999999068,0.001,0.00499999999999545,6
+"test_publication_validation_hfs_semantics.R","publication_validation_hfs_semantics","reference eligibility is applied independently by semantic axis",2,0,FALSE,FALSE,0,0.00200000000000955,0,0.00199999999999534,2
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","stratified holdout keeps multi-stratum groups intact and deterministic",15,0,FALSE,FALSE,0,0.0769999999999982,0.002,0.0779999999999887,15
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","group resolution honors explicit metadata then subject priority",5,0,FALSE,FALSE,0,0.0630000000000024,0.001,0.0650000000000119,5
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","group resolution uses train metadata and falls back to train identity",6,0,FALSE,FALSE,0,0.0120000000000005,0.002,0.0139999999999958,6
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","one independent group yields a fixed not-estimable split schema",7,0,FALSE,FALSE,0,0.0100000000000051,0.003,0.0109999999999957,7
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","calibration freeze refuses missing sides and group overlap before detection",21,0,FALSE,FALSE,0,0.135000000000005,0.003,0.138000000000005,21
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","repeated holdout does not manufacture metrics when groups are insufficient",11,0,FALSE,FALSE,0,0.012999999999991,0.002,0.0150000000000006,11
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","repeated holdout evaluates only disjoint groups on the estimable path",8,0,FALSE,FALSE,0,0.0730000000000075,0.002,0.0750000000000028,8
+"test_reviewer_group_holdout_integrity.R","reviewer_group_holdout_integrity","nested tuning retains baseline when inner groups are insufficient",5,0,FALSE,FALSE,0,0.0099999999999909,0.002,0.0120000000000005,5
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","event matching is one-to-one when predictions compete for one truth",7,0,FALSE,FALSE,0,0.00799999999999557,0,0.00900000000000034,7
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","shared matcher maximizes cardinality before IoU",7,0,FALSE,FALSE,0,0.00900000000000034,0.001,0.00900000000000034,7
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","shared matcher maximizes total IoU and resolves exact ties deterministically",6,0,FALSE,FALSE,0,0.00900000000000034,0.00099999999999989,0.0099999999999909,6
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","event matcher rejects invalid IoU thresholds",4,0,FALSE,FALSE,0,0.012999999999991,0.00100000000000011,0.0130000000000052,4
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","scientific validation is not estimable without an independent calibration train",11,0,FALSE,FALSE,0,0.0480000000000018,0.002,0.0489999999999924,11
+"test_reviewer_validation_matching_holdout.R","reviewer_validation_matching_holdout","scientific validation freezes thresholds on calibration trains only",7,0,FALSE,FALSE,0,0.13600000000001,0.00099999999999989,0.138000000000005,7
+"test_slicetca.R","slicetca","sliceTCA tensor builder and optional backend wrapper are stable without Python",12,0,FALSE,FALSE,0,0.417000000000002,0.01,0.426000000000002,12
+"test_state_event_boundary_semantics.R","state_event_boundary_semantics","one or several Bursts overlay every State without changing geometry",36,0,FALSE,FALSE,0,0.173000000000002,0.0110000000000001,0.183999999999997,36
+"test_state_event_boundary_semantics.R","state_event_boundary_semantics","pre-existing independent State boundaries survive a crossing Burst",6,0,FALSE,FALSE,0,0.0450000000000017,0.00299999999999989,0.0480000000000018,6
+"test_state_event_boundary_semantics.R","state_event_boundary_semantics","canonical Pause cuts direct support for every State class",16,0,FALSE,FALSE,0,0.0829999999999984,0.006,0.0889999999999986,16
+"test_state_event_boundary_semantics.R","state_event_boundary_semantics","the automatic boundary registry admits only Pause and QC-invalid support",6,0,FALSE,FALSE,0,0.00500000000000966,0.00100000000000011,0.00600000000000023,6
+"test_state_event_boundary_semantics.R","state_event_boundary_semantics","AUTO Event-State relationships are complete and non-destructive",5,0,FALSE,FALSE,0,0.00600000000000023,0.00099999999999989,0.007000000000005,5
+"test_structure_first_burst_screen.R","structure_first_burst_screen","structure-first recovers a locally separated burst outside fixed seed and bridge bands",12,0,FALSE,FALSE,0,0.106999999999999,0.00299999999999989,0.109999999999999,12
+"test_structure_first_burst_screen.R","structure_first_burst_screen","the four-spike contrast floor is not a universal Burst definition",6,0,FALSE,FALSE,0,0.0220000000000056,0.00100000000000011,0.0229999999999961,6
+"test_structure_first_burst_screen.R","structure_first_burst_screen","train-adaptive compactness prevents uniform tonic packets from passing on contrast alone",2,0,FALSE,FALSE,0,0.214999999999989,0.002,0.216999999999999,2
+"test_structure_first_burst_screen.R","structure_first_burst_screen","Mac compactness boundary semantics are preserved",7,0,FALSE,FALSE,0,0.387,0.00299999999999989,0.390999999999991,7
+"test_structure_first_burst_screen.R","structure_first_burst_screen","tolerated internal tails require a two-sided packet and stay within 1.25 U",10,0,FALSE,FALSE,0,0.440999999999988,0.004,0.445000000000007,10
+"test_structure_first_burst_screen.R","structure_first_burst_screen","structure-first geometry is independent of soft threshold values and rejects weak flanks",2,0,FALSE,FALSE,0,0.120000000000005,0.00100000000000011,0.120999999999995,2
+"test_structure_first_burst_screen.R","structure_first_burst_screen","artifact ISIs split structure windows while refractory suspects are handled afterward",4,0,FALSE,FALSE,0,0.0760000000000076,0.00299999999999989,0.0799999999999983,4
+"test_structure_first_burst_screen.R","structure_first_burst_screen","structure-first decisions are scale invariant when the artifact floor is scaled",4,0,FALSE,FALSE,0,0.0810000000000031,0.00100000000000011,0.0829999999999984,4
+"test_structure_first_burst_screen.R","structure_first_burst_screen","endpoint candidates require the sole observable flank and remain configurable",6,0,FALSE,FALSE,0,0.0729999999999933,0.00299999999999989,0.0760000000000076,6
+"test_structure_first_burst_screen.R","structure_first_burst_screen","label-blind structure-first candidates ignore manual positive and negative fields",3,0,FALSE,FALSE,0,6.65600000000001,0.0610000000000002,6.806,3
+"test_structure_first_burst_screen.R","structure_first_burst_screen","structure-first settings are reported and contribute to the parameter hash",4,0,FALSE,FALSE,0,1.291,0.00799999999999979,1.29899999999999,4
+"test_structure_first_burst_screen.R","structure_first_burst_screen","strict structure evidence remains auditable when a strong HFS state wins AUTO",6,0,FALSE,FALSE,0,1.874,0.0170000000000001,1.89,6
+"test_structure_first_burst_screen.R","structure_first_burst_screen","disabled structure-first mode is reported consistently in profile and run metadata",8,0,FALSE,FALSE,0,3.607,0.0269999999999999,3.678,8
+"test_structure_first_burst_screen.R","structure_first_burst_screen","the combined burst-stage candidate budget retains strict structure anchors",7,0,FALSE,FALSE,0,0.0830000000000126,0.00300000000000011,0.0859999999999985,7
+"test_structure_first_burst_screen.R","structure_first_burst_screen","run metadata distinguishes configured from executed structure-first screening",10,0,FALSE,FALSE,0,5.59099999999999,0.05,5.756,10
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","controlled boundary replay rejects whole candidates without redetection",33,0,FALSE,FALSE,0,0.109000000000009,0.004,0.113,33
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","empty and no-boundary replay are typed and complete",10,0,FALSE,FALSE,0,0.0989999999999895,0.002,0.100999999999999,10
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","live boundary observation is byte, RNG and options neutral",14,0,FALSE,FALSE,0,31.497,0.0640000000000001,31.563,14
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","collector-off never enters Pause-boundary observation",2,0,FALSE,FALSE,0,0.325000000000017,0.006,0.330999999999989,2
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","wrong train and hook payload tampering fail atomically",7,0,FALSE,FALSE,0,34.914,0.099,35.014,7
+"test_tf_burst_pause_boundary.R","tf_burst_pause_boundary","mutable context and upstream cross-hook rehashing are rejected",10,0,FALSE,FALSE,0,32.852,0.063,32.915,10
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","threshold-elastic Burst does not require canonical flank contrast",11,0,FALSE,FALSE,0,0.0170000000000243,0.002,0.0200000000000102,11
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","weak contrast remains evidence rather than a threshold-path veto",6,0,FALSE,FALSE,0,0.0169999999999959,0.002,0.0190000000000055,6
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","short weak candidates remain Review-only",5,0,FALSE,FALSE,0,0.0219999999999914,0.002,0.0240000000000009,5
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","threshold-elastic acceptance keeps bridge and distribution guards",2,0,FALSE,FALSE,0,0.0139999999999816,0.00099999999999989,0.0149999999999864,2
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","internal-gap guard rejects a gap-bearing envelope but keeps its Burst child",8,0,FALSE,FALSE,0,0.0180000000000007,0.002,0.0200000000000102,8
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","internal-gap guard rescues an in-band maximum above the local ratio",6,0,FALSE,FALSE,0,0.00600000000000023,0.002,0.00800000000000978,6
+"test_threshold_elastic_burst_path.R","threshold_elastic_burst_path","internal-gap guard is scale invariant",2,0,FALSE,FALSE,0,0.00200000000000955,0,0.00199999999998113,2
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","Burst stages 1 and 2 are captured directly before filtering",9,0,FALSE,FALSE,0,36.777,0.069,36.846,9
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","undersized raw seed runs are observed before candidate filtering",5,0,FALSE,FALSE,0,0.11099999999999,0.002,0.113,5
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","empty raw-run stages are present as typed zero payloads",5,0,FALSE,FALSE,0,0.108000000000004,0.00299999999999989,0.11099999999999,5
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","short trains emit both typed empty stage observations",3,0,FALSE,FALSE,0,0.0919999999999845,0.002,0.0930000000000177,3
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","Burst stage hook schemas reject semantic tampering",4,0,FALSE,FALSE,0,0.0100000000000477,0,0.0099999999999909,4
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","native bridge eligibility is not narrowed to the seed lower bound",3,0,FALSE,FALSE,0,0.213999999999999,0.00300000000000011,0.216000000000008,3
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","stages 1 and 2 remain exhaustive before a live candidate cap",5,0,FALSE,FALSE,0,0.190999999999974,0.002,0.192000000000007,5
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","collector-off Burst execution cannot enter observation helpers",1,0,FALSE,FALSE,0,0.0590000000000259,0.00099999999999989,0.0610000000000355,1
+"test_threshold_first_candidate_lineage_burst_stage1_2.R","threshold_first_candidate_lineage_burst_stage1_2","alternate inner Burst pipelines expose only the parallel hard root",3,0,FALSE,FALSE,0,1.56,0.00900000000000012,1.56899999999996,3
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live receipts have an exact schema and reject cross-binding",13,0,FALSE,FALSE,0,0.26400000000001,0.002,0.265999999999963,13
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live attachment forbids non-publication products and off-summary caps",5,0,FALSE,FALSE,0,0.48399999999998,0.002,0.48599999999999,5
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live guard closes the frozen diagnostic-product asymmetry",2,0,FALSE,FALSE,0,0.17900000000003,0.00100000000000011,0.180000000000007,2
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","off live evidence cannot smuggle an external source registry",2,0,FALSE,FALSE,0,0.328000000000031,0.00299999999999989,0.33099999999996,2
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live publication authority is disabled until direct coverage closes",1,0,FALSE,FALSE,0,0.0299999999999727,0,0.0300000000000296,1
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live attachment is anchored to canonical scientific metadata",6,0,FALSE,FALSE,0,0.17900000000003,0.004,0.182999999999993,6
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","production R files cannot bypass the live attach boundary",1,0,FALSE,FALSE,0,0.0579999999999927,0.006,0.0649999999999977,1
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","production unavailable finalization passes the live guard",2,0,FALSE,FALSE,0,0.180000000000007,0.00100000000000011,0.180999999999983,2
+"test_threshold_first_candidate_lineage_live_guard.R","threshold_first_candidate_lineage_live_guard","live envelope and receipt survive an RDS round trip",3,0,FALSE,FALSE,0,0.215000000000032,0.00099999999999989,0.217000000000041,3
+"test_threshold_first_nested_hfs_review.R","threshold_first_nested_hfs_review","nested HFS proposals remain local-contrast Review evidence",21,0,FALSE,FALSE,0,0.238,0.006,0.245000000000005,21
+"test_threshold_first_nested_hfs_review.R","threshold_first_nested_hfs_review","homogeneous HFS closes with no invented Review event",5,0,FALSE,FALSE,0,0.137,0.00299999999999989,0.139999999999986,5
+"test_threshold_first_nested_hfs_review.R","threshold_first_nested_hfs_review","nested HFS Review payloads fail closed on mutation",6,0,FALSE,FALSE,0,0.346000000000004,0.00300000000000011,0.34899999999999,6
+"test_threshold_first_nested_hfs_review.R","threshold_first_nested_hfs_review","collector-off path never enters nested HFS Review observer",1,0,FALSE,FALSE,0,0.699999999999989,0.00800000000000001,0.709000000000003,1
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","resolved user/manual Tonic bands do not inherit whole-train HFS q10",28,0,FALSE,FALSE,0,0.0209999999999582,0.00500000000000012,0.0260000000000105,28
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","short-train Tonic bounds preserve the complete audit schema",7,0,FALSE,FALSE,0,0.00600000000002865,0.00099999999999989,0.007000000000005,7
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","frozen Tonic entry excludes an HFS plateau before regularity gating",5,0,FALSE,FALSE,0,0.0570000000000164,0.00300000000000011,0.0600000000000023,5
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","calibration-derived Tonic duration rejects chance fragments",6,0,FALSE,FALSE,0,0.0640000000000214,0.00299999999999989,0.0670000000000073,6
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","Tonic short-support learning is group-frozen and informative",9,0,FALSE,FALSE,0,0.00600000000002865,0.00100000000000011,0.007000000000005,9
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","calibrated short regular support can complement Tonic duration",6,0,FALSE,FALSE,0,0.0729999999999791,0.004,0.075999999999965,6
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","Tonic short route fails closed and survives the public round-trip",11,0,FALSE,FALSE,0,0.706999999999994,0.0089999999999999,0.714999999999975,11
+"test_tonic_frozen_band_entry.R","tonic_frozen_band_entry","public Tonic candidate API uses the event-core State generator",8,0,FALSE,FALSE,0,0.223000000000013,0.004,0.228000000000009,8
+"test_tonic_review_candidates.R","tonic_review_candidates","one sub-band ISI yields review-only Tonic evidence",12,0,FALSE,FALSE,0,0.0660000000000309,0.00300000000000011,0.0679999999999836,12
+"test_tonic_review_candidates.R","tonic_review_candidates","failed maximal band run yields short local regular Tonic proposal",6,0,FALSE,FALSE,0,0.0579999999999927,0.00299999999999989,0.0600000000000023,6
+"test_tonic_review_candidates.R","tonic_review_candidates","review proposals stop at frozen upper, Pause, QC, and canonical Tonic",5,0,FALSE,FALSE,0,0.0550000000000068,0.002,0.0570000000000164,5
+"test_tonic_review_candidates.R","tonic_review_candidates","review-only side channel cannot contaminate canonical products",8,0,FALSE,FALSE,0,0.110000000000014,0.00500000000000012,0.115000000000009,8
+"test_tonic_review_candidates.R","tonic_review_candidates","pure HFS and random oscillation do not create canonical Tonic",4,0,FALSE,FALSE,0,0.0769999999999982,0.00099999999999989,0.0790000000000077,4
+"test_tonic_review_candidates.R","tonic_review_candidates","Tonic review proposals are multiplicatively time-scale invariant",4,0,FALSE,FALSE,0,0.0720000000000027,0.002,0.0739999999999554,4
+"test_ui_detection_error_i18n.R","ui_detection_error_i18n","non-duplicate pre-detection QC localizes prose and quarantines raw details",7,0,FALSE,FALSE,0,0.0509999999999877,0.002,0.0519999999999641,7
+"test_ui_detection_error_i18n.R","ui_detection_error_i18n","parameter and detector errors remain bilingual with unknown prose in technical details",12,0,FALSE,FALSE,0,0.140999999999963,0.00300000000000011,0.142999999999972,12
+"test_ui_orientation_event_core.R","ui_orientation_event_core","orientation navigation assigns every agreed tab exactly once",4,0,FALSE,FALSE,0,0.0029999999999859,0.00099999999999989,0.0029999999999859,4
+"test_ui_orientation_event_core.R","ui_orientation_event_core","orientation workflow keeps stable targets and control anchors",4,0,FALSE,FALSE,0,0.0029999999999859,0,0.0040000000000191,4
+"test_ui_orientation_event_core.R","ui_orientation_event_core","legacy labels map to non-mutually-exclusive semantic tracks",1,0,FALSE,FALSE,0,0.0010000000000332,0.00100000000000011,0.000999999999976353,1
+"test_ui_orientation_event_core.R","ui_orientation_event_core","event row identity is train-qualified, source-qualified, and unit-stable",7,0,FALSE,FALSE,0,0.0379999999999541,0.00099999999999989,0.0400000000000205,7
+"test_ui_orientation_event_core.R","ui_orientation_event_core","every canonical identity field contributes to the event row key",2,0,FALSE,FALSE,0,0.00499999999999545,0.00100000000000011,0.00499999999999545,2
+"test_ui_orientation_event_core.R","ui_orientation_event_core","full event display keeps audit fields while compact mode stays focused",4,0,FALSE,FALSE,0,0.00600000000002865,0.00099999999999989,0.00600000000002865,4
+"test_ui_orientation_event_core.R","ui_orientation_event_core","event jump plan returns clamped raw and aligned windows",10,0,FALSE,FALSE,0,0.0430000000000064,0.002,0.0450000000000159,10
+"test_ui_orientation_event_core.R","ui_orientation_event_core","task-event datasets choose raw windows without changing event geometry",4,0,FALSE,FALSE,0,0.00599999999997181,0.00100000000000011,0.007000000000005,4
+"test_ui_orientation_event_core.R","ui_orientation_event_core","invalid event rows and train geometry fail closed",6,0,FALSE,FALSE,0,0.00600000000002865,0.00099999999999989,0.007000000000005,6
+"test_ui_orientation_event_core.R","ui_orientation_event_core","event display model derives missing durations row by row",1,0,FALSE,FALSE,0,0.00200000000000955,0,0.0029999999999859,1
+"test_ui_orientation_event_core.R","ui_orientation_event_core","AUTO orientation rows respect the latest partial-run scope",7,0,FALSE,FALSE,0,0.0179999999999723,0.00100000000000011,0.0190000000000055,7
+"test_ui_orientation_event_core.R","ui_orientation_event_core","AUTO orientation fails closed for an empty or unverifiable run scope",3,0,FALSE,FALSE,0,0.00699999999994816,0.00099999999999989,0.00799999999998136,3
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","Phase-0 UI exposes persistent run and validation status surfaces",6,0,FALSE,FALSE,0,0.367999999999995,0.00299999999999989,0.370000000000005,6
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","destructive server actions are confirmation-gated and undoable",21,0,FALSE,FALSE,0,0.140000000000043,0.002,0.142999999999972,21
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","formal exports are result-state gated and ignore display-only others",7,0,FALSE,FALSE,0,0.522999999999968,0.002,0.525000000000034,7
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","workspace import is prepared locally before an atomic confirmed swap",7,0,FALSE,FALSE,0,0.125,0.002,0.125999999999976,7
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","detector scope and stale rows are explicit in the Raster contract",8,0,FALSE,FALSE,0,0.133000000000038,0.002,0.134000000000015,8
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","Phase 2B disables legacy promotion in the visible workflow",5,0,FALSE,FALSE,0,0.11099999999999,0.00100000000000011,0.113,5
+"test_ui_phase0_safety_integration.R","ui_phase0_safety_integration","customdata box selection writes MANUAL label and creates one undo step",11,0,FALSE,FALSE,0,95.503,0.58,96.046,11
+"test_ui_static_exact_dictionary.R","ui_static_exact_dictionary","the complete static UI has exact, lossless English coverage",3,0,FALSE,FALSE,0,1.13400000000001,0.00499999999999989,1.13900000000001,3
+"test_ui_static_exact_dictionary.R","ui_static_exact_dictionary","the exact dictionary has unique keys and preserves technical tokens",31,0,FALSE,FALSE,0,0.0389999999999873,0.0089999999999999,0.0480000000000018,31
+"test_visual_thresholds.R","visual_thresholds","visual spike tick visual semantics are uniform black",9,0,FALSE,FALSE,0,0.00499999999999545,0,0.00600000000002865,9
+"test_visual_thresholds.R","visual_thresholds","train-specific ISI range metrics are finite for valid ISIs",3,0,FALSE,FALSE,0,0.0040000000000191,0.00099999999999989,0.00499999999999545,3
+"test_visual_thresholds.R","visual_thresholds","train-specific thresholds merge into adaptive ranges",14,0,FALSE,FALSE,0,0.0249999999999773,0.004,0.02800000000002,14
+"test_visual_thresholds.R","visual_thresholds","ISI profile threshold lines are applied to event grammar parameters",8,0,FALSE,FALSE,0,0.0489999999999782,0.00199999999999978,0.0519999999999641,8
+"test_visual_thresholds.R","visual_thresholds","hard ISI threshold lines create direct auditable burst candidates",8,0,FALSE,FALSE,0,0.26600000000002,0.00900000000000034,0.275000000000034,8
+"test_visual_thresholds.R","visual_thresholds","hard burst thresholds do not override valid HF-spiking states",7,0,FALSE,FALSE,0,0.410000000000025,0.00699999999999967,0.415999999999997,7
+"test_visual_thresholds.R","visual_thresholds","ISI profile renders resolved detector threshold overlays",5,0,FALSE,FALSE,0,0.0500000000000114,0.00100000000000033,0.0520000000000209,5

@@ -54,7 +54,7 @@ and related audit columns, and optionally promotes review labels such as
 \details{
 This layer is intended for analyses that should consume the investigator's final
 review policy, including neural manifold summaries, state trajectories, event
-tables, and machine-learning feature tables. It does not overwrite
+tables, and other downstream analyses. It does not overwrite
 \code{pattern_auto} or \code{pattern_manual}.
 }
 \value{

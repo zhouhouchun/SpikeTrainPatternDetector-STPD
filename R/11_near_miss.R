@@ -30,6 +30,25 @@ near_miss_relaxed_boundary <- function(value, direction = c("decrease", "increas
   if (identical(direction, "increase")) value * (1 + margin) else value * (1 - margin)
 }
 
+stpd_tonic_near_miss_mm_gate <- function(p_tonic, cv = NA_real_, lv = NA_real_) {
+  p_tonic <- p_tonic %||% list()
+  contract <- p_tonic$mm_relaxation_contract %||% list()
+  stpd_tonic_mm_gate(
+    list(
+      tonic_mm_max = p_tonic$tonic_mm_max,
+      tonic_mm_relax_lv_max = p_tonic$tonic_mm_relax_lv_max,
+      tonic_mm_relax_cv_max = p_tonic$tonic_mm_relax_cv_max,
+      tonic_mm_relaxed_max = p_tonic$tonic_mm_relaxed_max,
+      tonic_lv_max = p_tonic$LV_core,
+      tonic_mm_relaxation_contract = contract,
+      tonic_mm_relaxation_mode = contract$mode,
+      tonic_mm_relaxation_status = contract$status
+    ),
+    cv = cv,
+    lv = lv
+  )
+}
+
 relax_row <- function(pattern, category, train, start_isi, end_isi, start_time_sec, end_time_sec,
                          parameter, direction, current_value, required_value,
                          score = NA_real_, metric_value = NA_real_, failure_count = 1L,
@@ -346,8 +365,10 @@ mine_tonic_near_miss_train <- function(dat, p_tonic, min_isi_sec = 0.001, train 
   t_max <- near_miss_num(p_tonic$T_max, 0.060)
   lv_core <- near_miss_num(p_tonic$LV_core, 0.50)
   seed_ratio <- near_miss_num(p_tonic$seed_ratio, 1.20)
-  mm_max <- near_miss_num(p_tonic$tonic_mm_max, 1.25)
   mm_min <- near_miss_num(p_tonic$tonic_mm_min, 0.85)
+  mm_relax_lv_max <- near_miss_num(p_tonic$tonic_mm_relax_lv_max, 0.15)
+  mm_relax_cv_max <- near_miss_num(p_tonic$tonic_mm_relax_cv_max, 0.30)
+  mm_relaxed_max_contract <- 1.50
   rows <- list()
   for (L in len_min:len_max) {
     if (n < L + 1L) next
@@ -356,10 +377,14 @@ mine_tonic_near_miss_train <- function(dat, p_tonic, min_isi_sec = 0.001, train 
       if (!all(valid[s:e])) next
       if (any(final[s:e] != "", na.rm = TRUE)) next
       vals <- isi[s:e]
-      m <- mean(vals); lv <- calc_LV(vals)
+      m <- mean(vals); lv <- calc_LV(vals); cv <- calc_CV(vals)
       ratio <- max(vals) / min(vals)
       mm <- max(vals) / m
       mmn <- min(vals) / m
+      mm_gate <- stpd_tonic_near_miss_mm_gate(p_tonic, cv = cv, lv = lv)
+      mm_effective_max <- mm_gate$effective_max
+      mm_failed <- is.finite(mm) && is.finite(mm_effective_max) &&
+        mm > mm_effective_max
       
       fail_rows <- list()
       fail_count <- 0L
@@ -367,18 +392,45 @@ mine_tonic_near_miss_train <- function(dat, p_tonic, min_isi_sec = 0.001, train 
       if (is.finite(m) && is.finite(t_max) && t_max > 0 && m > t_max) fail_count <- fail_count + 1L
       if (is.finite(lv) && is.finite(lv_core) && lv > lv_core) fail_count <- fail_count + 1L
       if (is.finite(ratio) && is.finite(seed_ratio) && ratio > seed_ratio) fail_count <- fail_count + 1L
-      if (is.finite(mm) && is.finite(mm_max) && mm > mm_max) fail_count <- fail_count + 1L
+      if (mm_failed) fail_count <- fail_count + 1L
       if (is.finite(mmn) && is.finite(mm_min) && mmn < mm_min) fail_count <- fail_count + 1L
       if (fail_count == 0L || fail_count > 2L) next
       
-      details <- paste0("mean=", signif(m,4), " s; LV=", signif(lv,4), "; seed_ratio=", signif(ratio,4),
-                        "; max/mean=", signif(mm,4), "; min/mean=", signif(mmn,4))
+      details <- paste0(
+        "mean=", signif(m, 4), " s; CV=", signif(cv, 4),
+        "; LV=", signif(lv, 4), "; seed_ratio=", signif(ratio, 4),
+        "; max/mean=", signif(mm, 4), "; min/mean=", signif(mmn, 4),
+        "; MM base/effective/relaxed=", signif(mm_gate$base_max, 4), "/",
+        signif(mm_effective_max, 4), "/", signif(mm_gate$relaxed_max, 4),
+        "; MM relaxation applied=", isTRUE(mm_gate$applied),
+        "; LV/CV guards=", signif(mm_gate$lv_limit, 4), "/",
+        signif(mm_gate$cv_limit, 4), "; mode=", mm_gate$mode,
+        "; status=", mm_gate$status
+      )
       
       if (is.finite(m) && is.finite(t_min) && m < t_min) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_T_min","decrease",t_min,m,score=-lv,metric_value=m,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="mean ISI below tonic_T_min",details=details)
       if (is.finite(m) && is.finite(t_max) && t_max > 0 && m > t_max) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_T_max","increase",t_max,m,score=-lv,metric_value=m,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="mean ISI above tonic_T_max",details=details)
       if (is.finite(lv) && is.finite(lv_core) && lv > lv_core) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_LV_core","increase",lv_core,lv,score=-lv,metric_value=lv,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="LV above tonic_LV_core",details=details)
       if (is.finite(ratio) && is.finite(seed_ratio) && ratio > seed_ratio) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_seed_ratio","increase",seed_ratio,ratio,score=-lv,metric_value=ratio,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="seed ratio above threshold",details=details)
-      if (is.finite(mm) && is.finite(mm_max) && mm > mm_max) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_mm_max","increase",mm_max,mm,score=-lv,metric_value=mm,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="max/mean above threshold",details=details)
+      if (mm_failed && is.finite(mm) && mm <= mm_relaxed_max_contract) {
+        # The formal detector uses a conditional MM ceiling.  Near-miss
+        # recommendations must therefore expose the guard or relaxed ceiling
+        # that actually blocked the window, rather than always loosening the
+        # ordinary MM ceiling.
+        cv_guard_failed <- !is.finite(cv) || !is.finite(mm_gate$cv_limit) ||
+          cv > mm_gate$cv_limit
+        lv_guard_failed <- !is.finite(lv) || !is.finite(mm_gate$lv_limit) ||
+          lv > mm_gate$lv_limit
+        if (cv_guard_failed && is.finite(cv) && is.finite(mm_relax_cv_max)) {
+          fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_mm_relax_cv_max","increase",mm_relax_cv_max,cv,score=-lv,metric_value=cv,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="CV guard prevents conditional MM relaxation",details=details)
+        }
+        if (lv_guard_failed && is.finite(lv) && is.finite(mm_relax_lv_max)) {
+          fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_mm_relax_lv_max","increase",mm_relax_lv_max,lv,score=-lv,metric_value=lv,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="LV guard prevents conditional MM relaxation",details=details)
+        }
+        if (is.finite(mm_gate$relaxed_max) && mm > mm_gate$relaxed_max) {
+          fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_mm_relaxed_max","increase",min(mm_gate$relaxed_max,mm_relaxed_max_contract),mm,score=-lv,metric_value=mm,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="max/mean exceeds the conditional relaxed MM ceiling",details=details)
+        }
+      }
       if (is.finite(mmn) && is.finite(mm_min) && mmn < mm_min) fail_rows[[length(fail_rows)+1L]] <- relax_row("tonic","tonic_window",train,s,e,dat$timestamp_sec[s-1L],dat$timestamp_sec[e],"tonic_mm_min","decrease",mm_min,mmn,score=-lv,metric_value=mmn,failure_count=fail_count,candidate_ref=paste0("tonic:",s,"-",e),reason="min/mean below threshold",details=details)
       
       if (length(fail_rows) > 0) {
@@ -638,9 +690,6 @@ detect_tonic_train <- function(dat, occupied_idx, p, T_B_seed, min_isi_sec = 0.0
   tonic_mean_ok <- function(vals) {
     vals <- valid_isi_values(vals, min_isi_sec)
     if (length(vals) == 0) return(FALSE)
-    if (!stpd_tonic_burst_overlap_ok(vals, burst_overlap_ref, p = p, min_isi_sec = min_isi_sec)) {
-      return(FALSE)
-    }
     m <- mean(vals)
     abs_ok <- is.finite(m) && m >= (p$T_min %||% 0) && m <= (p$T_max %||% Inf)
     range_eval <- tonic_range_value_eval(m)
@@ -700,7 +749,6 @@ detect_tonic_train <- function(dat, occupied_idx, p, T_B_seed, min_isi_sec = 0.0
         if (ratio_local < p$local_ratio_min || ratio_local > p$local_ratio_max) return(FALSE)
       }
       
-      if (isTRUE(p$anti_burst_veto) && anti_burst_veto(cand_vals, T_B_seed)) return(FALSE)
       TRUE
     }
     blocks <- merge_blocks(blocks, gap_ok_fun)
@@ -763,13 +811,14 @@ detect_tonic_train <- function(dat, occupied_idx, p, T_B_seed, min_isi_sec = 0.0
     if (length(vals) < 2) next
     n_spk <- e - s + 2L
     dur <- dat$timestamp_sec[e] - dat$timestamp_sec[s - 1]
-    keep[k] <- (n_spk >= p$G_min) && (dur >= p$D_min) &&
-      stpd_tonic_burst_overlap_ok(vals, burst_overlap_ref, p = p, min_isi_sec = min_isi_sec)
+    keep[k] <- (n_spk >= p$G_min) && (dur >= p$D_min)
   }
   out <- blocks[keep, , drop = FALSE]
   if (nrow(out) > 0) {
     out$tonic_burst_overlap_ref_sec <- burst_overlap_ref
-    out$tonic_burst_overlap_guard <- isTRUE((p %||% list())$burst_overlap_guard %||% TRUE)
+    out$tonic_burst_overlap_guard <- isTRUE((p %||% list())$burst_overlap_guard %||% FALSE)
+    out$tonic_burst_overlap_veto_applied <- FALSE
+    out$tonic_anti_burst_veto_applied <- FALSE
   }
   out
 }
@@ -1278,18 +1327,24 @@ stpd_post_validate_auto_event_sizes <- function(dat, params, min_isi_sec = 0.001
   isi <- suppressWarnings(as.numeric(dat$ISI_sec))
   art <- is_artifact_isi(isi, min_isi_sec)
 
-  # For HF-spiking, a user-provided pattern Max_ISI is a hard final-label
-  # ceiling: tolerated-gap logic may connect neighboring HF epochs, but the
-  # over-limit ISI itself should not be colored or exported as HF spiking.
+  # For HF-spiking, pattern Max_ISI defines direct support rather than an
+  # individual hard ceiling.  Preserve bounded connector ISIs here so the
+  # robust event-level gate below can validate their fraction and run length.
+  # Only an ISI above the Pause-bounded connector ceiling is trimmed.
   hard_gate_labels <- c("high_frequency_spiking")
   for (lab in hard_gate_labels) {
     lim <- stpd_pattern_isi_limits_for_label(lab, params)
     min_active <- is.finite(lim$min_sec) && lim$min_sec > 0
     max_active <- is.finite(lim$max_sec) && lim$max_sec > 0
+    connector_policy <- stpd_hfs_connector_policy(
+      params,
+      direct_max_sec = lim$max_sec
+    )
+    trim_max_sec <- connector_policy$effective_tolerated_gap_sec
     if (!min_active && !max_active) next
     bad <- pat == lab & !locked & is.finite(isi) & !art
     if (min_active) bad <- bad & isi >= lim$min_sec else bad <- bad
-    if (max_active) bad <- bad & isi <= lim$max_sec else bad <- bad
+    if (max_active) bad <- bad & isi <= trim_max_sec else bad <- bad
     bad <- which(pat == lab & !locked & is.finite(isi) & !art & !bad)
     if (length(bad) == 0) next
     bad_pat <- rep("", nrow(dat))
@@ -1313,9 +1368,9 @@ stpd_post_validate_auto_event_sizes <- function(dat, params, min_isi_sec = 0.001
         duration_sec = NA_real_,
         required_min_duration_sec = NA_real_,
         required_pattern_min_ISI_sec = lim$min_sec,
-        required_pattern_max_ISI_sec = lim$max_sec,
+        required_pattern_max_ISI_sec = trim_max_sec,
         pattern_isi_gate_pass = FALSE,
-        pattern_isi_gate_reason = "hf_spiking_individual_isi_outside_pattern_gate",
+        pattern_isi_gate_reason = "hf_spiking_individual_isi_above_connector_ceiling",
         action = "trimmed_auto_isi_by_pattern_hard_gate",
         stringsAsFactors = FALSE
       )
@@ -1347,7 +1402,15 @@ stpd_post_validate_auto_event_sizes <- function(dat, params, min_isi_sec = 0.001
       start_t <- suppressWarnings(as.numeric(dat$timestamp_sec[s0 - 1L]))
       end_t <- suppressWarnings(as.numeric(dat$timestamp_sec[e0]))
       dur <- end_t - start_t
-      dur_ok <- !is.finite(min_dur) || min_dur <= 0 || (is.finite(dur) && dur >= min_dur)
+      # HFS duration is an audit/description field, not an independent hard
+      # veto.  A compact sustained HFS run is already required to pass its
+      # spike-count, per-ISI, tolerated-gap and hard-boundary gates.  Keeping
+      # the legacy duration floor authoritative here would silently delete a
+      # valid homogeneous HFS candidate after the event-core accepted it.
+      # Other pattern families retain their existing duration contract.
+      duration_authoritative <- !identical(lab, "high_frequency_spiking")
+      dur_ok <- !duration_authoritative || !is.finite(min_dur) ||
+        min_dur <= 0 || (is.finite(dur) && dur >= min_dur)
       size_ok <- n_spikes_final >= min_spk && n_isi_final >= min_isi_n && n_valid_isi_final >= min_isi_n
       isi_gate <- stpd_pattern_isi_gate_pass(isi[idx], lab, params, min_isi_sec = min_isi_sec)
       isi_gate_ok <- isTRUE(isi_gate$pass)

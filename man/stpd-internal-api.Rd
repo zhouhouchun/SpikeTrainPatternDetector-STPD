@@ -33,7 +33,8 @@ stpd_detect_train_event_grammar(dat, params, min_isi_sec = 0.001,
 stpd_detect_train_core(dat, params, min_isi_sec = 0.001,
   train = "", lock_manual = TRUE)
 stpd_detect_dataset_core(ds, params, selected_trains = NULL,
-  lock_manual = TRUE, collect_diagnostics = TRUE, progress_callback = NULL)
+  lock_manual = TRUE, collect_diagnostics = TRUE, progress_callback = NULL,
+  label_blind = FALSE, audit_level = NULL)
 stpd_empty_candidate_ledger()
 stpd_empty_candidate_features()
 stpd_empty_final_decisions(features = NULL)
@@ -58,6 +59,12 @@ stpd_public_params_only(params)
   \item{selected_trains}{Optional selected train names.}
   \item{collect_diagnostics}{Whether to collect diagnostic candidate tables.}
   \item{progress_callback}{Optional callback for detector progress reporting.}
+  \item{label_blind}{Whether all adjudication information is removed before
+  threshold resolution, candidate generation, and automatic scoring.}
+  \item{audit_level}{Optional runtime candidate-lineage materialization level:
+  \code{"off"}, \code{"summary"}, or \code{"full"}. Until active pipeline
+  instrumentation is enabled, non-off requests return a non-authoritative
+  unavailable audit plus a run-bound request receipt.}
   \item{features}{Candidate feature table.}
   \item{x}{Character vector or object to classify as reject-like.}
   \item{run_id}{Optional run identifier.}

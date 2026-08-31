@@ -1,0 +1,58 @@
+"region","train","group","n_isi"
+"GPE","LT1D10.651_SPK 01a","LT1D10.651_SPK 01a",1090
+"GPE","LT1D11.372_SPK 01a","LT1D11.372_SPK 01a",2068
+"GPE","LT1D11.711_SPK 01a","LT1D11.711_SPK 01a",1387
+"GPE","LT1D12.665_SPK 01b","LT1D12.665_SPK 01b",2503
+"GPE","LT1D13.519_SPK 01a","LT1D13.519_SPK 01a",471
+"GPE","RT1D10.682_SPK 01a","RT1D10.682_SPK 01a",1430
+"GPE","RT1D10.861_SPK 01a","RT1D10.861_SPK 01a",1273
+"GPE","RT1D11.282_SPK 01a","RT1D11.282_SPK 01a",1767
+"GPE","RT1D12.415_SPK 01a","RT1D12.415_SPK 01a",925
+"GPE","RT1D12.621_SPK 01a","RT1D12.621_SPK 01a",360
+"GPE","RT1D13.043_SPK 01a","RT1D13.043_SPK 01a",4239
+"GPE","RT1D13.657_SPK 01a","RT1D13.657_SPK 01a",3499
+"GPE","RT1D13.825_SPK 01a","RT1D13.825_SPK 01a",2516
+"STN","LT1D-1.77_Fon_nw_minus_7_08_minus_1_1","LT1D-1.77",522
+"STN","LT1D-1.77_Fon_nw_minus_7_08_minus_1_2","LT1D-1.77",353
+"STN","LT1D00.83_fon1_1_nw_minus_7_08_minus_1_1","LT1D00.83",753
+"STN","LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2","LT1D00.83",1133
+"STN","LT1D01.96_fon_nw_minus_7_08_minus_1_1","LT1D01.96",385
+"STN","LT1D01.96_fon_nw_minus_7_08_minus_1_2","LT1D01.96",439
+"STN","LT1D03.44_fon1_1_nw_minus_7_09_minus_1_1","LT1D03.44",921
+"STN","LT1D03.44_fon_nw_minus_7_09_minus_1_2","LT1D03.44",804
+"STN","LT1D04.16_fon1_1_nw_minus_7_08_minus_1_1","LT1D04.16",730
+"STN","LT1D04.16_fon1_3_nw_minus_7_08_minus_1_3","LT1D04.16",725
+"STN","RT1D-0.15_fon1_1_nw_minus_7_08_minus_1_1","RT1D-0.15",1382
+"STN","RT1D-0.15_fon1_2_nw_minus_7_08_minus_1_2","RT1D-0.15",1435
+"STN","RT1D00.82_fon_nw_minus_7_08_minus_1_2","RT1D00.82",842
+"STN","RT2D00.44_fon2_nw_minus_7_08_minus_1_2","RT2D00.44",391
+"STN","RT2D00.96_fon_nw_minus_7_08_minus_1_1","RT2D00.96",723
+"STN","RT2D02.09_fon_nw_minus_7_08_minus_1_1","RT2D02.09",375
+"STN","RT2D02.09_fon_nw_minus_7_08_minus_1_3","RT2D02.09",145
+"STN","RT2D03.41_fon_nw_minus_7_08_minus_1_2","RT2D03.41",210
+"STN","RT2D03.41_fon_nw_minus_7_08_minus_1_3","RT2D03.41",268
+"STN","RT2D03.89_fon_nw_minus_7_08_minus_1_1","RT2D03.89",1279
+"STN","RT2D03.89_fon_nw_minus_7_08_minus_1_2","RT2D03.89",399
+"STN","RT2D04.18_fon1_1_nw_minus_7_09_minus_1_1","RT2D04.18",1097
+"STN","RT2D04.18_fon1_2_nw_minus_7_09_minus_1_2","RT2D04.18",1394
+"GPI","LT1D01.687_nw-7 (flag 1)","LT1D01.687_nw-7",822
+"GPI","LT1D01.687_nw-7 (flag 2)","LT1D01.687_nw-7",459
+"GPI","LT1D01_687_nw_7_09_1_1","LT1D01_687_nw_7_09_1",861
+"GPI","LT1D01_687_nw_7_09_1_2","LT1D01_687_nw_7_09_1",563
+"GPI","LT1D02.236_nw-7 (flag 1)","LT1D02.236_nw-7",529
+"GPI","LT1D03.010_nw-7 (flag 1)","LT1D03.010_nw-7",1390
+"GPI","LT1D03.775_nw-7 (flag 1)","LT1D03.775_nw-7",1773
+"GPI","LT1D04.464_nw-7 (flag 1)","LT1D04.464_nw-7",761
+"GPI","LT1D04.934_nw-7 (flag 1)","LT1D04.934_nw-7",1776
+"GPI","LT1D06_308_nw_8_09_1_1","LT1D06_308_nw_8_09_1",2001
+"GPI","LT1D06_308_nw_8_09_1_2","LT1D06_308_nw_8_09_1",393
+"GPI","RT1D01.597_nw-7 (flag 1)","RT1D01.597_nw-7",546
+"GPI","RT1D01.597_nw-7 (flag 2)","RT1D01.597_nw-7",368
+"GPI","RT1D03.300_nw-7 (flag 1)","RT1D03.300_nw-7",432
+"GPI","RT1D03.300_nw-7 (flag 2)","RT1D03.300_nw-7",204
+"GPI","RT1D03.744_nw-7 (flag 1)","RT1D03.744_nw-7",1200
+"GPI","RT1D06.715_nw-7 (flag 1)","RT1D06.715_nw-7",417
+"GPI","RT1D06_441_nw_3_01_1_1-1","RT1D06_441_nw_3_01_1",830
+"GPI","RT1D06_441_nw_3_01_1_1-2","RT1D06_441_nw_3_01_1",1011
+"GPI","RT1D06_441_nw_3_01_1_2-1","RT1D06_441_nw_3_01_1",90
+"GPI","RT1D06_441_nw_3_01_1_2-2","RT1D06_441_nw_3_01_1",1056

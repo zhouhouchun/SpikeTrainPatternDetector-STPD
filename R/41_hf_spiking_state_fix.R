@@ -44,41 +44,180 @@ stpd_event_grammar_params_impl <- function(dat, params, min_isi_sec = 0.001, tra
   #   - hard_break: split an epoch only at genuinely non-HF gaps
   if (!is.null(b$high_frequency_spiking)) {
     hp <- params$highfreq %||% list()
-    short_upper <- suppressWarnings(as.numeric(b$high_frequency_spiking$seed_upper_sec))
-    epoch_bridge <- suppressWarnings(as.numeric(b$high_frequency_spiking$bridge_upper_sec))
+    seed_lower <- suppressWarnings(as.numeric(
+      b$high_frequency_spiking$seed_lower_sec
+    ))
+    short_upper <- suppressWarnings(as.numeric(
+      b$high_frequency_spiking$fast_core_upper_sec %||%
+        b$high_frequency_spiking$seed_upper_sec
+    ))
+    epoch_bridge <- suppressWarnings(as.numeric(
+      b$high_frequency_spiking$envelope_upper_sec %||%
+        b$high_frequency_spiking$bridge_upper_sec
+    ))
+    connector_upper <- suppressWarnings(as.numeric(
+      b$high_frequency_spiking$connector_upper_sec %||% epoch_bridge
+    ))
     ui_q90 <- suppressWarnings(as.numeric(hp$spiking_q90_max_ISI_sec %||% 0.025))
     ui_bridge <- suppressWarnings(as.numeric(hp$spiking_epoch_bridge_ISI_sec %||% 0.035))
 
+    # The threshold resolver has already applied the declared precedence
+    # (user > manual > histogram > default).  Treat its effective band as the
+    # authoritative detector input.  Taking max(..., ui_default) here silently
+    # overrode valid resolved values and reintroduced fixed-millisecond
+    # behavior into otherwise scale-equivariant automatic thresholds.
     if (!is.finite(short_upper) || short_upper <= 0) short_upper <- ui_q90
     if (!is.finite(epoch_bridge) || epoch_bridge <= 0) epoch_bridge <- ui_bridge
+    if (!is.finite(connector_upper) || connector_upper < epoch_bridge) {
+      connector_upper <- epoch_bridge
+    }
     if (!is.finite(ui_q90) || ui_q90 <= 0) ui_q90 <- 0.025
     if (!is.finite(ui_bridge) || ui_bridge <= 0) ui_bridge <- 0.035
 
-    vp$hf_spiking_short_upper <- max(min_isi_sec, short_upper)
-    # q80 should usually remain within the short/high-frequency range.
-    vp$hf_spiking_q80_max <- max(vp$hf_spiking_short_upper, ui_q90, na.rm = TRUE)
-    # q90 is deliberately more tolerant than the short band because HF spiking
-    # can contain occasional 20-25 ms ISIs while still being a high-frequency epoch.
-    vp$hf_spiking_q90_max <- max(ui_q90, vp$hf_spiking_short_upper, 0.75 * epoch_bridge, na.rm = TRUE)
-    vp$hf_spiking_epoch_bridge <- max(epoch_bridge, ui_bridge, vp$hf_spiking_q90_max, na.rm = TRUE)
+    if (!is.finite(seed_lower) || seed_lower < min_isi_sec) {
+      seed_lower <- min_isi_sec
+    }
+    vp$hf_spiking_seed_lower <- seed_lower
+    vp$hf_spiking_fast_core_upper <- max(min_isi_sec, short_upper)
+    vp$hf_spiking_short_upper <- vp$hf_spiking_fast_core_upper
+    # q80/q90 compactness must be consistent with the declared connector budget.
+    # Requiring q80 <= envelope while simultaneously allowing up to 25% bounded
+    # connectors is contradictory. The envelope fraction and connector ceiling
+    # provide the dimensionless robust limits instead.
+    vp$hf_spiking_q80_max <- max(epoch_bridge, vp$hf_spiking_short_upper)
+    vp$hf_spiking_q90_max <- max(connector_upper, epoch_bridge)
+    vp$hf_spiking_epoch_bridge <- max(
+      epoch_bridge, vp$hf_spiking_short_upper, na.rm = TRUE
+    )
+    vp$hf_spiking_envelope_upper <- vp$hf_spiking_epoch_bridge
+    vp$hf_spiking_connector_upper <- max(
+      connector_upper, vp$hf_spiking_envelope_upper, na.rm = TRUE
+    )
+    # The automatic histogram proposal uses q25 only as an anchor.  A candidate
+    # must retain a non-trivial amount of that anchor after it is expanded over
+    # the stable-valley/q75 proposal envelope; this prevents a small fast seed from absorbing a
+    # long Tonic-like tail.  These are dimensionless detector-shape defaults and
+    # may be overridden by an explicit highfreq contract.
+    vp$hf_spiking_fast_core_min_count <- max(
+      3L,
+      as.integer(hp$spiking_fast_core_min_isi_count %||%
+        ceiling(max(1L, vp$hf_spiking_min_spikes - 1L) * 0.15))
+    )
+    vp$hf_spiking_fast_core_fraction_min <- min(max(
+      suppressWarnings(as.numeric(
+        hp$spiking_fast_core_fraction_min %||% 0.10
+      )), 0.05), 1)
+    vp$hf_spiking_envelope_expansion_core_fraction_min <- min(max(
+      suppressWarnings(as.numeric(
+        hp$spiking_envelope_expansion_core_fraction_min %||% 0.10
+      )), vp$hf_spiking_fast_core_fraction_min), 1)
+    vp$hf_spiking_envelope_fraction_min <- min(max(
+      suppressWarnings(as.numeric(
+        hp$spiking_envelope_fraction_min %||% 0.75
+      )), 0.50), 1)
+    proposal_connector_ratio <- vp$hf_spiking_connector_upper /
+      vp$hf_spiking_envelope_upper
+    vp$hf_spiking_envelope_q80_ratio_max <- max(1,
+      suppressWarnings(as.numeric(
+        hp$spiking_envelope_q80_ratio_max %||% proposal_connector_ratio
+      )))
+    vp$hf_spiking_envelope_q90_ratio_max <- max(
+      vp$hf_spiking_envelope_q80_ratio_max,
+      suppressWarnings(as.numeric(
+        hp$spiking_envelope_q90_ratio_max %||% proposal_connector_ratio
+      )), na.rm = TRUE
+    )
     # Do NOT inherit pause-scale hard breaks.  HF-spiking epochs should be split
     # when the gap leaves the HF state, not only at pause-sized gaps.
     vp$hf_spiking_hard_break <- max(vp$hf_spiking_epoch_bridge, 1.5 * vp$hf_spiking_q90_max, na.rm = TRUE)
     vp$hf_spiking_break_isi <- vp$hf_spiking_hard_break
+
+    hfs_sources <- as.character(c(
+      b$high_frequency_spiking$seed_lower_sec_source %||% "",
+      b$high_frequency_spiking$seed_upper_sec_source %||% "",
+      b$high_frequency_spiking$bridge_upper_sec_source %||% ""
+    ))
+    hfs_sources <- unique(hfs_sources[!is.na(hfs_sources) &
+      nzchar(hfs_sources)])
+    if (!length(hfs_sources)) {
+      hfs_sources <- as.character(eg$threshold_source_mode %||% "auto")[1L]
+    }
+    hfs_source <- if (any(hfs_sources %in% c("histogram", "auto"))) {
+      "histogram"
+    } else {
+      as.character(
+        b$high_frequency_spiking$seed_upper_sec_source %||% hfs_sources[1L]
+      )[1L]
+    }
+    hfs_hist <- (eg$histogram_suggest %||%
+      list())$high_frequency_spiking %||% list()
+    vp$hf_spiking_threshold_source_mode <- hfs_source
+    vp$hf_spiking_threshold_field_sources <- paste(
+      sort(hfs_sources), collapse = ";"
+    )
+    cached_background_contract <- hfs_hist$requires_candidate_local_background
+    automatic_hfs_source <- hfs_source %in% c("histogram", "auto")
+    # An automatic proposal is self-referential unless candidate-local slower
+    # background is demonstrated. A stale/malformed cache entry may not turn
+    # that scientific gate off; explicit FALSE is retained only as an audit
+    # inconsistency while the detector fails closed.
+    vp$hf_spiking_auto_requires_local_background <- automatic_hfs_source
+    vp$hf_spiking_background_contract_consistent <-
+      !automatic_hfs_source ||
+      !identical(cached_background_contract, FALSE)
+    vp$hf_spiking_histogram_available <- isTRUE(hfs_hist$available)
+    vp$hf_spiking_histogram_status <- as.character(
+      hfs_hist$status %||% "not_applicable"
+    )[1L]
+    vp$hf_spiking_histogram_reason <- as.character(
+      hfs_hist$reason %||% ""
+    )[1L]
+    vp$hf_spiking_envelope_proposal_status <- as.character(
+      b$high_frequency_spiking$envelope_proposal_status %||%
+        (hfs_hist$envelope_proposal %||% list())$status %||% ""
+    )[1L]
+    vp$hf_spiking_envelope_proposal_method <- as.character(
+      b$high_frequency_spiking$envelope_proposal_method %||%
+        (hfs_hist$envelope_proposal %||% list())$method %||% ""
+    )[1L]
   }
 
   if (!is.null(b$high_frequency_tonic)) {
     vp$hf_tonic_floor <- b$high_frequency_tonic$seed_lower_sec
     vp$hf_tonic_high_max <- b$high_frequency_tonic$seed_upper_sec
+    vp$hf_tonic_bridge_upper <- b$high_frequency_tonic$bridge_upper_sec
   }
   if (!is.null(b$tonic)) {
     vp$tonic_min <- b$tonic$seed_lower_sec
     vp$tonic_max <- b$tonic$seed_upper_sec
+    vp$tonic_bridge_upper <- b$tonic$bridge_upper_sec
   }
   if (!is.null(b$pause)) {
     vp$pause_thr <- b$pause$seed_lower_sec
+    vp$pause_entry_thr <- b$pause$seed_lower_sec
+    vp$pause_strong_thr <- b$pause$seed_upper_sec
+    pause_source <- as.character(
+      b$pause$seed_upper_sec_source %||%
+        (eg$threshold_source_mode %||% "auto")
+    )[1L]
+    pause_tail <- (eg$histogram_suggest %||% list())$pause$strong_tail %||%
+      list()
+    pause_status <- if (identical(pause_source, "histogram")) {
+      as.character(pause_tail$status %||% "unresolved_histogram_tail")[1L]
+    } else {
+      paste0("resolved_", pause_source, "_strong_threshold")
+    }
+    vp$pause_strong_active <- !identical(pause_source, "histogram") ||
+      identical(pause_status, "resolved_stable_log_kde_upper_tail")
+    vp$pause_strong_status <- pause_status
+    vp$pause_threshold_source_mode <- pause_source
   }
   vp <- stpd_apply_train_isi_thresholds_to_event_vp(vp, params, train = train, min_isi_sec = min_isi_sec)
+  if (exists("stpd_apply_bounded_borrowing_to_event_vp", mode = "function")) {
+    vp <- stpd_apply_bounded_borrowing_to_event_vp(
+      vp, dat, params, train = train, min_isi_sec = min_isi_sec
+    )
+  }
   vp$tonic_burst_overlap_ref <- suppressWarnings(max(c(
     stpd_event_grammar_num(vp$tonic_burst_overlap_ref, NA_real_),
     stpd_event_grammar_num(vp$seed_high, NA_real_),

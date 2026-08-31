@@ -1,0 +1,1548 @@
+{
+  "schema": "stpd_gate_b_v3_phase1_registry_bundle_1",
+  "plan_sha256": "eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5",
+  "normative_contract_sha256": "81aa7f48411e774b0b1faa45e19b45f591891bb368d72bfd06401555ee01e8f4",
+  "authoritative": false,
+  "entries": [
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_02658f35df1a377f5ecb4a8ac6964f93db6d67140e407dd3730660a09c57fdb6",
+      "registry_domain": "threshold_algorithm",
+      "code": "per_train_unsupervised_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unrelated train cannot change instance\"],\"formula_or_state_machine\":{\"adaptation\":\"train\",\"cross_train_read\":false,\"label_access\":\"none\",\"scope\":\"train\",\"source\":\"per_train_unsupervised\"},\"input_schema_id\":\"one_normalized_train_row_v1\",\"output_schema_id\":\"train_threshold_instance_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "78d1907de70b98e3b8107acdd42cd3bedfe7c4b830806a93eb9938f4466c886b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_05516c49c7982aaa9447222565c877ff7fbd24bb46489294570bd72243f57476",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_contract_registries_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"registry_entry_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"contract_registries\",\"table_schema\":\"stpd_multitrack_v3_contract_registries_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e4c27e602af640828f5248dd9944e46966d1cbb9852dc2e4b2859081baf7b890",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_076a8baa7f88348d193946cb38d877d3bff5d7faaf8438e9f6490d0eacf59c52",
+      "registry_domain": "binding_role",
+      "code": "classification_gate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"path and scope resolve exactly\"],\"formula_or_state_machine\":{\"exact_instance_fk\":true,\"role\":\"classification_gate\",\"unique_by\":[\"consumer_domain_id\",\"consumer_id\",\"path\",\"role\"]},\"input_schema_id\":\"threshold_instance_v1\",\"output_schema_id\":\"threshold_instance_binding_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2ee59bcc5d2b875885e4a4182409d9ad42ecd38ca3d3e45839132586c103be9c",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_0a968fc6b44baed2bbb37c591efa998c4ea03620e578ad46c28b97f79172fbbd",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_reference_display_protocols_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"protocol_version\",\"display_protocol_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"reference_display_protocols\",\"table_schema\":\"stpd_multitrack_v3_reference_display_protocols_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "99e1e17cc344540aaf4e5577e3de013fc6f9e379c079912e1e2b8362cfe7ffa4",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_0c672f3d5cdc4d69f46bd47b6d5b8f89a16464908803a80fdd60da67ac9a77f3",
+      "registry_domain": "threshold_algorithm",
+      "code": "development_trained_global_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"held-out labels forbidden\"],\"formula_or_state_machine\":{\"adaptation\":\"none\",\"label_access\":\"development_reference_only\",\"partition\":\"required\",\"scope\":\"global\",\"source\":\"development_trained\",\"validation_overlap\":0},\"input_schema_id\":\"development_calibration_partition_v1\",\"output_schema_id\":\"global_threshold_instance_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c8a27d5edef5cf16476a3fdc113314bb97b9f003f9ac983c1a108e41e8a5b113",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_131c448a785803fbfae197963d95e4a6ca8d9d99eb9da3172cd750677ba56be6",
+      "registry_domain": "reference_reason",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"reference_reason_input_v1\",\"output_schema_id\":\"reference_reason_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e77fa191b5290832b62ec8c412b21f9791ccf5eb55dd411b02ae6aaae77090dd",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_1ce5a6ef45f5a8c3265cad8ed36a47007f4c29b567515d1adb0c9e781337fc46",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_review_candidates_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"review_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"review_candidates\",\"table_schema\":\"stpd_multitrack_v3_review_candidates_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "8c36934ad52d81007811ef865d487c7d1b1b430b2374941c3d82ed981f56f2c4",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2143ccce9f17e6112ddfd2aec6a289b4377c00c68f0d53ff0f22705f8e3e593b",
+      "registry_domain": "transition_payload_schema",
+      "code": "event_projection_reject_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"event_projection_reject\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"event_id\",\"expected_event_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e3a9cd8aa3daf71d876f29778abcbd3afa05a35594860efba11241de686f2b26",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_21b5a8cf6c06aa49f1acf2978e53650d9fc8d0b90e266b68aac86135e6e055d6",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_gate_b_approval_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"approval_payload_sha256\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"gate_b_approval_manifest\",\"table_schema\":\"stpd_multitrack_v3_gate_b_approval_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "54be9c6dd530cb5ca15776b4c63839b44a4022e51148384bfaceb3c58befc7d1",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2269b6be57b5209fdb330879ea569c7b1b4850b5bd3f50142455dfa54137ab24",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_axis_evidence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"state_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_axis_evidence\",\"table_schema\":\"stpd_multitrack_v3_state_axis_evidence_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "36bb5a4ec4a69b5715531488685a3e13638b934c1bf748a37634a438f14a0dec",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_243096593ed0fbee663a43daecc1b03a16a29cfa9beca8762c05243a15bc30bc",
+      "registry_domain": "operational_policy",
+      "code": "boundary_precedence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1-4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"Pause below connector tolerance still splits State support\"],\"formula_or_state_machine\":{\"canonical_pause_hard_for_episode_link\":false,\"canonical_pause_hard_for_event\":true,\"canonical_pause_hard_for_state\":true,\"precedence\":[\"qc_or_acquisition_hard\",\"canonical_pause\",\"gap_unresolved\",\"state_or_event_candidate\"]},\"input_schema_id\":\"candidate_and_boundary_rows_v1\",\"output_schema_id\":\"compatibility_action_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "9fac91e128e81d4a7b13566dfbc2da701cbd7428a75b355e1fad1f8d1a475e88",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_24bd7185f8a7a8fb17cb4b2c0c0b4a8203d712d637b13af114502c86802dd08a",
+      "registry_domain": "prediction_class",
+      "code": "high_frequency_tonic",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"high_frequency_tonic\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4c779f8ad5914ad54c54933fe051f6ec9427aa48fc6297d714bba90226d08548",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_26930d38beb37202d9732098bf3aaeecc860a095eead19042fc398d0141e1cd8",
+      "registry_domain": "diagnostic_code",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"diagnostic_code_input_v1\",\"output_schema_id\":\"diagnostic_code_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "cfb6c2d6444251f2faf1e80609fd6bfeeb2762ba6571dfc963566274c7a05379",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_26f41e461ea4c77828022c2e29de2c2a7f69869a7c3a84a824b0a353dfa967b3",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_release_attestation_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"release_version\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"release_attestation\",\"table_schema\":\"stpd_multitrack_v3_release_attestation_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5e6584b5ce899d73dff96aac52c82c2d0feba879eb0c174cec998f9ee59decbd",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2752ab0ea26e99b3de39a9d4136d0b6e07e636a2804ec6f03e9735382a973feb",
+      "registry_domain": "gap_policy",
+      "code": "pause_local_empirical_bh_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"discrete score floor recorded\",\"insufficient local sample abstains\"],\"formula_or_state_machine\":{\"accept_if\":[\"absolute_threshold_pass\",\"local_ratio_pass\",\"adjusted_q<=alpha\",\"qc_eligible\",\"not_boundary_censored\"],\"adjustment\":\"BH_over_complete_candidate_family\",\"candidate_scan\":\"all_parent_spine_single_isi_rows_at_or_above_scan_seed\",\"empirical_upper_tail_p\":\"(1+count(reference_isi>=candidate_isi))/(n_reference+1)\",\"fdr_control_claim\":false},\"input_schema_id\":\"label_blind_local_isi_reference_v1\",\"output_schema_id\":\"complete_gap_candidate_family_v1\",\"parameter_paths\":[\"pause.scan_seed_sec\",\"pause.absolute_threshold_sec\",\"pause.local_ratio_min\",\"pause.local_window_isi\",\"pause.guard_band_isi\",\"pause.local_min_valid_isi\",\"pause.score_alpha\"]}",
+      "semantic_definition_sha256": "178bb86583f107016e22555ea7a1f43872a930cb218490093465e82378e65c9a",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_27c569947670e1b3c05f73593aaaf16dc97a0ab0cfa7fe0d8d9a0e1c7164661d",
+      "registry_domain": "prediction_class",
+      "code": "burst_event",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"burst_event\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c82247a7b30ea2c2fc539a4f5c708480c6fed4711e3fa5360f669c8cb6c2f911",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_27d2487453b679caa6334b9ea9095522480a86818cd201254f2fe375679e1e8e",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_signature_envelope_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"signature_domain\",\"payload_sha256\",\"key_id\",\"release_sequence\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"signature_envelope\",\"table_schema\":\"stpd_multitrack_v3_signature_envelope_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d5cd1c28a9f1e2a28cd8f60aff3d80dd42c6abacaaa548558d58767e7cd4a39f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_29524662e16e6b0f45c5cd3d41b17a9a187e47cb19eec60eb97693f838f018bc",
+      "registry_domain": "isolation_metric_name",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"isolation_metric_name_input_v1\",\"output_schema_id\":\"isolation_metric_name_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2c78db1a09575815fab1e125b6afe5f3c99af7f5b5a6125e88738aa77a5d8aff",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2bbccd50bf51c3efd003ac491e0437b336bc4858fad0c196023c28b1341dbba5",
+      "registry_domain": "input_source_domain",
+      "code": "label_and_review_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"values and attributes never copied\"],\"formula_or_state_machine\":{\"label_access\":\"forbidden\",\"root_free\":true,\"sources\":[\"manual\",\"manual_negative\",\"review\",\"final\"]},\"input_schema_id\":\"source_manifest_leaf_v1\",\"output_schema_id\":\"stripped_source_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c86a9e9cba9f67809f7e684449edb84bbead491ec9944401fbb1ba85a8fe99c3",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2d4065e60aaac9008f85252e9e873df83552118f7c3e8b4e14f3aa5e779d4ca3",
+      "registry_domain": "qc_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"qc_status_input_v1\",\"output_schema_id\":\"qc_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "1a9fd66a5e59a3fb6e66a106c8f47ca947683f79af8412b7d377d57ca85cf434",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_2ec0b9fd089296c8cc9226b663f0d12e2fa1646e82d7b2e854dbe566f1970d94",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_event_state_relationships_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"event_id\",\"state_episode_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"event_state_relationships\",\"table_schema\":\"stpd_multitrack_v3_event_state_relationships_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "05d443876e6e692d3e5381ff489cebd33880aaf1b527322f63d8f9348fa1184d",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_32f613d9d65a0c7b1e915449a099aa83daabd18da06ec62f5048fd897f9b6b5d",
+      "registry_domain": "evidence_schema",
+      "code": "gap_empirical_family_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"gap_policy\",\"estimator\"],\"exact_ordered_fields\":[\"candidate_ids:lst!\",\"raw_p_values:lst!\",\"adjusted_q_values:lst!\",\"method_registry_id:chr!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"gap_empirical_family_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c213ff2ff46e026d18eabec8c51f62a70363546871b3efd120aa5bb1ea744862",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_336e7fa5cc87ecf41a81dd89732e774cbfa4e4652ec298052aadf67eadcbd9c8",
+      "registry_domain": "prediction_class",
+      "code": "tonic",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"tonic\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "02689cb6c053ef5dd4478943a7d2c7d85778a0a24781ae5cfa26e3bcc21380fa",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_355985164a33655d067f9d8d787e1b38a33f0b30914457182cd2ae4070c132ac",
+      "registry_domain": "threshold_algorithm",
+      "code": "batch_transductive_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"forbidden in default new-patient estimand\"],\"formula_or_state_machine\":{\"adaptation\":\"dataset_batch\",\"estimand\":\"transductive_only\",\"label_access\":\"none\",\"scope\":\"dataset_batch\",\"source\":\"batch_transductive\"},\"input_schema_id\":\"one_unlabelled_batch_v1\",\"output_schema_id\":\"batch_threshold_instance_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "26a8767d7d571003eddb44d028c77c3ee2977f3ff796b2ed5884768db1b9cb61",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_367a9b5d43f6f4ddbcdec3b739e5fc34faccb099bd8edc6fc1449c27fd7ac330",
+      "registry_domain": "task_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"task_status_input_v1\",\"output_schema_id\":\"task_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "a69a54c0d9bc445839ddd146aa521e132e2e20f8ffa6df2a7d83be1244131061",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_38cee6cc06dd566ded96660dc30e2801a8f3d3a2a90e441e47c80e87920aaf7d",
+      "registry_domain": "state_candidate_rule",
+      "code": "complete_state_direct_support_scan_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"hard boundary splits\",\"candidate deletion fails expected-set\"],\"formula_or_state_machine\":{\"negative_rows_retained\":true,\"row_order_independent\":true,\"scan\":\"maximal contiguous eligible ISI runs\"},\"input_schema_id\":\"label_blind_isi_and_hard_boundaries_v1\",\"output_schema_id\":\"complete_state_candidate_universe_v1\",\"parameter_paths\":[\"state.state_min_valid_isi\",\"state.state_min_duration_sec\"]}",
+      "semantic_definition_sha256": "e092814037385d436993c1537ff452cf94b2bec56f9491209a854c8c56f57404",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_3d46403032d22686d7d3b3d4d4976a89605c9a41238d9820620c5ba64275dec9",
+      "registry_domain": "estimator",
+      "code": "event_extent_n_spikes_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"long equality passes\",\"prolonged equality passes\"],\"formula_or_state_machine\":{\"classic\":\"stat<long_min_spikes\",\"long\":\"long_min_spikes<=stat<prolonged_min_spikes\",\"prolonged\":\"stat>=prolonged_min_spikes\",\"statistic\":\"event.n_spikes\"},\"input_schema_id\":\"accepted_event_geometry_v1\",\"output_schema_id\":\"event_extent_modifier_evidence_v1\",\"parameter_paths\":[\"event.extent.long_min_spikes\",\"event.extent.prolonged_min_spikes\"]}",
+      "semantic_definition_sha256": "d07fdb8fa102dcce8882ac28311173455f85176a27f05d207662ad0d47290180",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_3e2aa7ad52c0c9205c8034051ad745eecf9e156ff0a001698b6fb9bd70d26c30",
+      "registry_domain": "binding_role",
+      "code": "boundary_gate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"path and scope resolve exactly\"],\"formula_or_state_machine\":{\"exact_instance_fk\":true,\"role\":\"boundary_gate\",\"unique_by\":[\"consumer_domain_id\",\"consumer_id\",\"path\",\"role\"]},\"input_schema_id\":\"threshold_instance_v1\",\"output_schema_id\":\"threshold_instance_binding_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7d5e2e4a52e7df195c50f57601614d16595486e2b962cc87abeebda58020cb67",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_3f43d61eae14ba13ae540eb076b37f2c5918d5e624b56ed08a7ba261112e0228",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_candidates_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"state_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_candidates\",\"table_schema\":\"stpd_multitrack_v3_state_candidates_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "ede758108fc8cf5cfe9adf16bc0e6ae6115184c537081157b1094d016be8f72b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_41bfa2b4ea2408f949482a23462eadcc5a7cb098fd7f9cca37d1d44f9203740b",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_lineage_records_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"lineage_id\",\"edge_index\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"lineage_records\",\"table_schema\":\"stpd_multitrack_v3_lineage_records_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7b977ac3b041f52d82a0d91b44bb02c39add8111dd26fd50af132aa1a5a0ba63",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4396ad1024c4f8dbe79debf0d3d32ef70b3c7fd467934da0b0def92b9ff0f09a",
+      "registry_domain": "label_blind_rule",
+      "code": "strip_label_review_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"presence and value changes cannot alter normalized input\"],\"formula_or_state_machine\":{\"action\":\"strip\",\"copy_attributes\":false,\"copy_values\":false,\"exact_sources\":[\"manual\",\"manual_negative\",\"review\",\"final\"]},\"input_schema_id\":\"raw_dataset_source_universe_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "0b59d3cbbb4a1343a502328f1a581ada29ec777d87c56da989bc07f881682350",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_45cbe7874c0699399997d7cf370a6180aa084a46f584a40c0746df8b42ac541c",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_toolchain_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"toolchain_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"toolchain_manifest\",\"table_schema\":\"stpd_multitrack_v3_toolchain_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "1ff9159e70eed3aac5848452b1e4b128b93031b0a5b58e12ee00e89de883e668",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_465a0205258d3247cf3fd251d68bc7fb1731f3ba20bfa97077f5db65fb294745",
+      "registry_domain": "segment_rule",
+      "code": "maximal_episode_role_partition_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.2\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"Pause excluded\",\"no overlapping or missing segment\"],\"formula_or_state_machine\":{\"connector_is_active_support\":false,\"maximal_same_role\":true,\"ordered_partition\":true,\"roles\":[\"direct_support\",\"tolerated_connector\"]},\"input_schema_id\":\"accepted_state_candidates_and_connector_decisions_v1\",\"output_schema_id\":\"gap_free_episode_partition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "132008fe5a6d5a93ed6bbe699b75dbec3d2cd5fc9442f638e26f83fe605a7bda",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4714852affe7d486cb8c6c4fbed9563d3694f9853e2ac852d12341a5074ac2c2",
+      "registry_domain": "boundary_rule",
+      "code": "boundary_precedence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1-4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"Pause remains hard below connector tolerance\"],\"formula_or_state_machine\":{\"order\":[\"qc_or_acquisition_hard\",\"canonical_pause\",\"gap_unresolved\",\"candidate\"],\"row_order_independent\":true},\"input_schema_id\":\"boundary_and_candidate_rows_v1\",\"output_schema_id\":\"deterministic_boundary_action_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e3f2c0eda6a4a3e8618b2cf5de9de1deab4c2ff93ce4bee8923f06092a563f55",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_482f39234915d73e195f000d5f3660c20a467ae6f333b39070cbc1060b0571ac",
+      "registry_domain": "reason_code",
+      "code": "abstained_pause_qc_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"candidate remains materialized without a Pause projection\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"abstained_pause_qc_v1\",\"positive_scientific_claim\":false,\"required_evidence_status\":\"qc_ineligible_or_boundary_censored\"},\"input_schema_id\":\"pause_candidate_qc_evidence_v1\",\"output_schema_id\":\"gap_abstention_reason_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "8d217043d5b4421dda9909e911673d9bacec780a381209eb52a6204b88c06755",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_48d633c59f870e38c25cdef9223c31239dc260f98d6303dfe623d557a11a4aed",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_canonical_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"table_name\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"canonical_manifest\",\"table_schema\":\"stpd_multitrack_v3_canonical_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d24b0a4b5a0f20d79f654c6bd41d05219c4d6ca26de717b31ea745af6d71fc48",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_48dd562b500e4dc389852fe445bf64510d1be6369402abe9392c29d67d005f36",
+      "registry_domain": "failure_code",
+      "code": "unsupported_transition_for_schema_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"exact typed failure\"],\"formula_or_state_machine\":{\"canonical_tables\":\"forbidden\",\"code\":\"unsupported_transition_for_schema_v1\",\"legacy_fallback\":false,\"status\":\"failed_closed\"},\"input_schema_id\":\"typed_failure_context_v1\",\"output_schema_id\":\"consumer_response_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4effa9239fffc6d2f218420079b24eb653a61652c3c9e6a45dcfdbc4ef25bf9f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_490c9f34bc70437d1603c4e4019a8e8e688f01215abb054ff799bf2b54145be8",
+      "registry_domain": "threshold_algorithm",
+      "code": "development_trained_session_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unlabelled application statistics only\"],\"formula_or_state_machine\":{\"adaptation\":\"session\",\"application_session_labels\":false,\"label_access\":\"development_reference_only\",\"partition\":\"required\",\"scope\":\"session\",\"source\":\"development_trained\"},\"input_schema_id\":\"development_calibration_partition_v1\",\"output_schema_id\":\"session_threshold_instance_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "54a6cdd4221efd354dbd2cbc0ba0d20db5224ebc4744906b1fa8f73c05294134",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4978c861d58ca6979f98b8b2c66418acf092ad8ace1eef717f28560c9981b460",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_source_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"repository_relative_path\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"source_manifest\",\"table_schema\":\"stpd_multitrack_v3_source_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "8ee48ee573f0c4a07f1a546c8d6a2ebdd0d15afdc086f1c3dbd8960efc05ca68",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4b1875f00d805805c626cc000bf4b5fbcc0fe032dd21d26ccc3395ebfbb22b6a",
+      "registry_domain": "evidence_schema",
+      "code": "state_axis_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"classification_rule\",\"state_candidate_rule\",\"estimator\",\"episode_aggregation\"],\"exact_ordered_fields\":[\"frequency_stat:dbl!\",\"frequency_status:chr!\",\"regularity_stat:dbl!\",\"regularity_status:chr!\",\"threshold_instance_ids:lst!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"state_axis_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "226eb6de3bb557a0868eb0c16734faa7d8b7a39396d2a4e5aa0eba1c443eba27",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4b20c98bc803d9008d733820fe56bed690b988858a35cf3b7883fe030936c290",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_abstentions_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"abstention_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_abstentions\",\"table_schema\":\"stpd_multitrack_v3_state_abstentions_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "af749bfce2e2b86b1e08ff94c177894d8069206ad8670a8549a67cd49dd85bb5",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4ba4ece26f7b8281cae295f6c200b40f9df403fa4131717f13d5ce6887091908",
+      "registry_domain": "nonstationarity_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"nonstationarity_status_input_v1\",\"output_schema_id\":\"nonstationarity_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "cb778c910d786edb15a496a34961b9b1d990f3c8ca710e213dc0d1a151bb6429",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_4e836c39d6eee5d9d057e325051956618e910baebf9df45695538ab5acece1df",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_episodes_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"state_class\",\"state_episode_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_episodes\",\"table_schema\":\"stpd_multitrack_v3_state_episodes_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "f7f26a8e8e5bccb139f8e8f27747a44978b20d8c01f749d8caa9980162f31135",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_532d527c959439d32ac398f61f91d9ea8562a3b77980f69af4b4e2f1ec2e4fdf",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_partition_membership_source_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"partition_id\",\"group_id_hash\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"partition_membership_source_manifest\",\"table_schema\":\"stpd_multitrack_v3_partition_membership_source_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "17056683446b9a7f1eee8ce37809f49fc5257d9b5a986c257ac74415c6000d9b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_55c80d8f288d96ca824515a7a794cd2cbc090475004d5c82b98751250ab7ca36",
+      "registry_domain": "evidence_schema",
+      "code": "event_modifier_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"event_selector\",\"estimator\"],\"exact_ordered_fields\":[\"event_id:chr!\",\"modifier_domain:chr!\",\"modifier_value:chr!\",\"evidence_status:chr!\",\"estimator_registry_id:chr!\",\"statistic_value:dbl!\",\"pass_bound:dbl!\",\"gray_margin:dbl!\",\"threshold_instance_id:chr!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"event_modifier_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "ce8a5d608cfc396f6b94b38d418d7cf25c7cf63ef80492026ed13203121ec11c",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_57e902c4e8c47d5ceee5ad05766d08814110c4ef99e4541c62f5714d880a851e",
+      "registry_domain": "equivalence_method",
+      "code": "connector_axis_equivalence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.2\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"missing axis abstains\",\"zero rate abstains\"],\"formula_or_state_machine\":{\"decision\":\"connect iff both pass and all boundary predicates pass\",\"frequency_pass\":\"abs(log(pre_rate/post_rate))<=frequency_margin\",\"hypothesis_test\":false,\"regularity_pass\":\"abs(pre_median_cv2-post_median_cv2)<=regularity_margin\"},\"input_schema_id\":\"two_state_axis_evidence_rows_v1\",\"output_schema_id\":\"connector_decision_v1\",\"parameter_paths\":[\"state.connector.rate_log_margin\",\"state.connector.cv2_margin\"]}",
+      "semantic_definition_sha256": "0824465bdf9a7754a0c5cb85d3490db43ab7e904eaa03b70a60a1f3fac8e2df0",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_5c1da43a41946761a5da200104f0f596bb60c8860f60b2df9982890dc596218d",
+      "registry_domain": "operational_policy",
+      "code": "resource_budget_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"13.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"all-hit candidate input\",\"edge growth\",\"cancellation cleans staging\"],\"formula_or_state_machine\":{\"cancellation_cleanup\":\"zero published canonical tables\",\"check\":\"before allocation and before canonical commit\",\"checkpoint_order\":[\"before_detector_allocation\",\"before_candidate_materialization\",\"before_edge_materialization\",\"before_json_commit\",\"before_table_allocation\",\"before_table_commit\",\"before_product_commit\",\"before_artifact_commit\",\"before_and_after_each_stage\"],\"counter_backend\":\"deterministic_integer64_counter_v1\",\"exact_budget_rows\":[{\"budget_metric\":\"input_isi\",\"cancellation_point\":true,\"check_point\":\"before_detector_allocation\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"sum(max(0,n_spikes-1)) over normalized trains\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":50000000,\"space_bound\":\"O(n)\",\"stage\":\"detection\",\"time_bound\":\"O(n)\"},{\"budget_metric\":\"candidate_rows\",\"cancellation_point\":true,\"check_point\":\"before_candidate_materialization\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"number of complete candidate-universe rows before selection\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":10000000,\"space_bound\":\"O(m)\",\"stage\":\"candidate_generation\",\"time_bound\":\"O(n + m)\"},{\"budget_metric\":\"edge_rows\",\"cancellation_point\":true,\"check_point\":\"before_edge_materialization\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"number of provenance,lineage,relationship,binding edges before allocation\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":50000000,\"space_bound\":\"O(e)\",\"stage\":\"relationships\",\"time_bound\":\"O(m + e)\"},{\"budget_metric\":\"json_bytes_max\",\"cancellation_point\":true,\"check_point\":\"before_json_commit\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"maximum canonical UTF-8 bytes of one JSON scalar payload\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":67108864,\"space_bound\":\"O(j)\",\"stage\":\"json_serialization\",\"time_bound\":\"O(j)\"},{\"budget_metric\":\"table_rows_max\",\"cancellation_point\":true,\"check_point\":\"before_table_allocation\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"maximum rows in any one canonical table before allocation\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":100000000,\"space_bound\":\"O(r)\",\"stage\":\"table_materialization\",\"time_bound\":\"O(r)\"},{\"budget_metric\":\"table_bytes_max\",\"cancellation_point\":true,\"check_point\":\"before_table_commit\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"maximum canonical UTF-8 bytes of one typed table including envelope\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":2147483648,\"space_bound\":\"O(b)\",\"stage\":\"table_serialization\",\"time_bound\":\"O(b)\"},{\"budget_metric\":\"canonical_bytes_total\",\"cancellation_point\":true,\"check_point\":\"before_product_commit\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"sum canonical table, identity and manifest bytes\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":8589934592,\"space_bound\":\"O(b)\",\"stage\":\"product_serialization\",\"time_bound\":\"O(b)\"},{\"budget_metric\":\"artifact_bytes_total\",\"cancellation_point\":true,\"check_point\":\"before_artifact_commit\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"sum all candidate/official artifact bytes before commit\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":12884901888,\"space_bound\":\"O(a)\",\"stage\":\"artifact_packaging\",\"time_bound\":\"O(a)\"},{\"budget_metric\":\"peak_memory_bytes\",\"cancellation_point\":true,\"check_point\":\"before_and_after_each_stage\",\"cleanup_state\":\"zero_published_tables_and_remove_staging\",\"counter_definition\":\"process peak resident bytes measured by registered platform adapter\",\"fail_closed_code\":\"resource_budget_exceeded\",\"limit\":12884901888,\"space_bound\":\"O(n + m + e)\",\"stage\":\"memory\",\"time_bound\":\"O(n + m + e)\"}],\"exceed\":\"failed_closed/resource_budget_exceeded\",\"measurement_backend\":\"peak_rss_platform_adapter_v1\",\"truncation\":false},\"input_schema_id\":\"versioned_resource_counters_v1\",\"output_schema_id\":\"typed_resource_status_v1\",\"parameter_paths\":[\"input_isi\",\"candidate_rows\",\"edge_rows\",\"json_bytes_max\",\"table_rows_max\",\"table_bytes_max\",\"canonical_bytes_total\",\"artifact_bytes_total\",\"peak_memory_bytes\"]}",
+      "semantic_definition_sha256": "9fa481376a637bdb81b25297aab64164b12777da901a62d8da4013c53af3fd25",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_5d604c58d8784f210b86fc2ad24c0f6991450225a363f9db7be9a6db6273e89b",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_detector_policy_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"policy_path\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"detector_policy_manifest\",\"table_schema\":\"stpd_multitrack_v3_detector_policy_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "72a954e0aa5e706f86c85c183529806899e4c94cc3b8ec832585a55a6c940633",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_600aa25ad11e81339334c6d155e0031a3299676ed69cf2a38d080b18a9aafaa0",
+      "registry_domain": "input_allowlist_schema",
+      "code": "timestamp_acquisition_qc_allowlist_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"manual labels and derived caches forbidden\"],\"formula_or_state_machine\":{\"additional_properties\":\"ignored_not_copied\",\"optional\":[\"timestamp_unit\",\"timestamp_resolution_sec\",\"timebase_provenance\",\"waveform_qc_available\",\"raw_waveform_available\",\"sorting_qc_status\",\"condition_boundary_available\",\"patient_group_id_hash\",\"session_group_id_hash\",\"dataset_batch_id_hash\"],\"required\":{\"timestamp\":\"finite strictly increasing binary64\"}},\"input_schema_id\":\"raw_dataset_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "bcb8f0f2e4312ecf641907883dab52fd767b31892b19a16b054affecd2e53695",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_62b891f767d6bae200459d58960a49433e44ec8a2bf055751850601ebc071f6b",
+      "registry_domain": "multiple_testing_method",
+      "code": "benjamini_hochberg_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"discrete p values\",\"family deletion fails\"],\"formula_or_state_machine\":{\"complete_family_required\":true,\"fdr_control_claim\":false,\"input_order\":\"candidate_id byte order\",\"method\":\"BH\"},\"input_schema_id\":\"complete_preregistered_pause_family_v1\",\"output_schema_id\":\"adjusted_q_values_v1\",\"parameter_paths\":[\"pause.score_alpha\"]}",
+      "semantic_definition_sha256": "35bc07befccd719352140d7642cb6d1428e16ab70db4bc24b74b70827c130d38",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_632db30f636a6834106341dba07a363ab501b18ebbe8a4c0b063c7fa5f9dcc82",
+      "registry_domain": "species",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"species_input_v1\",\"output_schema_id\":\"species_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c0fe7d577c54b93b31c3bd453126d5b04f3cfba0f72016407d3587cf3413b62d",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_63bf58f477cceac01592a8907a99aefade1aa02f520b5db17f41e3fdcdf00d13",
+      "registry_domain": "context_epoch_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"context_epoch_status_input_v1\",\"output_schema_id\":\"context_epoch_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "fd1d3987510b5ebc03838f6ddf3d375cc0adaee40b166e43002debe39717eb3c",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_64776e21224c1ff91277efa072e1e66a8c92dba4f3787de8cb13b36aad23f045",
+      "registry_domain": "failure_code",
+      "code": "cancelled",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"exact typed failure\"],\"formula_or_state_machine\":{\"canonical_tables\":\"forbidden\",\"code\":\"cancelled\",\"legacy_fallback\":false,\"status\":\"failed_closed\"},\"input_schema_id\":\"typed_failure_context_v1\",\"output_schema_id\":\"consumer_response_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5e4457d4e62e9ea2342be778011962113f3c919b8012e47184fe3598667ef06a",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_668c95bd302dcc78e3dd3f9e900750b1903ac8255600ae0f90e72bf6adb8523d",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_connector_decisions_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"gap_start_isi\",\"gap_end_isi\",\"pre_direct_candidate_id\",\"post_direct_candidate_id\",\"connector_decision_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_connector_decisions\",\"table_schema\":\"stpd_multitrack_v3_state_connector_decisions_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d20cc1884c308fbbb00cafb8e69c719e1194fa2148feb7c71c002d7c86581c34",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_6701452ff2908234f668d33846960998a33ae29e6f96dc7fa47fda27b85f5664",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_segments_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"state_episode_id\",\"segment_index\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_segments\",\"table_schema\":\"stpd_multitrack_v3_state_segments_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "701fe96744ab92569f196b28d58496b1bd4efc8c64a43a75eedc54af2458d400",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_67f19b46d19a3c86528b85e949b10c536f569909f771f9ae5424f7300c4e0483",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_threshold_policies_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"path\",\"threshold_policy_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"threshold_policies\",\"table_schema\":\"stpd_multitrack_v3_threshold_policies_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "10a184288369f228e1526cce211e55f51d6cc738742cba07c3f585258cc54059",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_68051cb7f1d1b5ba0952074e76934c0ecefabbd4b7d3982b4c88dd71ede213c0",
+      "registry_domain": "acquisition_condition",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"acquisition_condition_input_v1\",\"output_schema_id\":\"acquisition_condition_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "184dc66a55e4ee49c4887067f1e927c9cb1e42d81a62d59c812c54c9b201b300",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_6884b9680d502994224410f60c74dda34fabc60a3072e6dd9296368c4cd10a40",
+      "registry_domain": "transition_payload_schema",
+      "code": "event_candidate_accept_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"event_candidate_accept\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"review_candidate_id\",\"expected_review_candidate_hash\",\"source_event_candidate_id\",\"expected_source_candidate_hash\",\"suggested_class_registry_id\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "3ca21075198a6463ea45e956678b2d97aaeae24cc4464e32ce9277b6d8a88e53",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_6bbd331182bb8606a11feb1da9ce064670b3b666aa9819a6da00184f027803fc",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_reference_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"table_name\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"reference_manifest\",\"table_schema\":\"stpd_multitrack_v3_reference_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "93189fb38688826af0b371225ca8c1e7be9823a681ff413ea34b8f6284b3ebc5",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_6cbc2516aefa7f909744a969453acf07859b209aa6e58965421f17150242ab82",
+      "registry_domain": "transition_payload_schema",
+      "code": "episode_link_reject_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"episode_link_reject\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"episode_link_id\",\"expected_link_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d0cc7e2472c420e3c5bebf685057814d512bc0f442f177171a7972dee9b5517c",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_73c52688210146c19c124b6e99798c7c6f3cde3d208ae4b9a5c4aa45a89e1639",
+      "registry_domain": "transition_payload_schema",
+      "code": "state_projection_reject_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"state_projection_reject\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"state_episode_id\",\"expected_episode_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "84542e1219b27188a07a7680573347e20008f4b1b76c735d71e368184e67b6c7",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_79254d97499d8aff213ff00c410ba3fff14ac4208b411114be3029673009b089",
+      "registry_domain": "anesthesia_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"anesthesia_status_input_v1\",\"output_schema_id\":\"anesthesia_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "99ac340b546fdc99cf9bec2eef54d3ab1ede500452438d4c592543bc7c167f95",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_793f8c2d7add1b7c1ea789ed2ebb113d958a4b77a6d47c59b270be24a6d45ffe",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_event_modifier_evidence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"event_id\",\"modifier_domain\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"event_modifier_evidence\",\"table_schema\":\"stpd_multitrack_v3_event_modifier_evidence_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "6c19f18d4ac735ecd9fd7ad902bb7b519f5c655bbe20f85503415d7260fa39f8",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7ac12ed3d303f77e96914fdfe94aaf03ca40f5895b217865c03d577aa5ce3803",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_per_isi_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"isi_index\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"per_isi\",\"table_schema\":\"stpd_multitrack_v3_per_isi_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d4f073b18adb6d1751e6be0f4c98205fe40dcf8ce7dc60532adb038ebd35396f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7b14f7d22382da5cc4d09f92e2edfa902cbd4243683220dd86b89a323e743a12",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_product_status_envelope_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"product_kind\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"product_status_envelope\",\"table_schema\":\"stpd_multitrack_v3_product_status_envelope_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "a7d0bd2816a6799883d084a58f70bd3ca26dcc149b0bee7e404e8c81268bb7d1",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7b859b8fa8daeb073c2c85fcdf5f75f7794f5eb2c26bc130ed7139d07a8d150d",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_state_episode_links_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"pre_state_episode_id\",\"gap_id\",\"post_state_episode_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"state_episode_links\",\"table_schema\":\"stpd_multitrack_v3_state_episode_links_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4d66d44cc737a0d4b2772da8240c0065c0c187ea2fb16e778820becca0ace7b1",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7c2a939e3fcf8b11f6149e80786fc7d32272eb12687a60d69a178b3ff28a25a9",
+      "registry_domain": "input_allowlist_schema",
+      "code": "prohibited_derived_state_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"all learned and runtime-derived state is excluded\"],\"formula_or_state_machine\":{\"action\":\"strip\",\"additional_properties\":false,\"exact_sources\":[\"learned_ranges\",\"cache\",\"results\",\"attributes\"]},\"input_schema_id\":\"raw_dataset_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2fe199aac689f0ca7b63cf1c6f09008f7b02814f4fb41ca7d1ff0de83df9bc41",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7c4ef625713fc3b05ff45811c690c220fc022f2f906d616ba8eaa9484acfafef",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_threshold_instance_bindings_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"consumer_domain_id\",\"consumer_id\",\"path\",\"binding_role_registry_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"threshold_instance_bindings\",\"table_schema\":\"stpd_multitrack_v3_threshold_instance_bindings_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "f74299ae33eb18479bd2fc18d15403e35b65f418c59ebb7ba018a3d5349278ee",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7dbcc85d21b50e5ffba86267b347d58766f63453119d34b8c1f4b4f8fe50be50",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_gap_abstentions_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"gap_abstention_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"gap_abstentions\",\"table_schema\":\"stpd_multitrack_v3_gap_abstentions_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5720cb30a015cc74326076f8584011cf1676cb93fb021caf3acabd768965d303",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7f21d2ebe6701aca4d23a622cf3b59ad45a4b8427dd30f8b123c507b63a4ad1c",
+      "registry_domain": "evidence_schema",
+      "code": "application_statistics_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"threshold_algorithm\"],\"exact_ordered_fields\":[\"statistics_schema:chr!\",\"statistics:json!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"application_statistics_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "9910648661dfdfa274b5e3d0341cfe71e7f0ad1edba0838ad0ad96d7c155b78e",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_7f4eabdbdb876d2f63f310a8619309645f2bb8b0dbefd45a48428a27540902bc",
+      "registry_domain": "binding_role",
+      "code": "provenance_gate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"path and scope resolve exactly\"],\"formula_or_state_machine\":{\"exact_instance_fk\":true,\"role\":\"provenance_gate\",\"unique_by\":[\"consumer_domain_id\",\"consumer_id\",\"path\",\"role\"]},\"input_schema_id\":\"threshold_instance_v1\",\"output_schema_id\":\"threshold_instance_binding_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "9e240ca2ae3b5ab3a8337201e83e0bdd1e5e453862cf866df88c5131f22f5676",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_8003c7fe8daf448232c7a3405587fe77add906b7409d19c479ab672edf942c26",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_reference_annotations_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"annotation_project_id\",\"annotator_pseudonym\",\"annotation_round\",\"annotation_pass\",\"train\",\"annotation_domain\",\"start_isi\",\"end_isi\",\"annotation_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"reference_annotations\",\"table_schema\":\"stpd_multitrack_v3_reference_annotations_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "ada242eb41f9b6ac1402104b035b652b4106e82d70a27545c24b4225409165b5",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_814e301a2c40a4b5ba1526132d73380605fc93a2b6f7f502f573ceecdf55bace",
+      "registry_domain": "reason_code",
+      "code": "rejected_pause_threshold_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"candidate remains in the complete universe but is not projected as Pause\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"rejected_pause_threshold_v1\",\"positive_scientific_claim\":false,\"required_evidence_status\":\"complete_but_below_gate\"},\"input_schema_id\":\"complete_pause_candidate_evidence_v1\",\"output_schema_id\":\"negative_gap_candidate_reason_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "45dcf071e5e094c7a0da51beea1b4e5837e6473853867042c157acd1ee1be458",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_83f05ef60952cab6f7993c9b70e93b92e1730b8c4f6b944476fd5e4a41cbdf7a",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_gap_candidates_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"gap_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"gap_candidates\",\"table_schema\":\"stpd_multitrack_v3_gap_candidates_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "1ecdba730efc301c18db72040bf6d7ddfa31094376bbff627df5006eda8ac95e",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_85fafd60b4484e01ce97db78ae65c46361b6134576052f46e1e3e20573637906",
+      "registry_domain": "estimator",
+      "code": "pause_local_window_median_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"candidate and guard band are excluded from the reference\",\"complete family is required before adjustment\"],\"formula_or_state_machine\":{\"adjustment\":\"benjamini_hochberg_complete_family\",\"aggregation\":\"median_finite_reference_isi\",\"ratio\":\"candidate_isi_sec/local_reference_sec\",\"raw_p\":\"rank_survival_with_plus_one_correction\",\"reference\":\"symmetric_parent_spine_window_excluding_guard_band\",\"reject_if\":[\"valid_local_n_isi<local_min_valid_isi\",\"local_reference_sec<=0\",\"hard_boundary_crossed\"]},\"input_schema_id\":\"label_blind_local_isi_window_v1\",\"output_schema_id\":\"pause_gap_evidence_v1\",\"parameter_paths\":[\"pause.scan_seed_sec\",\"pause.absolute_threshold_sec\",\"pause.local_ratio_min\",\"pause.local_window_isi\",\"pause.guard_band_isi\",\"pause.local_min_valid_isi\",\"pause.score_alpha\"]}",
+      "semantic_definition_sha256": "336f5294d3fa69bb64d74a360467b65f14b8c893cedb04d0231fce47d58d0a73",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_87b52c2707cff8ea8dce2b782ff757cdb9379e6d03b3bbbd76333fcd21b4c6bc",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_threshold_instances_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"path\",\"application_scope\",\"application_scope_key_hash\",\"threshold_instance_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"threshold_instances\",\"table_schema\":\"stpd_multitrack_v3_threshold_instances_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "fd26ada2f5c2c5d5a8cb6d5ca027b4dc0a1bf6bce39362e4f5d541cbdb363f8f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_8a2e13e8519605b924c39a58ad506e9a7f93b0bcb4e2b83c615b3afd4fe8fd10",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_scientific_context_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"scientific_context\",\"table_schema\":\"stpd_multitrack_v3_scientific_context_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d109728aaddbae3f92d45fe49d0e2b0b43b0032132786c8bc41697384a67085f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_8b30c83edf2da31bea5eb9df9b17a84d40ec67590187d550d9838e8f6e056dbc",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_event_interrupted_state_relationships_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"event_id\",\"parent_state_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"event_interrupted_state_relationships\",\"table_schema\":\"stpd_multitrack_v3_event_interrupted_state_relationships_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "245c69ba583471413ee6621fac0b9d340d4cf839a20758e8e0d5e5a74f0a2a8b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_8b48cef56b19c9d81f6af2ca2427e33505a1994e31b02dc4d1d841f1ca772763",
+      "registry_domain": "input_source_domain",
+      "code": "normalized_timestamp_and_acquisition_qc_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"train pseudonym required; every used source is covered\"],\"formula_or_state_machine\":{\"allowed_sources\":[\"normalized_timestamp_bytes\",\"allowlisted_acquisition_qc_scalars\"],\"explicit_forbidden_sources\":[\"manual\",\"manual_negative\",\"review\",\"final\",\"learned_ranges\",\"cache\",\"attributes\"],\"label_access\":\"none\",\"root_free\":true,\"unknown_source_action\":\"fail_closed\"},\"input_schema_id\":\"source_manifest_leaf_v1\",\"output_schema_id\":\"normalized_input_manifest_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e5ff55c2b0c4af15d8f263914ae6077e191d412b811310d2814cef2390e164bd",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_8baa8dc09fd0cc3ea8e9dd6083e9220badf5dc8e0a83af18c422a5dcae221d0b",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_native_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"repository_relative_path\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"native_manifest\",\"table_schema\":\"stpd_multitrack_v3_native_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "b96b369028d0f5621ec1c22ef3dd2ddc7f0329d87463cfe54d462e0ff8ad47b5",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_90cbb3d33883ac16d6e76211a12f209fe7c102558c0aa8c73a45054b61589213",
+      "registry_domain": "prediction_class",
+      "code": "pause_interrupted_hf",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"pause_interrupted_hf\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "6396316dbb1c17b43d8d78a2692039b5883bacceb8ba6b194ee8d058c5f90751",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_917905365ae10540806b087f07602b2fcbd52d1578dbab10bfae01d4ea3410f3",
+      "registry_domain": "brain_subregion",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"brain_subregion_input_v1\",\"output_schema_id\":\"brain_subregion_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "41ae17bc8f3427917a131e03a88ee837e40c1cdb19c61f1eac679e84dc818372",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9199cd8eb154d6a242157859d52d52da7a15f5134a0f4b5240fdf1e01712e55f",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_boundary_evidence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"boundary_domain\",\"boundary_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"boundary_evidence\",\"table_schema\":\"stpd_multitrack_v3_boundary_evidence_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "6abb1a0aa024c36651288409e68f172f70053c4d5a529d4fc175f57a941a8cb2",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9265b9647ad041bae4bb216de1bfef2c4da6bc53b99b0f388cbd6b1b83193a79",
+      "registry_domain": "transition_payload_schema",
+      "code": "state_split_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"state_split\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"state_episode_id\",\"expected_episode_hash\",\"connector_segment_id\",\"expected_connector_segment_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "599dad8d9c6c44a57157e2be9c829cac28cd8c617fb3c401103dea76e8ce070c",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_92e4c762256e2f2daaa4031870f5c7e6da39ff527a939b4f37bc66d850aff378",
+      "registry_domain": "units",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"units_input_v1\",\"output_schema_id\":\"units_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e1e9ba15d879dac635747a1da04e9e8e06af327bb41a48402a6bedab02f94644",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_935b9cd4ef9ba3d7f6cdd94e55f7fd1c993d48c8ac079ec313692d0985267684",
+      "registry_domain": "input_allowlist_schema",
+      "code": "unknown_source_rejection_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown source fails before hashing or prediction\"],\"formula_or_state_machine\":{\"action\":\"forbid\",\"additional_properties\":false,\"known_source_universe_required\":true},\"input_schema_id\":\"raw_dataset_v1\",\"output_schema_id\":\"typed_failed_closed_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4f6e6f381bd2761414457302213aab2419346acbc9c92a3ef4e587e63d4aa7bc",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_94b06e6e74ddf7e34dd18790f6a85dd500de3c404c30ec207b68a4e35054c7eb",
+      "registry_domain": "label_blind_rule",
+      "code": "strip_derived_state_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"derived state cannot enter prediction input\"],\"formula_or_state_machine\":{\"action\":\"strip\",\"copy_attributes\":false,\"copy_values\":false,\"exact_sources\":[\"learned_ranges\",\"cache\",\"results\",\"attributes\"]},\"input_schema_id\":\"raw_dataset_source_universe_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7111eb3fce9c9d5ec68217e6152cba287fdee32999c714bcfe4e666c18502faa",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_94e7d5572cc50df7a6f4fd1bd38ce6ae3aa097e9b2562f1dc4a7b544524cc00d",
+      "registry_domain": "diagnostic_detail_schema",
+      "code": "portable_audit_metadata_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"13.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"hostname/operator/free text rejected\",\"unknown value rejected\"],\"formula_or_state_machine\":{\"completed_total_pair_required\":true,\"counter_fields\":[\"input_isi\",\"candidate_rows\",\"edge_rows\",\"json_bytes_max\",\"table_rows_max\",\"table_bytes_max\",\"canonical_bytes_total\",\"artifact_bytes_total\",\"peak_memory_bytes\"],\"detail_fields\":[\"metric\",\"value\",\"code\",\"reason\",\"entity_domain\"],\"free_text_allowed\":false,\"maximum_string_bytes\":128,\"metric_value_pair_required\":true,\"root_fields\":[\"diagnostic_code\",\"detail\",\"stage\",\"completed_trains\",\"total_trains\",\"counters\",\"status_code\"],\"string_domains\":{\"code\":\"active_diagnostic_failure_or_qc_registry_code\",\"diagnostic_code\":\"active_diagnostic_code_registry_code\",\"entity_domain\":\"active_entity_domain_registry_code\",\"metric\":\"complexity_budget_metric\",\"reason\":\"active_reason_code_registry_code\",\"stage\":\"complexity_stage_or_resource_budget_or_cancelled\",\"status_code\":\"consumer_status_enum\"},\"unknown_keys\":\"reject\",\"unknown_values\":\"reject\"},\"input_schema_id\":\"portable_audit_named_object_v1\",\"output_schema_id\":\"redacted_portable_audit_object_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "1c99d3bd1dc460dc66793c069ef5edf1b09bd46007944c490254d70f49ce9264",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_956757e66ebb30ca9746737f3ddd1f74c2a60ea72c51505e14dcc6e42fe7997f",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_entity_evidence_edges_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"entity_domain_id\",\"entity_id\",\"edge_index\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"entity_evidence_edges\",\"table_schema\":\"stpd_multitrack_v3_entity_evidence_edges_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c4c14d0c3c913fa23ff032d83576765741c3024cae1e0d1bddaefd6b47dd279a",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_972fb4dfb6026378067ad3ab59b980f47f8c11ea19490b8555e169e2e6af7e21",
+      "registry_domain": "prediction_class",
+      "code": "canonical_pause",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"canonical_pause\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "a3eea5aaea39aa86056d54df6a870e4a5745fa73062e4826b216ad4dd886b621",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_99ae6fc830e9380e1a8dacd11e6bf3e0b4f4b190cf8ccdabd49535492958b18d",
+      "registry_domain": "sorting_qc_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"sorting_qc_status_input_v1\",\"output_schema_id\":\"sorting_qc_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e74d1c71eae40dee771ede7825c6565b0888a76879f116e657a9e95822ec4bd0",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9aca7e949ac0ee4567e31e64fa8b7ebb4c0f0fd0c0fa61cba05818e23470c931",
+      "registry_domain": "transition_payload_schema",
+      "code": "episode_link_confirm_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"episode_link_confirm\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"episode_link_id\",\"expected_link_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7af32f7864bb96f1f15a40db90a4c7b6a87b57ea187b21381d95f451130431ff",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9b09ce0344b6ce15ddd613ac7e91f56c321c27b0032fbd47d51e5c7f45b5936c",
+      "registry_domain": "input_source_domain",
+      "code": "unknown_input_source_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"future fields fail closed\"],\"formula_or_state_machine\":{\"action\":\"forbid\",\"label_access\":\"unknown\",\"root_free\":true,\"source\":\"any_not_explicitly_allowlisted\"},\"input_schema_id\":\"source_manifest_leaf_v1\",\"output_schema_id\":\"typed_failed_closed_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "931ebd0617cb5dd7011da5dd817b5d1cf291a8f6819571588186b823f7fcdb77",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9e52cb7900690291cbb1e568f2d0dec289fb65111ed4d0737c53ab0980fd2f00",
+      "registry_domain": "reason_code",
+      "code": "abstained_pause_insufficient_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"candidate remains materialized without a Pause projection\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"abstained_pause_insufficient_v1\",\"positive_scientific_claim\":false,\"required_evidence_status\":\"insufficient_local_reference\"},\"input_schema_id\":\"pause_candidate_local_evidence_v1\",\"output_schema_id\":\"gap_abstention_reason_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2d3a42bd1b5dfe634cfb86061bf7ca00bb0a3ada0d5fe09c50f61971b625675d",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9e9a9a9fa3b4fa32351eae86c3fa79348e553262f9600a358678b5734e94e173",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_materialized_product_identity_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"product_kind\",\"detection_root_id\",\"product_hash\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"materialized_product_identity\",\"table_schema\":\"stpd_multitrack_v3_materialized_product_identity_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "f9ec1b0867a17e8b798a77e0e1c2ec7e72a2a41c022fcda54576482289287777",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_9ee54e571b11f4b9ad24c1ecf34c23acae71b1f3301df22a23c65c4a934de26d",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_artifact_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"artifact_path\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"artifact_manifest\",\"table_schema\":\"stpd_multitrack_v3_artifact_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "b5edc686838d1019f8bbf8cc36e62b29eb8070feb79817e3830ff19869b53445",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a10a23c732588fb13ea0a3e829cdb0d704af3a717951bd3b495f000701a9726d",
+      "registry_domain": "input_allowlist_schema",
+      "code": "prohibited_label_review_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"all label-bearing columns and attributes are excluded\"],\"formula_or_state_machine\":{\"action\":\"strip\",\"additional_properties\":false,\"exact_sources\":[\"manual\",\"manual_negative\",\"review\",\"final\"]},\"input_schema_id\":\"raw_dataset_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "987cfd335aaa7f76ca28c2982579233b5cb8ed3c3ed29c57abf2eb6ea34c0c80",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a1e8fd23caeead9e74916a188e8c091abc6bc348aa417d8888fe473c22dad95a",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_qc_input_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"qc_input_manifest\",\"table_schema\":\"stpd_multitrack_v3_qc_input_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "f3c85b62eabb20e55d852c1b29227f0a2befa942f7f72bd142649b2b967f4645",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a289c5bbe95a18d1285b3abeaf8f28c94aa9f209c5a7f706d0aa19bcbb6c120a",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_adjudication_transitions_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"sequence_no\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"adjudication_transitions\",\"table_schema\":\"stpd_multitrack_v3_adjudication_transitions_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5b4e0f499bf7d2b0fc47477172cff11a92e4e4bede3f39e688c8c08100bd517a",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a3d73bfc9a09a74cb78151721309e3154b5a5e04d2939ee1793e8bbfaddd7514",
+      "registry_domain": "brain_region",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"brain_region_input_v1\",\"output_schema_id\":\"brain_region_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c226b3e5267c286ee538355d22ab74254ae892d0d1b8a0d4fb843c41302fba97",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a4bfc39862f562d1fe7bb932005bfbf7e6f7d0ec21ec63e02b3ce407744aa818",
+      "registry_domain": "evidence_schema",
+      "code": "application_input_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"threshold_algorithm\"],\"exact_ordered_fields\":[\"application_scope:chr!\",\"authorized_row_hashes:lst!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"application_input_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "e4dc96ddd06afe8a13d19ad3d718fa2c381998eb23937e6bfaea1c929fd1e4f8",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a519911cce217c43459d13d113f6ea2061c46d972a1cfc1056e58872153df0c7",
+      "registry_domain": "timebase_provenance",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"timebase_provenance_input_v1\",\"output_schema_id\":\"timebase_provenance_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "0cc23cf891b639e8dbc2aef673815922841e519ded13f9ff1820555f777e3bbe",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a54d0c02ffab11a892911699122d56d396f86870dbb9c3ae16132b148e44587a",
+      "registry_domain": "evidence_schema",
+      "code": "lineage_parent_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"classification_rule\",\"segment_rule\",\"event_selector\"],\"exact_ordered_fields\":[\"parent_domain_id:chr!\",\"parent_id:chr!\",\"parent_hash:chr?\"],\"free_text_executable_semantics\":false,\"schema_code\":\"lineage_parent_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "6bd26cc6425118c49be1028b2fb353e033f5a64f81532f9831c65e64943b9002",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_a87878090fb246237ac94489f8069d63f5cf70379c931a8dd4f55bed885b12cf",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_requested_params_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"path\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"requested_params_manifest\",\"table_schema\":\"stpd_multitrack_v3_requested_params_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d1994f6caa237c4fe1680a5adb4baab64753f00a203a4d7975c4cd5c53a2e5d1",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_aa490f434f7d99ea94acb83274551fabc85708cd3f3c6c911e6d7588ccd184e6",
+      "registry_domain": "reason_code",
+      "code": "accepted_evidence_pass_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.4/4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"may be referenced only by a candidate whose required evidence passed\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":true,\"code\":\"accepted_evidence_pass_v1\",\"positive_scientific_claim\":true,\"required_evidence_status\":\"pass\"},\"input_schema_id\":\"accepted_candidate_evidence_v1\",\"output_schema_id\":\"positive_candidate_reason_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "850b9f9ee54f6a03354beec8375efcc7e74685fd3007ccf97369b8de007a05ab",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_aa9ea661b1d5856d34cbe1888a813635af98edd124eee7dccab2deaf67625032",
+      "registry_domain": "input_source_domain",
+      "code": "derived_state_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cached or learned state never copied\"],\"formula_or_state_machine\":{\"label_access\":\"forbidden\",\"root_free\":true,\"sources\":[\"learned_ranges\",\"cache\",\"results\",\"attributes\"]},\"input_schema_id\":\"source_manifest_leaf_v1\",\"output_schema_id\":\"stripped_source_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "545ab6be381dd5bf2e3584e2886b70c4e01d8a4ac9cb4502d46ee84ea41b96c3",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_ab78929cd27be6d9677547ea339afdccaa61911f7300a45c150957c7cd347c4d",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_reference_project_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"annotation_project_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"reference_project_manifest\",\"table_schema\":\"stpd_multitrack_v3_reference_project_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "0996e81ed3a5513a9f3bfb14086b5c294b06f003f7c64567079c8c63a458c121",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_abd006c57828a70e6174c1aa7cea671026c9cb51570cf958d588651995f047b6",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_evidence_records_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"evidence_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"evidence_records\",\"table_schema\":\"stpd_multitrack_v3_evidence_records_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c3ecd55685a9fab01352f3fd49d62c6b56c431e5a7eeffa8d133695be89253af",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_ac312d4e3d5a043fdeacde543fe6f3e03a1e285a47c44ea4f0f8da095a51ab08",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_partition_memberships_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"partition_id\",\"group_id_hash\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"partition_memberships\",\"table_schema\":\"stpd_multitrack_v3_partition_memberships_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2e1c440f73e869fc19530f1c0839a5b25df9c66c65d357ec13a6a6d70390dbb9",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_ae7362adac33d8e2b40e23d80b5a6384801782f0fafbf966746c60ecd685465b",
+      "registry_domain": "spike_sorting_method",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"spike_sorting_method_input_v1\",\"output_schema_id\":\"spike_sorting_method_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "3eff3e19494f7a0f32b26a1b95f1ce7d49b2f0d494ad620a41d29132ce4264f5",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b0375324d680a883a66a65f7d759a1f3e15a9d5821d5bcc7faeba463446fcf96",
+      "registry_domain": "episode_aggregation",
+      "code": "state_episode_nonrecursive_connector_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.2\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"canonical Pause always splits\",\"hard boundary always splits\"],\"formula_or_state_machine\":{\"connect_if_all\":[\"same_state_class\",\"no_hard_boundary\",\"gap_not_canonical_pause\",\"gap_count_within_limit\",\"gap_duration_within_limit\",\"gap_local_ratio_within_limit\",\"connector_fraction_within_limit\",\"episode_span_within_limit\",\"both_sides_pass_minimum_sample\",\"axis_equivalence_pass\"],\"recursion_generation\":0,\"retransitive_closure\":false,\"scan\":\"single_left_to_right\"},\"input_schema_id\":\"ordered_direct_support_and_gap_rows_v1\",\"output_schema_id\":\"state_episode_segments_v1\",\"parameter_paths\":[\"state.connector.max_gap_sec\",\"state.connector.max_gap_count\",\"state.connector.max_gap_local_ratio\",\"state.connector.max_cumulative_fraction\",\"state.connector.max_episode_span_sec\",\"state.state_min_valid_isi\",\"state.state_min_duration_sec\"]}",
+      "semantic_definition_sha256": "4e5fbeb5272faa27625fbda9ab3662fef49370dc30ed50e22726585355c3da51",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b2a0fd991d4318256eeeba19799cfa8c955c4307f07f41a19e9ebf824e7f3ea9",
+      "registry_domain": "event_selector",
+      "code": "event_maximal_disjoint_selector_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"nested candidates\",\"equal score deterministic tie\"],\"formula_or_state_machine\":{\"adjacent_merge\":false,\"objectives\":[\"maximum_cardinality\",\"maximum_total_evidence_score\",\"lexicographic_candidate_id\"],\"overlap\":\"shared_isi\"},\"input_schema_id\":\"complete_event_candidate_universe_v1\",\"output_schema_id\":\"maximal_disjoint_event_set_v1\",\"parameter_paths\":[\"event.selector.minimum_score\"]}",
+      "semantic_definition_sha256": "669268845931b7353b64fcfa0cbf90c8d5d46e68bdf28aee194121da7bbae0ba",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b5ac360575127a2bee6f10decafd9376d1b242ced75ae92fdc3869fc9c13dee5",
+      "registry_domain": "evidence_schema",
+      "code": "entity_support_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"classification_rule\",\"state_candidate_rule\",\"segment_rule\",\"gap_policy\",\"boundary_rule\",\"event_candidate_rule\",\"event_selector\"],\"exact_ordered_fields\":[\"entity_domain_id:chr!\",\"entity_id:chr!\",\"support_rows:lst!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"entity_support_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "8a1c59d2690f01248fbdbc0664be634ee6b42a35a5e4e47c95ba5dcd027af3b6",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b5b9d2d2971dc1b53bdfb179740c204bad30e2e891588295914d202a5865da8b",
+      "registry_domain": "threshold_algorithm",
+      "code": "fixed_preregistered_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"application labels forbidden\"],\"formula_or_state_machine\":{\"adaptation\":\"none\",\"label_access\":\"none\",\"partition\":\"NA\",\"scope\":\"global\",\"source\":\"fixed_preregistered\"},\"input_schema_id\":\"requested_parameter_manifest_v1\",\"output_schema_id\":\"global_threshold_instance_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "33ee166d62333a705298b1001eeb91fae53553fe44a5ff6f5813078ff109d441",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b6701c2451d91232867e3525ed1184b969b94e4a090e1f56ba28305337c32ccd",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_label_blind_contract_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"contract_rule_registry_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"label_blind_contract_manifest\",\"table_schema\":\"stpd_multitrack_v3_label_blind_contract_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "bdebbb460fc5f8533e9c1e28f70fe370738e036889fd4553d3b0cfc33f8c66ec",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b8145e627efa8557201d8018baaa1943d5a63a2bf131ed6c97e1acbbba38194b",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_gaps_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"gap_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"gaps\",\"table_schema\":\"stpd_multitrack_v3_gaps_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "a698ea5b839ebc9cd4a5335e2f44b1a13dc985501bfcc48244565bd7c311ae02",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_b93e6d3a5fbd94908fc02b0de456fc8dbfd47955f3d8a569a85201d15b03f90e",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_fixture_expected_results_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"contract_id\",\"fixture_id\",\"repository_relative_test_path\",\"test_name\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"fixture_expected_results\",\"table_schema\":\"stpd_multitrack_v3_fixture_expected_results_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "b5148880745ea38b905296da338a7467c108594fd773d7dcba4564bcdb5473ee",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_bb5710fac862747ae6bc583d72c120246e32444e9419ef8ceaa3fe073c26df8e",
+      "registry_domain": "evidence_schema",
+      "code": "qc_eligibility_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"gap_policy\",\"boundary_rule\"],\"exact_ordered_fields\":[\"hard_boundary_clear:lgl!\",\"isi_index:int!\",\"qc_eligibility:chr!\",\"train:chr!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"qc_eligibility_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2128244bf4173829d6d5322b4f9209517c407a947dd066a95cf3e1598d2dbd20",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_bba160a9dbd8789719856a889ab3e60bdbdf4d9cab3a2f4bbcd2d063f5a87d96",
+      "registry_domain": "medication_status",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"medication_status_input_v1\",\"output_schema_id\":\"medication_status_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "75bab4d40b549e0cb73d4a0ab1ed02d641e10b0bcab0edb04e3015f9475f5620",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_be93a8f29c91709651146a3d99d8c8e64011897a48bf258905116d247e3cdb7e",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_migration_records_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"source_product_hash\",\"source_entity_domain_id\",\"source_entity_id\",\"target_detection_root_id\",\"target_entity_domain_id\",\"target_entity_id\",\"mapping_status\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"migration_records\",\"table_schema\":\"stpd_multitrack_v3_migration_records_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "027815f034e94729a3b2fa0b5098fdf5fbbf96da1dbda27b0d7f0a4acf74ab59",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_bfbe999c1149df7bf0118b11fc33ef983ce00230166ab77313d9a482a88b1626",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_test_result_bundle_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"contract_id\",\"fixture_id\",\"repository_relative_test_path\",\"test_name\",\"stable_test_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"test_result_bundle\",\"table_schema\":\"stpd_multitrack_v3_test_result_bundle_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4f0901baeb916701dc21c7db4fd6caef3a62f2fa7a6b0bfd886d6d6c882a8d12",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_c3b38d7becf91e72ab93c7c4d1b0b3e4b613220366fce579ab903715f2114931",
+      "registry_domain": "diagnostic_detail_schema",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"diagnostic_detail_schema_input_v1\",\"output_schema_id\":\"diagnostic_detail_schema_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c7ca9a767ee78a8e5aef99bffe35d6ef41339841b75d44337994e7ed176067ad",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_c3d78e6cbea2049390da48842ecc573f3dcc838cfd4483fb090ac699b310943d",
+      "registry_domain": "lineage_action",
+      "code": "generation_before_parent_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.18\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"duplicate edge rejects\"],\"formula_or_state_machine\":{\"append_only\":true,\"current_product_hash\":\"typed_na\",\"cycles_forbidden\":true},\"input_schema_id\":\"sorted_parent_edge_payloads_v1\",\"output_schema_id\":\"lineage_records_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "9e76f2471114a19f559dbe90007d0c67d04e0a119f80ad02cd0ed8562c91bcda",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_c820c038d21ad31b6bbf26d4a4a88ac97bf86f97f6c75bb03d0423db3934ab32",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_events_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"event_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"events\",\"table_schema\":\"stpd_multitrack_v3_events_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "a754b868c7d2e762abcdcca16bd479b4f55bed73550782341cacd51734bde875",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_c992fca45580d140581ae43eb9a2563e5088ca50bf15b91e1c8222011333f94e",
+      "registry_domain": "label_blind_rule",
+      "code": "fresh_reconstruction_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"metamorphic forbidden-source noninterference\"],\"formula_or_state_machine\":{\"allocation\":\"fresh\",\"allowed_sources\":[\"timestamp\",\"acquisition_context\",\"qc_input\"],\"forbidden_sources\":[\"manual\",\"manual_negative\",\"review\",\"final\",\"learned_ranges\",\"cache\",\"attributes\"],\"strip_copy\":false},\"input_schema_id\":\"raw_train_and_acquisition_qc_v1\",\"output_schema_id\":\"label_blind_input_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "bcf994cb9e166c1376b737bb893732b8402c053afb9532fc23944cc2333b2af2",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_cb087f6c49359a2a81d2db1fe34fcf5b968b76354020f10eb03c68f3f9c499f4",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_threshold_policy_source_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"path\",\"threshold_source_class\",\"adaptation_unit\",\"policy_parameter_hash\",\"partition_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"threshold_policy_source_manifest\",\"table_schema\":\"stpd_multitrack_v3_threshold_policy_source_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7ad979e7623157f06f22d8803cf9f1d09e8baba7bf5aad5ec502f09973b9e3c4",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_d285ecb1538d7b46c545347df2b25213eaadf969a76e2738a056ac1d3cb12001",
+      "registry_domain": "classification_rule",
+      "code": "orthogonal_state_axes_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.1-3.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"axis gray zone abstains\",\"insufficient evidence abstains\"],\"formula_or_state_machine\":{\"default_class\":false,\"every_other_cell\":\"typed_abstention\",\"mapping\":{\"high_irregular\":\"high_frequency_irregular_state\",\"high_regular\":\"high_frequency_tonic\",\"non_high_regular\":\"tonic\"}},\"input_schema_id\":\"state_axis_evidence_v1\",\"output_schema_id\":\"state_prediction_or_abstention_v1\",\"parameter_paths\":[\"state.frequency.high_enter_hz\",\"state.frequency.high_exit_hz\",\"state.regularity.regular_upper_cv2\",\"state.regularity.irregular_lower_cv2\"]}",
+      "semantic_definition_sha256": "e51274b784395fb8b7b908f5d3ced0068a358495b15f0740d03722f00bf4a633",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_d2c99d142664125911b8a545e4c254db2a1b3cd5ef96c77d8b0ef91e0b56c481",
+      "registry_domain": "prediction_class",
+      "code": "high_frequency_irregular_state",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"2-4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown combinations abstain\"],\"formula_or_state_machine\":{\"authority\":\"prediction_record_only\",\"biological_ground_truth\":false,\"code\":\"high_frequency_irregular_state\"},\"input_schema_id\":\"orthogonal_evidence_axes_v1\",\"output_schema_id\":\"prediction_class_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7f74f59364c0808952eff61f676f5c2c52a801ccbcbdc6e192b5d80b20a47a79",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_db588db3631b1cc488d41a0e8e487c023b59f4b05fcca95f04c689af13b63ffb",
+      "registry_domain": "evidence_schema",
+      "code": "connector_axis_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"equivalence_method\",\"segment_rule\"],\"exact_ordered_fields\":[\"pre_axis_evidence_id:chr!\",\"post_axis_evidence_id:chr!\",\"frequency_equivalent:lgl!\",\"regularity_equivalent:lgl!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"connector_axis_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7b62c6660d88e0212d8ee18b8e1941644cb2b4828de9abc659393b8750bcd139",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_dec1109a75b4542f7bae0a692add0a32ef9cfd72cb1075878b32bba5b2495306",
+      "registry_domain": "evidence_role",
+      "code": "entity_support_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"orphan evidence rejects\"],\"formula_or_state_machine\":{\"cardinality\":\"one_or_more\",\"geometry_match\":true},\"input_schema_id\":\"evidence_record_v1\",\"output_schema_id\":\"entity_evidence_edge_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "564aa278703245f2769f178c76d70117b3e411a3f92051d7b5a5b83a05d181cd",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_dfe3353411e46d127784cd9c111e589d4cd5e2afb8da18311be31748db8b144a",
+      "registry_domain": "transition_payload_schema",
+      "code": "review_candidate_reject_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"review_candidate_reject\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"review_candidate_id\",\"expected_review_candidate_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "22afa3971e10b32cd7a42e90b36bc6829f31f3576d7a10cb6e94c1e08eed19c9",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e0492e0e2c8c8957ce7d988e9e5b89dbebb858e2d1c5808c90c27a2147b2a63e",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_gate_b_evidence_records_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"contract_id\",\"fixture_id\",\"repository_relative_test_path\",\"test_name\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"gate_b_evidence_records\",\"table_schema\":\"stpd_multitrack_v3_gate_b_evidence_records_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c10fe93d052199b9e4342b717ab37cf6d1ac0ffb60cc8d243b6be2754bcc91ac",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e2794ff59a44cee0540989d7e4009a9fbaec3a6fdbc28299be8df18513fd7fc6",
+      "registry_domain": "boundary_class",
+      "code": "qc_or_acquisition_hard_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.1-4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown QC abstains\"],\"formula_or_state_machine\":{\"active_support\":false,\"hard_for\":[\"state\",\"event\",\"episode_link\"]},\"input_schema_id\":\"qc_and_acquisition_evidence_v1\",\"output_schema_id\":\"hard_boundary_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "fae5f57d0cd89a1ea32d4a8ea27e06371f365b0d356537d1651a5ef09b2285c3",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e2cf1bd605071ddf954f0a6a999e5d338dfb238d2e899625a9d0e5ba0d2a5272",
+      "registry_domain": "binding_role",
+      "code": "decision_gate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.13\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"path and scope resolve exactly\"],\"formula_or_state_machine\":{\"exact_instance_fk\":true,\"role\":\"decision_gate\",\"unique_by\":[\"consumer_domain_id\",\"consumer_id\",\"path\",\"role\"]},\"input_schema_id\":\"threshold_instance_v1\",\"output_schema_id\":\"threshold_instance_binding_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "c5b5fc8f097d40a0ab06aed7bb790f9af527dc7d228f9e85b27919b8acdd483f",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e449dad89a67462482a96606282974fc95410bdae7f633a31bdadbfcd15368cc",
+      "registry_domain": "transition_payload_schema",
+      "code": "gap_projection_reject_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"gap_projection_reject\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"gap_id\",\"expected_gap_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2aa4332eb1faeeb00cd640977dd6e6706ffde306683d1582e35182a09efc1ce9",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e4c8ce5faaff8bf1524ce9e401024c03bf6aa5a059005ba91e63d2d7433cdaa5",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_diagnostic_records_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"severity\",\"diagnostic_code_registry_id\",\"entity_domain_id\",\"entity_id\",\"diagnostic_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"diagnostic_records\",\"table_schema\":\"stpd_multitrack_v3_diagnostic_records_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5b860cbc80d6abffa048df1c3480377d6eb26a3b2a2984c5eda24ba528150303",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e5342bf4f99feb240e0d46b3affcc5234509ed2bc6a978101c1c696492cbb8c1",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_reference_adjudications_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"annotation_project_id\",\"train\",\"annotation_domain\",\"start_isi\",\"end_isi\",\"adjudication_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"reference_adjudications\",\"table_schema\":\"stpd_multitrack_v3_reference_adjudications_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4d345161bd94734ef8fe2f8861f7476e270c27ba3e46af607673a0322d7a2aba",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e5dd3dc00ab21c9523718fa3cec55ee95b5943830d9c8e7cd537591c9f3595d9",
+      "registry_domain": "evidence_type",
+      "code": "detector_rule_evidence_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"free text is non-executable\"],\"formula_or_state_machine\":{\"canonical_json\":true,\"label_access\":\"none\"},\"input_schema_id\":\"canonical_detector_statistics_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "8e911ceabc1c451f5335b56f2bd2bb98603f2083c7d35adf033d08b62cedcfe6",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_e941aee0f9cfbc60aa1af04eceeb07758203e8e035c0696951207d65659ccd61",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_consumer_response_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"product_kind\",\"status_code\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"consumer_response\",\"table_schema\":\"stpd_multitrack_v3_consumer_response_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "afea4a5ff8141964571f6845e328cc7dc8e1025faf7535bab5fbd00abbea23ea",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_eaa489205a25ba15826a22c1659f581dc5cea6ec10e226ee53c04112de6ed2e0",
+      "registry_domain": "evidence_schema",
+      "code": "derivation_input_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"threshold_algorithm\"],\"exact_ordered_fields\":[\"threshold_source_class:chr!\",\"authorized_row_hashes:lst!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"derivation_input_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "7bc1ab7702480df31a7d451fd0835417fe6f0a400450f2f5d72051fd5002ebd8",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_ecbb008863c46b5cc731ec5ee56283fb39f7a0b464288cb0c2d25fe217516cbe",
+      "registry_domain": "evidence_schema",
+      "code": "review_reason_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.17\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"schema/hash mismatch rejects\"],\"formula_or_state_machine\":{\"additional_properties\":false,\"canonical_json_required\":true,\"cardinality\":\"exactly_one_payload_per_evidence_record\",\"compatible_creator_registry_domains\":[\"classification_rule\"],\"exact_ordered_fields\":[\"reason_registry_id:chr!\",\"target_hash:chr!\"],\"free_text_executable_semantics\":false,\"schema_code\":\"review_reason_v1\",\"units\":\"fields_are_SI_or_explicit_registry_bound\"},\"input_schema_id\":\"canonical_evidence_payload_v1\",\"output_schema_id\":\"evidence_record_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "fb95e96e07fd7ca0d9bed15423d7a54e760e47dac7ca69542a4dbb98659ea698",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_ee3e2d7968a63fb6c5749cde0a6a067b72709ce982a3aed9ceb0771d26d48e7f",
+      "registry_domain": "reference_label",
+      "code": "not_asserted_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"cannot satisfy a positive candidate/evidence requirement\"],\"formula_or_state_machine\":{\"accepted_entity_reference_allowed\":false,\"code\":\"not_asserted_v1\",\"effect\":\"typed_abstention_or_metadata_unknown\",\"positive_scientific_claim\":false},\"input_schema_id\":\"reference_label_input_v1\",\"output_schema_id\":\"reference_label_controlled_value_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "6e66daddd7ffe3dcd6db97cd13357914626a2575cdce4495397f43b63af07da6",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_eec513dddd92a74c0b774f999a83cdac9e59ba27e0ee1529b883d1f75267b3b1",
+      "registry_domain": "failure_code",
+      "code": "resource_budget_exceeded",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.16\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"exact typed failure\"],\"formula_or_state_machine\":{\"canonical_tables\":\"forbidden\",\"code\":\"resource_budget_exceeded\",\"legacy_fallback\":false,\"status\":\"failed_closed\"},\"input_schema_id\":\"typed_failure_context_v1\",\"output_schema_id\":\"consumer_response_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "b8ef0b50108061cfd8e4e1639a42228b6f13e12fb483b57e4ba3b480be491ce0",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f16943612fd16945487cf0578d7c895a37e5096c9ce0e710d36cdb7eb3796bd9",
+      "registry_domain": "event_candidate_rule",
+      "code": "structure_first_local_flank_contrast_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"homogeneous train yields no candidate\",\"weak flank contrast rejects\",\"threshold equality passes\",\"artifact-containing window rejects\",\"label-bearing input is stripped\"],\"formula_or_state_machine\":{\"artifact_rows\":\"ineligible\",\"compactness\":\"q90<=background_fraction*train_compactness_quantile\",\"endpoint_pass\":\"allow_endpoint && exactly_one_flank_ratio>=contrast_min\",\"label_access\":\"none\",\"scan\":\"all_contiguous_windows_inclusive_min_max\",\"seed_or_bridge_gate_used\":false,\"tolerated_internal_tail\":\"two_sided && q90_compact && max_intra/compact_upper<=max_internal_tail_ratio && both_flanks_over_max_intra>=contrast_min\",\"two_sided_pass\":\"pre_ratio_q90>=contrast_min && post_ratio_q90>=contrast_min && sqrt(pre_ratio_q90*post_ratio_q90)>=geom_contrast_min\"},\"input_schema_id\":\"label_blind_train_isi_with_qc_v1\",\"output_schema_id\":\"complete_burst_candidate_universe_v1\",\"parameter_paths\":[\"spiketrainpattern.burst.structure_first_enabled\",\"event_core.min_spikes\",\"event_core.classic_max_spikes\",\"detector.artifact_min_valid_isi_sec\",\"spiketrainpattern.burst.structure_first_min_isi_count\",\"spiketrainpattern.burst.structure_first_max_isi_count\",\"spiketrainpattern.burst.structure_first_contrast_min\",\"spiketrainpattern.burst.structure_first_geom_contrast_min\",\"spiketrainpattern.burst.structure_first_compactness_quantile\",\"spiketrainpattern.burst.structure_first_background_fraction\",\"spiketrainpattern.burst.structure_first_min_train_valid_isi\",\"spiketrainpattern.burst.structure_first_max_internal_tail_ratio\",\"spiketrainpattern.burst.structure_first_allow_endpoint\",\"spiketrainpattern.burst.allow_one_sided_as_canonical\"]}",
+      "semantic_definition_sha256": "3ecc5a9b980f386d4e0fac1153765c631586d873b4009bced67db5a047c64344",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f17e00c72c6b89f54df6ad056a90b2e2191ca59eec6fabeeda58d04a61b78716",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_normalized_input_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"normalized_input_manifest\",\"table_schema\":\"stpd_multitrack_v3_normalized_input_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "761c6e967385220aba351b6edca33246559148f19ab4d1d4ff7be251a8a6f78b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f370c810b77c1884cb67fe992eb9b603f215e40bedf10db53de36b0153c18c9d",
+      "registry_domain": "estimator",
+      "code": "event_frequency_rate_hz_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"4.3\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"enter equality passes\",\"exit equality is non-high\"],\"formula_or_state_machine\":{\"high\":\"rate>=high_enter_hz\",\"non_high\":\"rate<=high_exit_hz\",\"statistic\":\"event.n_isi/event.duration_sec\",\"unresolved\":\"high_exit_hz<rate<high_enter_hz\"},\"input_schema_id\":\"accepted_event_geometry_v1\",\"output_schema_id\":\"event_frequency_modifier_evidence_v1\",\"parameter_paths\":[\"event.frequency.high_enter_hz\",\"event.frequency.high_exit_hz\"]}",
+      "semantic_definition_sha256": "80ced37ba4373838699967ff5bddf1fa0fa16046d5b6e0bfc25e27cc546339ef",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f5514ba004e61aa95311f675db60ccadb24d2dadfeeac41f8ad9d22cb0ee6892",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_entity_domain_registry_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"entity_domain_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"entity_domain_registry\",\"table_schema\":\"stpd_multitrack_v3_entity_domain_registry_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "f7335fe33eda6446e2a9457030b2bd0243809098ceabe665d479fc257262c99e",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f60549154969b6b95cf61f831b5952c8d4246b43f166129a98853ad941e2a3d4",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_event_candidates_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"event_candidate_id\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"event_candidates\",\"table_schema\":\"stpd_multitrack_v3_event_candidates_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "4055f6a01a86bed5f7c0e7779360b9d5f5b622af55842218a026677dd5e63222",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f6a50ca181d785a222e883191cca4eefaac7b610be7ad0902b10d68045a2962c",
+      "registry_domain": "estimator",
+      "code": "state_frequency_rate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"enter equality passes\",\"gray zone abstains\"],\"formula_or_state_machine\":{\"denominator\":\"sum_isi_sec_ascending_isi_index\",\"numerator\":\"n_valid_isi\",\"operation\":\"divide\",\"output\":\"rate_hz\",\"reject_if\":[\"n_valid_isi<1\",\"denominator<=0\"]},\"input_schema_id\":\"label_blind_isi_run_v1\",\"output_schema_id\":\"state_frequency_evidence_v1\",\"parameter_paths\":[\"state.frequency.high_enter_hz\",\"state.frequency.high_exit_hz\"]}",
+      "semantic_definition_sha256": "e506e276819d1ae55dba1ab042a2dca04e41212135fd751ab79d063ddfa4864b",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f7952d245d781cf0fc6f3099ca62c721ad0fb235a843ea279e782e450154b9d3",
+      "registry_domain": "label_blind_rule",
+      "code": "forbid_unknown_input_sources_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"9\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"new fields are denied until the signed allowlist is versioned\"],\"formula_or_state_machine\":{\"action\":\"forbid\",\"executable_allowlist_required\":true,\"unknown_source_default\":\"failed_closed\"},\"input_schema_id\":\"raw_dataset_source_universe_v1\",\"output_schema_id\":\"typed_failed_closed_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "d29652b739235e0648839de00a2388f3438ea0701a299160acc9ea8c94243260",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f80640fcf31648668c37c92fd4c48ff06f37d7f033ff42c6028fe0f15086b0a0",
+      "registry_domain": "estimator",
+      "code": "state_regularity_median_cv2_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"3.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"zero pair denominator rejects\",\"gray zone abstains\"],\"formula_or_state_machine\":{\"aggregation\":\"median_finite_pairs\",\"output\":\"median_cv2\",\"pair_formula\":\"2*abs(isi[i+1]-isi[i])/(isi[i+1]+isi[i])\",\"reject_if\":\"finite_pair_count<minimum_pairs\"},\"input_schema_id\":\"label_blind_isi_run_v1\",\"output_schema_id\":\"state_regularity_evidence_v1\",\"parameter_paths\":[\"state.regularity.regular_upper_cv2\",\"state.regularity.irregular_lower_cv2\",\"state.state_min_valid_isi\",\"state.state_min_duration_sec\"]}",
+      "semantic_definition_sha256": "2c5be416c4a4b6b220c8733fa23f937348eb6279cb62e2487050c901570d844e",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_f8f7f4332a29b115cffaa4bab288b0e4388bd0258bac1cc5197328b4bb7b84d1",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_scientific_context_epochs_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"train\",\"start_isi\",\"end_isi\",\"epoch_domain\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"scientific_context_epochs\",\"table_schema\":\"stpd_multitrack_v3_scientific_context_epochs_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "2c0dc06a724226e2665fdf7eb9ecd5cf1203ac8d78448d5ff83f0cf79827f864",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_fab16f12e1b3b9bd6002031436e903143f10af267b82c967a8c26ab7b4580d59",
+      "registry_domain": "transition_payload_schema",
+      "code": "compensate_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"6.15\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"unknown or extra key rejects\",\"compensation never deletes history\"],\"formula_or_state_machine\":{\"action_type\":\"compensate\",\"additional_properties\":false,\"append_only\":true,\"compare_and_swap\":true,\"required_keys\":[\"compensates_transition_id\",\"expected_effect_hash\",\"reason_registry_id\"]},\"input_schema_id\":\"typed_transition_request_v1\",\"output_schema_id\":\"adjudication_transition_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "5588752dba21848d57cdd06a8b42719ad1d04a3357fb3d3d1ab0a61e1a13c19a",
+      "active": true
+    },
+    {
+      "schema_version": "stpd_multitrack_v3_1",
+      "registry_entry_id": "reg_feae663b938e17822d788b6faea82cc6eafb04c31d2b1e581692b980b23a7bb1",
+      "registry_domain": "operational_policy",
+      "code": "sort_contract_threshold_instance_source_manifest_v1",
+      "code_version": "1",
+      "semantic_definition_json": "{\"contract_clause_id\":\"8.4\",\"definition_schema\":\"stpd_registry_semantic_definition_v1\",\"edge_cases\":[\"locale and input row order cannot alter canonical bytes\"],\"formula_or_state_machine\":{\"character_order\":\"NFC_UTF8_byte_order\",\"null_order\":\"typed_NA_before_nonmissing\",\"sort_key\":[\"policy_source_row_hash\",\"path\",\"application_scope\",\"source_scope_key_hash\"],\"stable_tie_break\":\"exact_primary_key\",\"table_name\":\"threshold_instance_source_manifest\",\"table_schema\":\"stpd_multitrack_v3_threshold_instance_source_manifest_1\"},\"input_schema_id\":\"typed_table_rows_v1\",\"output_schema_id\":\"canonical_sorted_table_v1\",\"parameter_paths\":[]}",
+      "semantic_definition_sha256": "b5a169fa56351d93067129ecbd8b201f20c3b27d7113a7f085ac941039bd26ec",
+      "active": true
+    }
+  ]
+}

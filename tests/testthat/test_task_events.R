@@ -24,6 +24,39 @@ test_that("raw CSV Event columns are extracted as task events, not spike trains"
   expect_equal(nrow(ds$task_events), 3L)
 })
 
+test_that("datasets with valid task events default to the raw-timestamp view", {
+  choose_tab <- getFromNamespace(
+    "stpd_default_timestamp_tab_for_dataset",
+    "SpikeTrainPatternDetector"
+  )
+
+  expect_identical(choose_tab(NULL), "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE")
+  expect_identical(choose_tab(list()), "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE")
+  expect_identical(
+    choose_tab(list(task_events = data.frame(event_time_sec = c(NA_real_, Inf)))),
+    "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE"
+  )
+
+  with_event <- list(
+    task_events = data.frame(
+      event_name = c("task", "invalid"),
+      event_time_sec = c(12.5, NA_real_),
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_identical(choose_tab(with_event), "\u539F\u59CB\u65F6\u95F4\u6233\u56FE")
+
+  detector_events_only <- list(
+    task_events = data.frame(),
+    results = list(events = data.frame(pattern = "burst")),
+    trains = list(train_1 = data.frame(pattern_auto = "burst"))
+  )
+  expect_identical(
+    choose_tab(detector_events_only),
+    "\u5BF9\u9F50\u65F6\u95F4\u6233\u56FE"
+  )
+})
+
 test_that("task events annotate neural manifold bins and can feed sliceTCA tensor trials", {
   make_train <- function(times) {
     times <- sort(as.numeric(times))

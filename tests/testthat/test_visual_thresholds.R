@@ -76,7 +76,12 @@ test_that("ISI profile threshold lines are applied to event grammar parameters",
   expect_gte(vp$seed_high, 0.03)
   expect_gte(vp$bridge_high, 0.03)
   expect_equal(vp$pause_thr, 0.4)
-  expect_gte(vp$tonic_min, 0.03 * 1.15)
+  # Burst is an Event overlay and must not raise the direct-support lower
+  # boundary of an independently inferred tonic State.  Keep the soft tonic
+  # anchor unchanged while retaining the overlap reference for audit.
+  expect_equal(vp$tonic_min, 0.025)
+  expect_gte(vp$tonic_burst_overlap_ref, 0.03)
+  expect_false(vp$tonic_burst_overlap_guard)
   expect_equal(vp$tonic_max, 0.12)
 
   hard_thr <- list(train_a = list(
@@ -165,14 +170,16 @@ test_that("hard burst thresholds do not override valid HF-spiking states", {
 
   expect_true(all(out$pattern_auto[2:nrow(out)] == "high_frequency_spiking"))
   audit <- attr(out, "candidate_diagnostic_audit")
-  hard_long <- audit[
-    audit$candidate_layer == "isi_profile_hard_threshold_burst" &
-      audit$final_label == "long_burst",
+  hard_review <- audit[
+    audit$candidate_layer == "isi_profile_hard_threshold_burst",
     ,
     drop = FALSE
   ]
-  expect_gt(nrow(hard_long), 0L)
-  expect_false(any(hard_long$selected_for_auto, na.rm = TRUE))
+  expect_gt(nrow(hard_review), 0L)
+  expect_true(all(hard_review$n_spikes >= 16L))
+  expect_true(all(hard_review$suppressed_original_label == "possible_burst"))
+  expect_true(all(hard_review$final_label == "reject"))
+  expect_false(any(hard_review$selected_for_auto, na.rm = TRUE))
   hfs <- audit[
     audit$final_label == "high_frequency_spiking" &
       audit$selected_for_auto == TRUE,
@@ -180,4 +187,13 @@ test_that("hard burst thresholds do not override valid HF-spiking states", {
     drop = FALSE
   ]
   expect_gt(nrow(hfs), 0L)
+})
+
+test_that("ISI profile renders resolved detector threshold overlays", {
+  src <- paste(deparse(SpikeTrainPatternDetector:::stpd_server_install_visualization_module), collapse = "\n")
+  expect_match(src, "ds_thr\\$results\\$threshold_table")
+  expect_match(src, "Detector result")
+  expect_match(src, "seed_upper_sec = \\\"seed upper\\\"")
+  expect_match(src, "high_frequency_spiking = c\\(seed_upper_sec")
+  expect_match(src, "detector_dash")
 })

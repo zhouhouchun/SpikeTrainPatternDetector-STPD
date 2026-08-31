@@ -1,0 +1,3 @@
+"Threshold_Name","Quantile","Evidence_Score","Null_Model","Calibration_Split","N_Null_Surrogates"
+"ambiguous_lower",0.9,3.29500865516779,"shifted_gamma_HFS_max_window_score","development_only",1000
+"clear_lower",0.975,4.02691020975483,"shifted_gamma_HFS_max_window_score","development_only",1000

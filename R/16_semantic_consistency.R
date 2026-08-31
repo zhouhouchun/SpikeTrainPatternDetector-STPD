@@ -414,6 +414,145 @@ enrich_events_with_pause_thresholds <- function(events, trains, run_id = "", par
   add_run_columns(events, run_id = run_id, params_hash = params_hash)
 }
 
+stpd_new_export_id <- local({
+  last_stamp <- ""
+  occurrence <- 0L
+  function(at = Sys.time()) {
+    stamp <- format(at, "%Y%m%d_%H%M%OS6", tz = "UTC")
+    stamp <- gsub("[^0-9_]", "", stamp)
+    if (identical(stamp, last_stamp)) {
+      occurrence <<- occurrence + 1L
+    } else {
+      last_stamp <<- stamp
+      occurrence <<- 1L
+    }
+    paste0("stpd_export_", stamp, "_p", Sys.getpid(), "_n", sprintf("%02d", occurrence))
+  }
+})
+
+stpd_review_state_payload <- function(ds) {
+  normalize_table <- function(x) {
+    if (is.null(x) || !is.data.frame(x)) return(data.frame())
+    out <- x[, sort(names(x)), drop = FALSE]
+    out[] <- lapply(out, function(value) {
+      if (is.factor(value)) as.character(value) else value
+    })
+    rownames(out) <- NULL
+    out
+  }
+  review_columns <- c(
+    "idx", "pattern_manual", "pattern_manual_negative",
+    "pattern_user_override", "pattern_user_override_reason",
+    "pattern_user_override_source", "pattern_user_override_time",
+    "pattern_user_override_id", "pattern_audit_final",
+    "pattern_audit_base_final", "pattern_audit_from", "pattern_audit_to",
+    "pattern_audit_action", "pattern_audit_source", "pattern_audit_reason",
+    "pattern_audit_id", "pattern_audit_time"
+  )
+  trains <- ds$trains %||% list()
+  train_payload <- lapply(sort(names(trains)), function(train_name) {
+    dat <- trains[[train_name]]
+    if (!is.data.frame(dat)) return(list(train = train_name, review = data.frame()))
+    keep <- intersect(review_columns, names(dat))
+    list(train = train_name, review = normalize_table(dat[, keep, drop = FALSE]))
+  })
+  result_names <- c(
+    "final_audit_summary", "final_audit_events", "final_audit_history",
+    "final_audit_event_history", "possible_burst_promotion_audit",
+    "possible_burst_promotion_summary"
+  )
+  result_payload <- lapply(result_names, function(name) {
+    normalize_table((ds$results %||% list())[[name]])
+  })
+  names(result_payload) <- result_names
+  multitrack_review <- if (exists("stpd_multitrack_review_state_payload", mode = "function")) {
+    stpd_multitrack_review_state_payload(ds)
+  } else {
+    NULL
+  }
+  payload <- list(
+    trains = train_payload,
+    results = result_payload
+  )
+  if (!is.null(multitrack_review)) payload$multitrack_review <- multitrack_review
+  payload
+}
+
+stpd_review_state_hash <- function(ds) {
+  if (!requireNamespace("digest", quietly = TRUE)) return(NA_character_)
+  digest::digest(stpd_review_state_payload(ds), algo = "sha256", serialize = TRUE)
+}
+
+stpd_count_nonempty_train_column <- function(ds, column) {
+  sum(vapply(ds$trains %||% list(), function(dat) {
+    if (!is.data.frame(dat) || !(column %in% names(dat))) return(0L)
+    value <- as.character(dat[[column]])
+    value[is.na(value)] <- ""
+    sum(nzchar(value))
+  }, integer(1)))
+}
+
+stpd_export_run_metadata <- function(ds, events = data.frame(), labels = data.frame(),
+                                     export_source = "api_final_export",
+                                     final_label_source = "final") {
+  results <- ds$results %||% list()
+  detector_metadata <- results[["run_metadata_public"]] %||%
+    results[["run_metadata"]] %||% data.frame()
+  field <- function(name, default = NA_character_) {
+    if (!is.data.frame(detector_metadata) || nrow(detector_metadata) == 0L ||
+        !(name %in% names(detector_metadata))) return(default)
+    value <- detector_metadata[[name]][1]
+    if (length(value) == 0L) default else value
+  }
+  parent_hash <- as.character(field("params_hash", NA_character_))
+  effective_params <- ds$params_effective %||% NULL
+  recomputed_hash <- if (!is.null(effective_params) &&
+                         exists("stpd_params_hash", mode = "function")) {
+    tryCatch(stpd_params_hash(effective_params), error = function(e) NA_character_)
+  } else {
+    NA_character_
+  }
+  data.frame(
+    export_id = stpd_new_export_id(),
+    exported_at_utc = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS6Z", tz = "UTC"),
+    export_source = as.character(export_source)[1],
+    final_label_source = as.character(final_label_source)[1],
+    parent_detector_run_id = as.character(field("run_id", NA_character_)),
+    parent_params_hash = parent_hash,
+    parent_detection_mode = as.character(field("detection_mode", NA_character_)),
+    detector_metadata_role = "parent_detector_run_only; post-detection review has this separate export identity",
+    final_event_count = if (is.data.frame(events)) nrow(events) else 0L,
+    final_isi_label_count = if (is.data.frame(labels)) nrow(labels) else 0L,
+    manual_positive_interval_n = stpd_count_nonempty_train_column(ds, "pattern_manual"),
+    manual_negative_interval_n = stpd_count_nonempty_train_column(ds, "pattern_manual_negative"),
+    user_override_interval_n = stpd_count_nonempty_train_column(ds, "pattern_user_override"),
+    audit_final_interval_n = stpd_count_nonempty_train_column(ds, "pattern_audit_final"),
+    final_audit_history_n = nrow(
+      results[["final_audit_history"]] %||% data.frame()
+    ),
+    review_state_sha256 = stpd_review_state_hash(ds),
+    effective_params_artifact = if (is.null(effective_params)) NA_character_ else "Detector_effective_params.rds",
+    effective_params_hash_recomputed = recomputed_hash,
+    effective_params_hash_matches_parent = if (is.na(parent_hash) || is.na(recomputed_hash)) NA else identical(parent_hash, recomputed_hash),
+    stringsAsFactors = FALSE
+  )
+}
+
+stpd_write_effective_params_artifact <- function(ds, params, out_dir) {
+  effective_params <- ds$params_effective %||% effective_params_for_detector(params)
+  saveRDS(
+    effective_params,
+    file = file.path(out_dir, "Detector_effective_params.rds"),
+    version = 2
+  )
+  writeLines(
+    capture.output(str(effective_params, max.level = 8L, give.attr = TRUE)),
+    con = file.path(out_dir, "Detector_effective_params.txt"),
+    useBytes = TRUE
+  )
+  invisible(effective_params)
+}
+
 
 write_tiered_result_exports <- function(ds, params, out_dir) {
   params <- effective_params_for_detector(params)
@@ -454,17 +593,24 @@ write_tiered_result_exports <- function(ds, params, out_dir) {
   if (!is.null(ds$results$pause_candidates) && nrow(ds$results$pause_candidates) > 0) write_csv_safe(ds$results$pause_candidates, file.path(out_dir, "Pause_candidates_with_thresholds.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  if (!is.null(ds$results$posthoc_fragment_audit) && nrow(ds$results$posthoc_fragment_audit) > 0) write_csv_safe(ds$results$posthoc_fragment_audit, file.path(out_dir, "Posthoc_fragment_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  if (!is.null(ds$results$candidate_diagnostic_audit) && nrow(ds$results$candidate_diagnostic_audit) > 0) write_csv_safe(ds$results$candidate_diagnostic_audit, file.path(out_dir, "Candidate_diagnostic_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_summary) && nrow(ds$results$final_audit_summary) > 0) write_csv_safe(ds$results$final_audit_summary, file.path(out_dir, "Final_audit_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_events) && nrow(ds$results$final_audit_events) > 0) write_csv_safe(ds$results$final_audit_events, file.path(out_dir, "Final_audit_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_history) && nrow(ds$results$final_audit_history) > 0) write_csv_safe(ds$results$final_audit_history, file.path(out_dir, "Final_audit_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_event_history) && nrow(ds$results$final_audit_event_history) > 0) write_csv_safe(ds$results$final_audit_event_history, file.path(out_dir, "Final_audit_event_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  final_audit_summary <- ds$results[["final_audit_summary"]]
+  final_audit_events <- ds$results[["final_audit_events"]]
+  final_audit_history <- ds$results[["final_audit_history"]]
+  final_audit_event_history <- ds$results[["final_audit_event_history"]]
+  if (!is.null(final_audit_summary) && nrow(final_audit_summary) > 0) write_csv_safe(final_audit_summary, file.path(out_dir, "Final_audit_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_events) && nrow(final_audit_events) > 0) write_csv_safe(final_audit_events, file.path(out_dir, "Final_audit_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_history) && nrow(final_audit_history) > 0) write_csv_safe(final_audit_history, file.path(out_dir, "Final_audit_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_event_history) && nrow(final_audit_event_history) > 0) write_csv_safe(final_audit_event_history, file.path(out_dir, "Final_audit_event_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  task_events_out <- stpd_normalize_task_events(ds$task_events %||% data.frame(), source = ds$meta$display_name %||% "")
 	  if (nrow(task_events_out) > 0) write_csv_safe(task_events_out, file.path(out_dir, "Task_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$possible_burst_promotion_audit) && nrow(ds$results$possible_burst_promotion_audit) > 0) write_csv_safe(ds$results$possible_burst_promotion_audit, file.path(out_dir, "Possible_burst_promotion_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$possible_burst_promotion_summary) && nrow(ds$results$possible_burst_promotion_summary) > 0) write_csv_safe(ds$results$possible_burst_promotion_summary, file.path(out_dir, "Possible_burst_promotion_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  promotion_audit <- ds$results[["possible_burst_promotion_audit"]]
+  promotion_summary <- ds$results[["possible_burst_promotion_summary"]]
+  if (!is.null(promotion_audit) && nrow(promotion_audit) > 0) write_csv_safe(promotion_audit, file.path(out_dir, "Possible_burst_promotion_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(promotion_summary) && nrow(promotion_summary) > 0) write_csv_safe(promotion_summary, file.path(out_dir, "Possible_burst_promotion_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  write_governance_exports(ds, params, out_dir)
-  if (!is.null(ds$results$scientific_validation)) {
-    stpd_write_scientific_validation_exports(ds$results$scientific_validation, out_dir)
+  scientific_validation <- ds$results[["scientific_validation"]]
+  if (!is.null(scientific_validation)) {
+    stpd_write_scientific_validation_exports(scientific_validation, out_dir)
   }
   invisible(ds)
 }
@@ -479,8 +625,42 @@ stpd_call_progress <- function(progress_callback, phase, ..., detail = NULL) {
 }
 
 run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lock_manual = TRUE, collect_diagnostics = TRUE,
-                                          progress_callback = NULL) {
+                                          progress_callback = NULL,
+                                          audit_level = NULL,
+                                          candidate_lineage_collector = NULL) {
   # Unified detector API for Shiny, batch, and command-line use.
+  if (is.list(ds) && !is.data.frame(ds) && !is.null(ds$trains)) {
+    ds <- stpd_candidate_lineage_strip(ds)
+  }
+  resolved_audit_level <- if (is.null(candidate_lineage_collector)) {
+    stpd_candidate_lineage_resolve_audit_level(audit_level, params)
+  } else {
+    stpd_candidate_lineage_validate_collector(
+      candidate_lineage_collector, require_state = "open"
+    )
+    collector_level <- stpd_candidate_lineage_resolve_audit_level(
+      candidate_lineage_collector$requested_audit_level, params
+    )
+    if (!is.null(audit_level)) {
+      explicit_level <- stpd_candidate_lineage_resolve_audit_level(
+        audit_level, params
+      )
+      if (!identical(explicit_level, collector_level)) {
+        stpd_candidate_lineage_abort(
+          "collector_audit_level_mismatch",
+          "The supplied collector and audit_level request do not match."
+        )
+      }
+    }
+    collector_level
+  }
+  if (!identical(resolved_audit_level, "off") &&
+      is.null(candidate_lineage_collector)) {
+    stpd_candidate_lineage_abort(
+      "collector_required",
+      "A non-off audit request requires an owning outer collector."
+    )
+  }
   params <- effective_params_for_detector(params)
   if (!is.null(ds) && is.null(ds$trains) && is.list(ds) && length(ds) > 0 &&
       all(vapply(ds, function(x) is.data.frame(x) && all(c("idx", "timestamp_sec", "ISI_sec") %in% names(x)), logical(1)))) {
@@ -488,6 +668,27 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
   }
   if (is.null(ds) || is.null(ds$trains)) stop("Dataset has no trains.", call. = FALSE)
   if (is.null(ds$results)) ds$results <- list()
+  # Defensive internal boundary for callers that bypass the product wrapper.
+  # The public wrapper normally detaches Phase 2B before QC/threshold
+  # resolution. Direct internal callers receive the same isolation here; the
+  # non-authoritative history archive is restored only after all automatic
+  # detection, reports, and Preview materialization are complete.
+  review_archive <- NULL
+  if (exists("stpd_multitrack_review_detach_for_rerun", mode = "function")) {
+    detached_review <- stpd_multitrack_review_detach_for_rerun(ds)
+    ds <- detached_review$dataset
+    review_archive <- detached_review$archive
+  }
+  # A detector rerun must never inherit opt-in preview products from an older
+  # result.  The single attach point below rematerializes them only when the
+  # effective run policy enables the preview.
+  ds <- stpd_multitrack_auto_strip(ds)
+  ds <- stpd_multitrack_final_strip(ds)
+  ds <- stpd_multitrack_gate_b_strip(ds)
+  ds <- stpd_multitrack_preview_strip(ds)
+  if (exists("stpd_event_regime_strip", mode = "function")) {
+    ds <- stpd_event_regime_strip(ds)
+  }
   if (is.null(ds$meta)) ds$meta <- list(display_name = "dataset", unit_in = "s")
   if (is.null(ds$train_settings)) ds$train_settings <- list(burst_isi_ranges = list(), tonic_isi_ranges = list(), pause_isi_ranges = list(), highfreq_isi_ranges = list(), isi_thresholds = list())
   if (is.null(ds$train_settings$isi_thresholds)) ds$train_settings$isi_thresholds <- list()
@@ -500,8 +701,40 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
   structure_diag_parts <- list(); seed_diag_parts <- list(); bridge_diag_parts <- list()
   burst_raw_parts <- list(); burst_final_parts <- list(); pause_diag_parts <- list(); posthoc_fragments_parts <- list(); candidate_audit_parts <- list()
   min_isi <- params$detector$min_valid_isi_sec %||% 0.0009
-  run_id <- paste0("run_", format(Sys.time(), "%Y%m%d_%H%M%S"))
-  phash <- compute_params_hash(params)
+  # Public entry points may supply a run identity and a canonical SHA-256
+  # parameter fingerprint.  Reuse them throughout every ledger instead of
+  # creating a second, incompatible provenance namespace inside the engine.
+  run_id <- as.character((params$meta %||% list())$run_id %||% "")[1]
+  if (is.na(run_id) || !nzchar(run_id)) {
+    run_id <- if (exists("stpd_new_run_id", mode = "function")) {
+      stpd_new_run_id()
+    } else {
+      paste0("stpd_run_", format(Sys.time(), "%Y%m%d_%H%M%OS6", tz = "UTC"))
+    }
+  }
+  phash <- as.character((params$meta %||% list())$params_hash %||% "")[1]
+  if (is.na(phash) || !nzchar(phash)) phash <- compute_params_hash(params)
+
+  lineage_stage_complete <- FALSE
+  if (!is.null(candidate_lineage_collector)) {
+    dataset_id <- as.character((ds$meta %||% list())$display_name %||%
+                                 "dataset")[1]
+    if (is.na(dataset_id) || !nzchar(dataset_id)) dataset_id <- "dataset"
+    stpd_candidate_lineage_collector_bind_run(
+      candidate_lineage_collector,
+      run_id = run_id,
+      params_hash = phash,
+      dataset_id = dataset_id,
+      target_trains = target_trains
+    )
+    on.exit({
+      if (!lineage_stage_complete) {
+        stpd_candidate_lineage_collector_abort(
+          candidate_lineage_collector
+        )
+      }
+    }, add = TRUE)
+  }
 
   total_trains <- length(target_trains)
   for (ii in seq_along(target_trains)) {
@@ -514,7 +747,25 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
       total = total_trains,
       detail = paste0("Detecting train ", ii, "/", total_trains, ": ", tr)
     )
-    td[[tr]] <- run_detector_one_train(td[[tr]], params, min_isi_sec = min_isi, train = tr, lock_manual = lock_manual)
+    train_lineage_collector <-
+      stpd_candidate_lineage_collector_begin_train(
+        candidate_lineage_collector, tr
+      )
+    if (is.null(train_lineage_collector)) {
+      td[[tr]] <- run_detector_one_train(
+        td[[tr]], params, min_isi_sec = min_isi, train = tr,
+        lock_manual = lock_manual
+      )
+    } else {
+      td[[tr]] <- run_detector_one_train(
+        td[[tr]], params, min_isi_sec = min_isi, train = tr,
+        lock_manual = lock_manual,
+        candidate_lineage_collector = train_lineage_collector
+      )
+      stpd_candidate_lineage_collector_end_train(
+        candidate_lineage_collector, train_lineage_collector
+      )
+    }
     pf <- attr(td[[tr]], "posthoc_fragment_audit")
     if (!is.null(pf) && nrow(pf) > 0) { pf$train <- tr; posthoc_fragments_parts[[length(posthoc_fragments_parts) + 1L]] <- pf }
     va <- attr(td[[tr]], "candidate_diagnostic_audit")
@@ -573,6 +824,19 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
   ev <- enrich_events_with_pause_thresholds(ev, td, run_id = run_id, params_hash = phash)
   ds$results$events <- ev
 
+  # This audit is the detector's core hand-off to the public candidate ledger,
+  # feature, and final-decision layers.  It must therefore be available even
+  # when callers disable the optional, high-volume diagnostic products.
+  ds$results$candidate_diagnostic_audit <- add_run_columns(
+    if (length(candidate_audit_parts) > 0) {
+      bind_rows(candidate_audit_parts)
+    } else {
+      data.frame()
+    },
+    run_id,
+    phash
+  )
+
   if (collect_diagnostics) {
     stpd_call_progress(progress_callback, "diagnostics", detail = "Collecting diagnostics")
     ds$results$structure_candidates <- add_run_columns(if (length(structure_diag_parts) > 0) bind_rows(structure_diag_parts) else empty_structure_candidates_tbl(), run_id, phash)
@@ -608,13 +872,30 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
     }
     ds$results$pause_candidates <- add_run_columns(if (length(pause_diag_parts) > 0) bind_rows(pause_diag_parts) else data.frame(), run_id, phash)
     ds$results$posthoc_fragment_audit <- add_run_columns(if (length(posthoc_fragments_parts) > 0) bind_rows(posthoc_fragments_parts) else data.frame(), run_id, phash)
-    ds$results$candidate_diagnostic_audit <- add_run_columns(if (length(candidate_audit_parts) > 0) bind_rows(candidate_audit_parts) else data.frame(), run_id, phash)
     # Keep diagnostic candidate windows separate from the public candidate ledger.
     ds$results$near_miss_candidates <- add_run_columns(build_near_miss_table(ds, params, min_isi_sec = min_isi, target_trains = target_trains), run_id, phash)
   }
 
   stpd_call_progress(progress_callback, "ledger", detail = "Rebuilding candidate and event ledgers")
   ds$results$candidate_ledger <- build_candidate_ledger_internal(ds, params, selected_trains = target_trains, run_id = run_id, params_hash = phash)
+  if (!isTRUE(collect_diagnostics)) {
+    # The full audit above is needed to construct the public ledger correctly,
+    # but a diagnostics-disabled result should retain only its minimal selected
+    # provenance. Rejected, profile, and other unselected windows remain opt-in.
+    audit <- ds$results$candidate_diagnostic_audit
+    selected_ids <- unique(as.character(
+      (ds$results$candidate_ledger %||% data.frame())$candidate_id %||% character()
+    ))
+    selected_ids <- selected_ids[!is.na(selected_ids) & nzchar(selected_ids)]
+    if (!is.null(audit) && nrow(audit) > 0L) {
+      selected <- as.logical(audit$selected_for_auto %||% rep(FALSE, nrow(audit)))
+      selected[is.na(selected)] <- FALSE
+      audit_ids <- as.character(audit$candidate_id %||% rep("", nrow(audit)))
+      audit_ids[is.na(audit_ids)] <- ""
+      keep <- selected & nzchar(audit_ids) & audit_ids %in% selected_ids
+      ds$results$candidate_diagnostic_audit <- audit[keep, , drop = FALSE]
+    }
+  }
   ds$results$event_ledger <- build_event_ledger_internal(ds, params, selected_trains = target_trains, run_id = run_id, params_hash = phash)
   ds$results$event_audit <- ds$results$event_ledger
   layers <- result_layers_from_events(ds$results$events)
@@ -645,14 +926,43 @@ run_detector_dataset_internal <- function(ds, params, selected_trains = NULL, lo
   ds$results$stationarity_qc <- tryCatch(stationarity_qc(td, min_isi_sec = min_isi), error = function(e) data.frame())
   ds$results$overfit_warning_report <- overfit_warning_report(ds, params)
   ds$results$development_roadmap_table <- development_roadmap()
+  # Every successful detector run persists one Gate-B-pending automatic
+  # multi-track candidate product from the intact Phase 1A/1B evidence. This is
+  # independent of the optional public Preview flag and is additive: the
+  # attachment asserts that legacy pattern_auto and events remain identical.
+  ds <- stpd_multitrack_auto_attach(
+    ds,
+    params = params,
+    target_trains = target_trains,
+    run_id = run_id,
+    params_hash = phash
+  )
+  # This remains the sole detector integration point for the optional,
+  # non-authoritative public Preview. It is not a gate for multitrack_auto.
+  ds <- stpd_multitrack_preview_attach(
+    ds,
+    params = params,
+    target_trains = target_trains,
+    run_id = run_id,
+    params_hash = phash
+  )
+  if (exists("stpd_multitrack_review_restore_archive", mode = "function")) {
+    ds <- stpd_multitrack_review_restore_archive(ds, review_archive)
+  }
+  ds <- stpd_multitrack_gate_b_attach(ds)
+  if (exists("stpd_event_regime_attach", mode = "function")) {
+    ds <- stpd_event_regime_attach(ds)
+  }
   stpd_call_progress(progress_callback, "complete", detail = "Detector result layers are synchronized")
+  lineage_stage_complete <- TRUE
   ds
 }
 
 run_detector_file <- function(input_csv, params = default_params_sec(), output_dir = tempdir(),
                                       mode = c("raw", "labeled"), unit_in = c("s", "ms"), header = TRUE,
                                       lock_manual = TRUE, collect_diagnostics = TRUE,
-                                      duplicate_policy = c("error_keep", "warn_keep", "collapse_exact")) {
+                                      duplicate_policy = c("error_keep", "warn_keep", "collapse_exact"),
+                                      audit_level = NULL) {
   mode <- match.arg(mode)
   unit_in <- match.arg(unit_in)
   duplicate_policy <- match.arg(duplicate_policy)
@@ -671,39 +981,54 @@ run_detector_file <- function(input_csv, params = default_params_sec(), output_d
   trains <- precompute_trains_isi_percentiles(trains, min_isi_sec = min_isi, force = TRUE)
   ds <- make_dataset(name = base, source = mode, trains = trains, unit_in = unit_in, task_events = task_events)
   ds$quality <- validate_dataset_quality_impl(trains, min_isi_sec = min_isi, unit_hint = unit_in, refractory_suspect_sec = params$detector$refractory_suspect_sec %||% 0.0010)
-  ds <- run_detector_dataset_internal(ds, params, selected_trains = names(ds$trains), lock_manual = lock_manual, collect_diagnostics = collect_diagnostics)
+  detector_args <- list(
+    ds, params, selected_trains = names(ds$trains),
+    lock_manual = lock_manual,
+    collect_diagnostics = collect_diagnostics
+  )
+  if (!is.null(audit_level)) detector_args$audit_level <- audit_level
+  ds <- do.call(run_detector_dataset_internal, detector_args)
   export_detection_results_simple(ds, params, out_dir = file.path(output_dir, base), dataset_name = base, time_unit = "ms")
   ds
 }
 
 batch_run_detector <- function(file_list, params = default_params_sec(), output_dir = tempdir(),
                                        mode = c("raw", "labeled"), unit_in = c("s", "ms"), header = TRUE,
-                                       duplicate_policy = c("error_keep", "warn_keep", "collapse_exact")) {
+                                       duplicate_policy = c("error_keep", "warn_keep", "collapse_exact"),
+                                       audit_level = NULL) {
   mode <- match.arg(mode); unit_in <- match.arg(unit_in); duplicate_policy <- match.arg(duplicate_policy)
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-  res <- lapply(file_list, function(f) run_detector_file(f, params = params, output_dir = output_dir, mode = mode, unit_in = unit_in, header = header, duplicate_policy = duplicate_policy))
+  res <- lapply(file_list, function(f) run_detector_file(
+    f, params = params, output_dir = output_dir, mode = mode,
+    unit_in = unit_in, header = header,
+    duplicate_policy = duplicate_policy, audit_level = audit_level
+  ))
   names(res) <- tools::file_path_sans_ext(basename(file_list))
   invisible(res)
 }
 
-evaluate_detector_against_manual <- function(ds, params, selected_trains = NULL, min_isi_sec = NULL, use_learned_ranges = TRUE, metric_mode = c("strict_high_confidence", "candidate_family", "review_assisted")) {
+evaluate_detector_against_manual <- function(ds, params, selected_trains = NULL, min_isi_sec = NULL, use_learned_ranges = FALSE, metric_mode = c("strict_high_confidence", "candidate_family", "review_assisted")) {
   metric_mode <- match.arg(metric_mode)
   eval_mode <- if (isTRUE(use_learned_ranges)) "current_calibrated_detector_with_learned_ranges" else "range_blinded_detector_without_learned_train_specific_ranges"
   eval_meta <- data.frame(
     evaluation_mode = eval_mode,
     metric_mode = metric_mode,
     learned_ranges_used = isTRUE(use_learned_ranges),
+    label_blind_shadow_detection = TRUE,
+    manual_labels_used_for_scoring_only = TRUE,
+    threshold_training_scope = if (isTRUE(use_learned_ranges)) "current_ranges_calibration_feedback" else "range_blinded_shadow_detection",
     possible_burst_handling = if (metric_mode == "candidate_family") "burst and possible_burst are merged into burst_family; this estimates candidate-generation sensitivity, not high-confidence classifier performance." else "possible_burst is kept as a separate review class and is not counted as high-confidence burst.",
     interpretation = if (isTRUE(use_learned_ranges))
       "Calibration-style report: the shadow detector uses current learned train-specific ranges. This is appropriate for parameter tuning, not an unbiased held-out validation."
     else
-      "Range-blinded report: learned train-specific burst/tonic/pause ranges are disabled during the shadow detector pass.",
+      "Range-blinded, label-blind report: manual labels are retained only as scoring truth; they and learned train-specific ranges are removed from the shadow detector pass.",
     stringsAsFactors = FALSE
   )
-  if (is.null(ds) || is.null(ds$trains)) return(list(confusion = data.frame(), metrics = data.frame(), events = data.frame(), meta = eval_meta))
+  if (is.null(ds) || is.null(ds$trains)) return(list(confusion = data.frame(), metrics = data.frame(), events = data.frame(), predictions = data.frame(), meta = eval_meta))
   min_isi <- min_isi_sec %||% params$detector$min_valid_isi_sec %||% 0.0009
   params_eval <- if (isTRUE(use_learned_ranges)) params else strip_learned_ranges_for_eval(params)
-  td <- ds$trains
+  ds_eval <- if (isTRUE(use_learned_ranges)) ds else stpd_strip_learned_dataset_settings_for_eval(ds)
+  td <- ds_eval$trains
   target <- selected_trains %||% names(td)
   target <- intersect(target, names(td))
   classes <- setdiff(result_metric_classes(metric_mode), "unlabeled")
@@ -714,13 +1039,16 @@ evaluate_detector_against_manual <- function(ds, params, selected_trains = NULL,
     truth <- pattern_eval_normalize(dat$pattern_manual, metric_mode = metric_mode)
     valid <- is.finite(dat$ISI_sec) & dat$ISI_sec >= min_isi & dat$idx >= 2 & truth != "unlabeled"
     if (!any(valid)) next
-    shadow <- run_detector_one_train(dat, params_eval, min_isi_sec = min_isi, train = tr, lock_manual = FALSE)
+    shadow_input <- dat
+    shadow_input$pattern_manual <- rep("", nrow(shadow_input))
+    shadow_input$pattern_manual_negative <- rep("", nrow(shadow_input))
+    shadow <- run_detector_one_train(shadow_input, params_eval, min_isi_sec = min_isi, train = tr, lock_manual = FALSE)
     pred <- pattern_eval_normalize(shadow$pattern_auto, metric_mode = metric_mode)
     conf_parts[[length(conf_parts) + 1L]] <- tibble(train = tr, truth = truth[valid], prediction = pred[valid])
     event_parts[[length(event_parts) + 1L]] <- manual_event_overlap(truth, pred, train = tr, metric_mode = metric_mode)
   }
   conf_long <- if (length(conf_parts) > 0) bind_rows(conf_parts) else tibble(train = character(), truth = character(), prediction = character())
-  if (nrow(conf_long) == 0) return(list(confusion = data.frame(), metrics = data.frame(), events = data.frame(), meta = eval_meta))
+  if (nrow(conf_long) == 0) return(list(confusion = data.frame(), metrics = data.frame(), events = data.frame(), predictions = conf_long, meta = eval_meta))
   confusion <- conf_long %>% count(truth, prediction, name = "n") %>% arrange(truth, prediction)
   metrics <- lapply(classes, function(cls) {
     tp <- sum(conf_long$truth == cls & conf_long$prediction == cls, na.rm = TRUE)
@@ -733,20 +1061,64 @@ evaluate_detector_against_manual <- function(ds, params, selected_trains = NULL,
            recall_on_manual_subset = recall, precision_on_manual_subset = precision, F1_on_manual_subset = f1)
   }) %>% bind_rows()
   events <- if (length(event_parts) > 0) bind_rows(event_parts) else data.frame()
-  list(confusion = confusion, metrics = metrics, events = events, meta = eval_meta)
+  list(confusion = confusion, metrics = metrics, events = events, predictions = conf_long, meta = eval_meta)
 }
 
 export_detection_results_simple <- function(ds, params, out_dir, dataset_name = "dataset", time_unit = "ms") {
   params <- effective_params_for_detector(params)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   if (is.null(ds$results)) ds$results <- list()
+  # Coordinate the candidate namespace before writing any other result. This is
+  # unconditional so reusing an output directory with an older/no-candidate
+  # dataset cannot retain stale candidate files in the new bundle. A cleanup
+  # postcondition failure is fatal because the directory would be scientifically
+  # ambiguous; validation/materialization failure of a present pending product
+  # remains fail-soft and is recorded by the coordinator.
+  stpd_write_multitrack_auto_fail_soft(ds, out_dir)
   td <- ds$trains
+  label_blind_export <- isTRUE(ds$results$label_blind) ||
+    identical(as.character(ds$results$detection_mode %||% "")[1], "label_blind")
+  td_for_final <- td
+  if (label_blind_export) {
+    # Reference labels may be retained for scoring, but they must not silently
+    # become the exported detector decision after a label-blind run.
+    td_for_final <- lapply(td, function(dat) {
+      n <- if (is.data.frame(dat)) nrow(dat) else 0L
+      if (is.data.frame(dat)) {
+        dat$pattern_manual <- rep("", n)
+        dat$pattern_manual_negative <- rep("", n)
+      }
+      dat
+    })
+  }
   min_isi <- params$detector$min_valid_isi_sec %||% 0.0009
-  bundle <- derive_interval_tables(td, source = "final", auto_others = FALSE,
+  bundle <- derive_interval_tables(td_for_final, source = "final", auto_others = FALSE,
                                    dataset_map = setNames(rep(dataset_name, length(td)), names(td)),
                                    min_isi_sec = min_isi,
                                    contrast_q = params$burst$contrast_q %||% 0.90,
                                    context_k = params$burst$context_k %||% 5L)
+  if (label_blind_export && nrow(bundle$labels) > 0) {
+    reference_rows <- do.call(rbind, lapply(names(td), function(train_name) {
+      dat <- td[[train_name]]
+      n <- if (is.data.frame(dat)) nrow(dat) else 0L
+      if (n == 0L) return(NULL)
+      data.frame(
+        train = rep(train_name, n),
+        idx = dat$idx,
+        manual_label = as.character(dat$pattern_manual %||% rep("", n)),
+        manual_negative_label = as.character(dat$pattern_manual_negative %||% rep("", n)),
+        stringsAsFactors = FALSE
+      )
+    }))
+    if (!is.null(reference_rows) && nrow(reference_rows) > 0) {
+      export_key <- paste(bundle$labels$train, bundle$labels$idx, sep = "\r")
+      reference_key <- paste(reference_rows$train, reference_rows$idx, sep = "\r")
+      pos <- match(export_key, reference_key)
+      bundle$labels$manual_label <- reference_rows$manual_label[pos]
+      bundle$labels$manual_negative_label <- reference_rows$manual_negative_label[pos]
+    }
+    bundle$labels$final_label_source <- "automatic_label_blind"
+  }
   ev_final <- if (!is.null(ds$results$events) && nrow(ds$results$events) > 0) ds$results$events else enrich_events_with_pause_thresholds(bundle$events, td, run_id = (ds$results$run_metadata$run_id %||% "export_run")[1], params_hash = (ds$results$run_metadata$params_hash %||% compute_params_hash(params))[1])
   write_csv_safe(ev_final, file.path(out_dir, "Events_final.csv"))
   if (!is.null(ev_final) && nrow(ev_final) > 0 && "pattern" %in% names(ev_final)) {
@@ -754,7 +1126,8 @@ export_detection_results_simple <- function(ds, params, out_dir, dataset_name = 
     if (nrow(lb_ev) > 0) write_csv_safe(lb_ev, file.path(out_dir, "Long_burst_events.csv"))
   }
   write_csv_safe(bundle$labels, file.path(out_dir, "ISI_labels_final.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-  if (!is.null(ds$quality) && nrow(ds$quality) > 0) write_csv_safe(ds$quality, file.path(out_dir, "Data_quality_QC.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+	  data_quality <- ds[["quality"]]
+	  if (!is.null(data_quality) && nrow(data_quality) > 0) write_csv_safe(data_quality, file.path(out_dir, "Data_quality_QC.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   dup_details <- tryCatch(duplicate_timestamp_details(ds$trains, display_unit = time_unit), error = function(e) data.frame())
   if (!is.null(dup_details) && nrow(dup_details) > 0) write_csv_safe(dup_details, file.path(out_dir, "Duplicate_timestamp_details.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   art_details <- tryCatch(artifact_isi_details(ds$trains, min_isi_sec = params$detector$min_valid_isi_sec %||% 0.0009), error = function(e) data.frame())
@@ -768,14 +1141,20 @@ export_detection_results_simple <- function(ds, params, out_dir, dataset_name = 
   if (!is.null(ds$results$pause_candidates) && nrow(ds$results$pause_candidates) > 0) write_csv_safe(ds$results$pause_candidates, file.path(out_dir, "Pause_candidates_with_thresholds.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   if (!is.null(ds$results$posthoc_fragment_audit) && nrow(ds$results$posthoc_fragment_audit) > 0) write_csv_safe(ds$results$posthoc_fragment_audit, file.path(out_dir, "Posthoc_fragment_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  if (!is.null(ds$results$candidate_diagnostic_audit) && nrow(ds$results$candidate_diagnostic_audit) > 0) write_csv_safe(ds$results$candidate_diagnostic_audit, file.path(out_dir, "Candidate_diagnostic_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_summary) && nrow(ds$results$final_audit_summary) > 0) write_csv_safe(ds$results$final_audit_summary, file.path(out_dir, "Final_audit_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_events) && nrow(ds$results$final_audit_events) > 0) write_csv_safe(ds$results$final_audit_events, file.path(out_dir, "Final_audit_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_history) && nrow(ds$results$final_audit_history) > 0) write_csv_safe(ds$results$final_audit_history, file.path(out_dir, "Final_audit_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$final_audit_event_history) && nrow(ds$results$final_audit_event_history) > 0) write_csv_safe(ds$results$final_audit_event_history, file.path(out_dir, "Final_audit_event_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  final_audit_summary <- ds$results[["final_audit_summary"]]
+  final_audit_events <- ds$results[["final_audit_events"]]
+  final_audit_history <- ds$results[["final_audit_history"]]
+  final_audit_event_history <- ds$results[["final_audit_event_history"]]
+  if (!is.null(final_audit_summary) && nrow(final_audit_summary) > 0) write_csv_safe(final_audit_summary, file.path(out_dir, "Final_audit_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_events) && nrow(final_audit_events) > 0) write_csv_safe(final_audit_events, file.path(out_dir, "Final_audit_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_history) && nrow(final_audit_history) > 0) write_csv_safe(final_audit_history, file.path(out_dir, "Final_audit_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(final_audit_event_history) && nrow(final_audit_event_history) > 0) write_csv_safe(final_audit_event_history, file.path(out_dir, "Final_audit_event_history.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  task_events_out <- stpd_normalize_task_events(ds$task_events %||% data.frame(), source = ds$meta$display_name %||% "")
 	  if (nrow(task_events_out) > 0) write_csv_safe(task_events_out, file.path(out_dir, "Task_events.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$possible_burst_promotion_audit) && nrow(ds$results$possible_burst_promotion_audit) > 0) write_csv_safe(ds$results$possible_burst_promotion_audit, file.path(out_dir, "Possible_burst_promotion_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
-	  if (!is.null(ds$results$possible_burst_promotion_summary) && nrow(ds$results$possible_burst_promotion_summary) > 0) write_csv_safe(ds$results$possible_burst_promotion_summary, file.path(out_dir, "Possible_burst_promotion_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  promotion_audit <- ds$results[["possible_burst_promotion_audit"]]
+  promotion_summary <- ds$results[["possible_burst_promotion_summary"]]
+  if (!is.null(promotion_audit) && nrow(promotion_audit) > 0) write_csv_safe(promotion_audit, file.path(out_dir, "Possible_burst_promotion_audit.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(promotion_summary) && nrow(promotion_summary) > 0) write_csv_safe(promotion_summary, file.path(out_dir, "Possible_burst_promotion_summary.csv"), row.names = FALSE, fileEncoding = "UTF-8")
 	  if (!is.null(ds$results$near_miss_candidates) && nrow(ds$results$near_miss_candidates) > 0) write_csv_safe(ds$results$near_miss_candidates, file.path(out_dir, "Near_miss_candidates.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   if (!is.null(ds$train_settings$burst_isi_ranges) && length(ds$train_settings$burst_isi_ranges) > 0) {
     write_csv_safe(train_range_dataframe(ds$train_settings$burst_isi_ranges, pattern = "burst", factor = 1, unit = "s"), file.path(out_dir, "Train_burst_ISI_ranges.csv"), row.names = FALSE, fileEncoding = "UTF-8")
@@ -793,7 +1172,18 @@ export_detection_results_simple <- function(ds, params, out_dir, dataset_name = 
     write_csv_safe(train_isi_threshold_dataframe(ds$train_settings$isi_thresholds, factor = if (identical(time_unit, "ms")) 1000 else 1, unit = time_unit), file.path(out_dir, "Train_specific_ISI_thresholds.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   }
   write_tiered_result_exports(ds, params, out_dir)
-  if (!is.null(ds$results$run_metadata) && nrow(ds$results$run_metadata) > 0) write_csv_safe(ds$results$run_metadata, file.path(out_dir, "Detector_run_metadata.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  metadata_export <- ds$results$run_metadata_public %||% ds$results$run_metadata %||% data.frame()
+  if (!is.null(metadata_export) && nrow(metadata_export) > 0) write_csv_safe(metadata_export, file.path(out_dir, "Detector_run_metadata.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  if (!is.null(ds$results$threshold_table) && nrow(ds$results$threshold_table) > 0) write_csv_safe(ds$results$threshold_table, file.path(out_dir, "Detector_threshold_table.csv"), row.names = FALSE, fileEncoding = "UTF-8")
+  stpd_write_effective_params_artifact(ds, params, out_dir)
+  export_metadata <- stpd_export_run_metadata(
+    ds,
+    events = ev_final,
+    labels = bundle$labels,
+    export_source = "api_final_export",
+    final_label_source = if (label_blind_export) "automatic_label_blind" else "final"
+  )
+  write_csv_safe(export_metadata, file.path(out_dir, "Export_run_metadata.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   if (!is.null(ds$results$event_ledger) && nrow(ds$results$event_ledger %||% data.frame()) > 0) {
     write_csv_safe(ds$results$event_ledger, file.path(out_dir, "Event_audit.csv"))
     write_csv_safe(ds$results$event_ledger, file.path(out_dir, "Events_final_event_ledger.csv"))
@@ -805,6 +1195,13 @@ export_detection_results_simple <- function(ds, params, out_dir, dataset_name = 
     write_csv_safe(ds$results$events_all_family_map, file.path(out_dir, "Events_all_with_pattern_family.csv"))
     write_csv_safe(ds$results$events_all_family_map, file.path(out_dir, "Events_all_family_map.csv"))
   }
-  writeLines(capture.output(str(params)), file.path(out_dir, "Detector_params.txt"))
+  stpd_write_multitrack_preview(ds, out_dir)
+  if (exists("stpd_write_multitrack_review", mode = "function")) {
+    stpd_write_multitrack_review(ds, out_dir)
+  }
+  if (exists("stpd_write_multitrack_gate_b_fail_soft", mode = "function")) {
+    stpd_write_multitrack_gate_b_fail_soft(ds, out_dir)
+  }
+  writeLines(capture.output(str(ds$params_effective %||% params)), file.path(out_dir, "Detector_params.txt"))
   invisible(out_dir)
 }

@@ -67,7 +67,7 @@ test_that("weighted interval selection uses the HF-protected candidate value", {
   expect_equal(as.character(selected_burst$final_label[selected_burst$selected_for_auto]), "burst")
 })
 
-test_that("compact burst kernels inside strong long HF spiking states are subordinate", {
+test_that("compact Burst kernels are subordinate while Pause remains independent", {
   protect <- getFromNamespace("stpd_event_grammar_protect_hf_spiking_states", "SpikeTrainPatternDetector")
   select <- getFromNamespace("stpd_event_core_weighted_select", "SpikeTrainPatternDetector")
 
@@ -91,8 +91,12 @@ test_that("compact burst kernels inside strong long HF spiking states are subord
   )
 
   protected <- protect(audit)
-  expect_equal(as.character(protected$final_label[2:4]), c("reject", "reject", "reject"))
-  expect_true(all(protected$suppressed_by_hf_spiking_state[2:4]))
+  expect_equal(
+    as.character(protected$final_label[2:4]),
+    c("reject", "reject", "pause")
+  )
+  expect_true(all(protected$suppressed_by_hf_spiking_state[2:3]))
+  expect_false(protected$suppressed_by_hf_spiking_state[4])
   expect_match(
     protected$decision_path[2],
     "compact_burst_kernel_suppressed_inside_long_hf_spiking_state",
@@ -106,7 +110,7 @@ test_that("compact burst kernels inside strong long HF spiking states are subord
   )
 })
 
-test_that("burst-dominated HF spiking candidates do not suppress canonical bursts", {
+test_that("burst-dominated HF spiking remains a State with descriptive packet evidence", {
   protect <- getFromNamespace("stpd_event_grammar_protect_hf_spiking_states", "SpikeTrainPatternDetector")
   select <- getFromNamespace("stpd_event_core_weighted_select", "SpikeTrainPatternDetector")
 
@@ -132,24 +136,27 @@ test_that("burst-dominated HF spiking candidates do not suppress canonical burst
   )
 
   protected <- protect(audit)
-  expect_equal(as.character(protected$final_label[1]), "reject")
+  expect_equal(as.character(protected$final_label[1]), "high_frequency_spiking")
   expect_true(isTRUE(protected$hf_spiking_burst_dominated[1]))
   expect_gte(protected$hf_spiking_embedded_burst_group_count[1], 6)
   expect_match(
     protected$decision_path[1],
-    "reject_burst_dominated_hf_spiking_state",
+    "audit_burst_dominated_hf_spiking_state",
     fixed = TRUE
   )
-  expect_equal(as.character(protected$final_label[2:9]), rep("burst", 8))
-  expect_false(any(protected$suppressed_by_hf_spiking_state[2:9]))
+  effective_event <- ifelse(
+    nzchar(protected$suppressed_original_label[2:9]),
+    protected$suppressed_original_label[2:9],
+    protected$final_label[2:9]
+  )
+  expect_true(all(effective_event == "burst"))
 
   selected <- select(protected)
   selected_labels <- as.character(selected$final_label[selected$selected_for_auto])
-  expect_false("high_frequency_spiking" %in% selected_labels)
-  expect_true(any(selected_labels == "burst"))
+  expect_true("high_frequency_spiking" %in% selected_labels)
 })
 
-test_that("burst-packet-like HF spiking candidates are rejected before they suppress bursts", {
+test_that("burst-packet-like HF spiking is retained with a descriptive subtype", {
   protect <- getFromNamespace("stpd_event_grammar_protect_hf_spiking_states", "SpikeTrainPatternDetector")
 
   audit <- data.frame(
@@ -176,14 +183,19 @@ test_that("burst-packet-like HF spiking candidates are rejected before they supp
   )
 
   protected <- protect(audit)
-  expect_equal(as.character(protected$final_label[1]), "reject")
+  expect_equal(as.character(protected$final_label[1]), "high_frequency_spiking")
   expect_true(isTRUE(protected$hf_spiking_burst_packet_like[1]))
   expect_match(
     protected$decision_path[1],
-    "reject_burst_packet_like_hf_spiking_state",
+    "audit_burst_packet_like_hf_spiking_state",
     fixed = TRUE
   )
-  expect_equal(as.character(protected$final_label[2:3]), c("long_burst", "long_burst"))
+  effective_event <- ifelse(
+    nzchar(protected$suppressed_original_label[2:3]),
+    protected$suppressed_original_label[2:3],
+    protected$final_label[2:3]
+  )
+  expect_true(all(effective_event == "long_burst"))
 })
 
 test_that("compact pure HF spiking states suppress only tiny embedded burst kernels", {
@@ -219,7 +231,7 @@ test_that("compact pure HF spiking states suppress only tiny embedded burst kern
   )
 })
 
-test_that("manual burst-family labels split HF spiking states instead of bridging through them", {
+test_that("manual Burst labels do not split the Broad HFS parent State", {
   detect <- getFromNamespace("stpd_detect_train_product_hardened", "SpikeTrainPatternDetector")
   params <- SpikeTrainPatternDetector::default_params()
 
@@ -245,7 +257,49 @@ test_that("manual burst-family labels split HF spiking states instead of bridgin
   expect_gt(nrow(hfs), 0)
   starts <- suppressWarnings(as.integer(hfs$start_isi))
   ends <- suppressWarnings(as.integer(hfs$end_isi))
-  expect_false(any(starts < 55L & ends > 66L, na.rm = TRUE))
+  expect_true(any(starts <= 55L & ends >= 66L, na.rm = TRUE))
+
+  shadow <- attr(out, "multitrack_shadow")
+  expect_type(shadow, "list")
+  shadow_hfs <- shadow$candidates[
+    shadow$candidates$semantic_track == "state" &
+      as.character(shadow$candidates$final_label) == "high_frequency_spiking",
+    ,
+    drop = FALSE
+  ]
+  expect_true(any(
+    as.logical(shadow_hfs$selected_within_track) &
+      as.integer(shadow_hfs$start_isi) <= 55L &
+      as.integer(shadow_hfs$end_isi) >= 66L,
+    na.rm = TRUE
+  ))
+
+  compatibility <- attr(out, "multitrack_compatibility_shadow")
+  expect_type(compatibility, "list")
+  broad_hfs_parent <- compatibility$state_parents[
+    compatibility$state_parents$state_label == "high_frequency_spiking",
+    ,
+    drop = FALSE
+  ]
+  expect_true(any(
+    broad_hfs_parent$start_isi <= 55L & broad_hfs_parent$end_isi >= 66L &
+      !broad_hfs_parent$parent_consumed_in_provisional_policy &
+      broad_hfs_parent$split_kind == "none",
+    na.rm = TRUE
+  ))
+  # A locked MANUAL annotation must not force a canonical AUTO Burst in an
+  # otherwise homogeneous HFS train.  Any review or Event relationship that is
+  # present remains non-destructive, while the Broad-HFS parent stays intact.
+  expect_true(all(
+    as.logical(compatibility$relationships$non_destructive),
+    na.rm = TRUE
+  ))
+  canonical_overlay <-
+    compatibility$relationships$compatibility_rule == "hfs_burst_overlay"
+  expect_true(all(
+    as.logical(compatibility$relationships$non_destructive[canonical_overlay]),
+    na.rm = TRUE
+  ))
 })
 
 test_that("HF spiking support can bridge a transparent sub-threshold artifact gap", {

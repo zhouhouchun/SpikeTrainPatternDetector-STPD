@@ -33,8 +33,26 @@ test_that("default AUTO detects classic slow tonic, burst, and relative pause st
   expect_equal(sum(auto == "pause", na.rm = TRUE), 1L)
 
   audit <- attr(out, "candidate_diagnostic_audit")
-  expect_true(any(audit$final_label == "tonic" & audit$gate_status == "event_core_tonic_pass"))
-  expect_true(any(audit$final_label == "pause" & audit$decision_path == "relative_long_isi_gap_layer"))
+  selected_tonic <- audit[
+    audit$final_label == "tonic" &
+      as.logical(audit$selected_for_auto %||% FALSE),
+    ,
+    drop = FALSE
+  ]
+  expect_gt(nrow(selected_tonic), 0L)
+  expect_true(all(selected_tonic$candidate_layer == "event_core_tonic_state"))
+  expect_true(all(selected_tonic$gate_status == "event_core_tonic_core_trim_pass"))
+  expect_true(all(selected_tonic$tonic_candidate_source == "core_trim"))
+  expect_true(all(as.logical(selected_tonic$tonic_burst_overlap_audit_pass)))
+  expect_false(any(
+    as.logical(selected_tonic$tonic_burst_overlap_veto_applied),
+    na.rm = TRUE
+  ))
+  expect_true(any(
+    audit$final_label == "pause" &
+      audit$decision_path == "automatic_pooled_q90_pause_gap" &
+      as.logical(audit$selected_for_auto)
+  ))
 })
 
 test_that("compact burst cores can be rescued when local flank contrast is imperfect", {
@@ -46,7 +64,10 @@ test_that("compact burst cores can be rescued when local flank contrast is imper
     train = "structural_rescue"
   )
   audit <- attr(out, "candidate_diagnostic_audit")
-  rescued <- audit[audit$gate_status == "event_grammar_structural_burst_rescue_pass", , drop = FALSE]
+  rescued <- audit[
+    audit$gate_status == "event_grammar_structural_burst_rescue_pass",
+    , drop = FALSE
+  ]
 
   expect_gt(nrow(rescued), 0L)
   expect_true(any(rescued$final_label == "burst"))
@@ -145,7 +166,7 @@ test_that("AUTO preserves stable tonic cores before short transition ISIs", {
   ))
 })
 
-test_that("dense burst episodes beat fragmented burst kernels in AUTO selection", {
+test_that("sustained borrowed subranges roll back to the intrusion onset", {
   isi <- c(
     0.035, 0.036, 0.080, 0.047, 0.043, 0.060, 0.050, 0.036,
     0.090, 0.094, 0.092, 0.128, 0.104, 0.069, 0.064, 0.038,
@@ -166,7 +187,11 @@ test_that("dense burst episodes beat fragmented burst kernels in AUTO selection"
     drop = FALSE
   ]
 
-  expect_true(any(selected_episode$final_label == "burst"))
-  expect_gte(max(as.integer(selected_episode$n_isi), na.rm = TRUE), 10L)
-  expect_gte(sum(auto[2:17] == "burst", na.rm = TRUE), 10L)
+  # The compact cores remain Burst candidates, but the sustained 90--128 ms
+  # subrange is not a singular internal bridge.  Treating the full packet as a
+  # Long Burst would reward state intrusion and contradict rollback-to-onset.
+  expect_true(all(auto[2:9] %in% c("burst", "long_burst")))
+  expect_false(any(auto[10:14] %in% c("burst", "long_burst")))
+  expect_true(all(auto[15:17] %in% c("burst", "long_burst")))
+  expect_false(any(selected_episode$final_label == "long_burst"))
 })

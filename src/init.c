@@ -11,6 +11,8 @@ SEXP stpd_local_median_cache_c(SEXP isi_sexp, SEXP window_sexp, SEXP min_sexp);
 SEXP stpd_structure_scan_c(SEXP isi_sexp, SEXP pct_sexp, SEXP min_w_sexp, SEXP max_w_sexp, SEXP qmax_sexp, SEXP pctmax_sexp, SEXP edge_min_sexp, SEXP edge_geom_sexp, SEXP min_isi_sexp);
 SEXP stpd_interval_best_overlap_c(SEXP qs_sexp, SEXP qe_sexp, SEXP ts_sexp, SEXP te_sexp);
 SEXP stpd_short_runs_c(SEXP isi_sexp, SEXP pct_sexp, SEXP max_abs_sexp, SEXP max_pct_sexp, SEXP min_run_sexp, SEXP min_isi_sexp, SEXP gate_both_sexp);
+SEXP stpd_jcs_number_c(SEXP values_sexp);
+SEXP stpd_peak_rss_bytes_c(void);
 
 static const R_CallMethodDef CallEntries[] = {
     {"stpd_isi_percentiles_c", (DL_FUNC) &stpd_isi_percentiles_c, 2},
@@ -18,6 +20,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"stpd_structure_scan_c", (DL_FUNC) &stpd_structure_scan_c, 9},
     {"stpd_interval_best_overlap_c", (DL_FUNC) &stpd_interval_best_overlap_c, 4},
     {"stpd_short_runs_c", (DL_FUNC) &stpd_short_runs_c, 7},
+    {"stpd_jcs_number_c", (DL_FUNC) &stpd_jcs_number_c, 1},
+    {"stpd_peak_rss_bytes_c", (DL_FUNC) &stpd_peak_rss_bytes_c, 0},
     {NULL, NULL, 0}
 };
 

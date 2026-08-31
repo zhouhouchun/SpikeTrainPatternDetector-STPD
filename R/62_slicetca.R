@@ -532,21 +532,26 @@ stpd_run_slicetca_backend <- function(tensor_res,
   )
 }
 
-stpd_slicetca_plot <- function(res, use_reconstruction = TRUE) {
+stpd_slicetca_plot <- function(res, use_reconstruction = TRUE, lang = "en") {
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   dat <- if (isTRUE(use_reconstruction) && is.data.frame(res$reconstructed_embedding) && nrow(res$reconstructed_embedding) > 0L) {
     res$reconstructed_embedding
   } else {
     res$trial_embedding
   }
   if (is.null(dat) || nrow(dat) == 0L || !all(c("TC1", "TC2", "TC3") %in% names(dat))) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "No sliceTCA tensor manifold is available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u6682\u65E0\u53EF\u7528\u7684 sliceTCA \u5F20\u91CF\u6D41\u5F62\u3002", "No sliceTCA tensor manifold is available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   dat$hover <- paste0(
-    "trial: ", dat$trial_id,
-    "<br>condition: ", dat$condition,
-    "<br>relative time: ", signif(dat$rel_time_sec, 5), " s",
-    if ("event_state" %in% names(dat)) paste0("<br>event state: ", dat$event_state) else ""
+    ui_copy("\u8BD5\u6B21\uFF1A", "trial: "), dat$trial_id,
+    ui_copy("<br>\u6761\u4EF6\uFF1A", "<br>condition: "), dat$condition,
+    ui_copy("<br>\u76F8\u5BF9\u65F6\u95F4\uFF1A", "<br>relative time: "), signif(dat$rel_time_sec, 5), " s",
+    if ("event_state" %in% names(dat)) paste0(ui_copy("<br>\u4E8B\u4EF6\u72B6\u6001\uFF1A", "<br>event state: "), dat$event_state) else ""
   )
   p <- plot_ly(source = "slicetca_tensor_plot")
   conds <- unique(as.character(dat$condition))
@@ -572,7 +577,15 @@ stpd_slicetca_plot <- function(res, use_reconstruction = TRUE) {
   }
   p %>%
     layout(
-      title = list(text = if (isTRUE(use_reconstruction) && nrow(res$reconstructed_embedding %||% data.frame()) > 0L) "sliceTCA reconstructed trial manifold" else "Raw trial tensor manifold", x = 0.02, font = list(size = 15)),
+      title = list(
+        text = if (isTRUE(use_reconstruction) && nrow(res$reconstructed_embedding %||% data.frame()) > 0L) {
+          ui_copy("sliceTCA \u91CD\u5EFA\u8BD5\u6B21\u6D41\u5F62", "sliceTCA reconstructed trial manifold")
+        } else {
+          ui_copy("\u539F\u59CB\u8BD5\u6B21\u5F20\u91CF\u6D41\u5F62", "Raw trial tensor manifold")
+        },
+        x = 0.02,
+        font = list(size = 15)
+      ),
       scene = list(
         xaxis = list(title = "TC1", backgroundcolor = "#ffffff", gridcolor = "#e5e7eb"),
         yaxis = list(title = "TC2", backgroundcolor = "#ffffff", gridcolor = "#e5e7eb"),
@@ -581,5 +594,5 @@ stpd_slicetca_plot <- function(res, use_reconstruction = TRUE) {
       margin = list(l = 0, r = 0, t = 60, b = 10),
       paper_bgcolor = "#ffffff"
     ) %>%
-    config(displaylogo = FALSE, scrollZoom = TRUE)
+    config(displaylogo = FALSE, scrollZoom = TRUE, locale = if (zh) "zh-CN" else "en")
 }

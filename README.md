@@ -1,5 +1,7 @@
 # Spike Train Pattern Detector
 
+**Author:** Zhou Houchun
+
 Spike Train Pattern Detector is a candidate-event generation and audit-oriented analysis platform for spike-train firing pattern review.
 
 It supports data quality control, interactive annotation, burst/tonic/pause/high-frequency candidate generation, eventness auditing, Mean-ISI and Pasquale logISIH/newBD support analyses, and reproducible export reports.
@@ -8,15 +10,30 @@ Event-level validation can compare detector events against MANUAL labels by IoU,
 
 This tool is designed for candidate generation and scientific review, not as an unbiased final ground-truth classifier.
 
-## Validation Artifacts
+## Reproducible validation materials
 
-Curated synthetic validation artifacts are available under `validation/simulation_benchmark/`.
-This folder contains detector-visible simulated spike trains, simulator ground truth, selected STPD benchmark outputs, compact figures, and synthetic-only simulator validation summaries.
+Frozen synthetic benchmark snapshots are available under `data/synthetic/`.
+They contain detector-visible spike trains, multitrack truth, generator source,
+quality-control tables, and R-generated figures. Frozen structural summaries,
+eligibility counts, and byte hashes for the GPe, STN, and GPi manual-reference
+sets are organized under `data/real/`; patient-level workbooks are excluded from
+the default public bundle pending documented redistribution clearance.
 
-An anonymized single-patient real STN timestamp example is available under `validation/real_patient_example/`.
-This folder is intended only for smoke testing and reviewer reproducibility checks on real multi-train timestamp input.
+Compact validation summaries are stored under `results/`. Bulky serialized run
+objects, exploratory reruns, manuscript drafts, and private submission records
+are intentionally excluded from the public release.
 
-Except for this curated real-data example, the package intentionally excludes manuscript drafts, reviewer notes, bulky run objects, large TIFF/PDF exports, and real patient calibration tables.
+The public release bundle also contains the frozen synthetic benchmark generator,
+blinded detector inputs, multitrack truth tables, compact aggregate validation
+summaries, real-reference eligibility metadata, and the R scripts used to
+generate every distributed scientific figure. Every distributed figure is a
+programmatic output of a referenced R script.
+
+Computational-performance materials are stored under
+`evaluation/performance/` and `results/performance/`. They report full-dataset
+elapsed time, normalized workload, repeated core/app-default timings,
+environment metadata and approximate R heap use. Shiny browser rendering is
+explicitly excluded from detector-only timing.
 
 ## Public audit, CSV input, and parameter namespace policy
 

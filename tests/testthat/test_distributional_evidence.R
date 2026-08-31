@@ -94,3 +94,28 @@ test_that("distributional result attachment stores all public tables without rew
   expect_gt(nrow(out$results$spike_count_pmf), 0L)
   expect_identical(out$trains$train_1$pattern_auto, before)
 })
+
+test_that("a normal detector run computes distributional evidence only once", {
+  original <- getFromNamespace(
+    "stpd_add_distributional_results",
+    "SpikeTrainPatternDetector"
+  )
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    stpd_add_distributional_results = function(...) {
+      calls <<- calls + 1L
+      original(...)
+    },
+    .package = "SpikeTrainPatternDetector"
+  )
+
+  out <- stpd_detect(
+    stpd_golden_test_dataset("middle_burst"),
+    default_params(),
+    selected_trains = "train_1",
+    collect_diagnostics = FALSE
+  )
+
+  expect_identical(calls, 1L)
+  expect_true(stpd_distributional_results_complete(out))
+})

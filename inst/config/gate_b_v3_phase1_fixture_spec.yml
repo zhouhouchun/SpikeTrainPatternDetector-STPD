@@ -1,0 +1,759 @@
+schema: stpd_gate_b_v3_phase1_fixture_spec_1
+plan_sha256: eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5
+normative_contract_sha256: 4de7921837fdd5c3fcb9a6c07a4742bfc4686023ae37b6f442440dab2044c8f6
+release_evidence: no
+fixtures:
+- contract_id: GB3-ATT-001
+  fixture_id: acceptance_gb3_19
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_19
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-ATT-001
+    fixture_id: acceptance_gb3_19
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 8f129f68e542c32c4844f4a708073eef33de06abb5a3c270e4b5433b72534572
+- contract_id: GB3-ATT-001
+  fixture_id: contract_gb3_att_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_att_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-ATT-001
+    fixture_id: contract_gb3_att_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7d92bc86ae5a7e658684bfc49010f66beef8f79efb42a7f06c52292cd43e6328
+- contract_id: GB3-BLIND-001
+  fixture_id: contract_gb3_blind_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_blind_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-BLIND-001
+    fixture_id: contract_gb3_blind_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: bc7e7497939a1f2a00359ed75c06128756dadf3da1da65c19df4081efe64427a
+- contract_id: GB3-CAND-001
+  fixture_id: acceptance_gb3_24
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_24
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-CAND-001
+    fixture_id: acceptance_gb3_24
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7b66362ff0c216a0eace2a41b119763fe389cec9a8367e1b34037492ae52ace0
+- contract_id: GB3-CAND-001
+  fixture_id: contract_gb3_cand_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_cand_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-CAND-001
+    fixture_id: contract_gb3_cand_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: b4906973891518703b44b6d6d29ef447a884f7748d6b1fab7a84a5ea2b1a3977
+- contract_id: GB3-CONS-001
+  fixture_id: contract_gb3_cons_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_cons_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-CONS-001
+    fixture_id: contract_gb3_cons_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: e4b99b9c6a42f5edc53f507ea045fc4e735b8c4a86e08000cc237ad0ecac7d26
+- contract_id: GB3-CTX-001
+  fixture_id: acceptance_gb3_12
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_12
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-CTX-001
+    fixture_id: acceptance_gb3_12
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: ecedf193803c090aeb106b9987f1c544acf2c5317b825c6cb3768370343e1234
+- contract_id: GB3-CTX-001
+  fixture_id: contract_gb3_ctx_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_ctx_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-CTX-001
+    fixture_id: contract_gb3_ctx_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: bff9e04558cc84d35dc869d18dca20a0cf237b6248b9969fe8113c08d4a4124a
+- contract_id: GB3-EVT-001
+  fixture_id: contract_gb3_evt_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_evt_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-EVT-001
+    fixture_id: contract_gb3_evt_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 857b65fa14559810462729f202165f657b40041e418ee4e6229739d07c2d5b02
+- contract_id: GB3-EXP-001
+  fixture_id: contract_gb3_exp_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_exp_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-EXP-001
+    fixture_id: contract_gb3_exp_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: d44d56b9aa7a67769dfbdad3210ff41c0641ffbae9d7c42d622c0a5481117cc7
+- contract_id: GB3-FINAL-001
+  fixture_id: acceptance_gb3_17
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_17
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: acceptance_gb3_17
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 6275e79e437035b3f1acab35689564004e1aac62bda976596d0de46df226a185
+- contract_id: GB3-FINAL-001
+  fixture_id: acceptance_gb3_28
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_28
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: acceptance_gb3_28
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: ab20a82e5dd68b5a1db8164a7e49e08cab89ceb1267f9ab6ab1241c1e0ab97cc
+- contract_id: GB3-FINAL-001
+  fixture_id: acceptance_gb3_29
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_29
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: acceptance_gb3_29
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 336b3a5e3cdd1299a670b56ba881e4e9a5f2c8d7ef70b877d8ce8e15c892f8b1
+- contract_id: GB3-FINAL-001
+  fixture_id: acceptance_gb3_30
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_30
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: acceptance_gb3_30
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 9c209b07aae3c3acb704bcd55d9f1f4925e1fb960cda710baf2ebed69c320b13
+- contract_id: GB3-FINAL-001
+  fixture_id: acceptance_gb3_31
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_31
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: acceptance_gb3_31
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7915b7b04aaa32b1cad47ca54312ca349ed171a4a6924f02a1196262b6a15500
+- contract_id: GB3-FINAL-001
+  fixture_id: contract_gb3_final_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_final_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-FINAL-001
+    fixture_id: contract_gb3_final_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: b2d63ed66143ec95e25e7df3fa5d49759f301963a21f49a8b3a572588b16b60b
+- contract_id: GB3-GEO-001
+  fixture_id: contract_gb3_geo_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_geo_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-GEO-001
+    fixture_id: contract_gb3_geo_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7afdd2be126b1c721436013a1a941f67a94d2c562bddcea4335bd76c62ad1283
+- contract_id: GB3-GEO-002
+  fixture_id: contract_gb3_geo_002
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_geo_002
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-GEO-002
+    fixture_id: contract_gb3_geo_002
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7afa1a276b3ba9b5bc716f30126ad5f42c2a1b8784f0580893fc1ea411c18c83
+- contract_id: GB3-GEO-003
+  fixture_id: contract_gb3_geo_003
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_geo_003
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-GEO-003
+    fixture_id: contract_gb3_geo_003
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 9e1a15a8775de964e7c3169f7d01fa048c33b24c5f49dc3dd3b5a90c0b0a72f4
+- contract_id: GB3-GUARD-001
+  fixture_id: acceptance_gb3_20
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_20
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-GUARD-001
+    fixture_id: acceptance_gb3_20
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: e767b5629e098f682f275789975e845b60eb7e86afe076d222bde0b90ac79fe5
+- contract_id: GB3-GUARD-001
+  fixture_id: contract_gb3_guard_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_guard_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-GUARD-001
+    fixture_id: contract_gb3_guard_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: ff9a6f07f6798a8ed26dbed9cfbed6c8c2a27323ee9bc8e5398d65892224319a
+- contract_id: GB3-HASH-001
+  fixture_id: contract_gb3_hash_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_hash_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-HASH-001
+    fixture_id: contract_gb3_hash_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7a8d58ef61dd0b74833ce75153e78a272aa88b735239041805617407f5760d30
+- contract_id: GB3-ID-001
+  fixture_id: contract_gb3_id_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_id_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-ID-001
+    fixture_id: contract_gb3_id_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 9226e861e59c791ceeba73d535a1b5bcbad064b801504873f7694204a506105f
+- contract_id: GB3-MIG-001
+  fixture_id: acceptance_gb3_18
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_18
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-MIG-001
+    fixture_id: acceptance_gb3_18
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 66af2b55e339e028c5a6719a44a289c6edd73a4d9e028c768d1a6041625d0164
+- contract_id: GB3-MIG-001
+  fixture_id: contract_gb3_mig_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_mig_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-MIG-001
+    fixture_id: contract_gb3_mig_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7546fa324166dafe953b989929a65aa13938ee1553a30525827fe0e602dda881
+- contract_id: GB3-PRIV-001
+  fixture_id: acceptance_gb3_26
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_26
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-PRIV-001
+    fixture_id: acceptance_gb3_26
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 89cea3476e87f3ccc9212117c40790def2a1f5f73143acf3f0228bf1a0a6c5e9
+- contract_id: GB3-PRIV-001
+  fixture_id: contract_gb3_priv_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_priv_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-PRIV-001
+    fixture_id: contract_gb3_priv_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 7f9eda52080616dbf15fc7fbf5af540a41fa2fbdeeb3a26ce30737197092e285
+- contract_id: GB3-REF-001
+  fixture_id: acceptance_gb3_23
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_23
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REF-001
+    fixture_id: acceptance_gb3_23
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 001aea9f2de394c32826fea74991b4153f8393ef8ef447d0e8c9f6ed96bc7371
+- contract_id: GB3-REF-001
+  fixture_id: contract_gb3_ref_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_ref_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REF-001
+    fixture_id: contract_gb3_ref_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 4b784802c45d81c39a4bcd5ccce72bd31e985871b33ab09b94ac9fe891588c07
+- contract_id: GB3-REG-001
+  fixture_id: contract_gb3_reg_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_reg_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REG-001
+    fixture_id: contract_gb3_reg_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 107b2c076734a9c092fd8bacbe6c5959ced7bbfdae1930f9406ff91131d6ca67
+- contract_id: GB3-REL-001
+  fixture_id: acceptance_gb3_10
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_10
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-001
+    fixture_id: acceptance_gb3_10
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 293d7d78f7f2f7097d0a189b6fdbf0d2eff12c0f251d312489fbaf46c7c09575
+- contract_id: GB3-REL-001
+  fixture_id: acceptance_gb3_16
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_16
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-001
+    fixture_id: acceptance_gb3_16
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: db1274c58a65ebd7d98ce3cc23a2f0d583c4edf8b627fa87c96dde698e643fb2
+- contract_id: GB3-REL-001
+  fixture_id: contract_gb3_rel_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_rel_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-001
+    fixture_id: contract_gb3_rel_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 66f5939381ac5f1b6647489f0812839c159430a892108f7f56140ef27ac0d9b9
+- contract_id: GB3-REL-002
+  fixture_id: acceptance_gb3_07
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_07
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-002
+    fixture_id: acceptance_gb3_07
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: df722f10ba952eb941123d08247e5cb353c60c8711d7c85b414d188ca7c1e5b0
+- contract_id: GB3-REL-002
+  fixture_id: acceptance_gb3_15
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_15
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-002
+    fixture_id: acceptance_gb3_15
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: af6f6aefdbd68de09e3a6263f3e5a653b18903dbae45e9c62cd29465fa32e28c
+- contract_id: GB3-REL-002
+  fixture_id: contract_gb3_rel_002
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_rel_002
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-REL-002
+    fixture_id: contract_gb3_rel_002
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 00939690c67600d4c096bead2cfbc9624d0c81eeab82ff6d76d89dde890a0532
+- contract_id: GB3-RES-001
+  fixture_id: acceptance_gb3_25
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_25
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-RES-001
+    fixture_id: acceptance_gb3_25
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 70264cd37ecb659924ac2e2d0eec52a08f20c3c6bd9910228ad9a4d6231ec527
+- contract_id: GB3-RES-001
+  fixture_id: contract_gb3_res_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_res_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-RES-001
+    fixture_id: contract_gb3_res_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: f1aa144677e823b3ba35fdd369bbdd37275f762cb896a2bc9accd02f4da8b26d
+- contract_id: GB3-SCI-001
+  fixture_id: acceptance_gb3_01
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_01
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-001
+    fixture_id: acceptance_gb3_01
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 86e68d5390103dcae3d9b4bd2705b0c1bafc2ba841ff1eed772eb28d4db1c0d2
+- contract_id: GB3-SCI-001
+  fixture_id: acceptance_gb3_13
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_13
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-001
+    fixture_id: acceptance_gb3_13
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: a0c66bbf9b50a7e95d6061708eeb16c99ece403952b1054369dadb45d94d5926
+- contract_id: GB3-SCI-001
+  fixture_id: acceptance_gb3_14
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_14
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-001
+    fixture_id: acceptance_gb3_14
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 6a7a2c199ab2518b607d381d08daae56543d8b992fc677727e64b5865adf28fe
+- contract_id: GB3-SCI-001
+  fixture_id: contract_gb3_sci_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_sci_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-001
+    fixture_id: contract_gb3_sci_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: da7c78e9e49a5fd5eef69e7900e1cce2d26137f446fbb988c63a8254d828946d
+- contract_id: GB3-SCI-002
+  fixture_id: acceptance_gb3_06
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_06
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-002
+    fixture_id: acceptance_gb3_06
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 4263f4b28ada2749c8ed0926653c87a7127fe8f7c72fa7958bc79bc9f86191e4
+- contract_id: GB3-SCI-002
+  fixture_id: acceptance_gb3_08
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_08
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-002
+    fixture_id: acceptance_gb3_08
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 19d3e68f6b4b7a321cb4841e55f28faa5efe9416ce32cb184aa394ba1a31ab9d
+- contract_id: GB3-SCI-002
+  fixture_id: contract_gb3_sci_002
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_sci_002
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-002
+    fixture_id: contract_gb3_sci_002
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 9da8b4bfd12a44d7ca78a9b037df5adbeb3ecfcaef49415b542500ddd9ea26b9
+- contract_id: GB3-SCI-003
+  fixture_id: acceptance_gb3_02
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_02
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-003
+    fixture_id: acceptance_gb3_02
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: e16d6b122924e6bb0d8d39d04898e7d20c045e3eb9394ad2e69dd779bb6eae32
+- contract_id: GB3-SCI-003
+  fixture_id: acceptance_gb3_03
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_03
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-003
+    fixture_id: acceptance_gb3_03
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 41dd5720039034234707a3a3932b42274b645d8c8867da3e534cc4a8f58daa9f
+- contract_id: GB3-SCI-003
+  fixture_id: acceptance_gb3_04
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_04
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-003
+    fixture_id: acceptance_gb3_04
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: e2d51892fb5364a9cad2774f9f35edd10ea02523ba7e3c2e6fe697417884491f
+- contract_id: GB3-SCI-003
+  fixture_id: acceptance_gb3_05
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_05
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-003
+    fixture_id: acceptance_gb3_05
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 4931fa15f066522f925743c98206b08edb91cc8f060269b5a881daf33cbe73c6
+- contract_id: GB3-SCI-003
+  fixture_id: contract_gb3_sci_003
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_sci_003
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-003
+    fixture_id: contract_gb3_sci_003
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: fff2c6e5b9d3f909959abc815d9dee9b7c50a6e7fe07c75b8a1b8dc157200313
+- contract_id: GB3-SCI-004
+  fixture_id: acceptance_gb3_09
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_09
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-004
+    fixture_id: acceptance_gb3_09
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 48636b631223e48ddbaa02c1fd41b2458c3907f4a6d29c8112e9c5ffc47d439a
+- contract_id: GB3-SCI-004
+  fixture_id: acceptance_gb3_11
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_11
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-004
+    fixture_id: acceptance_gb3_11
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 3d02c80fd065596c05036584fe7b395346519e62d5893ca33284735fc22281e0
+- contract_id: GB3-SCI-004
+  fixture_id: contract_gb3_sci_004
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_sci_004
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-SCI-004
+    fixture_id: contract_gb3_sci_004
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: db751d0ee259473a9d9bf56cbcc595a6cd770c4448cea72278323bebadbcad6c
+- contract_id: GB3-STATUS-001
+  fixture_id: acceptance_gb3_27
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_27
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-STATUS-001
+    fixture_id: acceptance_gb3_27
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: fab9d6419004fc24fc6350a24741231f0b774b139552ff40aaa38edecf1932d8
+- contract_id: GB3-STATUS-001
+  fixture_id: contract_gb3_status_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_status_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-STATUS-001
+    fixture_id: contract_gb3_status_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 426db5d18e728e78359d121087c69f5b43f6da4ec3484b8aa461363062bf71de
+- contract_id: GB3-THR-001
+  fixture_id: acceptance_gb3_21
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_21
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-THR-001
+    fixture_id: acceptance_gb3_21
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: d21d910ae95a06c8b6ec46f2c63954c116a091d360977c92326c4c2710537ede
+- contract_id: GB3-THR-001
+  fixture_id: acceptance_gb3_22
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture acceptance_gb3_22
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-THR-001
+    fixture_id: acceptance_gb3_22
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 8abf6e11664957e166b7106b7330c7faab0d8db8e11d0f79eba1d2eae40e91a1
+- contract_id: GB3-THR-001
+  fixture_id: contract_gb3_thr_001
+  repository_relative_test_path: tests/testthat/test_gate_b_v3_phase1_contract.R
+  test_name: Gate B v3 phase-1 fixture contract_gb3_thr_001
+  expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+  expected_result_json:
+    expected_result_schema: stpd_gate_b_v3_phase1_expected_result_v1
+    outcome: pass_exact
+    contract_id: GB3-THR-001
+    fixture_id: contract_gb3_thr_001
+    authority_granted: no
+    release_evidence_created: no
+  expected_result_hash: 73a21ba11884568d645187e04c807ec79f87d772b80c8a4b4189c85a172865ff

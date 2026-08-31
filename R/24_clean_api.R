@@ -8,9 +8,15 @@ run_detector_train <- function(dat, params, min_isi_sec = 0.001, train = "", loc
   run_detector_one_train(dat, params, min_isi_sec = min_isi_sec, train = train, lock_manual = lock_manual)
 }
 run_detector_dataset <- function(ds, params = default_params(), selected_trains = NULL, lock_manual = TRUE, collect_diagnostics = TRUE,
-                                 progress_callback = NULL) {
-  stpd_detect(ds, apply_schema_defaults(params), selected_trains = selected_trains, lock_manual = lock_manual,
-              collect_diagnostics = collect_diagnostics, progress_callback = progress_callback)
+                                 progress_callback = NULL, label_blind = FALSE,
+                                 audit_level = NULL) {
+  args <- list(
+    ds, apply_schema_defaults(params), selected_trains = selected_trains,
+    lock_manual = lock_manual, collect_diagnostics = collect_diagnostics,
+    progress_callback = progress_callback, label_blind = label_blind
+  )
+  if (!is.null(audit_level)) args$audit_level <- audit_level
+  do.call(stpd_detect, args)
 }
 export_detection_results <- export_detection_results_simple
 build_candidate_ledger <- build_candidate_ledger_internal

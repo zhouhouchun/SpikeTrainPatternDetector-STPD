@@ -319,11 +319,30 @@ duplicate_timestamp_details <- function(trains, display_unit = "s") {
   out[order(out$train, out$timestamp_sec), , drop = FALSE]
 }
 
-quality_notification_text <- function(qc) {
-  if (is.null(qc) || nrow(qc) == 0) return("No quality table available.")
+quality_notification_text <- function(qc, lang = "zh") {
+  if (is.null(qc) || nrow(qc) == 0) {
+    return(stpd_ui_copy("qc_table_unavailable", lang = lang))
+  }
   bad <- qc[qc$warning_level %in% c("warning", "error"), , drop = FALSE]
-  if (nrow(bad) == 0) return("Data quality check passed.")
-  paste0(nrow(bad), " train(s) have quality warnings. Open the Data QC tab for details.")
+  if (nrow(bad) == 0) return(stpd_ui_copy("qc_passed", lang = lang))
+  stpd_ui_copy("qc_warning_summary", lang = lang, n = nrow(bad))
+}
+
+# Keep QC storage machine-readable while localizing the explanatory prose in
+# the UI table. Field names, policy values, and numeric diagnostics remain
+# unchanged technical tokens.
+stpd_ui_qc_warning_message <- function(x, lang = "zh") {
+  x <- as.character(x %||% "")
+  if (identical(as.character(lang %||% "zh")[1], "en")) return(x)
+  replacements <- c(
+    "timestamps sorted for detection" = "\u5DF2\u4E3A\u68C0\u6D4B\u5BF9 timestamp \u6392\u5E8F",
+    "pause/global thresholds may be state-dependent" = "pause/global \u9608\u503C\u53EF\u80FD\u4F9D\u8D56\u72B6\u6001",
+    "rows; timestamp-derived ISI used" = "\u884C\uFF1B\u5DF2\u4F7F\u7528\u7531 timestamp \u63A8\u5BFC\u7684 ISI"
+  )
+  for (from in names(replacements)) {
+    x <- gsub(from, unname(replacements[[from]]), x, fixed = TRUE)
+  }
+  x
 }
 
 

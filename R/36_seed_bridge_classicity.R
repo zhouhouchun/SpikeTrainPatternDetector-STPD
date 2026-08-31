@@ -97,11 +97,111 @@ stpd_seed_bridge_thresholds_classicity <- function(dat, params, min_isi_sec = 0.
   )
 }
 
+# Resolve the HFS connector policy independently from the direct-support band.
+# `direct_max_sec` describes ordinary HFS support; an isolated connector can be
+# larger, but it must remain below the train-adaptive Pause boundary.  Keeping
+# these roles separate prevents one moderate ISI from splitting two valid HFS
+# flanks into fragments that subsequently fail the minimum-spike rule.
+stpd_hfs_connector_policy <- function(params, direct_max_sec = NA_real_,
+                                      pause_break_sec = NA_real_,
+                                      epoch_bridge_sec = NA_real_,
+                                      use_param_pause_fallback = FALSE) {
+  hp_public <- (params$spiketrainpattern %||% list())$high_frequency_spiking %||% list()
+  hp_runtime <- params$highfreq %||% list()
+  pause_public <- (params$spiketrainpattern %||% list())$pause %||% list()
+  pause_runtime <- params$pause %||% list()
+  resolved_bands <- (params$event_grammar %||% list())$effective_bands %||% list()
+
+  configured <- suppressWarnings(as.numeric(
+    hp_runtime$spiking_tolerated_gap_ISI_sec %||%
+      hp_public$tolerated_gap_isi_sec %||% 0.075
+  ))[1]
+  if (!is.finite(configured) || configured <= 0) configured <- 0.075
+
+  pause_from_params <- FALSE
+  pause_break_sec <- suppressWarnings(as.numeric(pause_break_sec))[1]
+  if ((!is.finite(pause_break_sec) || pause_break_sec <= 0) &&
+      isTRUE(use_param_pause_fallback)) {
+    pause_break_sec <- suppressWarnings(as.numeric(
+      (resolved_bands$pause %||% list())$seed_lower_sec %||%
+        pause_public$min_isi_sec %||% pause_runtime$T_seed %||% NA_real_
+    ))[1]
+    pause_from_params <- is.finite(pause_break_sec) && pause_break_sec > 0
+  }
+  epoch_bridge_sec <- suppressWarnings(as.numeric(epoch_bridge_sec))[1]
+  if (!is.finite(epoch_bridge_sec) || epoch_bridge_sec <= 0) {
+    epoch_bridge_sec <- suppressWarnings(as.numeric(
+      (resolved_bands$high_frequency_spiking %||% list())$bridge_upper_sec %||%
+        hp_runtime$spiking_epoch_bridge_ISI_sec %||%
+        hp_public$epoch_bridge_isi_sec %||% NA_real_
+    ))[1]
+  }
+
+  direct_max_sec <- suppressWarnings(as.numeric(direct_max_sec))[1]
+  # A Pause-aware allowance makes the connector threshold train-adaptive when
+  # the resolved Pause threshold is train-specific.  No absolute-time cap is
+  # imposed: the ceiling is determined by configured/calibrated support and a
+  # dimensionless direct-support multiplier.  A canonical Pause is never
+  # bridged.
+  connector_ceiling_multiplier <- 1.50
+  structural_scale_values <- c(epoch_bridge_sec, direct_max_sec)
+  structural_scale_values <- structural_scale_values[
+    is.finite(structural_scale_values) & structural_scale_values > 0
+  ]
+  connector_scale <- if (length(structural_scale_values)) {
+    max(structural_scale_values)
+  } else configured
+  scale_ceiling <- connector_scale * connector_ceiling_multiplier
+  pause_allowance <- if (is.finite(pause_break_sec) && pause_break_sec > 0) {
+    min(scale_ceiling, 0.90 * pause_break_sec)
+  } else NA_real_
+  # The relative allowance belongs to HFS itself.  Historically it appeared
+  # only when a (sometimes contextual) Pause seed happened to be available,
+  # so removing the invalid Pause cap also removed legitimate connector
+  # tolerance.  Always derive the bounded 1.5x allowance from the calibrated
+  # HFS scale; an explicitly supplied instance-level Pause bound may still cap
+  # it, but cannot create it.
+  configured_bounded <- min(configured, scale_ceiling)
+  effective <- max(c(configured_bounded, epoch_bridge_sec, direct_max_sec,
+                     scale_ceiling, pause_allowance), na.rm = TRUE)
+  if (!is.finite(effective) || effective <= 0) effective <- configured
+  effective <- min(effective, scale_ceiling)
+  if (is.finite(pause_break_sec) && pause_break_sec > 0) {
+    effective <- min(effective, pause_break_sec * (1 - 1e-9))
+  }
+
+  allowed_large_fraction <- suppressWarnings(as.numeric(
+    hp_runtime$spiking_allowed_large_isi_fraction %||%
+      hp_public$allowed_large_isi_fraction %||% 0.25
+  ))[1]
+  if (!is.finite(allowed_large_fraction)) allowed_large_fraction <- 0.25
+  allowed_large_fraction <- min(max(allowed_large_fraction, 0), 1)
+
+  max_consecutive <- suppressWarnings(as.integer(
+    hp_runtime$spiking_max_consecutive_large_isi %||%
+      hp_public$max_consecutive_large_isi %||% 3L
+  ))[1]
+  if (!is.finite(max_consecutive)) max_consecutive <- 3L
+  max_consecutive <- max(0L, max_consecutive)
+
+  list(
+    direct_max_sec = direct_max_sec,
+    configured_tolerated_gap_sec = configured,
+    effective_tolerated_gap_sec = effective,
+    pause_break_sec = pause_break_sec,
+    pause_allowance_sec = pause_allowance,
+    param_pause_fallback_used = pause_from_params,
+    connector_ceiling_multiplier = connector_ceiling_multiplier,
+    scale_ceiling_sec = scale_ceiling,
+    allowed_large_fraction = allowed_large_fraction,
+    max_consecutive_large_isi = max_consecutive
+  )
+}
+
 # Override event arbitration pattern-specific final gate with seed-bridge robust semantics.
 # Burst-family Max_ISI is interpreted as a core/q90 ceiling, not as "every ISI must be <= Max_ISI".
-# HF-spiking Max_ISI is a user-facing hard ceiling.  The separate HF-spiking
-# q90/tolerated-gap controls can still allow moderate internal variability when
-# this pattern-specific gate is disabled.
+# HFS uses the same distinction: Max_ISI is the direct-support/q90 ceiling,
+# while a small minority of Pause-bounded connector ISIs may be larger.
 stpd_pattern_isi_gate_pass <- function(vals, label, params, min_isi_sec = 0.001) {
   lim <- stpd_pattern_isi_limits_for_label(label, params)
   vals <- suppressWarnings(as.numeric(vals))
@@ -124,8 +224,29 @@ stpd_pattern_isi_gate_pass <- function(vals, label, params, min_isi_sec = 0.001)
     reason <- paste(c(if (!min_pass) "below_pattern_Min_ISI", if (!max_pass) "burst_family_q90_above_pattern_Max_ISI"), collapse = ";")
   } else if (label == "high_frequency_spiking") {
     min_pass <- !min_active || all(vals >= lim$min_sec, na.rm = TRUE)
-    max_pass <- !max_active || all(vals <= lim$max_sec, na.rm = TRUE)
-    reason <- paste(c(if (!min_pass) "below_pattern_Min_ISI", if (!max_pass) "hf_spiking_above_pattern_Max_ISI"), collapse = ";")
+    connector <- stpd_hfs_connector_policy(params, direct_max_sec = lim$max_sec)
+    large_flag <- if (max_active) vals > lim$max_sec else rep(FALSE, length(vals))
+    large_fraction <- if (length(large_flag)) mean(large_flag, na.rm = TRUE) else 0
+    large_run <- if (any(large_flag, na.rm = TRUE)) {
+      max(rle(as.logical(large_flag))$lengths[rle(as.logical(large_flag))$values])
+    } else 0L
+    q90_pass <- !max_active || (is.finite(q90) && q90 <= lim$max_sec)
+    connector_ceiling_pass <- !max_active || all(
+      vals <= connector$effective_tolerated_gap_sec, na.rm = TRUE
+    )
+    connector_fraction_pass <- !max_active ||
+      large_fraction <= max(0.30, connector$allowed_large_fraction)
+    connector_run_pass <- !max_active ||
+      large_run <= max(2L, connector$max_consecutive_large_isi)
+    max_pass <- q90_pass && connector_ceiling_pass &&
+      connector_fraction_pass && connector_run_pass
+    reason <- paste(c(
+      if (!min_pass) "below_pattern_Min_ISI",
+      if (!q90_pass) "hf_spiking_q90_above_direct_support_Max_ISI",
+      if (!connector_ceiling_pass) "hf_spiking_connector_above_tolerated_gap",
+      if (!connector_fraction_pass) "hf_spiking_connector_fraction_exceeded",
+      if (!connector_run_pass) "hf_spiking_consecutive_connectors_exceeded"
+    ), collapse = ";")
   } else if (label == "high_frequency_tonic") {
     min_pass <- !min_active || (is.finite(q10) && q10 >= lim$min_sec)
     max_pass <- !max_active || (is.finite(q90) && q90 <= lim$max_sec)
@@ -395,7 +516,10 @@ stpd_seed_bridge_detect_hf_tonic <- function(dat, params, min_isi_sec = 0.001, t
   if (!is.finite(floor_min) || floor_min <= 0) floor_min <- th$core_thr * 1.10
   low_tail_max <- stpd_seed_bridge_num(hp$tonic_low_tail_fraction_max %||% 0.05, 0.05)
   low_tail_max <- max(0, min(1, low_tail_max))
-  veto_core <- isTRUE(hp$tonic_burst_core_veto %||% TRUE)
+  # Retain this legacy parameter as provenance only.  A detected or burst-like
+  # Event cannot delete an HFT State; State geometry is decided from frozen
+  # frequency/regularity evidence and hard boundaries (D-021).
+  veto_core_requested <- isTRUE(hp$tonic_burst_core_veto %||% FALSE)
   veto_core_min <- max(1L, stpd_seed_bridge_int(hp$tonic_burst_core_veto_min_isi_n %||% bp$seed_bridge_burst_core_min_isi_n %||% 2L, 2L))
   classicity_min <- stpd_seed_bridge_num(bp$seed_bridge_burst_classicity_multiplier %||% bp$canonical_burst_edge_multiplier %||% 3.0, 3.0)
 
@@ -426,11 +550,11 @@ stpd_seed_bridge_detect_hf_tonic <- function(dat, params, min_isi_sec = 0.001, t
     if (!is.finite(low_tail)) low_tail <- 0
     low_tail_pass <- (is.finite(q10) && q10 >= floor_min) || low_tail <= low_tail_max
     core_consec <- stpd_seed_bridge_max_consecutive_true((isi[idx] <= th$core_thr) & valid[idx])
-    core_veto_pass <- !veto_core || core_consec < veto_core_min
+    core_veto_pass <- TRUE
     stable <- is.finite(m$CV) && is.finite(m$LV) && is.finite(m$MM) && m$CV <= stable_cv && m$LV <= stable_lv && m$MM <= stable_mm
     short_frac <- mean(vals <= hf_max, na.rm = TRUE)
     no_classic_boundary <- !(is.finite(m$edge_ratio) && m$edge_ratio >= classicity_min && is.finite(m$pre_gap_sec) && is.finite(m$post_gap_sec))
-    pass <- stable && short_frac >= short_frac_min && low_tail_pass && core_veto_pass && no_classic_boundary
+    pass <- stable && short_frac >= short_frac_min && low_tail_pass
     if (!pass) next
     extra <- list(
       train = as.character(train %||% ""),
@@ -440,9 +564,11 @@ stpd_seed_bridge_detect_hf_tonic <- function(dat, params, min_isi_sec = 0.001, t
       hf_tonic_low_tail_pass = low_tail_pass,
       hf_tonic_core_run_len = as.integer(core_consec),
       hf_tonic_core_veto_pass = core_veto_pass,
+      hf_tonic_core_veto_requested = veto_core_requested,
+      hf_tonic_core_veto_applied = FALSE,
       hf_tonic_no_classic_boundary = no_classic_boundary
     )
-    rows[[length(rows) + 1L]] <- stpd_seed_bridge_enrich_candidate_metrics(m, "seed_bridge_hf_tonic_state", "high_frequency_tonic", "hf_tonic_pass", "regular_hf_state_above_burst_core_floor", "accept", -m$LV, extra)
+    rows[[length(rows) + 1L]] <- stpd_seed_bridge_enrich_candidate_metrics(m, "seed_bridge_hf_tonic_state", "high_frequency_tonic", "hf_tonic_pass", "regular_hf_state_with_non_destructive_event_overlay", "accept", -m$LV, extra)
   }
   if (length(rows) == 0) return(empty)
   dplyr::bind_rows(rows)

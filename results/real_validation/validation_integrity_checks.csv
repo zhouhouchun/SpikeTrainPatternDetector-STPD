@@ -1,0 +1,10 @@
+"region","regime","files_complete","alignment_exact","manual_example_n","runtime_seconds"
+"GPE","automatic",TRUE,TRUE,0,587.998986005783
+"GPE","partial_known",TRUE,TRUE,200,587.86981368065
+"GPE","full_params",TRUE,TRUE,936,575.545070171356
+"STN","automatic",TRUE,TRUE,0,567.331071138382
+"STN","partial_known",TRUE,TRUE,200,580.2483959198
+"STN","full_params",TRUE,TRUE,5328,573.587234020233
+"GPI","automatic",TRUE,TRUE,0,494.33927989006
+"GPI","partial_known",TRUE,TRUE,250,600.56846356392
+"GPI","full_params",TRUE,TRUE,2258,420.936712026596

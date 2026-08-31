@@ -160,6 +160,12 @@ peri-event rasters, neuron-level PSTHs, population mean firing-rate summaries,
 baseline z-scored heatmaps, spike-count correlations and cross-correlograms.
 These outputs are downstream explanatory analyses and do not change the core
 event grammar.
+
+Event-level validation uses one-to-one matching within train and event class.
+The matching objective first maximizes the number of pairs meeting the IoU
+threshold and then maximizes total IoU, so one truth event cannot be credited to
+multiple predictions and a greedy high-IoU edge cannot reduce the attainable
+true-positive count.
 }
 \usage{
 stpd_csv_input_policy_notes()

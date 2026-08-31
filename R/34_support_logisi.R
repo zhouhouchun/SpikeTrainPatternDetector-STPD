@@ -626,3 +626,135 @@ stpd_logisi_support_export <- function(support, out_dir) {
   if (!is.null(support$support_report) && nrow(support$support_report) > 0) write_csv_safe(support$support_report, file.path(out_dir, "Burst_threshold_support_LogISI.csv"), row.names = FALSE, fileEncoding = "UTF-8")
   invisible(out_dir)
 }
+
+# Import an article-method threshold into the editable detector parameter set.
+# This is deliberately an explicit operation: running a support method alone
+# never changes AUTO labels or detector parameters.
+stpd_apply_support_threshold_to_params <- function(
+  params,
+  support,
+  method = c("mean_isi", "logisi"),
+  activate = TRUE,
+  aggregation = c("median")
+) {
+  method <- match.arg(method)
+  aggregation <- match.arg(aggregation)
+  if (!is.list(support) || !is.data.frame(support$thresholds)) {
+    stop("Support result must contain a thresholds data frame.", call. = FALSE)
+  }
+
+  thresholds <- support$thresholds
+  required <- c("train", "threshold_sec", "threshold_status")
+  missing <- setdiff(required, names(thresholds))
+  if (length(missing) > 0L) {
+    stop("Support threshold table is missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+
+  status <- tolower(trimws(as.character(thresholds$threshold_status)))
+  value <- suppressWarnings(as.numeric(thresholds$threshold_sec))
+  resolved <- grepl("^resolved", status) & !grepl("^unresolved", status) &
+    is.finite(value) & value > 0
+  if (!any(resolved)) {
+    stop("No resolved positive support threshold is available for import.", call. = FALSE)
+  }
+
+  resolved_values <- value[resolved]
+  threshold_sec <- switch(
+    aggregation,
+    median = stats::median(resolved_values, na.rm = TRUE)
+  )
+  if (!is.finite(threshold_sec) || threshold_sec <= 0) {
+    stop("The aggregated support threshold is not a positive finite value.", call. = FALSE)
+  }
+
+  report <- support$support_report
+  bridge_values <- numeric()
+  if (is.data.frame(report) && nrow(report) > 0L) {
+    report_train <- as.character(report$train %||% rep("", nrow(report)))
+    resolved_train <- unique(as.character(thresholds$train[resolved]))
+    use_report <- report_train %in% resolved_train
+    suggested <- if ("suggested_burst_max_ISI_sec" %in% names(report)) {
+      suppressWarnings(as.numeric(report$suggested_burst_max_ISI_sec[use_report]))
+    } else rep(NA_real_, sum(use_report))
+    q95 <- if ("burst_isi_q95_sec" %in% names(report)) {
+      suppressWarnings(as.numeric(report$burst_isi_q95_sec[use_report]))
+    } else rep(NA_real_, sum(use_report))
+    candidate <- ifelse(is.finite(suggested) & suggested > 0, suggested, q95)
+    bridge_values <- candidate[is.finite(candidate) & candidate > 0]
+  }
+  bridge_sec <- if (length(bridge_values) > 0L) {
+    max(threshold_sec, stats::median(bridge_values, na.rm = TRUE))
+  } else {
+    threshold_sec
+  }
+
+  p <- params
+  if (!is.list(p)) p <- default_params_sec()
+  p$burst <- p$burst %||% list()
+  p$detector <- p$detector %||% list()
+  p$event_core <- p$event_core %||% list()
+  p$event_grammar <- p$event_grammar %||% list()
+  p$event_grammar$user <- p$event_grammar$user %||% list()
+  p$spiketrainpattern <- p$spiketrainpattern %||% list()
+  p$spiketrainpattern$engine <- p$spiketrainpattern$engine %||% list()
+  p$spiketrainpattern$burst <- p$spiketrainpattern$burst %||% list()
+  p$metadata <- p$metadata %||% list()
+
+  if (identical(method, "mean_isi")) {
+    p$burst$T_MI <- threshold_sec
+  } else {
+    p$burst$T_log <- threshold_sec
+    p$burst$T_log_method <- "pasquale_logisi"
+    p$burst$T_log_status <- "resolved_imported_support"
+    p$burst$T_log_resolved_n <- as.integer(sum(resolved))
+    p$burst$T_log_unresolved_n <- as.integer(sum(!resolved))
+  }
+
+  if (isTRUE(activate)) {
+    min_valid <- suppressWarnings(as.numeric(p$detector$min_valid_isi_sec %||% 0.001))
+    if (!is.finite(min_valid) || min_valid < 0) min_valid <- 0.001
+    current_lower <- suppressWarnings(as.numeric(
+      p$spiketrainpattern$burst$seed_lower_sec %||%
+        p$event_core$seed_band_lower_sec %||% min_valid
+    ))
+    if (!is.finite(current_lower) || current_lower < 0 || current_lower >= threshold_sec) {
+      current_lower <- max(0, min(min_valid, threshold_sec * 0.5))
+      if (current_lower >= threshold_sec) current_lower <- threshold_sec * 0.5
+    }
+    contrast <- suppressWarnings(as.numeric(
+      (p$event_grammar$user$burst %||% list())$contrast_S %||%
+        p$event_core$burst_contrast_min %||%
+        p$spiketrainpattern$burst$contrast_min %||% 2.5
+    ))
+    if (!is.finite(contrast) || contrast <= 0) contrast <- 2.5
+
+    p$burst$T_seed <- threshold_sec
+    p$burst$T_bridge <- bridge_sec
+    p$event_core$seed_band_lower_sec <- current_lower
+    p$event_core$seed_band_upper_sec <- threshold_sec
+    p$event_core$bridge_band_upper_sec <- bridge_sec
+    p$event_grammar$threshold_source_mode <- "user"
+    p$event_grammar$user$burst <- list(
+      enable = TRUE,
+      seed_lower_sec = current_lower,
+      seed_upper_sec = threshold_sec,
+      bridge_upper_sec = bridge_sec,
+      contrast_S = contrast
+    )
+    p$spiketrainpattern$engine$threshold_source_mode <- "user"
+    p$spiketrainpattern$burst$seed_lower_sec <- current_lower
+    p$spiketrainpattern$burst$seed_upper_sec <- threshold_sec
+    p$spiketrainpattern$burst$bridge_upper_sec <- bridge_sec
+  }
+
+  p$metadata$support_threshold_import <- list(
+    method = method,
+    threshold_sec = threshold_sec,
+    bridge_upper_sec = bridge_sec,
+    aggregation = aggregation,
+    n_resolved_trains = as.integer(sum(resolved)),
+    trains = sort(unique(as.character(thresholds$train[resolved]))),
+    activated = isTRUE(activate)
+  )
+  p
+}

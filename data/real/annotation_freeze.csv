@@ -1,0 +1,4 @@
+region,public_workbook,sheet_n,row_n,reference_eligible_train_n,scored_isi_n,sha256,freeze_date
+GPe,PD_GPe_manual_isi_labels.xlsx,16,28635,13,23270,9ee5c50f04b15c265c7840c4a5235f4cee406252ff788d289f6de073218251a7,2026-08-31
+STN,PD_STN_manual_isi_labels.xlsx,23,16705,23,13839,42d246192b9051b82fc979e696619d804051503a21ca65183fd59abaa781d30e,2026-08-31
+GPi,PD_GPi_manual_isi_labels.xlsx,23,19819,21,16042,eac8ec1be5dc17d7e92163461fc6af19821e4b73613ca69afdad2fe50695e26d,2026-08-31

@@ -582,3 +582,17 @@ stpd_add_distributional_results <- function(ds,
   )
   ds
 }
+
+stpd_distributional_results_complete <- function(ds) {
+  results <- ds$results %||% list()
+  required <- c(
+    "event_distribution_evidence",
+    "train_distribution_features",
+    "spike_count_pmf",
+    "distributional_evidence_note"
+  )
+  all(vapply(required, function(name) {
+    value <- results[[name]]
+    is.data.frame(value)
+  }, logical(1)))
+}

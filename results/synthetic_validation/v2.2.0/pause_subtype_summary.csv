@@ -1,0 +1,7 @@
+"Scale_Factor","Pause_Subtype","Truth_ISI_N","Detected_ISI_N","Support_Recall","Truth_Episode_N","Overlapped_Episode_N","Episode_Any_Overlap_Recall","Fragmented_Episode_N","Fragmentation_Rate_Among_Overlapped"
+1,"canonical",30,30,1,30,30,1,0,0
+1,"complex_multi_gap",19,15,0.789473684210526,8,8,1,0,0
+4,"canonical",30,30,1,30,30,1,0,0
+4,"complex_multi_gap",19,15,0.789473684210526,8,8,1,0,0
+10,"canonical",30,30,1,30,30,1,0,0
+10,"complex_multi_gap",19,15,0.789473684210526,8,8,1,0,0

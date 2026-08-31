@@ -1,0 +1,14 @@
+{
+  "dataset_version": "2.3.0",
+  "threshold_fit_templates": ["TPL_001", "TPL_002", "TPL_003", "TPL_004", "TPL_005"],
+  "holdout_evaluation_templates": ["TPL_006", "TPL_007", "TPL_008", "TPL_009", "TPL_010", "TPL_011", "TPL_012", "TPL_013", "TPL_014", "TPL_015", "TPL_016", "TPL_017", "TPL_018", "TPL_019", "TPL_020"],
+  "threshold_fit_statistic": "template_equal_balanced_accuracy",
+  "threshold_tie_break": "median_threshold_among_maximum_development_template_equal_balanced_accuracy",
+  "bootstrap_cluster": "Template_ID",
+  "bootstrap_replicates": 1000,
+  "scale_use": "dimensionless_mother_templates_only",
+  "detector_output_used": false,
+  "holdout_performance_metrics_used_for_parameter_or_model_selection": false,
+  "prespecified_structural_integrity_checks_applied_to_all_templates": true,
+  "changing_generator_after_holdout_review_requires_new_version_and_new_holdout": true
+}

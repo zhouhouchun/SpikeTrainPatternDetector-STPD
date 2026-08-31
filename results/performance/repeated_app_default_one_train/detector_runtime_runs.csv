@@ -1,0 +1,4 @@
+"profile","repeat_id","train_n","spike_n","isi_n","elapsed_seconds","user_seconds","system_seconds","seconds_per_train","seconds_per_1000_isi","isi_per_second","approximate_peak_r_heap_mib","result_object_mib","collect_diagnostics","audit_level","label_blind","manual_example_n","threshold_source_mode","input_sha256"
+"app_default",1,1,1436,1435,46.265,45.974,0.218,46.265,32.2404181184669,31.0169674700097,418.8,19.0866165161133,TRUE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"
+"app_default",2,1,1436,1435,43.592,43.365,0.178,43.592,30.3777003484321,32.9188841989356,419.1,19.0866165161133,TRUE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"
+"app_default",3,1,1436,1435,43.933,43.703,0.184,43.933,30.615331010453,32.6633737737009,418.8,19.0866165161133,TRUE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"

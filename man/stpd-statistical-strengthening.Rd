@@ -31,7 +31,7 @@ stpd_event_level_cluster_bootstrap(pred, truth, class_col = "pattern",
 
 stpd_freeze_thresholds_for_trains(ds, params = default_params_sec(),
   calibration_trains = NULL, min_isi_sec = NULL, bin_width_sec = NULL,
-  freeze_scope = "calibration")
+  freeze_scope = "calibration", label_blind = FALSE)
 
 stpd_score_calibration(pred, truth, score_col = "auto_score",
   class_col = "pattern", iou_min = 0.25, n_bins = 10L,
@@ -65,10 +65,12 @@ stpd_manual_label_uncertainty_report(pred = NULL, truth = NULL,
 
 stpd_train_validation_strata(ds, params = default_params_sec(),
   selected_trains = NULL, metadata = NULL, strata_cols = NULL,
-  metric_mode = c("strict_high_confidence", "candidate_family"))
+  metric_mode = c("strict_high_confidence", "candidate_family"),
+  group_col = NULL)
 
 stpd_stratified_train_splits(strata_table, validation_fraction = 0.25,
-  n_repeats = 50L, seed = 1L, min_validation_trains = 1L)
+  n_repeats = 50L, seed = 1L, min_validation_trains = 1L,
+  group_col = NULL)
 
 stpd_repeated_train_holdout_validation(ds, params = default_params_sec(),
   selected_trains = NULL, metadata = NULL, strata_cols = NULL,
@@ -76,15 +78,16 @@ stpd_repeated_train_holdout_validation(ds, params = default_params_sec(),
   nested_tuning = FALSE, tuning_paths = NULL, max_tuning_params = 4L,
   relative_step = 0.25, iou_min = 0.25,
   metric_mode = c("strict_high_confidence", "candidate_family"),
-  use_learned_ranges = TRUE, threshold_freeze = c("calibration", "none"),
-  collect_diagnostics = FALSE)
+  use_learned_ranges = FALSE, threshold_freeze = c("calibration", "none"),
+  collect_diagnostics = FALSE, group_col = NULL)
 
 stpd_nested_tune_params(ds, params, calibration_trains, paths = NULL,
   max_params = 4L, relative_step = 0.25,
   inner_validation_fraction = 0.25, seed = 1L, iou_min = 0.25,
   metric_mode = c("strict_high_confidence", "candidate_family"),
-  use_learned_ranges = TRUE, collect_diagnostics = FALSE,
-  selection_metric = c("macro_F1", "macro_recall", "macro_precision"))
+  use_learned_ranges = FALSE, collect_diagnostics = FALSE,
+  selection_metric = c("macro_F1", "macro_recall", "macro_precision"),
+  metadata = NULL, strata_cols = NULL, group_col = NULL)
 
 stpd_parameter_sensitivity_adjustment(summary, train_metrics,
   baseline_variant_id = "baseline_current", alpha = 0.05,
@@ -113,6 +116,8 @@ stpd_detector_surrogate_false_alarm(ds, params = default_params_sec(),
 \item{min_isi_sec}{Optional minimum valid ISI for threshold resolution.}
 \item{bin_width_sec}{Optional histogram bin width for threshold resolution.}
 \item{freeze_scope}{Text label stored in threshold-resolution metadata.}
+\item{label_blind}{Whether adjudication-derived ranges and thresholds are
+removed before calibration thresholds are resolved.}
 \item{score_col}{Predicted-event score column used for calibration.}
 \item{method}{Score calibration method: Platt logistic scaling or isotonic regression.}
 \item{n_bins}{Number of score bins. Quantile bins are used when possible.}
@@ -125,18 +130,19 @@ stpd_detector_surrogate_false_alarm(ds, params = default_params_sec(),
 \item{rater_events}{Event table or named list of event tables containing manual labels from multiple raters.}
 \item{rater_col}{Column containing rater identifiers.}
 \item{metadata}{Optional train-level metadata table with a \code{train} column.}
-\item{strata_cols}{Columns used to build stratified train-level holdout strata.}
+\item{strata_cols}{Columns used to build stratified holdout strata. Group membership is never split across calibration and validation.}
+\item{group_col}{Optional subject, animal, session, or other grouping column used as the indivisible holdout unit. If omitted, grouping is resolved in the stable order subject, animal, session, then train. Missing group values fall back to the individual train.}
 \item{strata_table}{Output from \code{stpd_train_validation_strata()}.}
-\item{validation_fraction}{Fraction of labeled trains assigned to validation.}
+\item{validation_fraction}{Target fraction of independently grouped labeled units assigned to validation.}
 \item{n_repeats}{Number of repeated holdout splits.}
-\item{min_validation_trains}{Minimum validation trains per repeated split when possible.}
+\item{min_validation_trains}{Minimum number of validation groups per repeated split when possible. The legacy argument name is retained for compatibility.}
 \item{nested_tuning}{Whether parameter variants are selected inside each outer calibration split.}
 \item{tuning_paths, paths}{Parameter paths considered during nested tuning.}
 \item{max_tuning_params, max_params}{Maximum number of parameter paths considered.}
 \item{relative_step}{Relative perturbation size for numeric parameter variants.}
 \item{use_learned_ranges}{Whether learned train ranges are retained during validation.}
 \item{selection_metric}{Metric used to select nested-tuning variants.}
-\item{inner_validation_fraction}{Fraction of outer calibration trains held out for inner validation during nested tuning.}
+\item{inner_validation_fraction}{Target fraction of outer calibration groups held out for inner validation during nested tuning.}
 \item{threshold_freeze}{Whether validation reports freeze thresholds on calibration trains or leave threshold behavior unchanged.}
 \item{summary}{Parameter-sensitivity summary table.}
 \item{train_metrics}{Train-paired metric table used for sign-flip tests.}
@@ -180,9 +186,13 @@ multiple IoU thresholds. \code{stpd_inter_rater_reliability()} computes pairwise
 event-level agreement and Cohen-style label kappa for multiple manual raters.
 Ambiguous manual labels are excluded from primary metrics by default.
 
-\code{stpd_repeated_train_holdout_validation()} repeats stratified train-level
-holdout splits and can run nested parameter tuning inside the outer calibration
-split. \code{stpd_parameter_sensitivity_adjustment()} adds train-paired
+\code{stpd_repeated_train_holdout_validation()} repeats stratified,
+group-exclusive holdout splits and can run nested parameter tuning inside the
+outer calibration split. Subject, animal, or session groups are kept wholly on
+one side of every split. If fewer than two independent labeled groups are
+available, the helpers return a structured \code{not_estimable} result and do
+not run the detector or synthesize performance estimates.
+\code{stpd_parameter_sensitivity_adjustment()} adds train-paired
 sign-flip p-values, Benjamini-Hochberg q-values and robust-parameter flags to
 parameter-sensitivity scans.
 

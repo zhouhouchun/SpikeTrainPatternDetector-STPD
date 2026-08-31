@@ -1,0 +1,7 @@
+"Split","Truth_Level","Freq","Audit_Domain"
+"development","primary_canonical",10,"Pause_and_secondary_gap"
+"holdout","primary_canonical",30,"Pause_and_secondary_gap"
+"development","primary_complex_multi_gap",2,"Pause_and_secondary_gap"
+"holdout","primary_complex_multi_gap",8,"Pause_and_secondary_gap"
+"development","secondary_borderline_gap",5,"Pause_and_secondary_gap"
+"holdout","secondary_borderline_gap",15,"Pause_and_secondary_gap"

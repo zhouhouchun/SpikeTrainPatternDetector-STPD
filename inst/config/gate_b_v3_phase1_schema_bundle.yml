@@ -1,0 +1,3148 @@
+bundle_schema: stpd_gate_b_v3_phase1_schema_bundle_1
+plan_sha256: eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5
+normative_contract_sha256: 4de7921837fdd5c3fcb9a6c07a4742bfc4686023ae37b6f442440dab2044c8f6
+generated_from_frozen_contract: yes
+schema_constants:
+  schema_version: stpd_multitrack_v3_1
+  status_schema: stpd_multitrack_v3_status_1
+  identity_schema: stpd_multitrack_v3_identity_1
+  auto_product_kind: auto
+  final_product_kind: final
+  auto_schema: stpd_multitrack_auto_v3
+  final_schema: stpd_multitrack_final_v3
+  canonical_table_schema: stpd_canonical_table_v1
+  canonical_manifest_schema: stpd_canonical_manifest_v1
+  artifact_manifest_schema: stpd_artifact_manifest_v1
+  reference_schema: stpd_multitrack_reference_v1
+enums:
+  state_frequency_class:
+  - high
+  - non_high
+  - unresolved
+  state_regularity_class:
+  - regular
+  - irregular
+  - unresolved
+  evidence_status:
+  - pass
+  - fail
+  - gray_zone
+  - insufficient
+  state_class:
+  - high_frequency_irregular_state
+  - high_frequency_tonic
+  - tonic
+  segment_role:
+  - direct_support
+  - tolerated_connector
+  product_status:
+  - not_present
+  - materializing
+  - candidate_pending
+  - gate_b_authoritative
+  - failed_closed
+  - requires_redetection
+  integrity_level:
+  - none
+  - detached_internal_integrity
+  - parent_bound_recomputed
+  - externally_anchored_product
+  candidate_status:
+  - pending_review
+  - review_confirmed
+  - review_rejected
+  consumer_status:
+  - ok
+  - not_present
+  - pending_not_official
+  - failed_closed
+  - requires_redetection
+  - unsupported_transition_for_schema
+  - unknown_schema
+  - integrity_insufficient
+  - attestation_invalid
+  - product_anchor_missing
+  - version_conflict
+  - corrupt_product
+tables:
+  product_status_envelope:
+    source_block_start: 236
+    columns:
+    - name: status_schema
+      type: chr
+      nullable: no
+    - name: product_kind
+      type: chr
+      nullable: no
+    - name: product_status
+      type: chr
+      nullable: no
+    - name: execution_id
+      type: chr
+      nullable: yes
+    - name: detection_root_id
+      type: chr
+      nullable: yes
+    - name: product_hash
+      type: chr
+      nullable: yes
+    - name: gate_b_status
+      type: chr
+      nullable: no
+    - name: gate_c_status
+      type: chr
+      nullable: no
+    - name: authority_scope
+      type: chr
+      nullable: no
+    - name: record_authoritative
+      type: lgl
+      nullable: no
+    - name: biological_ground_truth
+      type: lgl
+      nullable: no
+    - name: reference_standard_status
+      type: chr
+      nullable: no
+    - name: detector_performance_eligible
+      type: lgl
+      nullable: no
+    - name: integrity_level
+      type: chr
+      nullable: no
+    - name: failure_stage
+      type: chr
+      nullable: yes
+    - name: failure_code_registry_id
+      type: chr
+      nullable: yes
+    - name: requires_redetection_reason_registry_id
+      type: chr
+      nullable: yes
+    - name: release_attestation_hash
+      type: chr
+      nullable: yes
+    - name: product_attestation_hash
+      type: chr
+      nullable: yes
+    - name: reference_manifest_hash
+      type: chr
+      nullable: yes
+  materialized_product_identity:
+    source_block_start: 255
+    columns:
+    - name: identity_schema
+      type: chr
+      nullable: no
+    - name: product_kind
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: product_context_hash
+      type: chr
+      nullable: no
+    - name: parent_auto_product_hash
+      type: chr
+      nullable: yes
+    - name: history_head_hash
+      type: chr
+      nullable: yes
+    - name: canonical_manifest_core_hash
+      type: chr
+      nullable: no
+    - name: product_hash
+      type: chr
+      nullable: no
+    - name: contract_sha256
+      type: chr
+      nullable: no
+    - name: schema_contract_sha256
+      type: chr
+      nullable: no
+  state_candidates:
+    source_block_start: 271
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: state_candidate_id
+      type: chr
+      nullable: no
+    - name: candidate_generation_rule_registry_id
+      type: chr
+      nullable: no
+    - name: source_candidate_key_hash
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: candidate_decision
+      type: chr
+      nullable: no
+    - name: state_axis_evidence_id
+      type: chr
+      nullable: no
+    - name: decision_reason_registry_id
+      type: chr
+      nullable: no
+    - name: lineage_id
+      type: chr
+      nullable: no
+    primary_key:
+    - state_candidate_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - state_candidate_id
+  state_episodes:
+    source_block_start: 284
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: state_episode_id
+      type: chr
+      nullable: no
+    - name: state_class
+      type: chr
+      nullable: no
+    - name: state_frequency_class
+      type: chr
+      nullable: no
+    - name: state_regularity_class
+      type: chr
+      nullable: no
+    - name: frequency_evidence_status
+      type: chr
+      nullable: no
+    - name: regularity_evidence_status
+      type: chr
+      nullable: no
+    - name: classification_rule_registry_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: envelope_duration_sec
+      type: dbl
+      nullable: no
+    - name: direct_support_n_isi
+      type: int
+      nullable: no
+    - name: connector_n_isi
+      type: int
+      nullable: no
+    - name: direct_support_duration_sec
+      type: dbl
+      nullable: no
+    - name: connector_duration_sec
+      type: dbl
+      nullable: no
+    - name: support_fraction
+      type: dbl
+      nullable: no
+    - name: classification_evidence_id
+      type: chr
+      nullable: no
+    - name: record_status
+      type: chr
+      nullable: no
+    primary_key:
+    - state_episode_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - state_class
+    - state_episode_id
+  state_segments:
+    source_block_start: 306
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: state_segment_id
+      type: chr
+      nullable: no
+    - name: state_episode_id
+      type: chr
+      nullable: no
+    - name: segment_index
+      type: int
+      nullable: no
+    - name: segment_role
+      type: chr
+      nullable: no
+    - name: state_class
+      type: chr
+      nullable: no
+    - name: state_frequency_class
+      type: chr
+      nullable: no
+    - name: state_regularity_class
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: segment_rule_registry_id
+      type: chr
+      nullable: no
+    - name: source_state_candidate_id
+      type: chr
+      nullable: yes
+    - name: state_axis_evidence_id
+      type: chr
+      nullable: yes
+    - name: connector_decision_id
+      type: chr
+      nullable: yes
+    - name: lineage_id
+      type: chr
+      nullable: no
+    primary_key:
+    - state_segment_id
+    sort_key:
+    - train
+    - state_episode_id
+    - segment_index
+  per_isi:
+    source_block_start: 320
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: isi_index
+      type: int
+      nullable: no
+    - name: left_spike_index
+      type: int
+      nullable: no
+    - name: right_spike_index
+      type: int
+      nullable: no
+    - name: isi_start_time_sec
+      type: dbl
+      nullable: no
+    - name: isi_end_time_sec
+      type: dbl
+      nullable: no
+    - name: isi_sec
+      type: dbl
+      nullable: no
+    - name: state_episode_id
+      type: chr
+      nullable: yes
+    - name: episode_state_class
+      type: chr
+      nullable: yes
+    - name: state_episode_membership
+      type: lgl
+      nullable: no
+    - name: state_segment_id
+      type: chr
+      nullable: yes
+    - name: state_segment_role
+      type: chr
+      nullable: yes
+    - name: active_state_segment_id
+      type: chr
+      nullable: yes
+    - name: active_state_class
+      type: chr
+      nullable: yes
+    - name: state_direct_support
+      type: lgl
+      nullable: no
+    - name: event_id
+      type: chr
+      nullable: yes
+    - name: gap_id
+      type: chr
+      nullable: yes
+    - name: controlling_boundary_id
+      type: chr
+      nullable: yes
+    primary_key:
+    - detection_root_id
+    - train
+    - isi_index
+    sort_key:
+    - train
+    - isi_index
+  event_candidates:
+    source_block_start: 337
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: event_candidate_id
+      type: chr
+      nullable: no
+    - name: candidate_generation_rule_registry_id
+      type: chr
+      nullable: no
+    - name: source_candidate_key_hash
+      type: chr
+      nullable: no
+    - name: candidate_class
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: candidate_decision
+      type: chr
+      nullable: no
+    - name: decision_reason_registry_id
+      type: chr
+      nullable: no
+    - name: base_event_evidence_id
+      type: chr
+      nullable: no
+    - name: lineage_id
+      type: chr
+      nullable: no
+    primary_key:
+    - event_candidate_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - event_candidate_id
+  events:
+    source_block_start: 351
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: event_id
+      type: chr
+      nullable: no
+    - name: event_class
+      type: chr
+      nullable: no
+    - name: extent_modifier
+      type: chr
+      nullable: no
+    - name: frequency_modifier
+      type: chr
+      nullable: no
+    - name: base_event_evidence_id
+      type: chr
+      nullable: no
+    - name: extent_evidence_status
+      type: chr
+      nullable: no
+    - name: extent_modifier_evidence_id
+      type: chr
+      nullable: no
+    - name: frequency_evidence_status
+      type: chr
+      nullable: no
+    - name: frequency_modifier_evidence_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: record_status
+      type: chr
+      nullable: no
+    - name: lineage_id
+      type: chr
+      nullable: no
+    primary_key:
+    - event_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - event_id
+  gaps:
+    source_block_start: 366
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: gap_id
+      type: chr
+      nullable: no
+    - name: gap_candidate_id
+      type: chr
+      nullable: no
+    - name: gap_class
+      type: chr
+      nullable: no
+    - name: gap_semantics
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: gap_evidence_status
+      type: chr
+      nullable: no
+    - name: absolute_threshold_sec
+      type: dbl
+      nullable: no
+    - name: local_reference_sec
+      type: dbl
+      nullable: no
+    - name: local_ratio
+      type: dbl
+      nullable: no
+    - name: surprise_score
+      type: dbl
+      nullable: no
+    - name: raw_p_value
+      type: dbl
+      nullable: no
+    - name: adjusted_q_value
+      type: dbl
+      nullable: no
+    - name: valid_local_n_isi
+      type: int
+      nullable: no
+    - name: multiple_testing_method_registry_id
+      type: chr
+      nullable: no
+    - name: qc_eligibility
+      type: chr
+      nullable: no
+    - name: gap_policy_registry_id
+      type: chr
+      nullable: no
+    - name: gap_evidence_id
+      type: chr
+      nullable: no
+    - name: record_status
+      type: chr
+      nullable: no
+    primary_key:
+    - gap_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - gap_id
+  boundary_evidence:
+    source_block_start: 383
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: boundary_id
+      type: chr
+      nullable: no
+    - name: boundary_domain
+      type: chr
+      nullable: no
+    - name: boundary_class_registry_id
+      type: chr
+      nullable: no
+    - name: boundary_geometry
+      type: chr
+      nullable: no
+    - name: edge_side
+      type: chr
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: yes
+    - name: end_isi
+      type: int
+      nullable: yes
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: yes
+    - name: end_time_sec
+      type: dbl
+      nullable: yes
+    - name: hard_for_state
+      type: lgl
+      nullable: no
+    - name: hard_for_event
+      type: lgl
+      nullable: no
+    - name: hard_for_episode_link
+      type: lgl
+      nullable: no
+    - name: source_gap_id
+      type: chr
+      nullable: yes
+    - name: qc_status_registry_id
+      type: chr
+      nullable: no
+    - name: boundary_priority
+      type: int
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    - name: boundary_rule_registry_id
+      type: chr
+      nullable: no
+    primary_key:
+    - boundary_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - boundary_domain
+    - boundary_id
+  state_abstentions:
+    source_block_start: 400
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: abstention_id
+      type: chr
+      nullable: no
+    - name: state_candidate_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: state_frequency_class
+      type: chr
+      nullable: no
+    - name: state_regularity_class
+      type: chr
+      nullable: no
+    - name: frequency_evidence_status
+      type: chr
+      nullable: no
+    - name: regularity_evidence_status
+      type: chr
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: state_axis_evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - abstention_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - abstention_id
+  state_axis_evidence:
+    source_block_start: 412
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: state_axis_evidence_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: state_candidate_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_valid_isi
+      type: int
+      nullable: no
+    - name: effective_duration_sec
+      type: dbl
+      nullable: no
+    - name: frequency_estimator_registry_id
+      type: chr
+      nullable: no
+    - name: frequency_stat
+      type: dbl
+      nullable: yes
+    - name: frequency_pass_bound
+      type: dbl
+      nullable: no
+    - name: frequency_gray_margin
+      type: dbl
+      nullable: no
+    - name: frequency_evaluable
+      type: lgl
+      nullable: no
+    - name: frequency_evidence_status
+      type: chr
+      nullable: no
+    - name: regularity_estimator_registry_id
+      type: chr
+      nullable: no
+    - name: regularity_stat
+      type: dbl
+      nullable: yes
+    - name: regularity_pass_bound
+      type: dbl
+      nullable: no
+    - name: regularity_gray_margin
+      type: dbl
+      nullable: no
+    - name: regularity_evaluable
+      type: lgl
+      nullable: no
+    - name: regularity_evidence_status
+      type: chr
+      nullable: no
+    - name: episode_aggregation_registry_id
+      type: chr
+      nullable: no
+    - name: insufficient_reason_registry_id
+      type: chr
+      nullable: yes
+    - name: evidence_payload_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - state_axis_evidence_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - state_candidate_id
+  gap_candidates:
+    source_block_start: 432
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: gap_candidate_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: duration_sec
+      type: dbl
+      nullable: no
+    - name: reference_window_start_isi
+      type: int
+      nullable: yes
+    - name: reference_window_end_isi
+      type: int
+      nullable: yes
+    - name: guard_band_n_isi
+      type: int
+      nullable: no
+    - name: local_estimator_registry_id
+      type: chr
+      nullable: no
+    - name: valid_local_n_isi
+      type: int
+      nullable: no
+    - name: local_reference_sec
+      type: dbl
+      nullable: yes
+    - name: local_ratio
+      type: dbl
+      nullable: yes
+    - name: raw_p_value
+      type: dbl
+      nullable: yes
+    - name: adjusted_q_value
+      type: dbl
+      nullable: yes
+    - name: multiple_testing_family_id
+      type: chr
+      nullable: no
+    - name: multiple_testing_method_registry_id
+      type: chr
+      nullable: no
+    - name: boundary_censored
+      type: lgl
+      nullable: no
+    - name: scientific_context_epoch_id
+      type: chr
+      nullable: yes
+    - name: qc_evidence_id
+      type: chr
+      nullable: no
+    - name: decision
+      type: chr
+      nullable: no
+    - name: decision_reason_registry_id
+      type: chr
+      nullable: no
+    - name: gap_policy_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - gap_candidate_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - gap_candidate_id
+  gap_abstentions:
+    source_block_start: 450
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: gap_abstention_id
+      type: chr
+      nullable: no
+    - name: gap_candidate_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - gap_abstention_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - gap_abstention_id
+  state_connector_decisions:
+    source_block_start: 461
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: connector_decision_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: pre_direct_candidate_id
+      type: chr
+      nullable: no
+    - name: post_direct_candidate_id
+      type: chr
+      nullable: no
+    - name: gap_start_isi
+      type: int
+      nullable: no
+    - name: gap_end_isi
+      type: int
+      nullable: no
+    - name: decision
+      type: chr
+      nullable: no
+    - name: decision_reason_registry_id
+      type: chr
+      nullable: no
+    - name: frequency_equivalence_status
+      type: chr
+      nullable: no
+    - name: regularity_equivalence_status
+      type: chr
+      nullable: no
+    - name: equivalence_method_registry_id
+      type: chr
+      nullable: no
+    - name: frequency_margin
+      type: dbl
+      nullable: no
+    - name: regularity_margin
+      type: dbl
+      nullable: no
+    - name: pre_n_valid_isi
+      type: int
+      nullable: no
+    - name: post_n_valid_isi
+      type: int
+      nullable: no
+    - name: pre_frequency_stat
+      type: dbl
+      nullable: no
+    - name: post_frequency_stat
+      type: dbl
+      nullable: no
+    - name: pre_regularity_stat
+      type: dbl
+      nullable: no
+    - name: post_regularity_stat
+      type: dbl
+      nullable: no
+    - name: connector_duration_sec
+      type: dbl
+      nullable: no
+    - name: connector_fraction_of_proposed_episode
+      type: dbl
+      nullable: no
+    - name: proposed_episode_span_sec
+      type: dbl
+      nullable: no
+    - name: connector_count_if_accepted
+      type: int
+      nullable: no
+    - name: hard_boundary_clear
+      type: lgl
+      nullable: no
+    - name: recursion_generation
+      type: int
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - connector_decision_id
+    sort_key:
+    - train
+    - gap_start_isi
+    - gap_end_isi
+    - pre_direct_candidate_id
+    - post_direct_candidate_id
+    - connector_decision_id
+  event_modifier_evidence:
+    source_block_start: 482
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: modifier_evidence_id
+      type: chr
+      nullable: no
+    - name: event_id
+      type: chr
+      nullable: no
+    - name: modifier_domain
+      type: chr
+      nullable: no
+    - name: modifier_value
+      type: chr
+      nullable: no
+    - name: evidence_status
+      type: chr
+      nullable: no
+    - name: estimator_registry_id
+      type: chr
+      nullable: no
+    - name: statistic_value
+      type: dbl
+      nullable: yes
+    - name: pass_bound
+      type: dbl
+      nullable: yes
+    - name: gray_margin
+      type: dbl
+      nullable: yes
+    - name: threshold_instance_id
+      type: chr
+      nullable: yes
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - modifier_evidence_id
+    sort_key:
+    - event_id
+    - modifier_domain
+  review_candidates:
+    source_block_start: 493
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: review_candidate_id
+      type: chr
+      nullable: no
+    - name: candidate_domain
+      type: chr
+      nullable: no
+    - name: suggested_class_registry_id
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: n_isi
+      type: int
+      nullable: no
+    - name: start_time_sec
+      type: dbl
+      nullable: no
+    - name: end_time_sec
+      type: dbl
+      nullable: no
+    - name: candidate_status
+      type: chr
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    - name: lineage_id
+      type: chr
+      nullable: no
+    primary_key:
+    - review_candidate_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - review_candidate_id
+  event_state_relationships:
+    source_block_start: 506
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: relationship_id
+      type: chr
+      nullable: no
+    - name: event_id
+      type: chr
+      nullable: no
+    - name: state_episode_id
+      type: chr
+      nullable: no
+    - name: relation_type
+      type: chr
+      nullable: no
+    - name: episode_overlap_n_isi
+      type: int
+      nullable: no
+    - name: direct_support_overlap_n_isi
+      type: int
+      nullable: no
+    - name: connector_overlap_n_isi
+      type: int
+      nullable: no
+    - name: episode_overlap_sec
+      type: dbl
+      nullable: no
+    - name: direct_support_overlap_sec
+      type: dbl
+      nullable: no
+    - name: connector_overlap_sec
+      type: dbl
+      nullable: no
+    - name: event_covered_by_episode_time_fraction
+      type: dbl
+      nullable: no
+    - name: event_covered_by_direct_support_time_fraction
+      type: dbl
+      nullable: no
+    - name: state_envelope_covered_by_event_time_fraction
+      type: dbl
+      nullable: no
+    - name: state_direct_support_covered_by_event_time_fraction
+      type: dbl
+      nullable: no
+    - name: event_covered_by_episode_isi_fraction
+      type: dbl
+      nullable: no
+    - name: event_covered_by_direct_support_isi_fraction
+      type: dbl
+      nullable: no
+    - name: state_envelope_covered_by_event_isi_fraction
+      type: dbl
+      nullable: no
+    - name: state_direct_support_covered_by_event_isi_fraction
+      type: dbl
+      nullable: no
+    primary_key:
+    - relationship_id
+    sort_key:
+    - train
+    - event_id
+    - state_episode_id
+  event_interrupted_state_relationships:
+    source_block_start: 526
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: interruption_relationship_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: event_id
+      type: chr
+      nullable: no
+    - name: parent_state_candidate_id
+      type: chr
+      nullable: no
+    - name: parent_state_axis_evidence_id
+      type: chr
+      nullable: no
+    - name: child_state_episode_ids_json
+      type: json
+      nullable: no
+    - name: redetection_outcome
+      type: chr
+      nullable: no
+    - name: left_child_status
+      type: chr
+      nullable: no
+    - name: right_child_status
+      type: chr
+      nullable: no
+    - name: lineage_closure_hash
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - interruption_relationship_id
+    sort_key:
+    - event_id
+    - parent_state_candidate_id
+  state_episode_links:
+    source_block_start: 539
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: source_context_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: episode_link_id
+      type: chr
+      nullable: no
+    - name: relation_type
+      type: chr
+      nullable: no
+    - name: pre_state_episode_id
+      type: chr
+      nullable: no
+    - name: gap_id
+      type: chr
+      nullable: no
+    - name: post_state_episode_id
+      type: chr
+      nullable: no
+    - name: link_status
+      type: chr
+      nullable: no
+    - name: pre_frequency_stat
+      type: dbl
+      nullable: no
+    - name: post_frequency_stat
+      type: dbl
+      nullable: no
+    - name: frequency_equivalence_margin
+      type: dbl
+      nullable: no
+    - name: pre_regularity_stat
+      type: dbl
+      nullable: no
+    - name: post_regularity_stat
+      type: dbl
+      nullable: no
+    - name: regularity_equivalence_margin
+      type: dbl
+      nullable: no
+    - name: equivalence_status
+      type: chr
+      nullable: no
+    - name: gap_fraction
+      type: dbl
+      nullable: no
+    - name: episode_span_sec
+      type: dbl
+      nullable: no
+    - name: qc_boundary_clear
+      type: lgl
+      nullable: no
+    - name: condition_boundary_clear
+      type: lgl
+      nullable: no
+    - name: link_policy_registry_id
+      type: chr
+      nullable: no
+    - name: link_evidence_id
+      type: chr
+      nullable: no
+    - name: biological_ground_truth
+      type: lgl
+      nullable: no
+    primary_key:
+    - episode_link_id
+    sort_key:
+    - train
+    - pre_state_episode_id
+    - gap_id
+    - post_state_episode_id
+  entity_evidence_edges:
+    source_block_start: 556
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: entity_domain_id
+      type: chr
+      nullable: no
+    - name: entity_id
+      type: chr
+      nullable: no
+    - name: entity_product_hash
+      type: chr
+      nullable: yes
+    - name: edge_index
+      type: int
+      nullable: no
+    - name: evidence_role_registry_id
+      type: chr
+      nullable: no
+    - name: source_domain_id
+      type: chr
+      nullable: no
+    - name: source_row_key_json
+      type: json
+      nullable: no
+    - name: source_product_hash
+      type: chr
+      nullable: yes
+    - name: source_row_hash
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - entity_domain_id
+    - entity_id
+    - edge_index
+    sort_key:
+    - entity_domain_id
+    - entity_id
+    - edge_index
+  threshold_policies:
+    source_block_start: 569
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: threshold_policy_id
+      type: chr
+      nullable: no
+    - name: path
+      type: chr
+      nullable: no
+    - name: units
+      type: chr
+      nullable: no
+    - name: threshold_source_class
+      type: chr
+      nullable: no
+    - name: adaptation_unit
+      type: chr
+      nullable: no
+    - name: label_access
+      type: chr
+      nullable: no
+    - name: threshold_algorithm_registry_id
+      type: chr
+      nullable: no
+    - name: policy_parameter_hash
+      type: chr
+      nullable: no
+    - name: requested_value_hash
+      type: chr
+      nullable: no
+    - name: frozen_before_validation
+      type: lgl
+      nullable: no
+    - name: partition_id
+      type: chr
+      nullable: yes
+    primary_key:
+    - threshold_policy_id
+    sort_key:
+    - path
+    - threshold_policy_id
+  partition_memberships:
+    source_block_start: 581
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: partition_id
+      type: chr
+      nullable: no
+    - name: partition_version
+      type: chr
+      nullable: no
+    - name: group_id_hash
+      type: chr
+      nullable: no
+    - name: group_role
+      type: chr
+      nullable: no
+    - name: patient_group_id_hash
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: no
+    - name: source_input_hash
+      type: chr
+      nullable: no
+    - name: membership_row_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - partition_id
+    - group_id_hash
+    sort_key:
+    - partition_id
+    - group_id_hash
+  threshold_instances:
+    source_block_start: 592
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: threshold_instance_id
+      type: chr
+      nullable: no
+    - name: threshold_policy_id
+      type: chr
+      nullable: no
+    - name: path
+      type: chr
+      nullable: no
+    - name: application_scope
+      type: chr
+      nullable: no
+    - name: source_scope_key_hash
+      type: chr
+      nullable: no
+    - name: application_scope_key_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: yes
+    - name: dataset_batch_id_hash
+      type: chr
+      nullable: yes
+    - name: derivation_input_manifest_hash
+      type: chr
+      nullable: no
+    - name: application_input_manifest_hash
+      type: chr
+      nullable: no
+    - name: value_type
+      type: chr
+      nullable: no
+    - name: value_num
+      type: dbl
+      nullable: yes
+    - name: value_chr
+      type: chr
+      nullable: yes
+    - name: units
+      type: chr
+      nullable: no
+    - name: effective_value_hash
+      type: chr
+      nullable: no
+    - name: instance_evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - threshold_instance_id
+    sort_key:
+    - path
+    - application_scope
+    - application_scope_key_hash
+    - threshold_instance_id
+  threshold_instance_bindings:
+    source_block_start: 607
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: binding_id
+      type: chr
+      nullable: no
+    - name: consumer_domain_id
+      type: chr
+      nullable: no
+    - name: consumer_id
+      type: chr
+      nullable: no
+    - name: path
+      type: chr
+      nullable: no
+    - name: threshold_instance_id
+      type: chr
+      nullable: no
+    - name: binding_role_registry_id
+      type: chr
+      nullable: no
+    primary_key:
+    - binding_id
+    sort_key:
+    - consumer_domain_id
+    - consumer_id
+    - path
+    - binding_role_registry_id
+  diagnostic_records:
+    source_block_start: 630
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: diagnostic_id
+      type: chr
+      nullable: no
+    - name: severity
+      type: chr
+      nullable: no
+    - name: diagnostic_code_registry_id
+      type: chr
+      nullable: no
+    - name: entity_domain_id
+      type: chr
+      nullable: no
+    - name: entity_id
+      type: chr
+      nullable: yes
+    - name: train
+      type: chr
+      nullable: yes
+    - name: start_isi
+      type: int
+      nullable: yes
+    - name: end_isi
+      type: int
+      nullable: yes
+    - name: detail_schema_registry_id
+      type: chr
+      nullable: no
+    - name: detail_json
+      type: json
+      nullable: no
+    - name: detail_json_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - diagnostic_id
+    sort_key:
+    - severity
+    - diagnostic_code_registry_id
+    - entity_domain_id
+    - entity_id
+    - diagnostic_id
+  adjudication_transitions:
+    source_block_start: 641
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: transition_id
+      type: chr
+      nullable: no
+    - name: sequence_no
+      type: int
+      nullable: no
+    - name: parent_auto_product_hash
+      type: chr
+      nullable: no
+    - name: expected_parent_final_hash
+      type: chr
+      nullable: no
+    - name: previous_transition_hash
+      type: chr
+      nullable: yes
+    - name: action_type
+      type: chr
+      nullable: no
+    - name: target_domain_id
+      type: chr
+      nullable: no
+    - name: target_id
+      type: chr
+      nullable: no
+    - name: payload_schema_registry_id
+      type: chr
+      nullable: no
+    - name: payload_json
+      type: json
+      nullable: no
+    - name: payload_json_hash
+      type: chr
+      nullable: no
+    - name: actor_pseudonym
+      type: chr
+      nullable: no
+    - name: reference_record_domain
+      type: chr
+      nullable: yes
+    - name: reference_record_id
+      type: chr
+      nullable: yes
+    - name: reference_manifest_hash
+      type: chr
+      nullable: yes
+    - name: created_utc
+      type: chr
+      nullable: no
+    - name: compensates_transition_id
+      type: chr
+      nullable: yes
+    - name: transition_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - transition_id
+    sort_key:
+    - sequence_no
+  contract_registries:
+    source_block_start: 681
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: registry_entry_id
+      type: chr
+      nullable: no
+    - name: registry_domain
+      type: chr
+      nullable: no
+    - name: code
+      type: chr
+      nullable: no
+    - name: code_version
+      type: chr
+      nullable: no
+    - name: semantic_definition_json
+      type: json
+      nullable: no
+    - name: semantic_definition_sha256
+      type: chr
+      nullable: no
+    - name: active
+      type: lgl
+      nullable: no
+    primary_key:
+    - registry_entry_id
+    sort_key:
+    - registry_entry_id
+  entity_domain_registry:
+    source_block_start: 693
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: entity_domain_id
+      type: chr
+      nullable: no
+    - name: entity_domain
+      type: chr
+      nullable: no
+    - name: target_table
+      type: chr
+      nullable: no
+    - name: primary_key_columns_json
+      type: json
+      nullable: no
+    - name: train_column
+      type: chr
+      nullable: yes
+    - name: product_scope
+      type: chr
+      nullable: no
+    - name: active
+      type: lgl
+      nullable: no
+    primary_key:
+    - entity_domain_id
+    sort_key:
+    - entity_domain_id
+  evidence_records:
+    source_block_start: 731
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    - name: evidence_type_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_schema_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_json
+      type: json
+      nullable: no
+    - name: evidence_json_hash
+      type: chr
+      nullable: no
+    - name: source_bytes_sha256
+      type: chr
+      nullable: no
+    - name: label_access
+      type: chr
+      nullable: no
+    - name: created_by_registry_entry_id
+      type: chr
+      nullable: no
+    primary_key:
+    - evidence_id
+    sort_key:
+    - evidence_id
+  lineage_records:
+    source_block_start: 742
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: lineage_id
+      type: chr
+      nullable: no
+    - name: child_domain_id
+      type: chr
+      nullable: no
+    - name: child_id
+      type: chr
+      nullable: no
+    - name: child_product_hash
+      type: chr
+      nullable: yes
+    - name: parent_domain_id
+      type: chr
+      nullable: no
+    - name: parent_id
+      type: chr
+      nullable: no
+    - name: parent_product_hash
+      type: chr
+      nullable: yes
+    - name: lineage_action_registry_id
+      type: chr
+      nullable: no
+    - name: edge_index
+      type: int
+      nullable: no
+    - name: transition_id
+      type: chr
+      nullable: yes
+    - name: evidence_id
+      type: chr
+      nullable: no
+    - name: parent_edge_set_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - lineage_id
+    - edge_index
+    sort_key:
+    - lineage_id
+    - edge_index
+  scientific_context:
+    source_block_start: 754
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: patient_group_id_hash
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: yes
+    - name: unit_id_hash
+      type: chr
+      nullable: no
+    - name: species_registry_id
+      type: chr
+      nullable: no
+    - name: brain_region_registry_id
+      type: chr
+      nullable: no
+    - name: brain_subregion_registry_id
+      type: chr
+      nullable: yes
+    - name: acquisition_condition_registry_id
+      type: chr
+      nullable: no
+    - name: anesthesia_status_registry_id
+      type: chr
+      nullable: no
+    - name: medication_status_registry_id
+      type: chr
+      nullable: no
+    - name: task_status_registry_id
+      type: chr
+      nullable: no
+    - name: recording_duration_sec
+      type: dbl
+      nullable: no
+    - name: timestamp_resolution_sec
+      type: dbl
+      nullable: no
+    - name: timebase_provenance_registry_id
+      type: chr
+      nullable: no
+    - name: waveform_qc_available
+      type: lgl
+      nullable: no
+    - name: raw_waveform_available
+      type: lgl
+      nullable: no
+    - name: spike_sorting_method_registry_id
+      type: chr
+      nullable: no
+    - name: spike_sorting_version
+      type: chr
+      nullable: no
+    - name: sorting_qc_status_registry_id
+      type: chr
+      nullable: no
+    - name: isolation_metric_name_registry_id
+      type: chr
+      nullable: yes
+    - name: isolation_metric_value
+      type: dbl
+      nullable: yes
+    - name: isolation_metric_units_registry_id
+      type: chr
+      nullable: yes
+    - name: nonstationarity_status_registry_id
+      type: chr
+      nullable: no
+    - name: condition_boundary_available
+      type: lgl
+      nullable: no
+    - name: context_completeness
+      type: chr
+      nullable: no
+    - name: source_context_row_hash
+      type: chr
+      nullable: no
+    primary_key:
+    - detection_root_id
+    - train
+    sort_key:
+    - train
+  scientific_context_epochs:
+    source_block_start: 776
+    columns:
+    - name: schema_version
+      type: chr
+      nullable: no
+    - name: detection_root_id
+      type: chr
+      nullable: no
+    - name: context_epoch_id
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: no
+    - name: end_isi
+      type: int
+      nullable: no
+    - name: epoch_domain
+      type: chr
+      nullable: no
+    - name: epoch_status_registry_id
+      type: chr
+      nullable: no
+    - name: hard_boundary
+      type: lgl
+      nullable: no
+    - name: source_evidence_id
+      type: chr
+      nullable: no
+    primary_key:
+    - context_epoch_id
+    sort_key:
+    - train
+    - start_isi
+    - end_isi
+    - epoch_domain
+  reference_annotations:
+    source_block_start: 788
+    columns:
+    - name: reference_schema
+      type: chr
+      nullable: no
+    - name: annotation_project_id
+      type: chr
+      nullable: no
+    - name: annotation_id
+      type: chr
+      nullable: no
+    - name: annotator_pseudonym
+      type: chr
+      nullable: no
+    - name: rater_role
+      type: chr
+      nullable: no
+    - name: annotation_round
+      type: int
+      nullable: no
+    - name: annotation_pass
+      type: int
+      nullable: no
+    - name: repeat_of_annotation_id
+      type: chr
+      nullable: yes
+    - name: washout_days
+      type: int
+      nullable: yes
+    - name: train
+      type: chr
+      nullable: no
+    - name: annotation_domain
+      type: chr
+      nullable: no
+    - name: edge_left_annotation_id
+      type: chr
+      nullable: yes
+    - name: edge_right_annotation_id
+      type: chr
+      nullable: yes
+    - name: start_isi
+      type: int
+      nullable: yes
+    - name: end_isi
+      type: int
+      nullable: yes
+    - name: reference_class_registry_id
+      type: chr
+      nullable: no
+    - name: decision_status
+      type: chr
+      nullable: no
+    - name: confidence_code
+      type: chr
+      nullable: no
+    - name: uncertainty_reason_registry_id
+      type: chr
+      nullable: yes
+    - name: protocol_version
+      type: chr
+      nullable: no
+    - name: display_protocol_id
+      type: chr
+      nullable: no
+    - name: blinded_to_auto
+      type: lgl
+      nullable: no
+    - name: blinded_to_final
+      type: lgl
+      nullable: no
+    - name: blinded_to_thresholds
+      type: lgl
+      nullable: no
+    - name: blinded_to_other_raters
+      type: lgl
+      nullable: no
+    - name: blinded_to_clinical_group
+      type: lgl
+      nullable: no
+    - name: waveform_qc_visible
+      type: lgl
+      nullable: no
+    - name: source_input_hash
+      type: chr
+      nullable: no
+    - name: supersedes_annotation_id
+      type: chr
+      nullable: yes
+    - name: created_utc
+      type: chr
+      nullable: no
+  reference_display_protocols:
+    source_block_start: 808
+    columns:
+    - name: reference_schema
+      type: chr
+      nullable: no
+    - name: display_protocol_id
+      type: chr
+      nullable: no
+    - name: protocol_version
+      type: chr
+      nullable: no
+    - name: visible_channels_json
+      type: json
+      nullable: no
+    - name: hidden_channels_json
+      type: json
+      nullable: no
+    - name: context_window_pre_sec
+      type: dbl
+      nullable: no
+    - name: context_window_post_sec
+      type: dbl
+      nullable: no
+    - name: time_scale_policy
+      type: chr
+      nullable: no
+    - name: waveform_display_policy
+      type: chr
+      nullable: no
+    - name: threshold_overlay_visible
+      type: lgl
+      nullable: no
+    - name: algorithm_overlay_visible
+      type: lgl
+      nullable: no
+    - name: protocol_payload_sha256
+      type: chr
+      nullable: no
+  reference_adjudications:
+    source_block_start: 823
+    columns:
+    - name: reference_schema
+      type: chr
+      nullable: no
+    - name: adjudication_id
+      type: chr
+      nullable: no
+    - name: annotation_project_id
+      type: chr
+      nullable: no
+    - name: adjudicator_pseudonym
+      type: chr
+      nullable: no
+    - name: source_annotation_ids_json
+      type: json
+      nullable: no
+    - name: train
+      type: chr
+      nullable: no
+    - name: annotation_domain
+      type: chr
+      nullable: no
+    - name: start_isi
+      type: int
+      nullable: yes
+    - name: end_isi
+      type: int
+      nullable: yes
+    - name: adjudicated_class_registry_id
+      type: chr
+      nullable: no
+    - name: adjudication_status
+      type: chr
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: protocol_version
+      type: chr
+      nullable: no
+    - name: created_utc
+      type: chr
+      nullable: no
+  reference_project_manifest:
+    source_block_start: 837
+    columns:
+    - name: reference_schema
+      type: chr
+      nullable: no
+    - name: annotation_project_id
+      type: chr
+      nullable: no
+    - name: project_protocol_version
+      type: chr
+      nullable: no
+    - name: source_input_hash
+      type: chr
+      nullable: no
+    - name: partition_id
+      type: chr
+      nullable: no
+    - name: reference_ontology_hash
+      type: chr
+      nullable: no
+    - name: display_protocol_manifest_hash
+      type: chr
+      nullable: no
+    - name: rater_roster_hash
+      type: chr
+      nullable: no
+    - name: preregistration_hash
+      type: chr
+      nullable: no
+    - name: project_payload_sha256
+      type: chr
+      nullable: no
+  reference_manifest:
+    source_block_start: 848
+    columns:
+    - name: reference_schema
+      type: chr
+      nullable: no
+    - name: annotation_project_id
+      type: chr
+      nullable: no
+    - name: table_name
+      type: chr
+      nullable: no
+    - name: table_schema
+      type: chr
+      nullable: no
+    - name: row_count
+      type: int
+      nullable: no
+    - name: canonical_table_sha256
+      type: chr
+      nullable: no
+  canonical_manifest:
+    source_block_start: 1093
+    columns:
+    - name: manifest_schema
+      type: chr
+      nullable: no
+    - name: product_kind
+      type: chr
+      nullable: no
+    - name: table_name
+      type: chr
+      nullable: no
+    - name: table_schema
+      type: chr
+      nullable: no
+    - name: required
+      type: lgl
+      nullable: no
+    - name: row_count
+      type: int
+      nullable: no
+    - name: canonical_table_sha256
+      type: chr
+      nullable: no
+    - name: sort_contract_registry_id
+      type: chr
+      nullable: no
+  artifact_manifest:
+    source_block_start: 1105
+    columns:
+    - name: artifact_manifest_schema
+      type: chr
+      nullable: no
+    - name: product_kind
+      type: chr
+      nullable: no
+    - name: artifact_path
+      type: chr
+      nullable: no
+    - name: artifact_role
+      type: chr
+      nullable: no
+    - name: media_type
+      type: chr
+      nullable: no
+    - name: canonical_table_name
+      type: chr
+      nullable: yes
+    - name: required
+      type: lgl
+      nullable: no
+    - name: size_bytes
+      type: dbl
+      nullable: no
+    - name: artifact_sha256
+      type: chr
+      nullable: no
+  release_attestation:
+    source_block_start: 1219
+    columns:
+    - name: release_attestation_schema
+      type: chr
+      nullable: no
+    - name: release_version
+      type: chr
+      nullable: no
+    - name: source_manifest_sha256
+      type: chr
+      nullable: no
+    - name: native_manifest_sha256
+      type: chr
+      nullable: no
+    - name: toolchain_manifest_sha256
+      type: chr
+      nullable: no
+    - name: contract_sha256
+      type: chr
+      nullable: no
+    - name: schema_contract_sha256
+      type: chr
+      nullable: no
+    - name: fixture_manifest_sha256
+      type: chr
+      nullable: no
+    - name: test_manifest_sha256
+      type: chr
+      nullable: no
+    - name: test_result_bundle_sha256
+      type: chr
+      nullable: no
+    - name: gate_b_evidence_table_sha256
+      type: chr
+      nullable: no
+    - name: required_contract_id_set_sha256
+      type: chr
+      nullable: no
+    - name: environment_manifest_sha256
+      type: chr
+      nullable: no
+    - name: R_version
+      type: chr
+      nullable: no
+    - name: toolchain_id
+      type: chr
+      nullable: no
+    - name: package_build_manifest_sha256
+      type: chr
+      nullable: no
+    - name: installed_manifest_sha256
+      type: chr
+      nullable: no
+    - name: gate_b_approval_manifest_sha256
+      type: chr
+      nullable: no
+    - name: all_required_contracts_passed
+      type: lgl
+      nullable: no
+  gate_b_approval_manifest:
+    source_block_start: 1236
+    columns:
+    - name: approval_schema
+      type: chr
+      nullable: no
+    - name: plan_sha256
+      type: chr
+      nullable: no
+    - name: normative_contract_sha256
+      type: chr
+      nullable: no
+    - name: schema_contract_sha256
+      type: chr
+      nullable: no
+    - name: contract_fixture_spec_sha256
+      type: chr
+      nullable: no
+    - name: science_review_sha256
+      type: chr
+      nullable: no
+    - name: science_verdict
+      type: chr
+      nullable: no
+    - name: engineering_review_sha256
+      type: chr
+      nullable: no
+    - name: engineering_verdict
+      type: chr
+      nullable: no
+    - name: review_resolution_sha256
+      type: chr
+      nullable: no
+    - name: approved_stage
+      type: chr
+      nullable: no
+    - name: approver_pseudonym
+      type: chr
+      nullable: no
+    - name: approved_utc
+      type: chr
+      nullable: no
+    - name: approval_payload_sha256
+      type: chr
+      nullable: no
+  gate_b_evidence_records:
+    source_block_start: 1249
+    columns:
+    - name: evidence_record_schema
+      type: chr
+      nullable: no
+    - name: evidence_record_id
+      type: chr
+      nullable: no
+    - name: contract_id
+      type: chr
+      nullable: no
+    - name: fixture_id
+      type: chr
+      nullable: no
+    - name: repository_relative_test_path
+      type: chr
+      nullable: no
+    - name: test_name
+      type: chr
+      nullable: no
+    - name: expected_result_hash
+      type: chr
+      nullable: no
+    - name: actual_result_hash
+      type: chr
+      nullable: no
+    - name: status
+      type: chr
+      nullable: no
+    - name: source_manifest_sha256
+      type: chr
+      nullable: no
+    - name: test_manifest_sha256
+      type: chr
+      nullable: no
+    - name: contract_sha256
+      type: chr
+      nullable: no
+    - name: schema_contract_sha256
+      type: chr
+      nullable: no
+    - name: fixture_manifest_sha256
+      type: chr
+      nullable: no
+    - name: environment_manifest_sha256
+      type: chr
+      nullable: no
+  fixture_expected_results:
+    source_block_start: 1261
+    columns:
+    - name: contract_id
+      type: chr
+      nullable: no
+    - name: fixture_id
+      type: chr
+      nullable: no
+    - name: repository_relative_test_path
+      type: chr
+      nullable: no
+    - name: test_name
+      type: chr
+      nullable: no
+    - name: expected_result_schema
+      type: chr
+      nullable: no
+    - name: expected_result_json
+      type: json
+      nullable: no
+    - name: expected_result_hash
+      type: chr
+      nullable: no
+  test_result_bundle:
+    source_block_start: 1270
+    columns:
+    - name: test_bundle_schema
+      type: chr
+      nullable: no
+    - name: stable_test_id
+      type: chr
+      nullable: no
+    - name: contract_id
+      type: chr
+      nullable: no
+    - name: fixture_id
+      type: chr
+      nullable: no
+    - name: repository_relative_test_path
+      type: chr
+      nullable: no
+    - name: test_name
+      type: chr
+      nullable: no
+    - name: command_argv_json
+      type: json
+      nullable: no
+    - name: exit_code
+      type: int
+      nullable: no
+    - name: discovered_n
+      type: int
+      nullable: no
+    - name: passed_n
+      type: int
+      nullable: no
+    - name: failed_n
+      type: int
+      nullable: no
+    - name: error_n
+      type: int
+      nullable: no
+    - name: skipped_required_n
+      type: int
+      nullable: no
+    - name: skipped_optional_n
+      type: int
+      nullable: no
+    - name: report_sha256
+      type: chr
+      nullable: no
+    - name: stdout_sha256
+      type: chr
+      nullable: no
+    - name: stderr_sha256
+      type: chr
+      nullable: no
+    - name: environment_manifest_sha256
+      type: chr
+      nullable: no
+  signature_envelope:
+    source_block_start: 1286
+    columns:
+    - name: signature_schema
+      type: chr
+      nullable: no
+    - name: signature_domain
+      type: chr
+      nullable: no
+    - name: payload_sha256
+      type: chr
+      nullable: no
+    - name: algorithm
+      type: chr
+      nullable: no
+    - name: key_id
+      type: chr
+      nullable: no
+    - name: public_key_fingerprint_sha256
+      type: chr
+      nullable: no
+    - name: signature_base64
+      type: chr
+      nullable: no
+    - name: release_sequence
+      type: chr
+      nullable: no
+    - name: not_before_utc
+      type: chr
+      nullable: no
+    - name: not_after_utc
+      type: chr
+      nullable: no
+  consumer_response:
+    source_block_start: 1363
+    columns:
+    - name: response_schema
+      type: chr
+      nullable: no
+    - name: status_code
+      type: chr
+      nullable: no
+    - name: product_kind
+      type: chr
+      nullable: yes
+    - name: schema_version
+      type: chr
+      nullable: yes
+    - name: product_hash
+      type: chr
+      nullable: yes
+    - name: integrity_level
+      type: chr
+      nullable: no
+    - name: capabilities
+      type: lst
+      nullable: no
+    - name: data
+      type: lst
+      nullable: yes
+  migration_records:
+    source_block_start: 1453
+    columns:
+    - name: migration_schema
+      type: chr
+      nullable: no
+    - name: migration_id
+      type: chr
+      nullable: no
+    - name: source_schema
+      type: chr
+      nullable: no
+    - name: source_product_hash
+      type: chr
+      nullable: no
+    - name: target_detection_root_id
+      type: chr
+      nullable: no
+    - name: source_entity_domain_id
+      type: chr
+      nullable: yes
+    - name: source_entity_id
+      type: chr
+      nullable: yes
+    - name: target_entity_domain_id
+      type: chr
+      nullable: yes
+    - name: target_entity_id
+      type: chr
+      nullable: yes
+    - name: mapping_status
+      type: chr
+      nullable: no
+    - name: reason_registry_id
+      type: chr
+      nullable: no
+    - name: evidence_id
+      type: chr
+      nullable: no
+    - name: redetected_from_v2_product_hash
+      type: chr
+      nullable: yes
+    primary_key:
+    - migration_id
+    sort_key:
+    - source_product_hash
+    - source_entity_domain_id
+    - source_entity_id
+    - target_detection_root_id
+    - target_entity_domain_id
+    - target_entity_id
+    - mapping_status
+  normalized_input_manifest:
+    source_block_start: 990
+    columns:
+    - name: train
+      type: chr
+      nullable: no
+    - name: n_spikes
+      type: int
+      nullable: no
+    - name: timestamp_unit
+      type: chr
+      nullable: no
+    - name: normalized_timestamp_bytes_sha256
+      type: chr
+      nullable: no
+    - name: acquisition_context_row_hash
+      type: chr
+      nullable: no
+    - name: patient_group_id_hash
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: yes
+    - name: dataset_batch_id_hash
+      type: chr
+      nullable: yes
+  requested_params_manifest:
+    source_block_start: 997
+    columns:
+    - name: path
+      type: chr
+      nullable: no
+    - name: value_type
+      type: chr
+      nullable: no
+    - name: canonical_value_hash
+      type: chr
+      nullable: no
+  partition_membership_source_manifest:
+    source_block_start: 1001
+    columns:
+    - name: partition_id
+      type: chr
+      nullable: no
+    - name: partition_version
+      type: chr
+      nullable: no
+    - name: group_id_hash
+      type: chr
+      nullable: no
+    - name: group_role
+      type: chr
+      nullable: no
+    - name: patient_group_id_hash
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: yes
+    - name: source_input_hash
+      type: chr
+      nullable: no
+    - name: membership_row_hash
+      type: chr
+      nullable: no
+  threshold_policy_source_manifest:
+    source_block_start: 1007
+    columns:
+    - name: path
+      type: chr
+      nullable: no
+    - name: units
+      type: chr
+      nullable: no
+    - name: threshold_source_class
+      type: chr
+      nullable: no
+    - name: adaptation_unit
+      type: chr
+      nullable: no
+    - name: label_access
+      type: chr
+      nullable: no
+    - name: threshold_algorithm_semantic_sha256
+      type: chr
+      nullable: no
+    - name: policy_parameter_hash
+      type: chr
+      nullable: no
+    - name: requested_value_hash
+      type: chr
+      nullable: no
+    - name: frozen_before_validation
+      type: lgl
+      nullable: no
+    - name: partition_id
+      type: chr
+      nullable: yes
+    - name: policy_source_row_hash
+      type: chr
+      nullable: no
+  threshold_instance_source_manifest:
+    source_block_start: 1015
+    columns:
+    - name: policy_source_row_hash
+      type: chr
+      nullable: no
+    - name: path
+      type: chr
+      nullable: no
+    - name: application_scope
+      type: chr
+      nullable: no
+    - name: source_scope_key_hash
+      type: chr
+      nullable: no
+    - name: train
+      type: chr
+      nullable: yes
+    - name: session_group_id_hash
+      type: chr
+      nullable: yes
+    - name: dataset_batch_id_hash
+      type: chr
+      nullable: yes
+    - name: derivation_input_manifest_hash
+      type: chr
+      nullable: no
+    - name: application_input_manifest_hash
+      type: chr
+      nullable: no
+    - name: derivation_statistics_schema_registry_id
+      type: chr
+      nullable: yes
+    - name: derivation_statistics_json
+      type: json
+      nullable: yes
+    - name: application_statistics_schema_registry_id
+      type: chr
+      nullable: yes
+    - name: application_statistics_json
+      type: json
+      nullable: yes
+    - name: value_type
+      type: chr
+      nullable: no
+    - name: value_num
+      type: dbl
+      nullable: yes
+    - name: value_chr
+      type: chr
+      nullable: yes
+    - name: units
+      type: chr
+      nullable: no
+    - name: effective_value_hash
+      type: chr
+      nullable: no
+    - name: instance_evidence_source_hash
+      type: chr
+      nullable: no
+  source_manifest:
+    source_block_start: 1026
+    columns:
+    - name: repository_relative_path
+      type: chr
+      nullable: no
+    - name: file_type
+      type: chr
+      nullable: no
+    - name: size_bytes
+      type: dbl
+      nullable: no
+    - name: content_sha256
+      type: chr
+      nullable: no
+  native_manifest:
+    source_block_start: 1031
+    columns:
+    - name: repository_relative_path
+      type: chr
+      nullable: no
+    - name: file_type
+      type: chr
+      nullable: no
+    - name: size_bytes
+      type: dbl
+      nullable: no
+    - name: content_sha256
+      type: chr
+      nullable: no
+    - name: native_build_id
+      type: chr
+      nullable: no
+  toolchain_manifest:
+    source_block_start: 1036
+    columns:
+    - name: toolchain_id
+      type: chr
+      nullable: no
+    - name: os
+      type: chr
+      nullable: no
+    - name: arch
+      type: chr
+      nullable: no
+    - name: R_version
+      type: chr
+      nullable: no
+    - name: compiler_id
+      type: chr
+      nullable: no
+    - name: compiler_version
+      type: chr
+      nullable: no
+    - name: BLAS_id
+      type: chr
+      nullable: no
+    - name: LAPACK_id
+      type: chr
+      nullable: no
+    - name: native_abi
+      type: chr
+      nullable: no
+    - name: numeric_equivalence_class
+      type: chr
+      nullable: no
+  detector_policy_manifest:
+    source_block_start: 1042
+    columns:
+    - name: policy_path
+      type: chr
+      nullable: no
+    - name: value_type
+      type: chr
+      nullable: no
+    - name: canonical_value_hash
+      type: chr
+      nullable: no
+    - name: governing_registry_entry_id
+      type: chr
+      nullable: no
+  label_blind_contract_manifest:
+    source_block_start: 1047
+    columns:
+    - name: contract_rule_registry_id
+      type: chr
+      nullable: no
+    - name: allowlist_schema_registry_id
+      type: chr
+      nullable: no
+    - name: source_domain_registry_id
+      type: chr
+      nullable: no
+    - name: action
+      type: chr
+      nullable: no
+    - name: semantic_definition_sha256
+      type: chr
+      nullable: no
+  qc_input_manifest:
+    source_block_start: 1053
+    columns:
+    - name: train
+      type: chr
+      nullable: no
+    - name: qc_input_schema
+      type: chr
+      nullable: no
+    - name: canonical_qc_input_hash
+      type: chr
+      nullable: no
+product_inventory:
+  state_candidates:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_episodes:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_segments:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_axis_evidence:
+    auto: required
+    final: required
+    zero_rows: 是
+  per_isi:
+    auto: required
+    final: required
+    zero_rows: 仅 0-ISI input
+  event_candidates:
+    auto: required
+    final: required
+    zero_rows: 是
+  events:
+    auto: required
+    final: required
+    zero_rows: 是
+  event_modifier_evidence:
+    auto: required
+    final: required
+    zero_rows: 是
+  gap_candidates:
+    auto: required
+    final: required
+    zero_rows: 是
+  gaps:
+    auto: required
+    final: required
+    zero_rows: 是
+  boundary_evidence:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_abstentions:
+    auto: required
+    final: required
+    zero_rows: 是
+  gap_abstentions:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_connector_decisions:
+    auto: required
+    final: required
+    zero_rows: 是
+  review_candidates:
+    auto: required
+    final: required
+    zero_rows: 是
+  event_state_relationships:
+    auto: required
+    final: required
+    zero_rows: 是
+  event_interrupted_state_relationships:
+    auto: required
+    final: required
+    zero_rows: 是
+  state_episode_links:
+    auto: required
+    final: required
+    zero_rows: 是
+  entity_evidence_edges:
+    auto: required
+    final: required
+    zero_rows: 是
+  evidence_records:
+    auto: required
+    final: required
+    zero_rows: 是
+  lineage_records:
+    auto: required
+    final: required
+    zero_rows: 是
+  threshold_policies:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 否
+  threshold_instances:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 否
+  threshold_instance_bindings:
+    auto: required
+    final: required
+    zero_rows: 是
+  partition_memberships:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 仅当不存在 `development_trained` policy
+  diagnostic_records:
+    auto: required
+    final: required
+    zero_rows: 是
+  scientific_context:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 仅 0-train input
+  scientific_context_epochs:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 是
+  contract_registries:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 否
+  entity_domain_registry:
+    auto: required
+    final: required, byte-identical to AUTO
+    zero_rows: 否
+  adjudication_transitions:
+    auto: forbidden
+    final: required
+    zero_rows: 是
+  migration_records:
+    auto: required
+    final: required
+    zero_rows: 是
+required_contract_ids:
+- GB3-SCI-001
+- GB3-SCI-002
+- GB3-SCI-003
+- GB3-SCI-004
+- GB3-GEO-001
+- GB3-GEO-002
+- GB3-GEO-003
+- GB3-REL-001
+- GB3-REL-002
+- GB3-ID-001
+- GB3-HASH-001
+- GB3-BLIND-001
+- GB3-THR-001
+- GB3-FINAL-001
+- GB3-STATUS-001
+- GB3-ATT-001
+- GB3-EXP-001
+- GB3-MIG-001
+- GB3-GUARD-001
+- GB3-CAND-001
+- GB3-REG-001
+- GB3-CTX-001
+- GB3-REF-001
+- GB3-EVT-001
+- GB3-RES-001
+- GB3-PRIV-001
+- GB3-CONS-001

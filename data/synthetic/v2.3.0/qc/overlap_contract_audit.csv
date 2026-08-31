@@ -1,0 +1,8 @@
+"Check","Value"
+"Tonic_HFS_same_renewal_family",TRUE
+"Tonic_HFS_same_refractory",TRUE
+"Canonical_pause_lower_unchanged",TRUE
+"Borderline_gap_below_canonical",TRUE
+"Borderline_gap_is_secondary_only",TRUE
+"Each_template_has_all_HFS_overlap_strata",TRUE
+"Detector_output_used_for_acceptance",FALSE

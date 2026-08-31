@@ -1,0 +1,21 @@
+"Template_ID","Split","Standalone_Burst","Burst_in_HFS","Burst_Total","Four_Spike_Burst","Canonical_Pause","Complex_Pause","Contextual_Separator_secondary","Tonic_generic","Tonic_STN_like","Broad_HFS","Composite_HFS_Regime","Direct_Target_Boundaries","Macro_Order","Template_Duration_u","N_Spikes"
+"TPL_001","development",3,2,5,1,2,1,1,1,1,3,1,9,"tonic_canonical_pause_macro > contextual_macro > tonic_complex_pause_macro > direct_burst_hfs_macro > composite_hfs_pause_hfs_macro",55.4215189590178,137
+"TPL_002","development",3,2,5,1,2,0,1,1,1,3,0,6,"direct_burst_hfs_macro > hfs_overlay > hfs_overlay > tonic_canonical_pause_macro > canonical_pause_only > contextual_macro > tonic_only",52.1441900267807,152
+"TPL_003","development",3,2,5,1,2,1,1,1,1,3,1,11,"composite_hfs_pause_hfs_macro > tonic_canonical_pause_macro > contextual_macro > direct_burst_hfs_macro > tonic_complex_pause_macro",49.3540147198661,128
+"TPL_004","development",3,2,5,1,2,0,1,1,1,3,0,8,"direct_burst_hfs_macro > hfs_overlay > canonical_pause_only > hfs_overlay > contextual_macro > tonic_only > tonic_canonical_pause_macro",48.2227308084958,150
+"TPL_005","development",3,2,5,1,2,0,1,1,1,3,0,8,"hfs_overlay > canonical_pause_only > tonic_only > hfs_overlay > tonic_canonical_pause_macro > direct_burst_hfs_macro > contextual_macro",52.2608676450793,143
+"TPL_006","holdout",3,2,5,1,2,1,1,1,1,3,1,9,"tonic_complex_pause_macro > composite_hfs_pause_hfs_macro > direct_burst_hfs_macro > contextual_macro > tonic_canonical_pause_macro",57.7310688490181,148
+"TPL_007","holdout",3,2,5,0,2,0,1,1,1,3,0,7,"tonic_only > hfs_overlay > direct_burst_hfs_macro > canonical_pause_only > contextual_macro > hfs_overlay > tonic_canonical_pause_macro",52.4580185519729,149
+"TPL_008","holdout",3,2,5,1,2,1,1,1,1,3,1,9,"tonic_canonical_pause_macro > direct_burst_hfs_macro > contextual_macro > tonic_complex_pause_macro > composite_hfs_pause_hfs_macro",54.7855123012692,151
+"TPL_009","holdout",3,2,5,0,2,0,1,1,1,3,0,8,"hfs_overlay > tonic_canonical_pause_macro > direct_burst_hfs_macro > contextual_macro > canonical_pause_only > tonic_only > hfs_overlay",49.3673572026096,147
+"TPL_010","holdout",3,2,5,1,2,1,1,1,1,3,1,8,"tonic_canonical_pause_macro > contextual_macro > tonic_complex_pause_macro > direct_burst_hfs_macro > composite_hfs_pause_hfs_macro",62.5336348162244,157
+"TPL_011","holdout",3,2,5,0,2,0,1,1,1,3,0,8,"canonical_pause_only > hfs_overlay > hfs_overlay > tonic_canonical_pause_macro > direct_burst_hfs_macro > tonic_only > contextual_macro",51.5771671090267,147
+"TPL_012","holdout",3,2,5,1,2,1,1,1,1,3,1,9,"tonic_complex_pause_macro > tonic_canonical_pause_macro > direct_burst_hfs_macro > composite_hfs_pause_hfs_macro > contextual_macro",53.9041162313044,150
+"TPL_013","holdout",3,2,5,0,2,0,1,1,1,3,0,8,"contextual_macro > tonic_canonical_pause_macro > hfs_overlay > direct_burst_hfs_macro > tonic_only > canonical_pause_only > hfs_overlay",48.7699013975907,140
+"TPL_014","holdout",3,2,5,1,2,1,1,1,1,3,1,8,"composite_hfs_pause_hfs_macro > tonic_complex_pause_macro > tonic_canonical_pause_macro > direct_burst_hfs_macro > contextual_macro",49.0982490230745,131
+"TPL_015","holdout",3,2,5,0,2,0,1,1,1,3,0,5,"hfs_overlay > direct_burst_hfs_macro > hfs_overlay > canonical_pause_only > tonic_canonical_pause_macro > contextual_macro > tonic_only",43.6001458850028,150
+"TPL_016","holdout",3,2,5,1,2,1,1,1,1,3,1,9,"contextual_macro > direct_burst_hfs_macro > tonic_canonical_pause_macro > composite_hfs_pause_hfs_macro > tonic_complex_pause_macro",50.4055542297097,131
+"TPL_017","holdout",3,2,5,0,2,0,1,1,1,3,0,7,"tonic_only > contextual_macro > canonical_pause_only > hfs_overlay > tonic_canonical_pause_macro > hfs_overlay > direct_burst_hfs_macro",38.8445189004995,133
+"TPL_018","holdout",3,2,5,1,2,1,1,1,1,3,1,10,"direct_burst_hfs_macro > tonic_complex_pause_macro > contextual_macro > composite_hfs_pause_hfs_macro > tonic_canonical_pause_macro",42.6530544570615,130
+"TPL_019","holdout",3,2,5,0,2,0,1,1,1,3,0,5,"direct_burst_hfs_macro > canonical_pause_only > hfs_overlay > contextual_macro > tonic_only > tonic_canonical_pause_macro > hfs_overlay",49.823676394752,140
+"TPL_020","holdout",3,2,5,0,2,1,1,1,1,3,1,11,"contextual_macro > tonic_complex_pause_macro > tonic_canonical_pause_macro > direct_burst_hfs_macro > composite_hfs_pause_hfs_macro",40.4204263956155,125

@@ -1,0 +1,4 @@
+"profile","repeat_id","train_n","spike_n","isi_n","elapsed_seconds","user_seconds","system_seconds","seconds_per_train","seconds_per_1000_isi","isi_per_second","approximate_peak_r_heap_mib","result_object_mib","collect_diagnostics","audit_level","label_blind","manual_example_n","threshold_source_mode","input_sha256"
+"core",1,1,1436,1435,36.263,36.032,0.187,36.263,25.2703832752613,39.572015553043,418.1,14.4397430419922,FALSE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"
+"core",2,1,1436,1435,34.005,33.763,0.201,34.005,23.6968641114983,42.1996765181591,417.7,14.4397430419922,FALSE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"
+"core",3,1,1436,1435,33.873,33.633,0.199,33.873,23.6048780487805,42.3641248191775,418.1,14.4397430419922,FALSE,"off",TRUE,0,"auto","25d1bd25cbf8d7f5fa11f8af1f23c815222f3c043298d586464cfc2577971953"

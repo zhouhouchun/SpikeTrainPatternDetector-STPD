@@ -8,6 +8,37 @@
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
+#if defined(__unix__) || defined(__APPLE__)
+# include <sys/resource.h>
+#endif
+
+#define STPD_STRUCTURE_SCAN_MEMORY_BUDGET_BYTES 536870912.0L
+#define STPD_STRUCTURE_SCAN_BYTES_PER_CAPACITY_ROW 80.0L
+
+/*
+ * Return the process high-water resident-set size in bytes.  Darwin reports
+ * ru_maxrss in bytes; Linux and the BSD/POSIX implementations supported by
+ * this package report KiB.  Unsupported platforms return NA so that the R
+ * resource contract can fail closed instead of substituting current RSS.
+ */
+SEXP stpd_peak_rss_bytes_c(void) {
+#if defined(__unix__) || defined(__APPLE__)
+    struct rusage usage;
+    double bytes;
+    if (getrusage(RUSAGE_SELF, &usage) != 0 || usage.ru_maxrss <= 0) {
+        return ScalarReal(NA_REAL);
+    }
+# if defined(__APPLE__)
+    bytes = (double) usage.ru_maxrss;
+# else
+    bytes = (double) usage.ru_maxrss * 1024.0;
+# endif
+    if (!R_FINITE(bytes) || bytes <= 0.0) return ScalarReal(NA_REAL);
+    return ScalarReal(bytes);
+#else
+    return ScalarReal(NA_REAL);
+#endif
+}
 
 static int cmp_double(const void *a, const void *b) {
     double da = *(const double*)a;
@@ -153,6 +184,10 @@ SEXP stpd_structure_scan_c(SEXP isi_sexp, SEXP pct_sexp, SEXP min_w_sexp, SEXP m
     int width_count = max_w >= min_w ? max_w - min_w + 1 : 0;
     long long cap_ll = (long long)n * (long long)width_count;
     if (cap_ll > INT_MAX) error("stpd_structure_scan_c: scan allocation would be too large");
+    long double worst_case_bytes = (long double)cap_ll * STPD_STRUCTURE_SCAN_BYTES_PER_CAPACITY_ROW;
+    if (!isfinite((double)worst_case_bytes) || worst_case_bytes > STPD_STRUCTURE_SCAN_MEMORY_BUDGET_BYTES) {
+        error("stpd_structure_scan_c: scan allocation exceeds the 512 MiB safety budget");
+    }
     int cap = (int)cap_ll;
     if (cap < 1) cap = 1;
     int *starts = (int*) R_alloc(cap, sizeof(int));

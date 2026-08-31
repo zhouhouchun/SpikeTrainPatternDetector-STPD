@@ -1460,32 +1460,65 @@ stpd_neural_manifold_validation <- function(pop,
   )
 }
 
-stpd_neural_manifold_plot <- function(pop) {
+stpd_neural_manifold_plot <- function(pop, lang = "en") {
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
+  ui_copy <- function(zh_text, en_text) if (zh) zh_text else en_text
   dat <- pop$features %||% data.frame()
   if (is.null(dat) || nrow(dat) == 0L || !all(c("NM1", "NM2", "NM3") %in% names(dat))) {
-    return(layout(plot_ly(), scene = list(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE), zaxis = list(visible = FALSE)),
-                  annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                          text = "No neural manifold coordinates available.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), scene = list(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE), zaxis = list(visible = FALSE)),
+             annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                     text = ui_copy("\u6682\u65E0\u795E\u7ECF\u6D41\u5F62\u5750\u6807\u3002", "No neural manifold coordinates available."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   ok <- is.finite(dat$NM1) & is.finite(dat$NM2) & is.finite(dat$NM3)
   dat <- dat[ok, , drop = FALSE]
   if (nrow(dat) < 2L) {
-    return(layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
-                                                     text = "Need at least two embedded bins.", showarrow = FALSE))))
+    return(config(
+      layout(plot_ly(), annotations = list(list(x = 0.5, y = 0.5, xref = "paper", yref = "paper",
+                                                text = ui_copy("\u81F3\u5C11\u9700\u8981\u4E24\u4E2A\u5DF2\u5D4C\u5165\u7684\u65F6\u95F4\u7BB1\u3002", "Need at least two embedded bins."), showarrow = FALSE))),
+      displaylogo = FALSE, locale = if (zh) "zh-CN" else "en"
+    ))
   }
   color_var <- if ("behavior_numeric" %in% names(dat) && sum(is.finite(dat$behavior_numeric)) >= 3L) dat$behavior_numeric else dat$time_mid_sec
-  color_title <- if ("behavior_numeric" %in% names(dat) && sum(is.finite(dat$behavior_numeric)) >= 3L) "behavior" else "time (s)"
+  color_title <- if ("behavior_numeric" %in% names(dat) && sum(is.finite(dat$behavior_numeric)) >= 3L) {
+    ui_copy("\u884C\u4E3A", "behavior")
+  } else {
+    ui_copy("\u65F6\u95F4\uFF08s\uFF09", "time (s)")
+  }
+  method_title <- as.character(pop$method_label %||% pop$method %||% "")[1]
+  if (zh) {
+    method_title <- switch(
+      method_title,
+      "GPFA-style smooth FA" = "GPFA \u98CE\u683C\u7684\u5E73\u6ED1 FA",
+      "CEBRA-style supervised behavior axis" = "CEBRA \u98CE\u683C\u7684\u76D1\u7763\u5F0F\u884C\u4E3A\u8F74",
+      method_title
+    )
+  }
+  task_event_epoch_display <- as.character(dat$task_event_epoch %||% rep("", nrow(dat)))
+  if (zh && length(task_event_epoch_display) > 0L) {
+    epoch_map <- c(
+      none = "\u65E0",
+      pre_event = "\u4E8B\u4EF6\u524D",
+      event_onset = "\u4E8B\u4EF6\u8D77\u70B9",
+      post_event = "\u4E8B\u4EF6\u540E"
+    )
+    mapped <- unname(epoch_map[task_event_epoch_display])
+    use <- !is.na(mapped)
+    task_event_epoch_display[use] <- mapped[use]
+  }
   dat$hover <- paste0(
-    "bin ", dat$bin_id,
-    "<br>time: ", signif(dat$bin_start_sec, 5), "-", signif(dat$bin_end_sec, 5), " s",
-    "<br>population rate: ", signif(dat$population_rate_hz, 4), " Hz/neuron",
-    if ("behavior_value" %in% names(dat)) paste0("<br>behavior: ", dat$behavior_value) else "",
+    ui_copy("\u65F6\u95F4\u7BB1\uFF1A", "bin "), dat$bin_id,
+    ui_copy("<br>\u65F6\u95F4\uFF1A", "<br>time: "), signif(dat$bin_start_sec, 5), "-", signif(dat$bin_end_sec, 5), " s",
+    ui_copy("<br>\u7FA4\u4F53\u653E\u7535\u7387\uFF1A", "<br>population rate: "), signif(dat$population_rate_hz, 4), " Hz/neuron",
+    if ("behavior_value" %in% names(dat)) paste0(ui_copy("<br>\u884C\u4E3A\uFF1A", "<br>behavior: "), dat$behavior_value) else "",
     if ("task_event_in_window" %in% names(dat)) ifelse(
       isTRUE(dat$task_event_in_window) | dat$task_event_in_window,
       paste0(
-        "<br>task event: ", dat$task_event_name,
-        "<br>event-relative time: ", signif(dat$task_event_rel_time_sec, 5), " s",
-        "<br>event epoch: ", dat$task_event_epoch
+        ui_copy("<br>\u4EFB\u52A1\u4E8B\u4EF6\uFF1A", "<br>task event: "), dat$task_event_name,
+        ui_copy("<br>\u76F8\u5BF9\u4E8B\u4EF6\u65F6\u95F4\uFF1A", "<br>event-relative time: "), signif(dat$task_event_rel_time_sec, 5), " s",
+        ui_copy("<br>\u4E8B\u4EF6\u65F6\u671F\uFF1A", "<br>event epoch: "), task_event_epoch_display
       ),
       ""
     ) else ""
@@ -1496,7 +1529,7 @@ stpd_neural_manifold_plot <- function(pop) {
                         colorbar = list(title = color_title), line = list(color = "#ffffff", width = 0.4)),
           text = ~hover, hoverinfo = "text", source = "neural_manifold_plot") %>%
     layout(
-      title = list(text = paste0("Neural manifold: ", pop$method_label %||% pop$method %||% ""), x = 0.02, font = list(size = 15)),
+      title = list(text = paste0(ui_copy("\u795E\u7ECF\u6D41\u5F62\uFF1A", "Neural manifold: "), method_title), x = 0.02, font = list(size = 15)),
       scene = list(
         xaxis = list(title = "NM1", backgroundcolor = "#ffffff", gridcolor = "#e5e7eb"),
         yaxis = list(title = "NM2", backgroundcolor = "#ffffff", gridcolor = "#e5e7eb"),
@@ -1505,35 +1538,72 @@ stpd_neural_manifold_plot <- function(pop) {
       margin = list(l = 0, r = 0, t = 60, b = 10),
       paper_bgcolor = "#ffffff"
     ) %>%
-    config(displaylogo = FALSE, scrollZoom = TRUE)
+    config(displaylogo = FALSE, scrollZoom = TRUE, locale = if (zh) "zh-CN" else "en")
 }
 
-stpd_neural_manifold_method_notes <- function() {
+stpd_neural_manifold_method_notes <- function(lang = "en") {
+  zh <- !identical(as.character(lang %||% "en")[1], "en")
   data.frame(
-    layer = c("Basic", "Basic", "Temporal", "Nonlinear", "Nonlinear", "Nonlinear", "Nonlinear", "Supervised", "Validation"),
-    method = c("PCA", "FA", "GPFA", "UMAP / PHATE / Isomap / t-SNE", "PHATE", "t-SNE", "UMAP", "CEBRA / supervised manifold", "Controls"),
-    recommendation = c(
-      "Transparent linear baseline for population activity.",
-      "Better neural population baseline when shared variability and private noise matter.",
-      "Use full GPFA for publication-grade single-trial trajectories; this panel provides a GPFA-style smoothed FA preview.",
-      "Use as exploratory views, not standalone proof of a biological manifold.",
-      "Useful for continuous progressions and branch-like structure.",
-      "Local-neighborhood visualization; global geometry is fragile.",
-      "Common manifold-learning view; check seed and neighbor sensitivity.",
-      "Use behavior or movement labels to ask whether neural geometry encodes task variables; this panel provides a behavior-guided proxy and recommends external CEBRA for final contrastive embedding.",
-      "Held-out neuron prediction, behavior decoding, event-state centroid/dispersion, event-triggered trajectories, shuffles, and parameter sensitivity matter more than pretty 3D plots."
-    ),
-    source = c(
-      "Cunningham & Yu 2014",
-      "Cunningham & Yu 2014",
-      "Yu et al. 2009",
-      "Manifold-learning visualization literature",
-      "Moon et al. 2019",
-      "van der Maaten & Hinton 2008",
-      "McInnes et al. 2018",
-      "Schneider et al. 2023",
-      "Internal validation contract"
-    ),
+    layer = if (zh) {
+      c("\u57FA\u7840", "\u57FA\u7840", "\u65F6\u5E8F", "\u975E\u7EBF\u6027", "\u975E\u7EBF\u6027", "\u975E\u7EBF\u6027", "\u975E\u7EBF\u6027", "\u76D1\u7763", "\u9A8C\u8BC1")
+    } else {
+      c("Basic", "Basic", "Temporal", "Nonlinear", "Nonlinear", "Nonlinear", "Nonlinear", "Supervised", "Validation")
+    },
+    method = if (zh) {
+      c("PCA", "FA", "GPFA", "UMAP / PHATE / Isomap / t-SNE", "PHATE", "t-SNE", "UMAP", "CEBRA / \u76D1\u7763\u5F0F\u6D41\u5F62", "\u5BF9\u7167")
+    } else {
+      c("PCA", "FA", "GPFA", "UMAP / PHATE / Isomap / t-SNE", "PHATE", "t-SNE", "UMAP", "CEBRA / supervised manifold", "Controls")
+    },
+    recommendation = if (zh) {
+      c(
+        "\u4F5C\u4E3A\u7FA4\u4F53\u6D3B\u52A8\u900F\u660E\u3001\u53EF\u89E3\u91CA\u7684\u7EBF\u6027\u57FA\u7EBF\u3002",
+        "\u5F53\u5171\u4EAB\u53D8\u5F02\u548C\u5355\u795E\u7ECF\u5143\u79C1\u6709\u566A\u58F0\u90FD\u5F88\u91CD\u8981\u65F6\uFF0CFA \u662F\u66F4\u5408\u9002\u7684\u795E\u7ECF\u7FA4\u4F53\u57FA\u7EBF\u3002",
+        "\u53D1\u8868\u7EA7\u5355\u8BD5\u6B21\u8F68\u8FF9\u5E94\u4F7F\u7528\u5B8C\u6574 GPFA\uFF1B\u672C\u9762\u677F\u4EC5\u63D0\u4F9B GPFA \u98CE\u683C\u7684\u5E73\u6ED1 FA \u9884\u89C8\u3002",
+        "\u4EC5\u7528\u4F5C\u63A2\u7D22\u6027\u89C6\u56FE\uFF0C\u4E0D\u80FD\u5355\u72EC\u8BC1\u660E\u5B58\u5728\u751F\u7269\u5B66\u6D41\u5F62\u3002",
+        "\u9002\u5408\u67E5\u770B\u8FDE\u7EED\u8FDB\u7A0B\u548C\u5206\u652F\u6837\u7ED3\u6784\u3002",
+        "\u9002\u5408\u5C40\u90E8\u90BB\u57DF\u53EF\u89C6\u5316\uFF1B\u5168\u5C40\u51E0\u4F55\u7ED3\u6784\u5E76\u4E0D\u7A33\u5065\u3002",
+        "\u5E38\u7528\u6D41\u5F62\u5B66\u4E60\u89C6\u56FE\uFF1B\u5FC5\u987B\u68C0\u67E5\u968F\u673A\u79CD\u5B50\u548C\u90BB\u5C45\u6570\u654F\u611F\u6027\u3002",
+        "\u4F7F\u7528\u884C\u4E3A\u6216\u8FD0\u52A8\u6807\u7B7E\u68C0\u9A8C\u795E\u7ECF\u51E0\u4F55\u662F\u5426\u7F16\u7801\u4EFB\u52A1\u53D8\u91CF\uFF1B\u672C\u9762\u677F\u63D0\u4F9B\u884C\u4E3A\u5F15\u5BFC\u7684\u4EE3\u7406\u8868\u793A\uFF0C\u6700\u7EC8\u5BF9\u6BD4\u5B66\u4E60\u5EFA\u8BAE\u4F7F\u7528\u5916\u90E8 CEBRA\u3002",
+        "\u7559\u51FA\u795E\u7ECF\u5143\u9884\u6D4B\u3001\u884C\u4E3A\u89E3\u7801\u3001\u4E8B\u4EF6\u72B6\u6001\u8D28\u5FC3/\u79BB\u6563\u5EA6\u3001\u4E8B\u4EF6\u89E6\u53D1\u8F68\u8FF9\u3001\u968F\u673A\u6253\u4E71\u5BF9\u7167\u548C\u53C2\u6570\u654F\u611F\u6027\uFF0C\u90FD\u6BD4\u89C6\u89C9\u4E0A\u6F02\u4EAE\u7684 3D \u56FE\u66F4\u91CD\u8981\u3002"
+      )
+    } else {
+      c(
+        "Transparent linear baseline for population activity.",
+        "Better neural population baseline when shared variability and private noise matter.",
+        "Use full GPFA for publication-grade single-trial trajectories; this panel provides a GPFA-style smoothed FA preview.",
+        "Use as exploratory views, not standalone proof of a biological manifold.",
+        "Useful for continuous progressions and branch-like structure.",
+        "Local-neighborhood visualization; global geometry is fragile.",
+        "Common manifold-learning view; check seed and neighbor sensitivity.",
+        "Use behavior or movement labels to ask whether neural geometry encodes task variables; this panel provides a behavior-guided proxy and recommends external CEBRA for final contrastive embedding.",
+        "Held-out neuron prediction, behavior decoding, event-state centroid/dispersion, event-triggered trajectories, shuffles, and parameter sensitivity matter more than pretty 3D plots."
+      )
+    },
+    source = if (zh) {
+      c(
+        "Cunningham & Yu 2014",
+        "Cunningham & Yu 2014",
+        "Yu et al. 2009",
+        "\u6D41\u5F62\u5B66\u4E60\u53EF\u89C6\u5316\u6587\u732E",
+        "Moon et al. 2019",
+        "van der Maaten & Hinton 2008",
+        "McInnes et al. 2018",
+        "Schneider et al. 2023",
+        "\u5185\u90E8\u9A8C\u8BC1\u5408\u540C"
+      )
+    } else {
+      c(
+        "Cunningham & Yu 2014",
+        "Cunningham & Yu 2014",
+        "Yu et al. 2009",
+        "Manifold-learning visualization literature",
+        "Moon et al. 2019",
+        "van der Maaten & Hinton 2008",
+        "McInnes et al. 2018",
+        "Schneider et al. 2023",
+        "Internal validation contract"
+      )
+    },
     stringsAsFactors = FALSE
   )
 }

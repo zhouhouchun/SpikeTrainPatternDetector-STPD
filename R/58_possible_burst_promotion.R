@@ -4,6 +4,60 @@
 # user-review layer that can promote selected possible_burst intervals to burst
 # while preserving the original automatic label and a reversible audit trail.
 
+stpd_phase2b_legacy_has_state <- function(ds) {
+  state_checker <- get0(
+    "stpd_phase2b_has_state",
+    mode = "function",
+    inherits = TRUE,
+    ifnotfound = NULL
+  )
+  if (is.function(state_checker)) {
+    checked <- tryCatch(
+      state_checker(ds),
+      error = function(e) NA
+    )
+    # A malformed or unreadable Phase 2B product must never reopen a legacy
+    # promotion path. Only an explicit scalar FALSE is permission to proceed.
+    return(!identical(checked, FALSE))
+  }
+
+  # R/67 normally owns the canonical state predicate. This narrow fallback
+  # keeps source-only/test loading fail-closed while R/67 is unavailable and
+  # deliberately ignores the distinct, immutable Phase 2A Preview product.
+  results <- if (is.list(ds)) ds$results %||% NULL else NULL
+  is.list(results) && !is.null(results$multitrack_review)
+}
+
+stpd_phase2b_legacy_promotion_abort <- function(api) {
+  code <- "phase2b_legacy_promotion_blocked"
+  condition <- structure(
+    list(
+      message = paste0(
+        "[", code, "] ", api,
+        " is disabled because this dataset contains Phase 2B review state. ",
+        "Use the candidate-level multi-track confirm/revoke API instead."
+      ),
+      call = NULL,
+      code = code,
+      api = as.character(api)[1]
+    ),
+    class = c("stpd_phase2b_legacy_promotion_error", "error", "condition")
+  )
+  stop(condition)
+}
+
+stpd_phase2b_assert_legacy_promotion_allowed <- function(ds, api) {
+  if (stpd_phase2b_legacy_has_state(ds)) {
+    stpd_phase2b_legacy_promotion_abort(api)
+  }
+  invisible(TRUE)
+}
+
+stpd_legacy_final_audit_promote_from_policy <- function(ds, policy = NULL) {
+  isTRUE((policy %||% list())$promote_possible %||% FALSE) &&
+    !stpd_phase2b_legacy_has_state(ds)
+}
+
 stpd_chr_vec <- function(x, n, default = "") {
   if (is.null(x)) x <- rep(default, n)
   x <- as.character(x)
@@ -214,6 +268,9 @@ stpd_apply_final_audit <- function(ds,
                                    reason = "final_audit_rebuild",
                                    user = NA_character_) {
   if (is.null(ds) || is.null(ds$trains)) stop("Dataset has no trains.", call. = FALSE)
+  if (isTRUE(promote_possible)) {
+    stpd_phase2b_assert_legacy_promotion_allowed(ds, "stpd_apply_final_audit")
+  }
   if (is.null(ds$results)) ds$results <- list()
   trains <- selected_trains %||% names(ds$trains)
   trains <- intersect(as.character(trains), names(ds$trains))
@@ -282,6 +339,7 @@ stpd_apply_final_audit <- function(ds,
   summary <- if (length(summary_rows) > 0L) do.call(rbind, summary_rows) else stpd_empty_final_audit_summary()
   events <- if (length(event_rows) > 0L) do.call(rbind, event_rows) else stpd_empty_final_audit_events()
   ds$results$final_audit_policy <- list(
+    scope = "legacy_single_label",
     promote_possible = isTRUE(promote_possible),
     selected_trains = trains,
     audit_id = audit_id,
@@ -496,6 +554,10 @@ stpd_possible_burst_empty_labels <- function() {
 #' @export
 stpd_possible_burst_promotion_preview <- function(ds, selected_trains = NULL, overwrite_manual = FALSE) {
   if (is.null(ds) || is.null(ds$trains)) stop("Dataset has no trains.", call. = FALSE)
+  stpd_phase2b_assert_legacy_promotion_allowed(
+    ds,
+    "stpd_possible_burst_promotion_preview"
+  )
   trains <- selected_trains %||% names(ds$trains)
   trains <- intersect(as.character(trains), names(ds$trains))
   if (length(trains) == 0) stop("No selected trains found.", call. = FALSE)
@@ -581,6 +643,10 @@ stpd_promote_possible_burst <- function(ds,
                                         reason = "user_promoted_possible_burst",
                                         user = NA_character_,
                                         audit_id = NULL) {
+  stpd_phase2b_assert_legacy_promotion_allowed(
+    ds,
+    "stpd_promote_possible_burst"
+  )
   preview <- stpd_possible_burst_promotion_preview(ds, selected_trains = selected_trains, overwrite_manual = overwrite_manual)
   if (is.null(ds$results)) ds$results <- list()
   time_chr <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %z")
@@ -664,6 +730,10 @@ stpd_revert_possible_burst_promotions <- function(ds,
                                                   protect_manual_edits = TRUE,
                                                   reason = NULL) {
   if (is.null(ds) || is.null(ds$trains)) stop("Dataset has no trains.", call. = FALSE)
+  stpd_phase2b_assert_legacy_promotion_allowed(
+    ds,
+    "stpd_revert_possible_burst_promotions"
+  )
   if (is.null(ds$results)) ds$results <- list()
   trains <- selected_trains %||% names(ds$trains)
   trains <- intersect(as.character(trains), names(ds$trains))

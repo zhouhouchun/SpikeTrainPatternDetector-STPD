@@ -13,7 +13,7 @@ make_tonic_burst_overlap_train <- function(tonic_isi = 0.032, auto_burst = TRUE)
   dat
 }
 
-test_that("AUTO tonic rejects candidates overlapping the AUTO burst ISI band", {
+test_that("legacy tonic burst-overlap settings are audit-only", {
   detect_tonic <- getFromNamespace("detect_tonic_train", "SpikeTrainPatternDetector")
 
   params <- SpikeTrainPatternDetector::default_params()
@@ -32,8 +32,14 @@ test_that("AUTO tonic rejects candidates overlapping the AUTO burst ISI band", {
     min_isi_sec = 0.001, train = "train_1"
   )
 
-  expect_equal(nrow(guarded), 0L)
+  expect_gt(nrow(guarded), 0L)
   expect_gt(nrow(unguarded), 0)
+  expect_identical(
+    unname(as.integer(guarded[c("start_isi", "end_isi")])),
+    unname(as.integer(unguarded[c("start_isi", "end_isi")]))
+  )
+  expect_true(all(!guarded$tonic_burst_overlap_veto_applied))
+  expect_true(all(!guarded$tonic_anti_burst_veto_applied))
 })
 
 test_that("AUTO tonic still accepts stable ISIs separated from the AUTO burst band", {
@@ -53,7 +59,7 @@ test_that("AUTO tonic still accepts stable ISIs separated from the AUTO burst ba
   expect_equal(out$tonic_burst_overlap_ref_sec[1], 0.030, tolerance = 1e-8)
 })
 
-test_that("manual tonic anchors cannot override burst-overlap separation", {
+test_that("manual tonic anchors remain independent of Burst Event overlap", {
   detect_tonic <- getFromNamespace("detect_tonic_train", "SpikeTrainPatternDetector")
 
   params <- SpikeTrainPatternDetector::default_params()
@@ -82,10 +88,11 @@ test_that("manual tonic anchors cannot override burst-overlap separation", {
     min_isi_sec = 0.001, train = "train_1"
   )
 
-  expect_equal(nrow(out), 0L)
+  expect_gt(nrow(out), 0L)
+  expect_true(all(!out$tonic_burst_overlap_veto_applied))
 })
 
-test_that("event-core tonic uses the same burst-band separation guard", {
+test_that("event-core tonic records but does not apply the old Burst veto", {
   event_core_params <- getFromNamespace("stpd_event_core_params", "SpikeTrainPatternDetector")
   detect_tonic_core <- getFromNamespace("stpd_event_core_detect_tonic", "SpikeTrainPatternDetector")
   productize <- getFromNamespace("stpd_productize_params", "SpikeTrainPatternDetector")
@@ -104,7 +111,75 @@ test_that("event-core tonic uses the same burst-band separation guard", {
   near <- detect_tonic_core(near_burst, params, vp_near, min_isi_sec = 0.001, train = "train_1")
   far <- detect_tonic_core(far_from_burst, params, vp_far, min_isi_sec = 0.001, train = "train_1")
 
-  expect_equal(nrow(near), 0L)
+  expect_gt(nrow(near), 0L)
   expect_gt(nrow(far), 0)
+  expect_true(all(!near$tonic_burst_overlap_veto_applied))
+  expect_true(all(!near$tonic_seed_fraction_veto_applied))
   expect_true("tonic_burst_overlap_ref_sec" %in% names(far))
+})
+
+test_that("event-core HFT keeps State support across a Burst-like core", {
+  event_core_params <- getFromNamespace(
+    "stpd_event_core_params", "SpikeTrainPatternDetector"
+  )
+  detect_hft <- getFromNamespace(
+    "stpd_event_core_detect_hf_tonic", "SpikeTrainPatternDetector"
+  )
+
+  isi <- c(rep(0.015, 5L), 0.005, 0.005, rep(0.015, 5L))
+  dat <- data.frame(
+    timestamp_sec = c(0, cumsum(isi)),
+    ISI_sec = c(NA_real_, isi),
+    pattern_manual = "",
+    pattern_auto = "",
+    stringsAsFactors = FALSE
+  )
+  params <- SpikeTrainPatternDetector::default_params()
+  params$highfreq$tonic_burst_core_veto <- TRUE
+  vp <- event_core_params(dat, params, min_isi_sec = 0.001)
+  vp$hf_tonic_floor <- 0.001
+  vp$hf_tonic_low_tail_max <- 1
+  vp$hf_tonic_cv_max <- 10
+  vp$hf_tonic_lv_max <- 10
+  vp$hf_tonic_mm_max <- 10
+  vp$hf_tonic_min_spikes <- 6L
+  vp$hf_tonic_burst_core_veto <- TRUE
+  vp$hf_tonic_core_veto_min_isi_n <- 2L
+
+  out <- detect_hft(
+    dat, params, vp, min_isi_sec = 0.001, train = "train_1"
+  )
+
+  expect_gt(nrow(out), 0L)
+  expect_true(any(out$hf_tonic_burst_like_core_present))
+  expect_true(all(!out$hf_tonic_burst_core_veto_applied))
+})
+
+test_that("seed-bridge HFT also treats the old Burst veto as audit-only", {
+  detect_hft <- getFromNamespace(
+    "stpd_seed_bridge_detect_hf_tonic", "SpikeTrainPatternDetector"
+  )
+  isi <- c(rep(0.015, 5L), 0.005, 0.005, rep(0.015, 5L))
+  dat <- data.frame(
+    timestamp_sec = c(0, cumsum(isi)),
+    ISI_sec = c(NA_real_, isi),
+    pattern_manual = "",
+    pattern_auto = "",
+    stringsAsFactors = FALSE
+  )
+  params <- SpikeTrainPatternDetector::default_params()
+  params$highfreq$tonic_burst_core_veto <- TRUE
+  params$highfreq$tonic_min_ISI_floor_sec <- 0.001
+  params$highfreq$tonic_low_tail_fraction_max <- 1
+  params$highfreq$stable_CV_max <- 10
+  params$highfreq$stable_LV_max <- 10
+  params$highfreq$stable_MM_max <- 10
+
+  out <- detect_hft(
+    dat, params, min_isi_sec = 0.001, train = "train_1"
+  )
+
+  expect_gt(nrow(out), 0L)
+  expect_true(any(out$hf_tonic_core_veto_requested))
+  expect_true(all(!out$hf_tonic_core_veto_applied))
 })

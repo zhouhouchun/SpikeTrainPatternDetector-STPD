@@ -1,0 +1,378 @@
+dataset_id: clean_synthetic_mechanism_benchmark_v2_2_0
+dataset_version: 2.2.0
+n_templates: 20
+development_templates:
+- TPL_001
+- TPL_002
+- TPL_003
+- TPL_004
+- TPL_005
+holdout_templates:
+- TPL_006
+- TPL_007
+- TPL_008
+- TPL_009
+- TPL_010
+- TPL_011
+- TPL_012
+- TPL_013
+- TPL_014
+- TPL_015
+- TPL_016
+- TPL_017
+- TPL_018
+- TPL_019
+- TPL_020
+template_seed_base: 2026082700
+sample_blinding_seed: 2026082791
+phenotype_null_seed: 2026082777
+quota_seed: 2026082711
+calibration_selection_seed: 2026082780
+rng_contract:
+  namespace: clean_benchmark_component_rng_v1
+  hash_algorithm: xxhash32
+  key_fields:
+  - Template_ID
+  - Component
+  - Component_Slot
+  - Replicate
+  streams:
+  - schedule
+  - background
+  - burst
+  - pause
+  - tonic
+  - hfs
+  - nested_burst
+  - point_process
+  version_is_not_in_seed_key: yes
+  local_component_hash_algorithm: sha256
+anchor_B_s: 0.1
+scale_factors:
+- 1.0
+- 4.0
+- 10.0
+workbook_blind_batches:
+  Batch_A: 4.0
+  Batch_B: 10.0
+  Batch_C: 1.0
+stimulation_enabled: no
+observation_noise_enabled: no
+drift_enabled: no
+renewal_family: shifted_gamma
+shared_refractory_B: 0.02
+frozen_per_template_quota:
+  Standalone_Burst: 3
+  Burst_in_HFS: 2
+  Broad_HFS_total: 3
+  Tonic_generic: 1
+  Tonic_STN_like: 1
+  Canonical_Pause: 2
+  Contextual_Separator_secondary: 1
+complex_pause_templates:
+- TPL_001
+- TPL_003
+- TPL_006
+- TPL_008
+- TPL_010
+- TPL_012
+- TPL_014
+- TPL_016
+- TPL_018
+- TPL_020
+four_spike_assignments:
+  Template_ID:
+  - TPL_001
+  - TPL_002
+  - TPL_003
+  - TPL_004
+  - TPL_005
+  - TPL_006
+  - TPL_008
+  - TPL_010
+  - TPL_012
+  - TPL_014
+  - TPL_016
+  - TPL_018
+  Context:
+  - standalone
+  - hfs
+  - hfs
+  - standalone
+  - hfs
+  - standalone
+  - hfs
+  - standalone
+  - hfs
+  - standalone
+  - hfs
+  - standalone
+  Strength:
+  - weak
+  - weak
+  - moderate
+  - strong
+  - strong
+  - moderate
+  - moderate
+  - weak
+  - strong
+  - strong
+  - weak
+  - moderate
+background:
+  mean_isi_B:
+  - 0.55
+  - 0.8
+  gamma_shape:
+  - 2.0
+  - 5.5
+  boundary_spikes:
+  - 2
+  - 4
+  between_macro_insertion_probability: 0.55
+tonic:
+  intended_stratum_by_template:
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - eligible
+  - ambiguous
+  - ambiguous
+  - ambiguous
+  - ambiguous
+  - ambiguous
+  - no_evidence
+  - no_evidence
+  - no_evidence
+  phenotype_score_thresholds:
+  - 0.45
+  - 0.65
+  phenotype_score_weights:
+  - 0.4
+  - 0.2
+  - 0.2
+  - 0.2
+  flank_isis_each_side: 4
+  regimes:
+    eligible:
+      boundary_spikes:
+      - 12
+      - 18
+      generic_stress:
+        mean_isi_B:
+        - 0.75
+        - 1.1
+        gamma_shape:
+        - 12.0
+        - 30.0
+        cv_qc_max: 0.4
+        cv2_qc_max: 0.5
+        lv_qc_max: 0.35
+      stn_like_empirical:
+        mean_isi_B:
+        - 0.35
+        - 0.55
+        gamma_shape:
+        - 20.0
+        - 80.0
+        cv_qc_max: 0.3
+        cv2_qc_max: 0.4
+        lv_qc_max: 0.2
+    ambiguous:
+      boundary_spikes:
+      - 9
+      - 13
+      generic_stress:
+        mean_isi_B:
+        - 0.55
+        - 0.85
+        gamma_shape:
+        - 4.0
+        - 10.0
+        cv_qc_max: 0.65
+        cv2_qc_max: 0.75
+        lv_qc_max: 0.65
+      stn_like_empirical:
+        mean_isi_B:
+        - 0.24
+        - 0.38
+        gamma_shape:
+        - 8.0
+        - 25.0
+        cv_qc_max: 0.5
+        cv2_qc_max: 0.6
+        lv_qc_max: 0.45
+    no_evidence:
+      boundary_spikes:
+      - 8
+      - 12
+      generic_stress:
+        mean_isi_B:
+        - 0.55
+        - 0.8
+        gamma_shape:
+        - 2.5
+        - 6.0
+        cv_qc_max: 0.85
+        cv2_qc_max: 0.95
+        lv_qc_max: 0.85
+      stn_like_empirical:
+        mean_isi_B:
+        - 0.18
+        - 0.32
+        gamma_shape:
+        - 6.0
+        - 15.0
+        cv_qc_max: 0.7
+        cv2_qc_max: 0.8
+        lv_qc_max: 0.65
+  generic_stress:
+    mean_isi_B:
+    - 0.72
+    - 1.18
+    gamma_shape:
+    - 4.0
+    - 12.0
+    cv_qc_max: 0.55
+    cv2_qc_max: 0.7
+    lv_qc_max: 0.55
+  stn_like_empirical:
+    mean_isi_B:
+    - 0.2
+    - 0.55
+    gamma_shape:
+    - 20.0
+    - 80.0
+    cv_qc_max: 0.3
+    cv2_qc_max: 0.4
+    lv_qc_max: 0.2
+    source: frozen_summary_of_manually_labeled_PD_STN_tonic_ISIs
+    source_isi_n: 77
+    source_contiguous_run_n: 25
+    source_median_isi_s: 0.031962
+    source_q05_isi_s: 0.0160964
+    source_q95_isi_s: 0.06902
+    source_median_run_cv: 0.087455
+    source_median_run_lv: 0.009498
+    source_sha256: a70de1ae859b70de39a544b426990b73159c480ea4aa9e3467dfa8ba1d3aa5d5
+broad_hfs:
+  mean_isi_B:
+  - 0.18
+  - 0.32
+  boundary_spikes:
+  - 20
+  - 35
+  minimum_duration_B: 3.0
+  direct_support_max_isi_B: 0.45
+  tolerated_interruption_max_isi_B: 0.75
+  maximum_tolerated_interruption_fraction: 0.1
+  maximum_consecutive_tolerated_interruptions: 1
+  regularity_regimes:
+    regular:
+    - 6.0
+    - 12.0
+    intermediate:
+    - 2.4
+    - 5.0
+    irregular:
+    - 0.9
+    - 1.8
+burst_pulse:
+  pulse_duration_B:
+  - 0.12
+  - 0.9
+  standard_realized_spikes:
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  boundary_realized_spikes: 4
+  maximum_realized_spikes: 10
+  pre_buffer_B:
+  - 0.45
+  - 0.85
+  post_buffer_B:
+  - 0.45
+  - 0.85
+  standalone_baseline_mean_isi_B:
+  - 0.5
+  - 0.85
+  standalone_baseline_shape:
+  - 1.8
+  - 5.0
+  pulse_strength_strata:
+    weak:
+    - 4.0
+    - 5.5
+    moderate:
+    - 5.5
+    - 8.0
+    strong:
+    - 8.0
+    - 12.0
+canonical_pause:
+  gap_B:
+  - 2.8
+  - 5.0
+  interval_count: 1
+complex_pause:
+  isi_count:
+  - 2
+  - 3
+  component_gap_B:
+  - 1.6
+  - 3.2
+  minimum_total_duration_B: 4.5
+  maximum_total_duration_B: 8.5
+contextual_separator:
+  gap_B:
+  - 0.45
+  - 0.65
+  local_median_multiplier: 3.5
+  canonical_pause_lower_B: 2.8
+  primary_event_truth: none
+  secondary_label: Contextual_Separator
+composite_hfs_regime_templates:
+- TPL_001
+- TPL_003
+- TPL_006
+- TPL_008
+- TPL_010
+- TPL_012
+- TPL_014
+- TPL_016
+- TPL_018
+- TPL_020
+hfs_boundary_audit:
+  flank_isis_each_side: 3
+  ambiguous_contrast: 1.15
+  clear_contrast: 1.6
+phenotype_audit:
+  minimum_window_isis: 3
+  maximum_window_isis: 9
+  flank_isis_each_side: 4
+  null_surrogates: 1000
+  ambiguous_quantile: 0.9
+  clear_quantile: 0.975
+  development_only_threshold_fit: yes
+acceptance_contract:
+  maximum_attempts_per_run: 10000
+  reject_on_detector_output: no
+  reject_on_visual_clarity: no
+  permitted_rejection_reasons:
+  - numerical_failure
+  - refractory_violation
+  - frozen_spike_count_contract_failure
+  - contextual_separator_contract_failure
+  - state_duration_contract_failure
+  - complex_pause_contract_failure

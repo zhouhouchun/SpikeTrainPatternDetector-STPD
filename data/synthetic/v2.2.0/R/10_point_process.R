@@ -1,0 +1,217 @@
+regularity_metrics <- function(x) {
+  x <- as.numeric(x)
+  n <- length(x)
+  if (n == 0L) return(c(mean = NA_real_, cv = NA_real_, cv2 = NA_real_, lv = NA_real_))
+  mean_x <- mean(x)
+  cv <- if (n > 1L && mean_x > 0) stats::sd(x) / mean_x else 0
+  if (n > 1L) {
+    denom <- x[-n] + x[-1L]
+    delta <- x[-1L] - x[-n]
+    cv2 <- mean(2 * abs(delta) / denom)
+    lv <- mean(3 * (delta / denom)^2)
+  } else {
+    cv2 <- 0
+    lv <- 0
+  }
+  c(mean = mean_x, cv = cv, cv2 = cv2, lv = lv)
+}
+
+shifted_gamma_isis <- function(n, mean_isi, shape, refractory = parameters$shared_refractory_B) {
+  stopifnot(n >= 1L, mean_isi > refractory, shape > 0)
+  refractory + stats::rgamma(n, shape = shape, scale = (mean_isi - refractory) / shape)
+}
+
+hazard_advance <- function(start_time, hazard_budget, base_rate, refractory,
+                           pulse_start = Inf, pulse_end = Inf, multiplier = 1) {
+  t <- start_time + refractory
+  remaining <- hazard_budget
+  boundaries <- sort(unique(c(t, pulse_start, pulse_end, Inf)))
+  while (is.finite(remaining) && remaining > 0) {
+    inside <- t >= pulse_start && t < pulse_end
+    rate <- base_rate * if (inside) multiplier else 1
+    future <- boundaries[boundaries > t + 1e-14]
+    next_boundary <- if (length(future)) future[1] else Inf
+    capacity <- rate * (next_boundary - t)
+    if (!is.finite(capacity) || remaining <= capacity) return(t + remaining / rate)
+    remaining <- remaining - capacity
+    t <- next_boundary
+  }
+  t
+}
+
+simulate_piecewise_shifted_gamma <- function(duration, mean_isi, shape,
+                                              pulse_start = Inf, pulse_end = Inf,
+                                              multiplier = 1,
+                                              refractory = parameters$shared_refractory_B) {
+  stopifnot(duration > 0, mean_isi > refractory, shape > 0, multiplier >= 1)
+  base_rate <- 1 / (mean_isi - refractory)
+  times <- 0
+  pulse_exposed <- FALSE
+  while (tail(times, 1) < duration) {
+    q <- stats::rgamma(1, shape = shape, scale = 1 / shape)
+    next_time <- hazard_advance(tail(times, 1), q, base_rate, refractory,
+                                pulse_start, pulse_end, multiplier)
+    if (next_time > duration + 1e-12) break
+    times <- c(times, next_time)
+    pulse_exposed <- c(pulse_exposed, next_time >= pulse_start && next_time <= pulse_end)
+  }
+  list(times = times, isis = diff(times), pulse_exposed = pulse_exposed)
+}
+
+generate_fixed_count_run <- function(n_spikes, mean_isi, shape,
+                                     refractory = parameters$shared_refractory_B) {
+  stopifnot(n_spikes >= 2L)
+  isis <- shifted_gamma_isis(n_spikes - 1L, mean_isi, shape, refractory)
+  list(times = c(0, cumsum(isis)), isis = isis, pulse_exposed = rep(FALSE, n_spikes))
+}
+
+generate_pulse_run <- function(context = c("standalone", "hfs"), regime = NA_character_,
+                               strength_stratum, target_spikes, rng_seeds = NULL) {
+  context <- match.arg(context)
+  cfg <- parameters$burst_pulse
+  strength_range <- cfg$pulse_strength_strata[[strength_stratum]]
+  if (is.null(strength_range)) stop("Unknown frozen pulse-strength stratum.", call. = FALSE)
+  if (!target_spikes %in% c(cfg$boundary_realized_spikes, cfg$standard_realized_spikes)) {
+    stop("Target Burst spike count is outside the frozen contract.", call. = FALSE)
+  }
+  for (attempt in seq_len(parameters$acceptance_contract$maximum_attempts_per_run)) {
+    seeded <- function(stream, expr) {
+      if (is.null(rng_seeds) || is.null(rng_seeds[[stream]])) return(force(expr))
+      with_component_rng(rng_seeds[[stream]] + attempt - 1L, force(expr))
+    }
+    from_unit <- function(u, range) range[1] + u * diff(range)
+    # Draw each component's parameter vector once per attempt.  This preserves
+    # independence between component streams without resetting a stream for
+    # every scalar (which would create artificial within-component correlation).
+    hfs_u <- seeded("hfs", stats::runif(6))
+    nested_u <- seeded("nested_burst", stats::runif(4))
+    multiplier <- from_unit(nested_u[1], strength_range)
+    pre <- from_unit(hfs_u[1], cfg$pre_buffer_B)
+    post <- from_unit(hfs_u[2], cfg$post_buffer_B)
+
+    if (context == "hfs") {
+      mean_isi <- from_unit(hfs_u[3], parameters$broad_hfs$mean_isi_B)
+      shape_range <- parameters$broad_hfs$regularity_regimes[[regime]]
+      shape <- from_unit(hfs_u[4], shape_range)
+    } else {
+      mean_isi <- from_unit(hfs_u[3], cfg$standalone_baseline_mean_isi_B)
+      shape <- from_unit(hfs_u[4], cfg$standalone_baseline_shape)
+    }
+    pulse_mean_isi <- parameters$shared_refractory_B +
+      (mean_isi - parameters$shared_refractory_B) / multiplier
+    pulse_duration <- max(cfg$pulse_duration_B[1], min(cfg$pulse_duration_B[2],
+      target_spikes * pulse_mean_isi * from_unit(nested_u[2], c(0.82, 1.18))))
+    pulse_start <- pre
+    pulse_end <- pre + pulse_duration
+    duration <- pulse_end + post
+
+    if (context == "hfs") {
+      target_total <- seeded("hfs_total", sample(seq.int(parameters$broad_hfs$boundary_spikes[1], parameters$broad_hfs$boundary_spikes[2]), 1))
+      # Compensate the observation window for the extra expected events created by
+      # the pulse. This keeps the HFS envelope inside its frozen 20--35 spike
+      # contract without altering the sampled pulse or inspecting detector output.
+      pulse_compensation <- pulse_duration * (multiplier - 1)
+      duration <- max((target_total - 1) * mean_isi + pulse_compensation,
+                      parameters$broad_hfs$minimum_duration_B)
+      pulse_start <- from_unit(nested_u[3], c(0.20 * duration, 0.58 * duration))
+      pulse_end <- min(pulse_start + pulse_duration, 0.82 * duration)
+      if (pulse_end <= pulse_start + 0.08) next
+    }
+
+    run <- seeded("point_process", simulate_piecewise_shifted_gamma(duration, mean_isi, shape,
+                                                                      pulse_start, pulse_end, multiplier))
+    exposed_idx <- which(run$pulse_exposed)
+    if (length(exposed_idx) != target_spikes) next
+    if (context == "hfs") {
+      if (length(run$times) < parameters$broad_hfs$boundary_spikes[1] ||
+          length(run$times) > parameters$broad_hfs$boundary_spikes[2]) next
+      if (tail(run$times, 1) < parameters$broad_hfs$minimum_duration_B) next
+      non_direct <- run$isis > parameters$broad_hfs$direct_support_max_isi_B
+      if (any(run$isis > parameters$broad_hfs$tolerated_interruption_max_isi_B)) next
+      if (mean(non_direct) > parameters$broad_hfs$maximum_tolerated_interruption_fraction + 1e-12) next
+      if (any(rle(non_direct)$values & rle(non_direct)$lengths >
+              parameters$broad_hfs$maximum_consecutive_tolerated_interruptions)) next
+    }
+    if (any(diff(run$times) < parameters$shared_refractory_B - 1e-12)) next
+    return(c(run, list(
+      duration = duration,
+      mean_isi = mean_isi,
+      shape = shape,
+      regime = if (context == "hfs") regime else "standalone_background",
+      pulse_start = pulse_start,
+      pulse_end = pulse_end,
+      multiplier = multiplier,
+      pulse_strength_stratum = strength_stratum,
+      frozen_target_spikes = target_spikes,
+      exposed_indices = exposed_idx,
+      attempts = attempt
+    )))
+  }
+  stop("Unable to generate a pulse run under the frozen stratum and spike-count contract.", call. = FALSE)
+}
+
+generate_hfs_run <- function(regime) {
+  cfg <- parameters$broad_hfs
+  for (attempt in seq_len(parameters$acceptance_contract$maximum_attempts_per_run)) {
+    n_spikes <- sample(seq.int(cfg$boundary_spikes[1], cfg$boundary_spikes[2]), 1)
+    mean_isi <- stats::runif(1, cfg$mean_isi_B[1], cfg$mean_isi_B[2])
+    shape_range <- cfg$regularity_regimes[[regime]]
+    shape <- stats::runif(1, shape_range[1], shape_range[2])
+    run <- generate_fixed_count_run(n_spikes, mean_isi, shape)
+    if (tail(run$times, 1) < cfg$minimum_duration_B) next
+    non_direct <- run$isis > cfg$direct_support_max_isi_B
+    if (any(run$isis > cfg$tolerated_interruption_max_isi_B)) next
+    if (mean(non_direct) > cfg$maximum_tolerated_interruption_fraction + 1e-12) next
+    rr <- rle(non_direct)
+    if (any(rr$values & rr$lengths > cfg$maximum_consecutive_tolerated_interruptions)) next
+    return(c(run, list(duration = tail(run$times, 1), mean_isi = mean_isi,
+                       shape = shape, regime = regime, attempts = attempt)))
+  }
+  stop("Unable to generate an HFS state under the structural contract.", call. = FALSE)
+}
+
+generate_tonic_run <- function(subtype = c("generic_stress", "stn_like_empirical"),
+                               intended_stratum = c("eligible", "ambiguous", "no_evidence")) {
+  subtype <- match.arg(subtype)
+  intended_stratum <- match.arg(intended_stratum)
+  regime_cfg <- parameters$tonic$regimes[[intended_stratum]]
+  cfg <- regime_cfg[[subtype]]
+  for (attempt in seq_len(parameters$acceptance_contract$maximum_attempts_per_run)) {
+    n_spikes <- sample(seq.int(regime_cfg$boundary_spikes[1], regime_cfg$boundary_spikes[2]), 1)
+    mean_isi <- stats::runif(1, cfg$mean_isi_B[1], cfg$mean_isi_B[2])
+    shape <- stats::runif(1, cfg$gamma_shape[1], cfg$gamma_shape[2])
+    run <- generate_fixed_count_run(n_spikes, mean_isi, shape)
+    metrics <- regularity_metrics(run$isis)
+    if (metrics["cv"] > cfg$cv_qc_max || metrics["cv2"] > cfg$cv2_qc_max || metrics["lv"] > cfg$lv_qc_max) next
+    return(c(run, list(duration = tail(run$times, 1), mean_isi = mean_isi,
+                       shape = shape, regime = subtype, tonic_subtype = subtype,
+                       tonic_intended_stratum = intended_stratum,
+                       metrics = metrics, attempts = attempt)))
+  }
+  stop("Unable to generate a Tonic state under the subtype contract.", call. = FALSE)
+}
+
+generate_background_run <- function() {
+  cfg <- parameters$background
+  n_spikes <- sample(seq.int(cfg$boundary_spikes[1], cfg$boundary_spikes[2]), 1)
+  mean_isi <- stats::runif(1, cfg$mean_isi_B[1], cfg$mean_isi_B[2])
+  shape <- stats::runif(1, cfg$gamma_shape[1], cfg$gamma_shape[2])
+  run <- generate_fixed_count_run(n_spikes, mean_isi, shape)
+  c(run, list(duration = tail(run$times, 1), mean_isi = mean_isi,
+              shape = shape, regime = "background", attempts = 1L))
+}
+
+generate_complex_pause_run <- function() {
+  cfg <- parameters$complex_pause
+  for (attempt in seq_len(parameters$acceptance_contract$maximum_attempts_per_run)) {
+    n_isi <- sample(seq.int(cfg$isi_count[1], cfg$isi_count[2]), 1)
+    isis <- stats::runif(n_isi, cfg$component_gap_B[1], cfg$component_gap_B[2])
+    duration <- sum(isis)
+    if (duration < cfg$minimum_total_duration_B || duration > cfg$maximum_total_duration_B) next
+    return(list(times = c(0, cumsum(isis)), isis = isis,
+                pulse_exposed = rep(FALSE, n_isi + 1L), mean_isi = mean(isis),
+                shape = NA_real_, regime = "complex_multi_gap", duration = duration,
+                attempts = attempt))
+  }
+  stop("Unable to generate a complex Pause under the frozen contract.", call. = FALSE)
+}

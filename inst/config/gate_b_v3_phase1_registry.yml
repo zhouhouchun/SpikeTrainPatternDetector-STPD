@@ -1,0 +1,686 @@
+schema: stpd_gate_b_v3_phase1_registry_bundle_1
+plan_sha256: eb944b45becdb80633cf56508463f49a0bd4bb437502b291e55c73ee80536aa5
+normative_contract_sha256: 4de7921837fdd5c3fcb9a6c07a4742bfc4686023ae37b6f442440dab2044c8f6
+authoritative: no
+entries:
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_0316fea91040bcef686fe83f97d29c828a57f557dead62718f7b4cd6f463e82e
+  registry_domain: prediction_class
+  code: canonical_pause
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class canonical_pause
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: 8ccfdcdf1e695886bf5184be4edada8a47024d94efc2297eac27af841696c5a5
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_0e16c112bc1166c1c5df9158892f4a20ec0f93178c7b886520ad62e2e466d570
+  registry_domain: transition_payload_schema
+  code: event_candidate_accept_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for event_candidate_accept
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: 4b07fab8d74986b555e363e8c48f58caf42f4164767a64dbd13ac35ecf76b070
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_154676eba613e77e3a41e2506544ea4c6644b6bd0b8e7f9bab0c36ba76137758
+  registry_domain: operational_policy
+  code: resource_budget_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '14.2'
+    input_schema_id: six_stage_resource_counters_v1
+    output_schema_id: typed_resource_status_v1
+    formula_or_state_machine: check each stage budget before allocation/materialization;
+      fail whole v3 product without truncation
+    parameter_paths:
+    - resource.max_input_isi
+    - resource.max_candidates
+    - resource.max_canonical_bytes
+    edge_cases:
+    - all-hit candidate input
+    - cancellation cleans staging
+  semantic_definition_sha256: 42062808fc03c40a483260183c9c92175f2158332953bb1bb2eccbc08f4d953f
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_2399c76ad787effac1705f7295605e36be91df319c18de601052ec14f0430d9c
+  registry_domain: evidence_schema
+  code: review_reason_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload review_reason
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: 32ffe92fc0b25df5322fdadc3aec0d85769c65fc518906a299aecb6d136344e9
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_3bd095a425a823d05e1bb9f69a2dab405642a0e1b141d1b6f5e706b47ce7f45b
+  registry_domain: transition_payload_schema
+  code: review_candidate_reject_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for review_candidate_reject
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: bd7af037a1102b22b679fc71e2c247b0890784cd34d0936b832ae46b8bc38f9b
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_3eacac12d3a5542963d11e6590401b903350de57ce4c7bbdd6ab5713ee306358
+  registry_domain: transition_payload_schema
+  code: event_projection_reject_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for event_projection_reject
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: bb527e8dc8827770b4eb9f30f01c06c352a46a1588b1874d2b3f5d11fb4cd793
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_40f9125896f9e76b5940fae70e438c9b7115fb1cc1a1d6794f93275a7e5bf1c2
+  registry_domain: transition_payload_schema
+  code: state_split_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for state_split
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: ba309eff2cea18d6546f7ebad1a956a455af8654b6e5b8d5c49728231a495053
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_4101d5dc49a481aa6ce221207e94f709a9c2f2cec20add39593c63bf96fa14d2
+  registry_domain: evidence_schema
+  code: application_input_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload application_input
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: ec8917c6a2fd2ae2e3153070680871f4ca5f01617cb9c7ad8d313237bfed6d17
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_44be3cb915eeafd683d9f8c0230d2b27798c57846faa38c0e1eae7c262accf69
+  registry_domain: prediction_class
+  code: high_frequency_tonic
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class high_frequency_tonic
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: a02d7a85ca0dc48c148b58345fd903f814705ccf151422f08a101ef505a625f3
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_4d8bcef0c7bb78f91c3943ea590e4a3aa09565a9c367adb383ff5b5fc28d9e19
+  registry_domain: evidence_schema
+  code: derivation_input_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload derivation_input
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: f71bd82fcb66d6f38a2387dc47a36f2708982aae9d484ca8f68e4dd5509b5fda
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_5e9f48a09c6f029e9e131eb180d0b29369198212e0d3c27e9b5021549e3b0679
+  registry_domain: binding_role
+  code: boundary_gate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.13'
+    input_schema_id: threshold_instance_v1
+    output_schema_id: threshold_instance_binding_v1
+    formula_or_state_machine: threshold consumer binding role boundary_gate
+    parameter_paths: []
+    edge_cases:
+    - path and scope must resolve exactly
+  semantic_definition_sha256: d0714ddc73703499a4047542c5a73157737f98ba9b2c51dbf2d07bcbd421513b
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_62a15e43534719bba87ae500919ca76039044437c78446153a2d95833b53009e
+  registry_domain: binding_role
+  code: classification_gate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.13'
+    input_schema_id: threshold_instance_v1
+    output_schema_id: threshold_instance_binding_v1
+    formula_or_state_machine: threshold consumer binding role classification_gate
+    parameter_paths: []
+    edge_cases:
+    - path and scope must resolve exactly
+  semantic_definition_sha256: f0dca74e3403159a1fe84fe9981c1a01d842fba21ad44e203bf5f3bd45c62393
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_6572f3a49f7b27f096c42c11421190e684cf62f3e18b304a71853e4bbb9dbf2c
+  registry_domain: transition_payload_schema
+  code: episode_link_confirm_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for episode_link_confirm
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: bf121800a10b54088a30df8ab77bce24c5dd8c56baa2ff6362857ffef413ab94
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_6d4c3f74e650fea2f8061fc9dc9f2f064dba086851041b7b4282cfb7023836ae
+  registry_domain: estimator
+  code: state_frequency_rate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '3.4'
+    input_schema_id: label_blind_isi_run_v1
+    output_schema_id: state_frequency_evidence_v1
+    formula_or_state_machine: duration-weighted firing rate with frozen absolute high-frequency
+      gate
+    parameter_paths:
+    - state.frequency.absolute_gate_hz
+    edge_cases:
+    - zero duration rejects
+    - gray-zone abstains
+  semantic_definition_sha256: 83a33940d57bc375f57aca8a74bea4606aaaeeb5e9a538b452ffe53f91a3c10b
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_6f5fcf14d24ce67c386d2c5a53214882664ae0677ac148b6f08e3768ee743d1c
+  registry_domain: evidence_schema
+  code: application_statistics_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload application_statistics
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: 3c81ace324558f58c6e7eea8be71b7dfed19fe65ca7ac4f689d7ab20e21ee202
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_73fe049ed4da642fc5d347616b8d6f740595a3c787bcef5d227034be8596bfb3
+  registry_domain: prediction_class
+  code: tonic
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class tonic
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: a276a4809e03739b408e1ee84d240d133ce88f8b3092ca2c18801b044aa3ca67
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_80f89d232f43d65b0e03fd93e0d1ed070b2df40cb8c647e3a0ce32f35bc7bac6
+  registry_domain: prediction_class
+  code: high_frequency_irregular_state
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class high_frequency_irregular_state
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: 842d341b2bce83c7ea9db93b5828e4d5f7da4c7d78a47b6364f56e6c31943418
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_93185bf8539b3ab684e55da73e7e3068c07e5374d3ea58207b575da41867cf10
+  registry_domain: label_blind_rule
+  code: reconstruct_from_allowlist_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '9'
+    input_schema_id: raw_train_and_acquisition_qc_v1
+    output_schema_id: label_blind_input_v1
+    formula_or_state_machine: allocate fresh objects from allowlisted fields; never
+      strip-copy parent dataset
+    parameter_paths: []
+    edge_cases:
+    - forbidden columns
+    - attributes
+    - nested caches
+  semantic_definition_sha256: 966e7fe2cb7d0b123fb13deb66cb45c7e1f3a737ebef30a59feda6f9519b1e91
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_9b52c166698cbffed1af228ad950b39437d1d60e6ed6736c4e658dc12e1f33a2
+  registry_domain: transition_payload_schema
+  code: compensate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for compensate
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: 3e26629cd4a9e04e9d09d98e7d340633ba9c83fa9729868f41168f81a7b57dad
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_a90e6364c3f5d4e0adccaab49fb256d7d90e3ee8843f4b1729d54be50c88923c
+  registry_domain: evidence_schema
+  code: entity_support_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload entity_support
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: 5d3f5dec8045c5fb8360af75eeeb4172508ec8c74c7d3356906b703b71690732
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_aab261f53f7c4fe79bec46bfaf0c4d6e52b5c32751ede8af4728cfde71931ab2
+  registry_domain: input_source_domain
+  code: raw_timestamp_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '9'
+    input_schema_id: source_manifest_leaf_v1
+    output_schema_id: label_blind_input_v1
+    formula_or_state_machine: allowed label-blind source domain raw_timestamp
+    parameter_paths: []
+    edge_cases:
+    - source group membership is hashed
+  semantic_definition_sha256: 0f24a6090c472557134952e97d70f1a900d406fbe90bbce917155a6275d765b5
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_ac10a1e1d1cc235ca57ebbdd09cced6ae12deb1bb00e69564541dd3a6d8dc170
+  registry_domain: input_source_domain
+  code: qc_input_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '9'
+    input_schema_id: source_manifest_leaf_v1
+    output_schema_id: label_blind_input_v1
+    formula_or_state_machine: allowed label-blind source domain qc_input
+    parameter_paths: []
+    edge_cases:
+    - source group membership is hashed
+  semantic_definition_sha256: 5befd58fcead06f310d737e830a86ffabcb9224fd7b2be907eddd34f3cc9d9bb
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_afe5fec555a508084345a652408610a296daf87cac0f81a37747190ffb7b0a2f
+  registry_domain: gap_policy
+  code: pause_local_empirical_bh_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '4.1'
+    input_schema_id: label_blind_local_isi_reference_v1
+    output_schema_id: gap_candidate_v1
+    formula_or_state_machine: empirical upper-tail score adjusted within the preregistered
+      candidate family; score only, no FDR-control claim
+    parameter_paths:
+    - pause.local_window_isi
+    - pause.guard_band_isi
+    - pause.score_alpha
+    edge_cases:
+    - attainable p/q floor recorded
+    - insufficient local sample abstains
+  semantic_definition_sha256: ad309fc23871a50bc9e71c73e8bb43870d0d4460e300549839729efd377588a0
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_c4928b581b477e9d00b97f0652fbea37200e22b4c97802382ce292c81d124f83
+  registry_domain: transition_payload_schema
+  code: state_projection_reject_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for state_projection_reject
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: fdd45be84df5f60ded972c1de9e4528c871be159d3556fb00d0409df5921b40b
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_c69bdda6583062d09fa9c33036465c31ee38531257333b35b1dd22567fd362f3
+  registry_domain: episode_aggregation
+  code: state_episode_nonrecursive_connector_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '4.2'
+    input_schema_id: ordered_state_segments_v1
+    output_schema_id: state_episode_v1
+    formula_or_state_machine: single forward pass; direct-support fragments may join
+      across one eligible connector without recursive re-expansion
+    parameter_paths:
+    - state.connector.max_gap_sec
+    - state.connector.max_gap_count
+    edge_cases:
+    - canonical Pause always splits
+    - hard boundary always splits
+  semantic_definition_sha256: dd3df78ca796418ffdb624491c77b5fcf048296a2b6e15e2bbed787247b2a5a0
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_c91d9b24b17dfb71722459c3eaf633739c9f7c2b594608548d8b2f119c13cba1
+  registry_domain: failure_code
+  code: unsupported_transition_for_schema_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.16'
+    input_schema_id: typed_failure_context_v1
+    output_schema_id: consumer_response_v1
+    formula_or_state_machine: typed fail-closed response unsupported_transition_for_schema_v1
+    parameter_paths: []
+    edge_cases:
+    - must not silently fall back to legacy
+  semantic_definition_sha256: e521a395817852f00a9f065bd281e51de98fd89b84eeee2d606f3f344330569f
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_cc9093299d720f9342d59d4d3f09d76d92d9a18178578aa70c8f64d6296c6f16
+  registry_domain: transition_payload_schema
+  code: gap_projection_reject_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for gap_projection_reject
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: 19bab620129378777d328a92ac6d32449ea77a889cda8e21b2b37f5ef7d74c5e
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_ceed3c845f23029454ce95dd2234280dd90234518b71bed93533722bfa35834e
+  registry_domain: input_source_domain
+  code: acquisition_metadata_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '9'
+    input_schema_id: source_manifest_leaf_v1
+    output_schema_id: label_blind_input_v1
+    formula_or_state_machine: allowed label-blind source domain acquisition_metadata
+    parameter_paths: []
+    edge_cases:
+    - source group membership is hashed
+  semantic_definition_sha256: b3f13f3428960cbc55e62b20d7d508857004a9d826d01fe42953476329230672
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_d6f38ad94f35cb86b8bdded4bf335deacd3f692d0cb7e15c6d75caf0634d41b1
+  registry_domain: event_selector
+  code: event_maximal_disjoint_selector_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '4.3'
+    input_schema_id: complete_event_candidate_universe_v1
+    output_schema_id: maximal_disjoint_event_set_v1
+    formula_or_state_machine: deterministic maximum-cardinality disjoint selection
+      followed by evidence score and canonical-ID tie-break
+    parameter_paths:
+    - event.selector.minimum_score
+    edge_cases:
+    - nested candidates
+    - equal score deterministic tie
+  semantic_definition_sha256: 69c5efbfe7a751f0dbf1c6868b846d8f96506a2fe6a71dcad0ac1e71df865b1e
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_db8e5e00a39fb5bc4c0348b58657d24edc3280d1d4c56a7c6aa054238a14a72e
+  registry_domain: transition_payload_schema
+  code: episode_link_reject_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.15'
+    input_schema_id: typed_transition_request_v1
+    output_schema_id: adjudication_transition_v1
+    formula_or_state_machine: exact compare-and-swap payload for episode_link_reject
+    parameter_paths: []
+    edge_cases:
+    - unknown or extra key rejects
+    - append-only compensation
+  semantic_definition_sha256: 4dcf11d1af5a3e05d551435bc4d2688f02e83eff6d0555fc69e14d45582d5ad7
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_dea9e6a448a111884759b0e95b9853b06232e083f0d97960e15856952889a87b
+  registry_domain: failure_code
+  code: resource_budget_exceeded
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.16'
+    input_schema_id: typed_failure_context_v1
+    output_schema_id: consumer_response_v1
+    formula_or_state_machine: typed fail-closed response resource_budget_exceeded
+    parameter_paths: []
+    edge_cases:
+    - must not silently fall back to legacy
+  semantic_definition_sha256: 4a3161a6ba889961188c25e0f28297e267dce5368f7a846a28a4b56d8eae0c52
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_e37f235ecb90076c9a0e0144e52c321b02cab74f2caafb78234720e2f3eb46fe
+  registry_domain: input_allowlist_schema
+  code: timestamp_acquisition_qc_allowlist_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '9'
+    input_schema_id: raw_dataset_v1
+    output_schema_id: label_blind_input_v1
+    formula_or_state_machine: allow timestamp plus frozen acquisition/QC fields only
+    parameter_paths: []
+    edge_cases:
+    - manual labels and derived caches forbidden
+  semantic_definition_sha256: cd29433ac0cf35c4d0c97a3854e345abefba8e1dde4ab46f9c7b44ca28e68249
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_e3b341629f72670453cb54dbc272b0b0d401c07222a3a4e922fec41ad465833f
+  registry_domain: evidence_schema
+  code: lineage_parent_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.17'
+    input_schema_id: canonical_evidence_payload_v1
+    output_schema_id: evidence_record_v1
+    formula_or_state_machine: typed evidence payload lineage_parent
+    parameter_paths: []
+    edge_cases:
+    - free text cannot carry state-change semantics
+  semantic_definition_sha256: 1da6ceba18af247350dc49b6676b02697facd973a30650164a0bf11b73027a8d
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_e697d361068c7b0ff09aedfdfec0a14a32fbd743226900b879f1405668e4b8cd
+  registry_domain: binding_role
+  code: decision_gate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.13'
+    input_schema_id: threshold_instance_v1
+    output_schema_id: threshold_instance_binding_v1
+    formula_or_state_machine: threshold consumer binding role decision_gate
+    parameter_paths: []
+    edge_cases:
+    - path and scope must resolve exactly
+  semantic_definition_sha256: f71a3884e1db8a82131f031b8edee03c6dc657c56140a7abce7fbef9083dc019
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_e7fbf2022ffd8f4e3bc689d1b53c5109518f52a9278d9b192717befdaa67b9c0
+  registry_domain: binding_role
+  code: provenance_gate_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '6.13'
+    input_schema_id: threshold_instance_v1
+    output_schema_id: threshold_instance_binding_v1
+    formula_or_state_machine: threshold consumer binding role provenance_gate
+    parameter_paths: []
+    edge_cases:
+    - path and scope must resolve exactly
+  semantic_definition_sha256: b48621f8d891f5897f69336a9107f146ce7a90ad128db0a31a8165b85038e44c
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_f09846007b95957186c047ab0d33094e8cf0a59eea4c502381478cdeb73182e3
+  registry_domain: prediction_class
+  code: burst_event
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class burst_event
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: 60cbf11396bfa475cabc697f0acc79507f484fc733ee0a187c002c09d5a944fa
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_f421e39497dfe90bc6bfffd80bca1f91f69804b8d9f5d7700cf2ae9b2c5ebf9e
+  registry_domain: prediction_class
+  code: pause_interrupted_hf
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 2-4
+    input_schema_id: orthogonal_evidence_axes_v1
+    output_schema_id: prediction_class_v1
+    formula_or_state_machine: operational prediction class pause_interrupted_hf
+    parameter_paths: []
+    edge_cases:
+    - biological_ground_truth is always false
+  semantic_definition_sha256: 3821ca0bb492824beed20ca6b6f20f09b516b5451020a7ef9d3d7b44d15603a1
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_f4c3a4cc2a15bba171d949c74a1e7e9035edea7afccd50fcefe334ddc5f350ac
+  registry_domain: equivalence_method
+  code: connector_axis_equivalence_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '4.2'
+    input_schema_id: two_state_axis_evidence_rows_v1
+    output_schema_id: connector_decision_v1
+    formula_or_state_machine: two-one-sided equivalence on frozen frequency and regularity
+      tolerances
+    parameter_paths:
+    - state.connector.rate_equivalence_margin
+    - state.connector.regularity_equivalence_margin
+    edge_cases:
+    - difference-not-significant is not equivalence
+    - missing axis abstains
+  semantic_definition_sha256: f56bd96b35d9400b080e367fd36faf46b92e4337dcd659e8b413e5c45117c83b
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_f87108726046533d986fdb281d6aa232f8d52986338312e43ad50677982c41e1
+  registry_domain: estimator
+  code: state_regularity_median_cv2_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: '3.4'
+    input_schema_id: label_blind_isi_run_v1
+    output_schema_id: state_regularity_evidence_v1
+    formula_or_state_machine: median adjacent-pair CV2 with finite-sample and gray-zone
+      rules
+    parameter_paths:
+    - state.regularity.cv2_regular_max
+    - state.regularity.min_pairs
+    edge_cases:
+    - insufficient pairs abstain
+    - threshold equality is frozen
+  semantic_definition_sha256: 6d3e05dc042074d051089f4ba44271afe83fa31c497e5c70eea0c632bb597c92
+  active: yes
+- schema_version: stpd_contract_registry_v1
+  registry_entry_id: reg_fb9b737c18bac1fac55944a2dd740a1b1f922944dbc2583b31aecac5b42197b8
+  registry_domain: operational_policy
+  code: boundary_precedence_v1
+  code_version: '1'
+  semantic_definition_json:
+    definition_schema: stpd_registry_semantic_definition_v1
+    contract_clause_id: 4.1-4.3
+    input_schema_id: candidate_and_boundary_rows_v1
+    output_schema_id: compatibility_action_v1
+    formula_or_state_machine: QC/acquisition hard boundary > canonical Pause > unresolved
+      gap > State/Event candidate
+    parameter_paths: []
+    edge_cases:
+    - Pause below connector tolerance still splits
+  semantic_definition_sha256: e7b32f2d18d45a3bde04b136ef8445fc26f93279dca82445c9e2fcfe1828d81d
+  active: yes

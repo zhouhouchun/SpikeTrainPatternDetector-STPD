@@ -1,0 +1,409 @@
+"dataset","region","scale","train","method","variant","min_spikes","threshold_sec","threshold_status","method_warning","detected_event_n","elapsed_sec"
+"synthetic_v2.3_holdout","synthetic","4x","S0001","Mean-ISI","article_default",3,0.089210359124355,"resolved","complete",7,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","10x","S0002","Mean-ISI","article_default",3,0.219939416449277,"resolved","complete",7,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","10x","S0003","Mean-ISI","article_default",3,0.205763551418024,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0004","Mean-ISI","article_default",3,0.189503621159659,"resolved","complete",6,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0005","Mean-ISI","article_default",3,0.0190077308892252,"resolved","complete",7,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0008","Mean-ISI","article_default",3,0.202620116779544,"resolved","complete",6,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0010","Mean-ISI","article_default",3,0.0219126155298088,"resolved","complete",11,0.0220000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0012","Mean-ISI","article_default",3,0.0216533158345016,"resolved","complete",6,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0013","Mean-ISI","article_default",3,0.0182112006942325,"resolved","complete",7,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","1x","S0016","Mean-ISI","article_default",3,0.0218666229556723,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0017","Mean-ISI","article_default",3,0.082988193475054,"resolved","complete",9,0.0179999999999998
+"synthetic_v2.3_holdout","synthetic","10x","S0018","Mean-ISI","article_default",3,0.182112006942325,"resolved","complete",7,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","10x","S0019","Mean-ISI","article_default",3,0.20976925117126,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0020","Mean-ISI","article_default",3,0.0823054205672088,"resolved","complete",5,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0021","Mean-ISI","article_default",3,0.0205763551418024,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0022","Mean-ISI","article_default",3,0.0866132633380053,"resolved","complete",6,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0023","Mean-ISI","article_default",3,0.0207470483687639,"resolved","complete",9,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0024","Mean-ISI","article_default",3,0.0876504621192369,"resolved","complete",11,0.0199999999999996
+"synthetic_v2.3_holdout","synthetic","10x","S0025","Mean-ISI","article_default",3,0.197602453571645,"resolved","complete",8,0.0179999999999998
+"synthetic_v2.3_holdout","synthetic","1x","S0026","Mean-ISI","article_default",3,0.0223025897810877,"resolved","complete",7,0.0179999999999998
+"synthetic_v2.3_holdout","synthetic","4x","S0027","Mean-ISI","article_default",3,0.0879757665797102,"resolved","complete",7,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","10x","S0029","Mean-ISI","article_default",3,0.190077308892251,"resolved","complete",7,0.0179999999999998
+"synthetic_v2.3_holdout","synthetic","4x","S0031","Mean-ISI","article_default",3,0.0874664918226884,"resolved","complete",5,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","10x","S0032","Mean-ISI","article_default",3,0.207470483687639,"resolved","complete",9,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","1x","S0033","Mean-ISI","article_default",3,0.0209769251171259,"resolved","complete",5,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","4x","S0034","Mean-ISI","article_default",3,0.0774136834352183,"resolved","complete",6,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","4x","S0035","Mean-ISI","article_default",3,0.0758014484638672,"resolved","complete",6,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0036","Mean-ISI","article_default",3,0.0219939416449278,"resolved","complete",7,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0037","Mean-ISI","article_default",3,0.079040981428658,"resolved","complete",8,0.0179999999999998
+"synthetic_v2.3_holdout","synthetic","4x","S0038","Mean-ISI","article_default",3,0.0728448027769309,"resolved","complete",7,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","4x","S0039","Mean-ISI","article_default",3,0.0810480467118194,"resolved","complete",6,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0041","Mean-ISI","article_default",3,0.0839223970405189,"resolved","complete",7,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","4x","S0042","Mean-ISI","article_default",3,0.0760309235569009,"resolved","complete",7,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0043","Mean-ISI","article_default",3,0.209805992601293,"resolved","complete",7,0.0170000000000003
+"synthetic_v2.3_holdout","synthetic","1x","S0045","Mean-ISI","article_default",3,0.018950362115966,"resolved","complete",6,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","10x","S0046","Mean-ISI","article_default",3,0.193534208588043,"resolved","complete",6,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","1x","S0047","Mean-ISI","article_default",3,0.0197602453571645,"resolved","complete",8,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","1x","S0048","Mean-ISI","article_default",3,0.0202620116779545,"resolved","complete",6,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","1x","S0050","Mean-ISI","article_default",3,0.0193534208588043,"resolved","complete",6,0.0140000000000002
+"synthetic_v2.3_holdout","synthetic","4x","S0051","Mean-ISI","article_default",3,0.0839077004685045,"resolved","complete",5,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0053","Mean-ISI","article_default",3,0.216533158345017,"resolved","complete",6,0.0170000000000003
+"synthetic_v2.3_holdout","synthetic","10x","S0054","Mean-ISI","article_default",3,0.223025897810876,"resolved","complete",7,0.0170000000000003
+"synthetic_v2.3_holdout","synthetic","10x","S0057","Mean-ISI","article_default",3,0.218666229556722,"resolved","complete",5,0.0149999999999997
+"synthetic_v2.3_holdout","synthetic","1x","S0059","Mean-ISI","article_default",3,0.0209805992601293,"resolved","complete",7,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0060","Mean-ISI","article_default",3,0.219126155298088,"resolved","complete",11,0.0200000000000005
+"real_GPe","GPe","observed","LT1D10.651_SPK 01a","Mean-ISI","article_default",3,0.00828060526315789,"resolved","complete",59,0.16
+"real_GPe","GPe","observed","LT1D11.372_SPK 01a","Mean-ISI","article_default",3,0.00842508140304436,"resolved","truncated_at_k_1544_of_2068",83,0.585
+"real_GPe","GPe","observed","LT1D11.711_SPK 01a","Mean-ISI","article_default",3,0.00695794905094906,"resolved","complete",65,0.350000000000001
+"real_GPe","GPe","observed","LT1D12.665_SPK 01b","Mean-ISI","article_default",3,0.00862453977968176,"resolved","truncated_at_k_999_of_2503",140,0.428
+"real_GPe","GPe","observed","LT1D13.519_SPK 01a","Mean-ISI","article_default",3,0.0100396981132075,"resolved","complete",33,0.0760000000000005
+"real_GPe","GPe","observed","RT1D10.682_SPK 01a","Mean-ISI","article_default",3,0.00812551296505073,"resolved","complete",64,0.369
+"real_GPe","GPe","observed","RT1D10.861_SPK 01a","Mean-ISI","article_default",3,0.00867479844097995,"resolved","complete",70,0.347
+"real_GPe","GPe","observed","RT1D11.282_SPK 01a","Mean-ISI","article_default",3,0.0104935366049879,"resolved","complete",154,0.434
+"real_GPe","GPe","observed","RT1D12.415_SPK 01a","Mean-ISI","article_default",3,0.00651592957746475,"resolved","complete",56,0.139
+"real_GPe","GPe","observed","RT1D12.621_SPK 01a","Mean-ISI","article_default",3,0.0167935177865613,"resolved","complete",19,0.0590000000000002
+"real_GPe","GPe","observed","RT1D13.043_SPK 01a","Mean-ISI","article_default",3,0.00675885180102916,"resolved","truncated_at_k_502_of_4239",192,0.49
+"real_GPe","GPe","observed","RT1D13.657_SPK 01a","Mean-ISI","article_default",3,0.00649002823631625,"resolved","truncated_at_k_629_of_3499",184,0.494
+"real_GPe","GPe","observed","RT1D13.825_SPK 01a","Mean-ISI","article_default",3,0.00872782985658407,"resolved","truncated_at_k_990_of_2516",134,0.444999999999999
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.00706645409429281,"resolved","complete",61,0.109
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.00921477489177487,"resolved","complete",50,0.093
+"real_STN","STN","observed","LT1D00.83_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.010152781632653,"resolved","complete",71,0.128
+"real_STN","STN","observed","LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.0075313547589617,"resolved","complete",100,0.188000000000001
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.0106307769516728,"resolved","complete",45,0.0829999999999993
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.00939562413793104,"resolved","complete",47,0.0890000000000004
+"real_STN","STN","observed","LT1D03.44_fon1_1_nw_minus_7_09_minus_1_1","Mean-ISI","article_default",3,0.00779414868804663,"resolved","complete",109,0.175999999999999
+"real_STN","STN","observed","LT1D03.44_fon_nw_minus_7_09_minus_1_2","Mean-ISI","article_default",3,0.0101461268382353,"resolved","complete",73,0.133
+"real_STN","STN","observed","LT1D04.16_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.00734887755102044,"resolved","complete",87,0.14
+"real_STN","STN","observed","LT1D04.16_fon1_3_nw_minus_7_08_minus_1_3","Mean-ISI","article_default",3,0.00878027394636015,"resolved","complete",67,0.133
+"real_STN","STN","observed","RT1D-0.15_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.0083815680851064,"resolved","complete",94,0.355
+"real_STN","STN","observed","RT1D-0.15_fon1_2_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.00727412658227848,"resolved","complete",80,0.391
+"real_STN","STN","observed","RT1D00.82_fon_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.0172805097001764,"resolved","complete",53,0.115
+"real_STN","STN","observed","RT2D00.44_fon2_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.0105145191489362,"resolved","complete",14,0.0780000000000003
+"real_STN","STN","observed","RT2D00.96_fon_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.011759276371308,"resolved","complete",43,0.0949999999999998
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.0162463884892086,"resolved","complete",39,0.0949999999999998
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_3","Mean-ISI","article_default",3,0.0364527692307694,"resolved","complete",12,0.0250000000000004
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.0180236370967742,"resolved","complete",19,0.0289999999999999
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_3","Mean-ISI","article_default",3,0.013751375,"resolved","complete",26,0.04
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_1","Mean-ISI","article_default",3,0.00530077801724137,"resolved","complete",172,0.428
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_2","Mean-ISI","article_default",3,0.0163641728395062,"resolved","complete",46,0.093
+"real_STN","STN","observed","RT2D04.18_fon1_1_nw_minus_7_09_minus_1_1","Mean-ISI","article_default",3,0.00678512369791663,"resolved","complete",125,0.399
+"real_STN","STN","observed","RT2D04.18_fon1_2_nw_minus_7_09_minus_1_2","Mean-ISI","article_default",3,0.00658989417989417,"resolved","complete",171,0.429
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 1)","Mean-ISI","article_default",3,0.00807668702290078,"resolved","complete",53,0.133
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 2)","Mean-ISI","article_default",3,0.0104616909722222,"resolved","complete",41,0.0820000000000007
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_1","Mean-ISI","article_default",3,0.00695379693486588,"resolved","complete",42,0.141
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_2","Mean-ISI","article_default",3,0.00834435714285716,"resolved","complete",44,0.093
+"real_GPi","GPi","observed","LT1D02.236_nw-7 (flag 1)","Mean-ISI","article_default",3,0.0115971066666667,"resolved","complete",38,0.0840000000000005
+"real_GPi","GPi","observed","LT1D03.010_nw-7 (flag 1)","Mean-ISI","article_default",3,0.00684430237825594,"resolved","complete",130,0.395
+"real_GPi","GPi","observed","LT1D03.775_nw-7 (flag 1)","Mean-ISI","article_default",3,0.00687471603773585,"resolved","complete",110,0.408
+"real_GPi","GPi","observed","LT1D04.464_nw-7 (flag 1)","Mean-ISI","article_default",3,0.0124174666666667,"resolved","complete",45,0.101
+"real_GPi","GPi","observed","LT1D04.934_nw-7 (flag 1)","Mean-ISI","article_default",3,0.00473763853211008,"resolved","complete",144,0.408
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_1","Mean-ISI","article_default",3,0.00512651806239737,"resolved","truncated_at_k_1956_of_2001",60,0.42
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_2","Mean-ISI","article_default",3,0.0179966374501992,"resolved","complete",39,0.0810000000000013
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 1)","Mean-ISI","article_default",3,0.0109957335243552,"resolved","complete",29,0.0800000000000001
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 2)","Mean-ISI","article_default",3,0.0116293496240602,"resolved","complete",24,0.0699999999999985
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 1)","Mean-ISI","article_default",3,0.0210296461538461,"resolved","complete",15,0.0620000000000012
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 2)","Mean-ISI","article_default",3,0.027380251968504,"resolved","complete",15,0.027000000000001
+"real_GPi","GPi","observed","RT1D03.744_nw-7 (flag 1)","Mean-ISI","article_default",3,0.00815219774919619,"resolved","complete",41,0.130000000000001
+"real_GPi","GPi","observed","RT1D06.715_nw-7 (flag 1)","Mean-ISI","article_default",3,0.022265184,"resolved","complete",26,0.0629999999999988
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-1","Mean-ISI","article_default",3,0.00769647285464102,"resolved","complete",55,0.141
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-2","Mean-ISI","article_default",3,0.00593550224215243,"resolved","complete",81,0.179
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-1","Mean-ISI","article_default",3,0.0497813906249999,"resolved","complete",12,0.020999999999999
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-2","Mean-ISI","article_default",3,0.00482655152394779,"resolved","complete",84,0.177999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0001","LogISI/newBD","article_default",5,0.707945784384138,"resolved","",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0002","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","no_valid_burst_core",0,0.0080000000000009
+"synthetic_v2.3_holdout","synthetic","10x","S0003","LogISI/newBD","article_default",5,1.77827941003892,"resolved_above_reasonable_threshold","",2,0.0109999999999992
+"synthetic_v2.3_holdout","synthetic","10x","S0004","LogISI/newBD","article_default",5,NA,"unresolved_no_peak_below_100ms","",2,0.00900000000000034
+"synthetic_v2.3_holdout","synthetic","1x","S0005","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",6,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","10x","S0008","LogISI/newBD","article_default",5,1.77827941003892,"resolved_above_reasonable_threshold","no_valid_burst_core",0,0.00799999999999912
+"synthetic_v2.3_holdout","synthetic","1x","S0010","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",8,0.0200000000000014
+"synthetic_v2.3_holdout","synthetic","1x","S0012","LogISI/newBD","article_default",5,0.281838293126445,"resolved","",7,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","1x","S0013","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",4,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","1x","S0016","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",6,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0017","LogISI/newBD","article_default",5,0.562341325190349,"resolved","",5,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0018","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",1,0.0119999999999987
+"synthetic_v2.3_holdout","synthetic","10x","S0019","LogISI/newBD","article_default",5,1.12201845430196,"resolved_above_reasonable_threshold","",2,0.0120000000000005
+"synthetic_v2.3_holdout","synthetic","4x","S0020","LogISI/newBD","article_default",5,0.707945784384138,"resolved","",8,0.0199999999999996
+"synthetic_v2.3_holdout","synthetic","1x","S0021","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",7,0.0210000000000008
+"synthetic_v2.3_holdout","synthetic","4x","S0022","LogISI/newBD","article_default",5,1.12201845430196,"resolved_above_reasonable_threshold","",6,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","1x","S0023","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",4,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","4x","S0024","LogISI/newBD","article_default",5,0.891250938133746,"resolved","",5,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","10x","S0025","LogISI/newBD","article_default",5,NA,"unresolved_no_peak_below_100ms","",2,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0026","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",5,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","4x","S0027","LogISI/newBD","article_default",5,0.891250938133746,"resolved","",5,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","10x","S0029","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","",1,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","4x","S0031","LogISI/newBD","article_default",5,0.891250938133746,"resolved","",6,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","10x","S0032","LogISI/newBD","article_default",5,1.41253754462276,"resolved_above_reasonable_threshold","",1,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0033","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0034","LogISI/newBD","article_default",5,0.891250938133746,"resolved","",7,0.020999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0035","LogISI/newBD","article_default",5,0.562341325190349,"resolved","",7,0.0199999999999996
+"synthetic_v2.3_holdout","synthetic","1x","S0036","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",5,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","4x","S0037","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0038","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",9,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0039","LogISI/newBD","article_default",5,0.707945784384139,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0041","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",4,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","4x","S0042","LogISI/newBD","article_default",5,0.891250938133746,"resolved","",8,0.0219999999999985
+"synthetic_v2.3_holdout","synthetic","10x","S0043","LogISI/newBD","article_default",5,0.0891250938133746,"resolved","no_valid_burst_core",0,0.00600000000000023
+"synthetic_v2.3_holdout","synthetic","1x","S0045","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",4,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","10x","S0046","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","no_valid_burst_core",0,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0047","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",4,0.0120000000000005
+"synthetic_v2.3_holdout","synthetic","1x","S0048","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",5,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","1x","S0050","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",4,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0051","LogISI/newBD","article_default",5,0.446683592150963,"resolved","",6,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","10x","S0053","LogISI/newBD","article_default",5,2.81838293126445,"resolved_above_reasonable_threshold","",2,0.0140000000000011
+"synthetic_v2.3_holdout","synthetic","10x","S0054","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","",2,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0057","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","",3,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","1x","S0059","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",3,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0060","LogISI/newBD","article_default",5,2.23872113856834,"resolved_above_reasonable_threshold","",1,0.0100000000000016
+"real_GPe","GPe","observed","LT1D10.651_SPK 01a","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",6,0.0180000000000007
+"real_GPe","GPe","observed","LT1D11.372_SPK 01a","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",12,0.0240000000000009
+"real_GPe","GPe","observed","LT1D11.711_SPK 01a","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",7,0.0199999999999996
+"real_GPe","GPe","observed","LT1D12.665_SPK 01b","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",3,0.00999999999999979
+"real_GPe","GPe","observed","LT1D13.519_SPK 01a","LogISI/newBD","article_default",5,0.0707945784384138,"resolved","",5,0.016
+"real_GPe","GPe","observed","RT1D10.682_SPK 01a","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",3,0.0119999999999987
+"real_GPe","GPe","observed","RT1D10.861_SPK 01a","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",3,0.0140000000000011
+"real_GPe","GPe","observed","RT1D11.282_SPK 01a","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",33,0.0470000000000006
+"real_GPe","GPe","observed","RT1D12.415_SPK 01a","LogISI/newBD","article_default",5,0.0354813389233575,"resolved","",26,0.0390000000000015
+"real_GPe","GPe","observed","RT1D12.621_SPK 01a","LogISI/newBD","article_default",5,0.281838293126445,"resolved","",12,0.0230000000000015
+"real_GPe","GPe","observed","RT1D13.043_SPK 01a","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",6,0.0470000000000006
+"real_GPe","GPe","observed","RT1D13.657_SPK 01a","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",7,0.0520000000000014
+"real_GPe","GPe","observed","RT1D13.825_SPK 01a","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",2,0.0119999999999987
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,0.0223872113856834,"resolved","",52,0.0969999999999995
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",16,0.032
+"real_STN","STN","observed","LT1D00.83_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",17,0.032
+"real_STN","STN","observed","LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",14,0.0289999999999999
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",26,0.0409999999999986
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",19,0.0389999999999997
+"real_STN","STN","observed","LT1D03.44_fon1_1_nw_minus_7_09_minus_1_1","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",19,0.0359999999999996
+"real_STN","STN","observed","LT1D03.44_fon_nw_minus_7_09_minus_1_2","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",24,0.0380000000000003
+"real_STN","STN","observed","LT1D04.16_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",11,0.0220000000000002
+"real_STN","STN","observed","LT1D04.16_fon1_3_nw_minus_7_08_minus_1_3","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",33,0.0449999999999999
+"real_STN","STN","observed","RT1D-0.15_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,0.0891250938133746,"resolved","",9,0.0190000000000001
+"real_STN","STN","observed","RT1D-0.15_fon1_2_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",8,0.0170000000000012
+"real_STN","STN","observed","RT1D00.82_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",28,0.0419999999999998
+"real_STN","STN","observed","RT2D00.44_fon2_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,0.0112201845430196,"resolved","",7,0.0180000000000007
+"real_STN","STN","observed","RT2D00.96_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",16,0.027000000000001
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",25,0.0389999999999997
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_3","LogISI/newBD","article_default",5,0.707945784384139,"resolved","",8,0.0220000000000002
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",13,0.0229999999999997
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_3","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",12,0.0280000000000005
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","article_default",5,0.0891250938133746,"resolved","",16,0.0289999999999999
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",31,0.048
+"real_STN","STN","observed","RT2D04.18_fon1_1_nw_minus_7_09_minus_1_1","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",32,0.0839999999999996
+"real_STN","STN","observed","RT2D04.18_fon1_2_nw_minus_7_09_minus_1_2","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",27,0.0750000000000011
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",7,0.016
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 2)","LogISI/newBD","article_default",5,0.141253754462276,"resolved","",5,0.0150000000000006
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_1","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",1,0.0120000000000005
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_2","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",3,0.0129999999999999
+"real_GPi","GPi","observed","LT1D02.236_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.223872113856834,"resolved","",9,0.0199999999999996
+"real_GPi","GPi","observed","LT1D03.010_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",25,0.0419999999999998
+"real_GPi","GPi","observed","LT1D03.775_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",7,0.0169999999999995
+"real_GPi","GPi","observed","LT1D04.464_nw-7 (flag 1)","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",1,0.00699999999999967
+"real_GPi","GPi","observed","LT1D04.934_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",19,0.0340000000000007
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_1","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",4,0.0139999999999993
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_2","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",18,0.0300000000000011
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.112201845430196,"resolved","",2,0.00999999999999979
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 2)","LogISI/newBD","article_default",5,NA,"unresolved_no_valley_void_ge_threshold","",16,0.0310000000000006
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 1)","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",1,0.00700000000000145
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 2)","LogISI/newBD","article_default",5,0.177827941003892,"resolved","",11,0.0259999999999998
+"real_GPi","GPi","observed","RT1D03.744_nw-7 (flag 1)","LogISI/newBD","article_default",5,0.0446683592150963,"resolved","",31,0.0750000000000011
+"real_GPi","GPi","observed","RT1D06.715_nw-7 (flag 1)","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",2,0.00900000000000034
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-1","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",12,0.0220000000000002
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-2","LogISI/newBD","article_default",5,NA,"unresolved_only_one_principal_peak","",6,0.0150000000000006
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-1","LogISI/newBD","article_default",5,0.281838293126445,"resolved","",8,0.0230000000000015
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-2","LogISI/newBD","article_default",5,0.0562341325190349,"resolved","",28,0.0410000000000004
+"synthetic_v2.3_holdout","synthetic","4x","S0001","Mean-ISI","harmonized_4_spikes",4,0.089210359124355,"resolved","complete",4,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0002","Mean-ISI","harmonized_4_spikes",4,0.219939416449277,"resolved","complete",5,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","10x","S0003","Mean-ISI","harmonized_4_spikes",4,0.205763551418024,"resolved","complete",5,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","10x","S0004","Mean-ISI","harmonized_4_spikes",4,0.189503621159659,"resolved","complete",6,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","1x","S0005","Mean-ISI","harmonized_4_spikes",4,0.0190077308892252,"resolved","complete",5,0.0170000000000012
+"synthetic_v2.3_holdout","synthetic","10x","S0008","Mean-ISI","harmonized_4_spikes",4,0.202620116779544,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0010","Mean-ISI","harmonized_4_spikes",4,0.0219126155298088,"resolved","complete",10,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","1x","S0012","Mean-ISI","harmonized_4_spikes",4,0.0216533158345016,"resolved","complete",5,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","1x","S0013","Mean-ISI","harmonized_4_spikes",4,0.0182112006942325,"resolved","complete",5,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","1x","S0016","Mean-ISI","harmonized_4_spikes",4,0.0218666229556723,"resolved","complete",4,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0017","Mean-ISI","harmonized_4_spikes",4,0.082988193475054,"resolved","complete",7,0.020999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0018","Mean-ISI","harmonized_4_spikes",4,0.182112006942325,"resolved","complete",5,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","10x","S0019","Mean-ISI","harmonized_4_spikes",4,0.20976925117126,"resolved","complete",5,0.0119999999999987
+"synthetic_v2.3_holdout","synthetic","4x","S0020","Mean-ISI","harmonized_4_spikes",4,0.0823054205672088,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0021","Mean-ISI","harmonized_4_spikes",4,0.0205763551418024,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0022","Mean-ISI","harmonized_4_spikes",4,0.0866132633380053,"resolved","complete",5,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","1x","S0023","Mean-ISI","harmonized_4_spikes",4,0.0207470483687639,"resolved","complete",7,0.0200000000000014
+"synthetic_v2.3_holdout","synthetic","4x","S0024","Mean-ISI","harmonized_4_spikes",4,0.0876504621192369,"resolved","complete",10,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","10x","S0025","Mean-ISI","harmonized_4_spikes",4,0.197602453571645,"resolved","complete",7,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","1x","S0026","Mean-ISI","harmonized_4_spikes",4,0.0223025897810877,"resolved","complete",4,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0027","Mean-ISI","harmonized_4_spikes",4,0.0879757665797102,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0029","Mean-ISI","harmonized_4_spikes",4,0.190077308892251,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0031","Mean-ISI","harmonized_4_spikes",4,0.0874664918226884,"resolved","complete",4,0.0140000000000011
+"synthetic_v2.3_holdout","synthetic","10x","S0032","Mean-ISI","harmonized_4_spikes",4,0.207470483687639,"resolved","complete",7,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","1x","S0033","Mean-ISI","harmonized_4_spikes",4,0.0209769251171259,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0034","Mean-ISI","harmonized_4_spikes",4,0.0774136834352183,"resolved","complete",5,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","4x","S0035","Mean-ISI","harmonized_4_spikes",4,0.0758014484638672,"resolved","complete",6,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","1x","S0036","Mean-ISI","harmonized_4_spikes",4,0.0219939416449278,"resolved","complete",5,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","4x","S0037","Mean-ISI","harmonized_4_spikes",4,0.079040981428658,"resolved","complete",7,0.0180000000000007
+"synthetic_v2.3_holdout","synthetic","4x","S0038","Mean-ISI","harmonized_4_spikes",4,0.0728448027769309,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0039","Mean-ISI","harmonized_4_spikes",4,0.0810480467118194,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","4x","S0041","Mean-ISI","harmonized_4_spikes",4,0.0839223970405189,"resolved","complete",6,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0042","Mean-ISI","harmonized_4_spikes",4,0.0760309235569009,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0043","Mean-ISI","harmonized_4_spikes",4,0.209805992601293,"resolved","complete",6,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0045","Mean-ISI","harmonized_4_spikes",4,0.018950362115966,"resolved","complete",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0046","Mean-ISI","harmonized_4_spikes",4,0.193534208588043,"resolved","complete",5,0.0149999999999988
+"synthetic_v2.3_holdout","synthetic","1x","S0047","Mean-ISI","harmonized_4_spikes",4,0.0197602453571645,"resolved","complete",7,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0048","Mean-ISI","harmonized_4_spikes",4,0.0202620116779545,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","1x","S0050","Mean-ISI","harmonized_4_spikes",4,0.0193534208588043,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","4x","S0051","Mean-ISI","harmonized_4_spikes",4,0.0839077004685045,"resolved","complete",5,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0053","Mean-ISI","harmonized_4_spikes",4,0.216533158345017,"resolved","complete",5,0.016
+"synthetic_v2.3_holdout","synthetic","10x","S0054","Mean-ISI","harmonized_4_spikes",4,0.223025897810876,"resolved","complete",4,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0057","Mean-ISI","harmonized_4_spikes",4,0.218666229556722,"resolved","complete",4,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","1x","S0059","Mean-ISI","harmonized_4_spikes",4,0.0209805992601293,"resolved","complete",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","10x","S0060","Mean-ISI","harmonized_4_spikes",4,0.219126155298088,"resolved","complete",10,0.0210000000000008
+"real_GPe","GPe","observed","LT1D10.651_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00828060526315789,"resolved","complete",44,0.165000000000001
+"real_GPe","GPe","observed","LT1D11.372_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00842508140304436,"resolved","truncated_at_k_1544_of_2068",54,0.592
+"real_GPe","GPe","observed","LT1D11.711_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00695794905094906,"resolved","complete",45,0.362
+"real_GPe","GPe","observed","LT1D12.665_SPK 01b","Mean-ISI","harmonized_4_spikes",4,0.00862453977968176,"resolved","truncated_at_k_999_of_2503",97,0.427
+"real_GPe","GPe","observed","LT1D13.519_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.0100396981132075,"resolved","complete",23,0.0789999999999988
+"real_GPe","GPe","observed","RT1D10.682_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00812551296505073,"resolved","complete",35,0.368
+"real_GPe","GPe","observed","RT1D10.861_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00867479844097995,"resolved","complete",52,0.334999999999999
+"real_GPe","GPe","observed","RT1D11.282_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.0104935366049879,"resolved","complete",104,0.415000000000001
+"real_GPe","GPe","observed","RT1D12.415_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00651592957746475,"resolved","complete",44,0.132
+"real_GPe","GPe","observed","RT1D12.621_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.0167935177865613,"resolved","complete",16,0.0589999999999993
+"real_GPe","GPe","observed","RT1D13.043_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00675885180102916,"resolved","truncated_at_k_502_of_4239",130,0.506
+"real_GPe","GPe","observed","RT1D13.657_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00649002823631625,"resolved","truncated_at_k_629_of_3499",125,0.506
+"real_GPe","GPe","observed","RT1D13.825_SPK 01a","Mean-ISI","harmonized_4_spikes",4,0.00872782985658407,"resolved","truncated_at_k_990_of_2516",91,0.456
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.00706645409429281,"resolved","complete",37,0.118
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.00921477489177487,"resolved","complete",26,0.0949999999999989
+"real_STN","STN","observed","LT1D00.83_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.010152781632653,"resolved","complete",49,0.134
+"real_STN","STN","observed","LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0075313547589617,"resolved","complete",77,0.196
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.0106307769516728,"resolved","complete",28,0.108000000000001
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.00939562413793104,"resolved","complete",31,0.0939999999999994
+"real_STN","STN","observed","LT1D03.44_fon1_1_nw_minus_7_09_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.00779414868804663,"resolved","complete",77,0.190000000000001
+"real_STN","STN","observed","LT1D03.44_fon_nw_minus_7_09_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0101461268382353,"resolved","complete",41,0.136000000000001
+"real_STN","STN","observed","LT1D04.16_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.00734887755102044,"resolved","complete",59,0.142000000000001
+"real_STN","STN","observed","LT1D04.16_fon1_3_nw_minus_7_08_minus_1_3","Mean-ISI","harmonized_4_spikes",4,0.00878027394636015,"resolved","complete",45,0.135
+"real_STN","STN","observed","RT1D-0.15_fon1_1_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.0083815680851064,"resolved","complete",63,0.372999999999999
+"real_STN","STN","observed","RT1D-0.15_fon1_2_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.00727412658227848,"resolved","complete",50,0.41
+"real_STN","STN","observed","RT1D00.82_fon_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0172805097001764,"resolved","complete",42,0.148
+"real_STN","STN","observed","RT2D00.44_fon2_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0105145191489362,"resolved","complete",4,0.0610000000000017
+"real_STN","STN","observed","RT2D00.96_fon_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.011759276371308,"resolved","complete",27,0.0969999999999995
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.0162463884892086,"resolved","complete",27,0.0800000000000001
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_3","Mean-ISI","harmonized_4_spikes",4,0.0364527692307694,"resolved","complete",8,0.0210000000000008
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0180236370967742,"resolved","complete",12,0.0560000000000009
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_3","Mean-ISI","harmonized_4_spikes",4,0.013751375,"resolved","complete",14,0.0619999999999994
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.00530077801724137,"resolved","complete",125,0.408
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.0163641728395062,"resolved","complete",23,0.0899999999999999
+"real_STN","STN","observed","RT2D04.18_fon1_1_nw_minus_7_09_minus_1_1","Mean-ISI","harmonized_4_spikes",4,0.00678512369791663,"resolved","complete",79,0.381
+"real_STN","STN","observed","RT2D04.18_fon1_2_nw_minus_7_09_minus_1_2","Mean-ISI","harmonized_4_spikes",4,0.00658989417989417,"resolved","complete",108,0.422000000000001
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.00807668702290078,"resolved","complete",33,0.132999999999999
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 2)","Mean-ISI","harmonized_4_spikes",4,0.0104616909722222,"resolved","complete",30,0.0820000000000007
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_1","Mean-ISI","harmonized_4_spikes",4,0.00695379693486588,"resolved","complete",22,0.135
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_2","Mean-ISI","harmonized_4_spikes",4,0.00834435714285716,"resolved","complete",29,0.0920000000000005
+"real_GPi","GPi","observed","LT1D02.236_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.0115971066666667,"resolved","complete",29,0.0830000000000002
+"real_GPi","GPi","observed","LT1D03.010_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.00684430237825594,"resolved","complete",76,0.390000000000001
+"real_GPi","GPi","observed","LT1D03.775_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.00687471603773585,"resolved","complete",74,0.385999999999999
+"real_GPi","GPi","observed","LT1D04.464_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.0124174666666667,"resolved","complete",33,0.0950000000000006
+"real_GPi","GPi","observed","LT1D04.934_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.00473763853211008,"resolved","complete",87,0.415000000000001
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_1","Mean-ISI","harmonized_4_spikes",4,0.00512651806239737,"resolved","truncated_at_k_1956_of_2001",39,0.428000000000001
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_2","Mean-ISI","harmonized_4_spikes",4,0.0179966374501992,"resolved","complete",25,0.0809999999999995
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.0109957335243552,"resolved","complete",20,0.0809999999999995
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 2)","Mean-ISI","harmonized_4_spikes",4,0.0116293496240602,"resolved","complete",17,0.0730000000000004
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.0210296461538461,"resolved","complete",9,0.0650000000000013
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 2)","Mean-ISI","harmonized_4_spikes",4,0.027380251968504,"resolved","complete",10,0.0579999999999998
+"real_GPi","GPi","observed","RT1D03.744_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.00815219774919619,"resolved","complete",34,0.139999999999999
+"real_GPi","GPi","observed","RT1D06.715_nw-7 (flag 1)","Mean-ISI","harmonized_4_spikes",4,0.022265184,"resolved","complete",20,0.0709999999999997
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-1","Mean-ISI","harmonized_4_spikes",4,0.00769647285464102,"resolved","complete",32,0.141999999999999
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-2","Mean-ISI","harmonized_4_spikes",4,0.00593550224215243,"resolved","complete",54,0.180000000000001
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-1","Mean-ISI","harmonized_4_spikes",4,0.0497813906249999,"resolved","complete",8,0.0210000000000008
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-2","Mean-ISI","harmonized_4_spikes",4,0.00482655152394779,"resolved","complete",49,0.18
+"synthetic_v2.3_holdout","synthetic","4x","S0001","LogISI/newBD","harmonized_4_spikes",4,0.707945784384138,"resolved","",8,0.020999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0002","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",2,0.0119999999999987
+"synthetic_v2.3_holdout","synthetic","10x","S0003","LogISI/newBD","harmonized_4_spikes",4,1.77827941003892,"resolved_above_reasonable_threshold","",3,0.0120000000000005
+"synthetic_v2.3_holdout","synthetic","10x","S0004","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_peak_below_100ms","",3,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0005","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",6,0.0170000000000012
+"synthetic_v2.3_holdout","synthetic","10x","S0008","LogISI/newBD","harmonized_4_spikes",4,1.77827941003892,"resolved_above_reasonable_threshold","",3,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","1x","S0010","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",9,0.0220000000000002
+"synthetic_v2.3_holdout","synthetic","1x","S0012","LogISI/newBD","harmonized_4_spikes",4,0.281838293126445,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","1x","S0013","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",4,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","1x","S0016","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",6,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","4x","S0017","LogISI/newBD","harmonized_4_spikes",4,0.562341325190349,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","10x","S0018","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",1,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0019","LogISI/newBD","harmonized_4_spikes",4,1.12201845430196,"resolved_above_reasonable_threshold","",5,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0020","LogISI/newBD","harmonized_4_spikes",4,0.707945784384138,"resolved","",10,0.0259999999999998
+"synthetic_v2.3_holdout","synthetic","1x","S0021","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0022","LogISI/newBD","harmonized_4_spikes",4,1.12201845430196,"resolved_above_reasonable_threshold","",7,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","1x","S0023","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",4,0.0140000000000011
+"synthetic_v2.3_holdout","synthetic","4x","S0024","LogISI/newBD","harmonized_4_spikes",4,0.891250938133746,"resolved","",8,0.0220000000000002
+"synthetic_v2.3_holdout","synthetic","10x","S0025","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_peak_below_100ms","",2,0.00900000000000034
+"synthetic_v2.3_holdout","synthetic","1x","S0026","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",6,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","4x","S0027","LogISI/newBD","harmonized_4_spikes",4,0.891250938133746,"resolved","",9,0.0239999999999991
+"synthetic_v2.3_holdout","synthetic","10x","S0029","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",2,0.0100000000000016
+"synthetic_v2.3_holdout","synthetic","4x","S0031","LogISI/newBD","harmonized_4_spikes",4,0.891250938133746,"resolved","",7,0.0210000000000008
+"synthetic_v2.3_holdout","synthetic","10x","S0032","LogISI/newBD","harmonized_4_spikes",4,1.41253754462276,"resolved_above_reasonable_threshold","",1,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0033","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0034","LogISI/newBD","harmonized_4_spikes",4,0.891250938133746,"resolved","",7,0.0229999999999997
+"synthetic_v2.3_holdout","synthetic","4x","S0035","LogISI/newBD","harmonized_4_spikes",4,0.562341325190349,"resolved","",9,0.0239999999999991
+"synthetic_v2.3_holdout","synthetic","1x","S0036","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0037","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",6,0.0169999999999995
+"synthetic_v2.3_holdout","synthetic","4x","S0038","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",11,0.0220000000000002
+"synthetic_v2.3_holdout","synthetic","4x","S0039","LogISI/newBD","harmonized_4_spikes",4,0.707945784384139,"resolved","",7,0.0190000000000001
+"synthetic_v2.3_holdout","synthetic","4x","S0041","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",8,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","4x","S0042","LogISI/newBD","harmonized_4_spikes",4,0.891250938133746,"resolved","",9,0.0250000000000004
+"synthetic_v2.3_holdout","synthetic","10x","S0043","LogISI/newBD","harmonized_4_spikes",4,0.0891250938133746,"resolved","",1,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","1x","S0045","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",4,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","10x","S0046","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",1,0.011000000000001
+"synthetic_v2.3_holdout","synthetic","1x","S0047","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",7,0.0179999999999989
+"synthetic_v2.3_holdout","synthetic","1x","S0048","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",5,0.0150000000000006
+"synthetic_v2.3_holdout","synthetic","1x","S0050","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",4,0.0139999999999993
+"synthetic_v2.3_holdout","synthetic","4x","S0051","LogISI/newBD","harmonized_4_spikes",4,0.446683592150963,"resolved","",10,0.0589999999999993
+"synthetic_v2.3_holdout","synthetic","10x","S0053","LogISI/newBD","harmonized_4_spikes",4,2.81838293126445,"resolved_above_reasonable_threshold","",4,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0054","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",4,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","10x","S0057","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",4,0.0129999999999999
+"synthetic_v2.3_holdout","synthetic","1x","S0059","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",3,0.00999999999999979
+"synthetic_v2.3_holdout","synthetic","10x","S0060","LogISI/newBD","harmonized_4_spikes",4,2.23872113856834,"resolved_above_reasonable_threshold","",2,0.0119999999999987
+"real_GPe","GPe","observed","LT1D10.651_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",7,0.0519999999999996
+"real_GPe","GPe","observed","LT1D11.372_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",12,0.0549999999999997
+"real_GPe","GPe","observed","LT1D11.711_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",7,0.0440000000000005
+"real_GPe","GPe","observed","LT1D12.665_SPK 01b","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",3,0.0489999999999995
+"real_GPe","GPe","observed","LT1D13.519_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.0707945784384138,"resolved","",5,0.016
+"real_GPe","GPe","observed","RT1D10.682_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",3,0.0469999999999988
+"real_GPe","GPe","observed","RT1D10.861_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",4,0.0500000000000007
+"real_GPe","GPe","observed","RT1D11.282_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",38,0.0890000000000004
+"real_GPe","GPe","observed","RT1D12.415_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.0354813389233575,"resolved","",26,0.0709999999999997
+"real_GPe","GPe","observed","RT1D12.621_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.281838293126445,"resolved","",12,0.0549999999999997
+"real_GPe","GPe","observed","RT1D13.043_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",6,0.0530000000000008
+"real_GPe","GPe","observed","RT1D13.657_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",7,0.048
+"real_GPe","GPe","observed","RT1D13.825_SPK 01a","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",2,0.0359999999999996
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.0223872113856834,"resolved","",64,0.126999999999999
+"real_STN","STN","observed","LT1D-1.77_Fon_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",16,0.0570000000000004
+"real_STN","STN","observed","LT1D00.83_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",18,0.059000000000001
+"real_STN","STN","observed","LT1D00.83_fon1_2_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",15,0.0599999999999987
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",30,0.0760000000000005
+"real_STN","STN","observed","LT1D01.96_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",22,0.0749999999999993
+"real_STN","STN","observed","LT1D03.44_fon1_1_nw_minus_7_09_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",21,0.0679999999999996
+"real_STN","STN","observed","LT1D03.44_fon_nw_minus_7_09_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",27,0.0709999999999997
+"real_STN","STN","observed","LT1D04.16_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",11,0.0549999999999997
+"real_STN","STN","observed","LT1D04.16_fon1_3_nw_minus_7_08_minus_1_3","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",39,0.0879999999999992
+"real_STN","STN","observed","RT1D-0.15_fon1_1_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.0891250938133746,"resolved","",9,0.0530000000000008
+"real_STN","STN","observed","RT1D-0.15_fon1_2_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",8,0.0540000000000003
+"real_STN","STN","observed","RT1D00.82_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",29,0.0800000000000001
+"real_STN","STN","observed","RT2D00.44_fon2_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.0112201845430196,"resolved","",13,0.0570000000000004
+"real_STN","STN","observed","RT2D00.96_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",16,0.059000000000001
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",27,0.0760000000000005
+"real_STN","STN","observed","RT2D02.09_fon_nw_minus_7_08_minus_1_3","LogISI/newBD","harmonized_4_spikes",4,0.707945784384139,"resolved","",14,0.0579999999999998
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",16,0.0609999999999999
+"real_STN","STN","observed","RT2D03.41_fon_nw_minus_7_08_minus_1_3","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",12,0.0589999999999993
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.0891250938133746,"resolved","",16,0.0619999999999994
+"real_STN","STN","observed","RT2D03.89_fon_nw_minus_7_08_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",33,0.088000000000001
+"real_STN","STN","observed","RT2D04.18_fon1_1_nw_minus_7_09_minus_1_1","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",34,0.0890000000000004
+"real_STN","STN","observed","RT2D04.18_fon1_2_nw_minus_7_09_minus_1_2","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",27,0.077
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",8,0.048
+"real_GPi","GPi","observed","LT1D01.687_nw-7 (flag 2)","LogISI/newBD","harmonized_4_spikes",4,0.141253754462276,"resolved","",5,0.0470000000000006
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_1","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",1,0.0370000000000008
+"real_GPi","GPi","observed","LT1D01_687_nw_7_09_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",3,0.0419999999999998
+"real_GPi","GPi","observed","LT1D02.236_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.223872113856834,"resolved","",9,0.0510000000000002
+"real_GPi","GPi","observed","LT1D03.010_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",27,0.0700000000000003
+"real_GPi","GPi","observed","LT1D03.775_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",7,0.0449999999999999
+"real_GPi","GPi","observed","LT1D04.464_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",1,0.0390000000000015
+"real_GPi","GPi","observed","LT1D04.934_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",19,0.0619999999999994
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_1","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",4,0.0429999999999993
+"real_GPi","GPi","observed","LT1D06_308_nw_8_09_1_2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",20,0.0620000000000012
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.112201845430196,"resolved","",2,0.0410000000000004
+"real_GPi","GPi","observed","RT1D01.597_nw-7 (flag 2)","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_no_valley_void_ge_threshold","",16,0.0560000000000009
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",1,0.0370000000000008
+"real_GPi","GPi","observed","RT1D03.300_nw-7 (flag 2)","LogISI/newBD","harmonized_4_spikes",4,0.177827941003892,"resolved","",13,0.0519999999999996
+"real_GPi","GPi","observed","RT1D03.744_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,0.0446683592150963,"resolved","",31,0.077
+"real_GPi","GPi","observed","RT1D06.715_nw-7 (flag 1)","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",2,0.0389999999999997
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-1","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",12,0.0519999999999996
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_1-2","LogISI/newBD","harmonized_4_spikes",4,NA,"unresolved_only_one_principal_peak","",6,0.0460000000000012
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-1","LogISI/newBD","harmonized_4_spikes",4,0.281838293126445,"resolved","",11,0.0540000000000003
+"real_GPi","GPi","observed","RT1D06_441_nw_3_01_1_2-2","LogISI/newBD","harmonized_4_spikes",4,0.0562341325190349,"resolved","",29,0.0680000000000014

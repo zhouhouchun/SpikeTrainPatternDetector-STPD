@@ -86,41 +86,9 @@ stpd_split_trains_by_manual_events <- function(ds, params = default_params_sec()
 }
 
 stpd_match_events_greedy <- function(pred, truth, class_col = "pattern", iou_min = 0.25) {
-  if (is.null(pred) || is.null(truth) || nrow(pred) == 0 || nrow(truth) == 0) {
-    return(tibble::tibble(pred_index = integer(), truth_index = integer(), train = character(), pattern = character(), iou = numeric()))
-  }
-  pred$.pred_index <- seq_len(nrow(pred)); truth$.truth_index <- seq_len(nrow(truth))
-  pairs <- list()
-  for (tr in intersect(unique(pred$train), unique(truth$train))) {
-    p_tr <- pred[pred$train == tr, , drop = FALSE]
-    t_tr <- truth[truth$train == tr, , drop = FALSE]
-    for (cls in intersect(unique(p_tr[[class_col]]), unique(t_tr[[class_col]]))) {
-      pp <- p_tr[p_tr[[class_col]] == cls, , drop = FALSE]
-      tt <- t_tr[t_tr[[class_col]] == cls, , drop = FALSE]
-      if (nrow(pp) == 0 || nrow(tt) == 0) next
-      for (ii in seq_len(nrow(pp))) {
-        iou <- stpd_event_iou(pp$start_isi[ii], pp$end_isi[ii], tt$start_isi, tt$end_isi)
-        ok <- which(is.finite(iou) & iou >= iou_min)
-        if (length(ok) == 0) next
-        for (jj in ok) {
-          pairs[[length(pairs) + 1L]] <- data.frame(
-            pred_index = pp$.pred_index[ii], truth_index = tt$.truth_index[jj], train = tr, pattern = cls, iou = iou[jj],
-            stringsAsFactors = FALSE
-          )
-        }
-      }
-    }
-  }
-  if (length(pairs) == 0) return(tibble::tibble(pred_index = integer(), truth_index = integer(), train = character(), pattern = character(), iou = numeric()))
-  cand <- dplyr::bind_rows(pairs)
-  cand <- cand[order(-cand$iou), , drop = FALSE]
-  used_p <- integer(); used_t <- integer(); rows <- list()
-  for (ii in seq_len(nrow(cand))) {
-    if (cand$pred_index[ii] %in% used_p || cand$truth_index[ii] %in% used_t) next
-    rows[[length(rows) + 1L]] <- cand[ii, , drop = FALSE]
-    used_p <- c(used_p, cand$pred_index[ii]); used_t <- c(used_t, cand$truth_index[ii])
-  }
-  if (length(rows) == 0) tibble::tibble(pred_index = integer(), truth_index = integer(), train = character(), pattern = character(), iou = numeric()) else dplyr::bind_rows(rows)
+  # Backward-compatible name retained for downstream callers. Matching is now
+  # globally one-to-one within train/class and is no longer greedy.
+  stpd_match_events_optimal(pred, truth, class_col = class_col, iou_min = iou_min)
 }
 
 stpd_event_level_metrics <- function(pred, truth, class_col = "pattern", iou_min = 0.25) {
@@ -340,8 +308,13 @@ stpd_event_level_merge_bootstrap_ci <- function(metrics, bootstrap_summary) {
 
 stpd_freeze_thresholds_for_trains <- function(ds, params = default_params_sec(), calibration_trains = NULL,
                                               min_isi_sec = NULL, bin_width_sec = NULL,
-                                              freeze_scope = "calibration") {
-  params_eval <- effective_params_for_detector(params)
+                                              freeze_scope = "calibration",
+                                              label_blind = FALSE) {
+  params_input <- params
+  if (isTRUE(label_blind) && exists("stpd_label_blind_prepare_params", mode = "function")) {
+    params_input <- stpd_label_blind_prepare_params(params_input)
+  }
+  params_eval <- effective_params_for_detector(params_input)
   if (is.null(ds) || is.null(ds$trains)) stop("stpd_freeze_thresholds_for_trains(): ds must be a dataset with trains.", call. = FALSE)
   target <- intersect(as.character(calibration_trains %||% names(ds$trains)), names(ds$trains))
   if (is.null(params_eval$event_grammar)) params_eval$event_grammar <- list()
@@ -360,11 +333,20 @@ stpd_freeze_thresholds_for_trains <- function(ds, params = default_params_sec(),
     params_eval$event_grammar$threshold_table <- NULL
     params_eval$event_grammar$effective_bands <- NULL
   }
-  scoped_ds <- ds
+  scoped_ds <- if (isTRUE(label_blind) && exists("stpd_label_blind_dataset_copy", mode = "function")) {
+    stpd_label_blind_dataset_copy(ds)
+  } else {
+    ds
+  }
   scoped_ds$trains <- scoped_ds$trains[target]
   min_isi_sec <- min_isi_sec %||% params_eval$detector$min_valid_isi_sec %||% 0.0009
   bin_width_sec <- bin_width_sec %||% params_eval$event_grammar$histogram_bin_width_sec %||% params_eval$event_core$histogram_bin_width_sec %||% 0.005
   params_eval <- stpd_attach_thresholds_to_params_impl(params_eval, ds = scoped_ds, min_isi_sec = min_isi_sec, bin_width_sec = bin_width_sec)
+  if (exists("stpd_freeze_bounded_borrowing_contract", mode = "function")) {
+    params_eval <- stpd_freeze_bounded_borrowing_contract(
+      params_eval, scoped_ds$trains, min_isi_sec = min_isi_sec
+    )
+  }
   params_eval$event_grammar$threshold_resolution_scope <- freeze_scope
   params_eval$event_grammar$threshold_training_trains <- paste(target, collapse = ";")
   params_eval$event_grammar$threshold_training_train_n <- length(target)
@@ -506,34 +488,20 @@ stpd_match_events_any_label_greedy <- function(a, b, iou_min = 0.25) {
   if (is.null(a) || is.null(b) || nrow(a) == 0 || nrow(b) == 0) {
     return(tibble::tibble(a_index = integer(), b_index = integer(), train = character(), iou = numeric()))
   }
-  a$.a_index <- seq_len(nrow(a)); b$.b_index <- seq_len(nrow(b))
-  pairs <- list()
-  for (tr in intersect(unique(a$train), unique(b$train))) {
-    aa <- a[a$train == tr, , drop = FALSE]
-    bb <- b[b$train == tr, , drop = FALSE]
-    if (nrow(aa) == 0 || nrow(bb) == 0) next
-    for (ii in seq_len(nrow(aa))) {
-      iou <- stpd_event_iou(aa$start_isi[ii], aa$end_isi[ii], bb$start_isi, bb$end_isi)
-      ok <- which(is.finite(iou) & iou >= iou_min)
-      if (length(ok) == 0) next
-      for (jj in ok) {
-        pairs[[length(pairs) + 1L]] <- data.frame(
-          a_index = aa$.a_index[ii], b_index = bb$.b_index[jj], train = tr, iou = iou[jj],
-          stringsAsFactors = FALSE
-        )
-      }
-    }
+  a_eval <- as.data.frame(a, stringsAsFactors = FALSE)
+  b_eval <- as.data.frame(b, stringsAsFactors = FALSE)
+  a_eval$.stpd_any_label <- "all"
+  b_eval$.stpd_any_label <- "all"
+  out <- stpd_match_events_optimal(
+    a_eval, b_eval, class_col = ".stpd_any_label", iou_min = iou_min
+  )
+  if (nrow(out) == 0L) {
+    return(tibble::tibble(a_index = integer(), b_index = integer(), train = character(), iou = numeric()))
   }
-  if (length(pairs) == 0) return(tibble::tibble(a_index = integer(), b_index = integer(), train = character(), iou = numeric()))
-  cand <- dplyr::bind_rows(pairs)
-  cand <- cand[order(-cand$iou), , drop = FALSE]
-  used_a <- integer(); used_b <- integer(); rows <- list()
-  for (ii in seq_len(nrow(cand))) {
-    if (cand$a_index[ii] %in% used_a || cand$b_index[ii] %in% used_b) next
-    rows[[length(rows) + 1L]] <- cand[ii, , drop = FALSE]
-    used_a <- c(used_a, cand$a_index[ii]); used_b <- c(used_b, cand$b_index[ii])
-  }
-  if (length(rows) == 0) tibble::tibble(a_index = integer(), b_index = integer(), train = character(), iou = numeric()) else dplyr::bind_rows(rows)
+  tibble::tibble(
+    a_index = out$pred_index, b_index = out$truth_index,
+    train = out$train, iou = out$iou
+  )
 }
 
 stpd_cohen_kappa_from_labels <- function(a, b) {
@@ -904,8 +872,14 @@ stpd_detector_surrogate_false_alarm <- function(ds, params = default_params_sec(
   methods <- intersect(as.character(methods %||% "isi_permutation"), c("isi_permutation", "renewal", "block_isi_shuffle"))
   if (length(methods) == 0) methods <- "isi_permutation"
 
-  params_eval <- stpd_freeze_thresholds_for_trains(ds, params, calibration_trains = target, freeze_scope = "surrogate_observed_threshold_freeze")
-  observed_ds <- stpd_detect(ds, params_eval, selected_trains = target, lock_manual = FALSE, collect_diagnostics = collect_diagnostics)
+  params_eval <- stpd_freeze_thresholds_for_trains(
+    ds, params, calibration_trains = target,
+    freeze_scope = "surrogate_observed_threshold_freeze", label_blind = TRUE
+  )
+  observed_ds <- stpd_detect(
+    ds, params_eval, selected_trains = target, lock_manual = FALSE,
+    collect_diagnostics = collect_diagnostics, label_blind = TRUE
+  )
   observed_events <- stpd_extract_events_by_source(observed_ds, params_eval, source = "auto", selected_trains = target, metric_mode = metric_mode)
   observed_counts <- stpd_count_events_by_pattern(observed_events)
   observed_counts <- dplyr::bind_rows(observed_counts, data.frame(pattern = "all", event_n = nrow(observed_events), stringsAsFactors = FALSE))
@@ -924,7 +898,10 @@ stpd_detector_surrogate_false_alarm <- function(ds, params = default_params_sec(
   for (method in methods) {
     for (ss in seq_len(n_surrogates)) {
       sur_ds <- stpd_surrogate_dataset(ds, selected_trains = target, method = method, block_length = block_length)
-      sur_out <- stpd_detect(sur_ds, params_eval, selected_trains = target, lock_manual = FALSE, collect_diagnostics = collect_diagnostics)
+      sur_out <- stpd_detect(
+        sur_ds, params_eval, selected_trains = target, lock_manual = FALSE,
+        collect_diagnostics = collect_diagnostics, label_blind = TRUE
+      )
       sur_events <- stpd_extract_events_by_source(sur_out, params_eval, source = "auto", selected_trains = target, metric_mode = metric_mode)
       cc <- stpd_count_events_by_pattern(sur_events)
       cc <- dplyr::bind_rows(cc, data.frame(pattern = "all", event_n = nrow(sur_events), stringsAsFactors = FALSE))
@@ -972,10 +949,40 @@ stpd_detector_surrogate_false_alarm <- function(ds, params = default_params_sec(
   )
 }
 
+stpd_scientific_validation_not_estimable_result <- function(meta, split) {
+  list(
+    meta = meta,
+    split = split,
+    calibration_metrics = data.frame(),
+    validation_metrics = data.frame(),
+    overfit_report = data.frame(),
+    matches_calibration = data.frame(),
+    matches_validation = data.frame(),
+    truth_events = data.frame(),
+    predicted_events = data.frame(),
+    bootstrap_ci_calibration = data.frame(),
+    bootstrap_ci_validation = data.frame(),
+    bootstrap_replicates_calibration = data.frame(),
+    bootstrap_replicates_validation = data.frame(),
+    score_calibration_validation = data.frame(),
+    score_calibration_predictions = data.frame(),
+    score_calibration_summary = data.frame(),
+    frozen_score_calibration_validation = data.frame(),
+    frozen_score_calibration_summary = data.frame(),
+    frozen_score_calibrated_predictions = data.frame(),
+    manual_uncertainty_boundary_sensitivity = data.frame(),
+    manual_uncertainty_inter_rater = data.frame(),
+    manual_uncertainty_meta = data.frame(),
+    surrogate_false_alarm_summary = data.frame(),
+    surrogate_false_alarm_counts = data.frame(),
+    surrogate_false_alarm_observed_counts = data.frame()
+  )
+}
+
 stpd_scientific_validation_report <- function(ds, params = default_params_sec(), validation_fraction = 0.25,
                                               seed = 1L, iou_min = 0.25,
                                               metric_mode = c("strict_high_confidence", "candidate_family"),
-                                              use_learned_ranges = TRUE,
+                                              use_learned_ranges = FALSE,
                                               threshold_freeze = c("calibration", "all", "none"),
                                               conf_level = 0.95,
                                               bootstrap_ci = TRUE,
@@ -994,36 +1001,72 @@ stpd_scientific_validation_report <- function(ds, params = default_params_sec(),
   score_calibrator <- match.arg(score_calibrator)
   if (is.null(ds) || is.null(ds$trains)) stop("stpd_scientific_validation_report(): ds must be a dataset with trains.", call. = FALSE)
   params_eval <- if (isTRUE(use_learned_ranges)) params else strip_learned_ranges_for_eval(params)
+  ds_eval <- if (isTRUE(use_learned_ranges)) ds else stpd_strip_learned_dataset_settings_for_eval(ds)
   split <- stpd_split_trains_by_manual_events(ds, params_eval, validation_fraction = validation_fraction, seed = seed, metric_mode = metric_mode)
   manual_event_n <- sum(split$manual_event_n, na.rm = TRUE)
+  calibration_trains <- as.character(split$train[split$split == "calibration"])
+  validation_trains <- as.character(split$train[split$split == "validation"])
+  independent_split_available <- length(calibration_trains) > 0L &&
+    length(validation_trains) > 0L &&
+    length(intersect(calibration_trains, validation_trains)) == 0L
+  validation_reason <- if (manual_event_n == 0L) {
+    "no_manual_events"
+  } else if (length(calibration_trains) == 0L && length(validation_trains) == 0L) {
+    "no_independent_calibration_or_validation_split"
+  } else if (length(calibration_trains) == 0L) {
+    "no_independent_calibration_split"
+  } else if (length(validation_trains) == 0L) {
+    "no_independent_validation_split"
+  } else if (length(intersect(calibration_trains, validation_trains)) > 0L) {
+    "calibration_validation_train_overlap"
+  } else {
+    "independent_calibration_validation_split_available"
+  }
+  validation_status <- if (isTRUE(independent_split_available) && manual_event_n > 0L) "estimable" else "not_estimable"
   target_detect <- split$train[split$split %in% c("calibration", "validation")]
   threshold_training_split <- threshold_freeze
   threshold_training_trains <- character()
-  threshold_freeze_status <- "not_requested"
-  if (!identical(threshold_freeze, "none") && length(target_detect) > 0) {
+  threshold_freeze_status <- if (identical(validation_status, "not_estimable")) {
+    if (identical(threshold_freeze, "none")) "not_requested_not_estimable" else "skipped_not_estimable"
+  } else {
+    "not_requested"
+  }
+  if (identical(validation_status, "estimable") && !identical(threshold_freeze, "none") && length(target_detect) > 0) {
     threshold_training_trains <- if (identical(threshold_freeze, "calibration")) split$train[split$split == "calibration"] else target_detect
-    if (length(threshold_training_trains) == 0 && identical(threshold_freeze, "calibration")) {
-      threshold_training_trains <- target_detect
-      threshold_freeze_status <- "fallback_no_calibration_train"
-      threshold_training_split <- "all_labeled_fallback"
-    } else {
-      threshold_freeze_status <- "frozen"
-    }
+    threshold_freeze_status <- "frozen"
     params_eval <- stpd_freeze_thresholds_for_trains(
-      ds, params_eval,
+      ds_eval, params_eval,
       calibration_trains = threshold_training_trains,
-      freeze_scope = paste0("scientific_validation_", threshold_training_split)
+      freeze_scope = paste0("scientific_validation_", threshold_training_split),
+      label_blind = TRUE
     )
+  }
+  threshold_training_scope <- if (identical(validation_status, "not_estimable")) {
+    "not_applicable_not_estimable"
+  } else if (identical(threshold_freeze_status, "frozen")) {
+    if (identical(threshold_training_split, "calibration")) "calibration_only" else "all_selected_frozen"
+  } else if (isTRUE((effective_params_for_detector(params_eval)$detector %||% list())$freeze_dataset_thresholds %||% TRUE)) {
+    "all_selected_transductive"
+  } else {
+    "pre_frozen_or_fixed"
   }
   meta <- data.frame(
     validation_run_id = paste0("validation_", format(Sys.time(), "%Y%m%d_%H%M%S")),
     metric_mode = metric_mode,
+    matching_rule = stpd_event_matching_rule(),
     iou_min = iou_min,
     validation_fraction = validation_fraction,
     seed = seed,
+    validation_status = validation_status,
+    validation_reason = validation_reason,
+    calibration_train_n = length(calibration_trains),
+    validation_train_n = length(validation_trains),
+    label_blind_detection = TRUE,
+    label_blind_threshold_estimation = TRUE,
     learned_ranges_used = isTRUE(use_learned_ranges),
     threshold_freeze = threshold_freeze,
     threshold_freeze_status = threshold_freeze_status,
+    threshold_training_scope = threshold_training_scope,
     threshold_training_split = threshold_training_split,
     threshold_training_train_n = length(threshold_training_trains),
     threshold_training_trains = paste(threshold_training_trains, collapse = ";"),
@@ -1037,15 +1080,26 @@ stpd_scientific_validation_report <- function(ds, params = default_params_sec(),
     surrogate_false_alarm = isTRUE(surrogate_false_alarm),
     n_surrogates = suppressWarnings(as.integer(n_surrogates %||% 99L)),
     manual_event_n = manual_event_n,
-    interpretation = if (manual_event_n == 0) "No manual events available; validation cannot estimate performance." else "Calibration/validation report based on manual labels. Use validation split for methods reporting; calibration split is for tuning feedback.",
+    interpretation = if (identical(validation_status, "not_estimable")) {
+      paste0(
+        "Performance is not estimable: ", validation_reason,
+        ". Independent calibration and validation trains are required; validation data were not reused for threshold training."
+      )
+    } else {
+      "Calibration/validation report based on manual labels. Use validation split for methods reporting; calibration split is for tuning feedback."
+    },
     stringsAsFactors = FALSE
   )
-  if (manual_event_n == 0) {
-    return(list(meta = meta, split = split, calibration_metrics = data.frame(), validation_metrics = data.frame(), overfit_report = data.frame(), matches_calibration = data.frame(), matches_validation = data.frame(), truth_events = data.frame(), predicted_events = data.frame(),
-                bootstrap_ci_calibration = data.frame(), bootstrap_ci_validation = data.frame(), score_calibration_validation = data.frame(), score_calibration_summary = data.frame(), surrogate_false_alarm_summary = data.frame(), surrogate_false_alarm_counts = data.frame()))
+  if (identical(validation_status, "not_estimable")) {
+    return(stpd_scientific_validation_not_estimable_result(meta, split))
   }
-  # Shadow detector: do not lock manual labels, so AUTO predictions can be generated on manual intervals without modifying the caller's ds.
-  pred_ds <- stpd_detect(ds, params_eval, selected_trains = target_detect, lock_manual = FALSE, collect_diagnostics = TRUE)
+  # Shadow detector: scrub reference labels before threshold resolution and
+  # candidate generation.  Merely disabling the final manual lock is not enough
+  # because manual labels can otherwise affect calibration and HF/burst gates.
+  pred_ds <- stpd_detect(
+    ds_eval, params_eval, selected_trains = target_detect, lock_manual = FALSE,
+    collect_diagnostics = TRUE, label_blind = TRUE
+  )
   truth_raw <- stpd_extract_events_by_source(ds, params_eval, source = "manual", selected_trains = split$train, metric_mode = metric_mode)
   pred <- stpd_extract_events_by_source(pred_ds, params_eval, source = "auto", selected_trains = split$train, metric_mode = metric_mode)
   add_split <- function(x) {

@@ -48,26 +48,54 @@ manual_event_overlap <- function(truth, pred, train = "", metric_mode = "strict_
 
 strip_learned_ranges_for_eval <- function(params) {
   pp <- params
-  if (!is.null(pp$burst)) {
-    pp$burst$adaptive_train_ranges <- list()
-    pp$burst$train_burst_ranges <- list()
+  family_fields <- list(
+    burst = c("adaptive_train_ranges", "train_burst_ranges"),
+    tonic = c("adaptive_train_ranges", "train_tonic_ranges"),
+    pause = c("adaptive_train_ranges", "train_pause_ranges"),
+    highfreq = c("adaptive_train_ranges", "train_highfreq_ranges", "train_isi_ranges")
+  )
+  for (family in names(family_fields)) {
+    if (is.null(pp[[family]]) || !is.list(pp[[family]])) next
+    for (field in family_fields[[family]]) pp[[family]][[field]] <- list()
   }
-  if (!is.null(pp$tonic)) {
-    pp$tonic$adaptive_train_ranges <- list()
-    pp$tonic$train_tonic_ranges <- list()
-  }
-  if (!is.null(pp$pause)) {
-    pp$pause$adaptive_train_ranges <- list()
-    pp$pause$train_pause_ranges <- list()
+  if (!is.null(pp$detector) && is.list(pp$detector)) pp$detector$train_isi_thresholds <- list()
+  if (!is.null(pp$event_grammar) && is.list(pp$event_grammar)) {
+    pp$event_grammar$threshold_table <- NULL
+    pp$event_grammar$effective_bands <- NULL
+    pp$event_grammar$manual_event_table <- NULL
+    pp$event_grammar$manual_suggest <- NULL
+    pp$event_grammar$histogram_suggest <- NULL
   }
   pp
 }
 
-compute_params_hash <- function(params) {
-  tryCatch({
-    if (requireNamespace("digest", quietly = TRUE)) digest::digest(params) else as.character(stats::runif(1))
-  }, error = function(e) paste0("hash_unavailable_", format(Sys.time(), "%Y%m%d%H%M%S")))
+stpd_strip_learned_dataset_settings_for_eval <- function(ds) {
+  out <- ds
+  if (is.null(out$train_settings) || !is.list(out$train_settings)) return(out)
+  for (field in c(
+    "burst_isi_ranges", "tonic_isi_ranges", "pause_isi_ranges",
+    "highfreq_isi_ranges", "isi_thresholds"
+  )) {
+    if (field %in% names(out$train_settings)) out$train_settings[[field]] <- list()
+  }
+  out
 }
 
-
+compute_params_hash <- function(params) {
+  tryCatch({
+    if (exists("stpd_params_hash", mode = "function")) {
+      return(stpd_params_hash(params))
+    }
+    canonical <- if (exists("stpd_productize_params", mode = "function")) {
+      stpd_productize_params(params, prefer = "canonical")
+    } else {
+      params
+    }
+    if (requireNamespace("digest", quietly = TRUE)) {
+      digest::digest(canonical, algo = "sha256", serialize = TRUE)
+    } else {
+      as.character(stats::runif(1))
+    }
+  }, error = function(e) paste0("hash_unavailable_", format(Sys.time(), "%Y%m%d%H%M%S")))
+}
 

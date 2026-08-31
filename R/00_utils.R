@@ -48,6 +48,24 @@ safe_int <- function(x, default = 0L) {
   x
 }
 
+stpd_normalize_pattern_label <- function(x, fill_blank_others = FALSE) {
+  x <- tolower(trimws(as.character(x)))
+  x[is.na(x)] <- ""
+  x[x %in% c("possible burst", "possible-burst", "possible_burst")] <- "possible_burst"
+  x[x %in% c("long burst", "long-burst", "long_burst", "longburst")] <- "long_burst"
+  x[x %in% c(
+    "high-frequency tonic", "high frequency tonic", "high_frequency_tonic",
+    "hf tonic", "hf_tonic", "hftonic"
+  )] <- "high_frequency_tonic"
+  x[x %in% c(
+    "high-frequency spiking", "high frequency spiking", "high_frequency_spiking",
+    "hf spiking", "hf_spiking", "hfspiking"
+  )] <- "high_frequency_spiking"
+  x[x %in% c("other", "unclassified", "unlabeled")] <- "others"
+  if (isTRUE(fill_blank_others)) x[x == ""] <- "others"
+  x
+}
+
 stpd_valid_xrange_window <- function(x) {
   x <- suppressWarnings(as.numeric(x))
   length(x) == 2L && all(is.finite(x)) && x[2] > x[1]
@@ -113,7 +131,7 @@ candidate_refractory_summary <- function(cand, dat, p, min_isi_sec = 0.001) {
   if (is.null(cand) || nrow(cand) == 0) return(cand)
   ref_thr <- suppressWarnings(as.numeric(p$refractory_suspect_sec %||% NA_real_))
   if (!is.finite(ref_thr)) ref_thr <- suppressWarnings(as.numeric(p$refractory_suspect_threshold_sec %||% NA_real_))
-  if (!is.finite(ref_thr)) ref_thr <- 0.0015
+  if (!is.finite(ref_thr)) ref_thr <- 0.0010
   isi <- suppressWarnings(as.numeric(dat$ISI_sec))
   n <- length(isi)
   counts <- integer(nrow(cand)); fracs <- rep(NA_real_, nrow(cand)); mins <- rep(NA_real_, nrow(cand))
@@ -136,6 +154,36 @@ candidate_refractory_summary <- function(cand, dat, p, min_isi_sec = 0.001) {
 apply_refractory_suspect_policy_burst_candidates <- function(cand, dat, p, min_isi_sec = 0.001) {
   if (is.null(cand) || nrow(cand) == 0) return(cand)
   cand <- candidate_refractory_summary(cand, dat, p, min_isi_sec = min_isi_sec)
+  # Keep every public detector pipeline on the same six-action policy and audit
+  # contract.  This compatibility entry point is used by the older
+  # seed/structure pipelines; delegate to the event-core implementation once it
+  # is available at runtime instead of maintaining a second, divergent policy.
+  if (exists("stpd_event_core_apply_refractory_suspect_policy", mode = "function")) {
+    action_requested <- p$refractory_suspect_action %||% "warn_only"
+    refractory_threshold <- p$refractory_suspect_sec %||%
+      p$refractory_suspect_threshold_sec %||% 0.0010
+    params_proxy <- list(
+      detector = list(
+        min_valid_isi_sec = min_isi_sec,
+        refractory_suspect_sec = refractory_threshold,
+        refractory_suspect_action = action_requested
+      ),
+      burst = p,
+      event_core = list(
+        min_spikes = p$G_min %||% 3L,
+        classic_max_spikes = p$classic_burst_max_spikes %||% 10L,
+        long_min_spikes = p$long_burst_min_spikes %||% 11L,
+        long_max_spikes = p$long_burst_max_spikes %||% 15L
+      )
+    )
+    return(stpd_event_core_apply_refractory_suspect_policy(
+      cand,
+      params = params_proxy,
+      dat = dat,
+      vp = NULL,
+      min_isi_sec = min_isi_sec
+    ))
+  }
   action <- as.character(p$refractory_suspect_action %||% "warn_only")
   action <- tolower(trimws(action))
   action <- gsub("-", "_", action)
@@ -185,7 +233,7 @@ apply_refractory_suspect_policy_burst_candidates <- function(cand, dat, p, min_i
   # original event structure; a user can later promote them after review.
   if (action %in% c("split_at_suspect", "exclude_suspect_isi_and_reevaluate")) {
     ref_thr <- suppressWarnings(as.numeric(p$refractory_suspect_sec %||% p$refractory_suspect_threshold_sec %||% NA_real_))
-    if (!is.finite(ref_thr)) ref_thr <- min_isi_sec
+    if (!is.finite(ref_thr)) ref_thr <- 0.0010
     rows <- list()
     g_min <- safe_int(p$G_min %||% 3L, 3L)
     d_max <- suppressWarnings(as.numeric(p$D_max %||% p$final_max_duration %||% 0))
@@ -261,8 +309,8 @@ fill_unlabeled_others_for_display <- function(pattern, isi_sec, min_isi_sec = 0.
 }
 
 # Backward-compatible wrapper. Use `auto_others = TRUE` only for final DISPLAY
-# or EXPORT. Detector occupancy, cached events, and ML should pass FALSE so that
-# unlabeled intervals do not become a hidden negative class prematurely.
+# or EXPORT. Detector occupancy, cached events, and scientific analyses should
+# pass FALSE so unlabeled intervals do not become a hidden negative class.
 compute_final_pattern <- function(manual, auto, isi_sec, auto_others = FALSE, min_isi_sec = 0.001) {
   out <- compute_final_pattern_base(manual, auto, isi_sec, min_isi_sec = min_isi_sec)
   if (isTRUE(auto_others)) out <- fill_unlabeled_others_for_display(out, isi_sec, min_isi_sec = min_isi_sec)
@@ -498,12 +546,6 @@ make_dataset <- function(name, source, trains, unit_in = "s", task_events = NULL
       pause_isi_ranges = list(),
       highfreq_isi_ranges = list(),
       isi_thresholds = list()
-    ),
-    ml = list(
-      last_feature_table = data.frame(),
-      last_prediction_table = data.frame(),
-      last_eval_table = data.frame(),
-      last_eval_metrics = data.frame()
     ),
     results = list(events = data.frame(), structure_candidates = data.frame(), seed_candidates = data.frame(), bridge_candidates = data.frame(), burst_candidates = data.frame(), near_miss_candidates = data.frame())
   )

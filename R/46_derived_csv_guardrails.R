@@ -14,6 +14,13 @@ stpd_event_grammar_hard_derived_csv_filename <- function(path) {
   # High-confidence derived outputs.  These are never raw spike timestamp files
   # in this package's workflow unless explicitly overridden by allow_derived_csv.
   grepl("^sliding([_ .-]|$)", nm) ||
+    # Every flag-gated public preview artifact is derived detector output.
+    # Match the whole prefix so newly added preview tables and the RDS bundle
+    # fail closed without requiring another filename-list update.
+    grepl("^multitrack[_ .-]?preview([_ .-]|$)", nm) ||
+    # Phase 2B review/adjudication exports are also derived products and can
+    # never be re-imported as raw spike timestamp input.
+    grepl("^multitrack[_ .-]?(review|adjudication)([_ .-]|$)", nm) ||
     grepl("^isi[_ .-]?base([_ .-]|\\.csv$)", nm) ||
     grepl("^tonic[_ .-]?summary([_ .-]|\\.csv$)", nm) ||
     grepl("(^|[_ .-])burst[_ .-]?isi[_ .-]?(threshold|threshould|thresh)([_ .-]|\\.csv$)", nm) ||
@@ -33,6 +40,9 @@ stpd_event_grammar_strong_derived_csv_schema <- function(df) {
   # files even when the filename is not informative.
   strong_patterns <- c(
     "^spike_train$", "^fragment(_number|_id)?$", "^start(_time|_sec|_ms)?$", "^end(_time|_sec|_ms)?$",
+    "^semantic_track$", "^track_policy_version$", "^relationship_type$", "^compatibility_rule$", "^interval_id$",
+    "^source_review_interval_id$", "^transition_id$", "^transition_action$", "^transition_status$",
+    "^pattern_auto_(event|state|gap|review)(_preview)?$",
     "^max_isi", "^min_isi", "^median_isi", "^mean_isi", "^q[0-9]+_?isi", "^isi_(mean|median|max|min|q[0-9]+)",
     "^mm$", "^cv$", "^lv$", "^duration", "^n_spikes$", "^count$", "^fraction$",
     "^threshold$", "^threshould$", "^candidate", "^event", "^score$", "^decision$", "^status$",
@@ -96,6 +106,29 @@ build_trains_from_raw <- function(path, header = TRUE, unit_in = c("s", "ms"), d
   build_trains_from_raw_impl(path, header = header, unit_in = unit_in, duplicate_policy = duplicate_policy)
 }
 
+stpd_attach_input_provenance <- function(ds, path, input_file_name = NULL,
+                                         parser_mode = NULL, unit_in = NULL,
+                                         header = NULL, duplicate_policy = NULL) {
+  if (is.null(ds$meta)) ds$meta <- list()
+  input_path <- as.character(path)[1]
+  input_info <- suppressWarnings(file.info(input_path))
+  ds$meta$input_file_name <- as.character(input_file_name %||% basename(input_path))[1]
+  ds$meta$input_size_bytes <- if (nrow(input_info) > 0 && is.finite(input_info$size[1])) {
+    as.numeric(input_info$size[1])
+  } else {
+    NA_real_
+  }
+  ds$meta$input_sha256 <- tryCatch(
+    digest::digest(input_path, algo = "sha256", file = TRUE),
+    error = function(e) NA_character_
+  )
+  ds$meta$input_parser_mode <- as.character(parser_mode %||% NA_character_)[1]
+  ds$meta$input_unit <- as.character(unit_in %||% NA_character_)[1]
+  ds$meta$input_header <- if (is.null(header)) NA else isTRUE(header)
+  ds$meta$input_duplicate_policy <- as.character(duplicate_policy %||% NA_character_)[1]
+  ds
+}
+
 build_spike_dataset <- function(path, mode = c("raw", "labeled"), unit_in = c("s", "ms"), header = TRUE, name = NULL, duplicate_policy = c("error_keep", "warn_keep", "collapse_exact"), allow_derived_csv = FALSE) {
   mode <- match.arg(mode)
   unit_in <- match.arg(unit_in)
@@ -110,7 +143,17 @@ build_spike_dataset <- function(path, mode = c("raw", "labeled"), unit_in = c("s
   } else {
     tryCatch(stpd_extract_task_events_from_raw(path, header = TRUE, unit_in = unit_in), error = function(e) stpd_empty_task_events())
   }
-  make_dataset(name = name %||% tools::file_path_sans_ext(basename(path)), source = mode, trains = trains, unit_in = unit_in, task_events = task_events)
+  ds <- make_dataset(name = name %||% tools::file_path_sans_ext(basename(path)), source = mode, trains = trains, unit_in = unit_in, task_events = task_events)
+
+  # Keep a portable input fingerprint with the dataset so a detector export can
+  # identify the exact bytes that were analysed without disclosing the caller's
+  # absolute filesystem path.  The basename is useful to a reviewer; SHA-256 is
+  # the authoritative identity when two files happen to share that name.
+  stpd_attach_input_provenance(
+    ds, path,
+    parser_mode = mode, unit_in = unit_in, header = if (mode == "raw") header else TRUE,
+    duplicate_policy = duplicate_policy
+  )
 }
 
 stpd_event_grammar_filter_public_candidate_features <- function(features) {

@@ -112,7 +112,8 @@ test_that("contract-driven UI exposes editable runtime parameters", {
   expect_true("event_core.seed_band_upper_sec" %in% contract_schema$path)
   expect_true("burst.T_seed" %in% contract_schema$path)
   expect_true("event_core.seed_band_upper_sec" %in% basic_schema$path)
-  expect_true("burst.T_seed" %in% basic_schema$path)
+  expect_false("burst.T_seed" %in% basic_schema$path)
+  expect_true("burst.T_seed" %in% advanced_schema$path)
 
   ui <- getFromNamespace("stpd_contract_ui_controls", "SpikeTrainPatternDetector")()
   ui_text <- paste(as.character(ui), collapse = "")
@@ -134,7 +135,12 @@ test_that("contract-driven UI exposes editable runtime parameters", {
 		  expect_true(grepl("download_parameter_delta_preview_zip", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("show_parameter_delta_overlay", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("parameter_delta_preview_events_table", app_ui_text, fixed = TRUE))
+		  expect_true(grepl("parameter_delta_preview_state_counts_table", app_ui_text, fixed = TRUE))
+		  expect_true(grepl("parameter_delta_preview_state_episodes_table", app_ui_text, fixed = TRUE))
+		  expect_true(grepl("parameter_delta_preview_state_direct_support_table", app_ui_text, fixed = TRUE))
+		  expect_true(grepl("parameter_delta_preview_overlap_resolution_table", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("run_parameter_sensitivity_scan", app_ui_text, fixed = TRUE))
+		  expect_true(grepl("parameter_sensitivity_scope", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("download_parameter_sensitivity_zip", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("parameter_sensitivity_metric_plot", app_ui_text, fixed = TRUE))
 		  expect_true(grepl("parameter_sensitivity_summary_table", app_ui_text, fixed = TRUE))
@@ -161,7 +167,7 @@ test_that("basic contract metadata is biology-oriented and workflow ordered", {
   expect_true(pause_order < arbitration_order)
 
   basic_schema <- getFromNamespace("stpd_contract_ui_schema", "SpikeTrainPatternDetector")(ui_level = "basic")
-  visible_order <- match(c("event_core.enabled", "event_core.seed_band_upper_sec", "highfreq.T_high_max", "tonic.T_min", "pause.T_seed", "arbitration.enabled"), basic_schema$path)
+  visible_order <- match(c("event_core.enabled", "event_core.seed_band_upper_sec", "tonic.T_min", "pause.T_seed", "arbitration.enabled"), basic_schema$path)
   expect_false(any(is.na(visible_order)))
   expect_true(all(diff(visible_order) > 0))
 })
@@ -198,6 +204,46 @@ test_that("parameter YAML import and export round-trip through contract", {
   expect_true(any(rt$check == "hash_preserved" & rt$status == "ok"))
 })
 
+test_that("retired neural-network parameters are scrubbed from legacy inputs", {
+  clean <- default_params_sec()
+  expect_null(clean$spiketrainpattern$neural_network)
+  expect_false(any(grepl(
+    "^spiketrainpattern\\.neural_network(?:\\.|$)",
+    stpd_parameter_contract()$path,
+    perl = TRUE
+  )))
+
+  legacy <- clean
+  legacy$spiketrainpattern$neural_network <- list(
+    confidence_cutoff = 0.99,
+    context_window = 99L,
+    event_guardrails = FALSE
+  )
+  legacy$neural_network <- list(hidden = 64L)
+  scrubbed <- stpd_productize_params(legacy, prefer = "canonical")
+
+  expect_null(scrubbed$spiketrainpattern$neural_network)
+  expect_null(scrubbed$neural_network)
+  expect_identical(stpd_params_hash(scrubbed), stpd_params_hash(clean))
+  expect_identical(compute_params_hash(legacy), stpd_params_hash(clean))
+  expect_identical(stpd_params_hash_flat(legacy), stpd_params_hash(clean))
+
+  legacy_file <- tempfile(fileext = ".yml")
+  yaml::write_yaml(
+    list(
+      format = "spiketrainpattern-params-1",
+      parameters = list(
+        spiketrainpattern = list(
+          neural_network = list(confidence_cutoff = 0.88)
+        )
+      )
+    ),
+    legacy_file
+  )
+  imported <- stpd_read_params_yaml(legacy_file)
+  expect_null(imported$params$spiketrainpattern$neural_network)
+})
+
 test_that("partial parameter YAML overlays defaults and reports validation errors", {
   partial <- tempfile(fileext = ".yml")
   yaml::write_yaml(
@@ -221,6 +267,65 @@ test_that("partial parameter YAML overlays defaults and reports validation error
   )
   bad_import <- stpd_read_params_yaml(bad_file)
   expect_true(any(bad_import$validation$severity == "error" & bad_import$validation$path == "detector.min_valid_isi_sec"))
+})
+
+test_that("partial YAML preserves explicit canonical and legacy alias overrides", {
+  canonical_file <- tempfile(fileext = ".yml")
+  yaml::write_yaml(
+    list(
+      format = "spiketrainpattern-params-1",
+      parameters = list(
+        spiketrainpattern = list(
+          burst = list(
+            classic_min_spikes = 5L,
+            allow_one_sided_as_canonical = TRUE
+          )
+        )
+      )
+    ),
+    canonical_file
+  )
+  canonical <- stpd_read_params_yaml(canonical_file)$params
+  expect_identical(canonical$spiketrainpattern$burst$classic_min_spikes, 5L)
+  expect_identical(canonical$event_core$min_spikes, 5L)
+  expect_true(canonical$spiketrainpattern$burst$allow_one_sided_as_canonical)
+  expect_true(canonical$event_grammar$allow_one_sided_burst_as_canonical)
+
+  legacy_file <- tempfile(fileext = ".yml")
+  yaml::write_yaml(
+    list(
+      format = "spiketrainpattern-params-1",
+      parameters = list(
+        burst = list(
+          G_min = 6L,
+          event_grammar_allow_one_sided_as_canonical = TRUE
+        )
+      )
+    ),
+    legacy_file
+  )
+  legacy <- stpd_read_params_yaml(legacy_file)$params
+  expect_identical(legacy$spiketrainpattern$burst$classic_min_spikes, 6L)
+  expect_identical(legacy$event_core$min_spikes, 6L)
+  expect_true(legacy$spiketrainpattern$burst$allow_one_sided_as_canonical)
+  expect_true(legacy$event_grammar$allow_one_sided_burst_as_canonical)
+
+  # When one overlay deliberately supplies conflicting representations, the
+  # documented canonical namespace has a deterministic precedence.
+  conflict_file <- tempfile(fileext = ".yml")
+  yaml::write_yaml(
+    list(
+      format = "spiketrainpattern-params-1",
+      parameters = list(
+        spiketrainpattern = list(burst = list(classic_min_spikes = 5L)),
+        burst = list(G_min = 6L)
+      )
+    ),
+    conflict_file
+  )
+  conflict <- stpd_read_params_yaml(conflict_file)$params
+  expect_identical(conflict$spiketrainpattern$burst$classic_min_spikes, 5L)
+  expect_identical(conflict$event_core$min_spikes, 5L)
 })
 
 test_that("parameter YAML rejects invalid numeric, integer, and logical values before silent coercion", {

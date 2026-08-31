@@ -1,0 +1,36 @@
+schema_version: stpd_evaluation_algorithm_index_v1
+module_name: STPD detection-result evaluation
+purpose: Evaluate fixed detector outputs against fixed reference event tables without rerunning or modifying detection.
+coordinate_system: inclusive right-spike-index ISI intervals
+default_event_iou_thresholds:
+  - value: 0.25
+    tier: approximate_detection
+  - value: 0.50
+    tier: substantial_overlap
+  - value: 0.75
+    tier: high_overlap
+algorithms:
+  - public_function: stpd_evaluate_detection_results
+    source: R/28_validation.R
+    role: Multi-threshold event metrics, ISI coverage, and boundary-error evaluation.
+    detector_isolated: true
+  - internal_function: stpd_match_events_optimal
+    source: R/28_validation.R
+    role: Deterministic one-to-one matching; maximize cardinality, then total IoU.
+  - public_function: stpd_event_level_cluster_bootstrap
+    source: R/31_scientific_validation.R
+    role: Cluster-level uncertainty for held-out scientific validation.
+  - internal_function: stpd_event_level_match_table
+    source: R/54_parameter_sensitivity_validation.R
+    role: Detailed validation and parameter-sensitivity reporting.
+  - source: R/69_multitrack_validation.R
+    role: Separate State/Event/Gap multitrack validation.
+  - script: evaluation/run_nested_hfs_review_evaluation.R
+    role: Additive evaluation of frozen nested-HFS Burst review proposals, stratified as all nested Burst and exact two-ISI/three-spike Burst3.
+    detector_isolated: true
+    canonical_metrics_eligible: false
+non_goals:
+  - Do not detect Burst, HFS, tonic, or Pause.
+  - Do not estimate or update detector parameters.
+  - Do not feed reference labels back into detection.
+  - Do not claim biological ground truth from agreement alone.
