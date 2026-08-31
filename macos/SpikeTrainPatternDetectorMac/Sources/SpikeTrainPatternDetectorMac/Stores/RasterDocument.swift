@@ -728,7 +728,10 @@ final class RasterDocument {
             supportedContentTypes.append(nex)
         }
         panel.allowedContentTypes = supportedContentTypes
-        panel.message = "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。"
+        panel.message = STPDLocalization.text(
+            "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。",
+            language: AppLanguageStorage.current()
+        )
 
         guard panel.runModal() == .OK, let url = panel.url else {
             return

@@ -33,6 +33,7 @@ struct STPDScientificImportLocalizationTests {
             "列语义 ID",
             "事件类型 ID",
             "支持键盘输入、右键粘贴以及 Command-V 粘贴。",
+            "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。",
         ]
 
         for source in sources {

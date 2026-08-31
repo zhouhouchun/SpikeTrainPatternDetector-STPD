@@ -16,6 +16,7 @@ enum STPDScientificImportLocalization {
     static var sourceKeys: Set<String> { Set(english.keys).union(russian.keys) }
 
     static let english: [String: String] = [
+        "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。": "Choose a CSV/XLSX timestamp table or NeuroExplorer NEX file. CSV/XLSX opens the canonical import wizard; NEX opens browsing and manual labeling directly.",
         "数据集含义": "Dataset meaning",
         "列与分组": "Columns & groups",
         "事件与属性": "Events & attributes",
@@ -227,6 +228,7 @@ enum STPDScientificImportLocalization {
     ]
 
     static let russian: [String: String] = [
+        "请选择 CSV、XLSX 时间戳表格或 NeuroExplorer NEX 文件。CSV/XLSX 进入规范导入向导；NEX 直接进入浏览与手工标记。": "Выберите таблицу временных меток CSV/XLSX или файл NeuroExplorer NEX. CSV/XLSX открывает мастер канонического импорта; NEX сразу открывает просмотр и ручную разметку.",
         "数据集含义": "Смысл набора данных",
         "列与分组": "Столбцы и группы",
         "事件与属性": "События и атрибуты",
