@@ -344,12 +344,11 @@ sources <- list(
        path = file.path(simulation_long_dir, if (file.exists(file.path(
          simulation_long_dir, "cluster_bootstrap_95ci.csv"
        ))) "cluster_bootstrap_95ci.csv" else "group_cluster_bootstrap_95ci.csv")),
-  list(id = "real_validation", label = "Grechishnikova 2017 within-patient leave-one-recording-group-out validation",
+  list(id = "real_validation", label = "STN within-participant leave-one-recording-group-out validation",
        path = file.path(real_result_dir, "group_cluster_bootstrap_95ci.csv")),
-  list(id = "real_reference", label = "Grechishnikova 2017 manual ISI reference draft",
+  list(id = "real_reference", label = "Public STN manual ISI reference",
        path = normalizePath(file.path(
-         repo, "PD_STN",
-         "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+         repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx"
        ), mustWork = TRUE))
 )
 top_sources <- lapply(sources, function(s) {

@@ -234,19 +234,13 @@ read_synthetic <- function() {
 read_real <- function() {
   workbooks <- c(
     GPe = first_existing(c(
-      file.path(repo, "PD_GPe", "Bagdasaryan_PD_GPe_2020_manual_isi_labels_draft_csv.xlsx"),
-      file.path(repo, "data", "real", "GPe", "PD_GPe_manual_isi_labels.xlsx"),
-      file.path(repo, "data", "real", "GPe", "Bagdasaryan_PD_GPe_2020_manual_isi_labels_draft_csv.xlsx")
+      file.path(repo, "data", "real", "GPe", "PD_GPe_manual_isi_labels.xlsx")
     )),
     STN = first_existing(c(
-      file.path(repo, "PD_STN", "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"),
-      file.path(repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx"),
-      file.path(repo, "data", "real", "STN", "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx")
+      file.path(repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx")
     )),
     GPi = first_existing(c(
-      file.path(repo, "PD_GPi", "Kurmanaeva_PD_GPi_2017_manual_isi_labels_draft_csv.xlsx"),
-      file.path(repo, "data", "real", "GPi", "PD_GPi_manual_isi_labels.xlsx"),
-      file.path(repo, "data", "real", "GPi", "Kurmanaeva_PD_GPi_2017_manual_isi_labels_draft_csv.xlsx")
+      file.path(repo, "data", "real", "GPi", "PD_GPi_manual_isi_labels.xlsx")
     ))
   )
   records <- list()

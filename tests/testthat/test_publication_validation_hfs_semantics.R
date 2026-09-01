@@ -376,7 +376,7 @@ test_that("report and manifest require explicit frozen result directories", {
   expect_match(manifest_text, "detector_r_files", fixed = TRUE)
   expect_match(manifest_text, "parameter_config_files", fixed = TRUE)
   expect_false(grepl(
-    'file.path(root, "real_grechishnikova_2017_reference_eligible")',
+    'file.path(root, "real_PD_STN_reference_eligible")',
     report_text, fixed = TRUE
   ))
 })
@@ -460,16 +460,15 @@ test_that("review-only Tonic leaves Burst Pause and HFS calibration unchanged", 
 
 test_that("real publication workbook path and SHA are fail-closed", {
   fixture_repo <- file.path(tempdir(), paste0("stpd_reference_", Sys.getpid()))
-  dir.create(file.path(fixture_repo, "PD_STN"), recursive = TRUE,
-             showWarnings = FALSE)
   canonical <- file.path(
-    fixture_repo, "PD_STN",
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+    fixture_repo, "data", "real", "STN",
+    "PD_STN_manual_isi_labels.xlsx"
   )
   legacy <- file.path(
     fixture_repo,
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+    "PD_STN_manual_isi_labels.xlsx"
   )
+  dir.create(dirname(canonical), recursive = TRUE, showWarnings = FALSE)
   writeBin(charToRaw("authoritative fixture"), canonical)
   writeBin(charToRaw("legacy fixture"), legacy)
   expected_sha <- digest::digest(canonical, algo = "sha256", file = TRUE)

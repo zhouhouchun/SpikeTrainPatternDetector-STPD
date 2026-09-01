@@ -2,7 +2,8 @@
 
 Automatic uses no manual examples. Partial-known is five-fold held-out
 recording-group validation with at most ten training episodes per pattern.
-Full-parameters is same-data resubstitution and is only an adaptation upper bound.
+Full-parameters is same-data resubstitution reported as a sensitivity analysis,
+not a guaranteed performance upper bound.
 GPi Tonic is a formal State endpoint; STN Tonic is descriptive review-only.
 
 | Region | Regime | Level | Pattern | Precision | Recall | F1 (95% cluster CI) | Support |

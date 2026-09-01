@@ -57,8 +57,7 @@ script_path <- if (length(file_arg) == 1L) {
 repo <- normalizePath(file.path(dirname(script_path), "..", ".."), mustWork = TRUE)
 xlsx_candidates <- c(
   Sys.getenv("STPD_MANUAL_REFERENCE_XLSX", unset = ""),
-  file.path(repo, "PD_STN", "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"),
-  file.path(repo, "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx")
+  file.path(repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx")
 )
 xlsx_candidates <- xlsx_candidates[nzchar(xlsx_candidates)]
 xlsx <- xlsx_candidates[file.exists(xlsx_candidates)][1L]

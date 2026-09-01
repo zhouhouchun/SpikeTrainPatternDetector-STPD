@@ -1,7 +1,7 @@
 # Real-data Tonic miss trace
 
 This directory contains a diagnostic rerun of two prespecified held-out Tonic
-episodes from the Grechishnikova 2017 reference workbook. The script is stored
+episodes from the public STN reference workbook. The script is stored
 with publication-validation workflows because it reruns the detector; generated
 tables should be written under the ignored `test-results/` tree.
 

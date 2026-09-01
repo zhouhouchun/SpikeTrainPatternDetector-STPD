@@ -286,13 +286,13 @@ for (tt in seq_len(nrow(targets))) {
   selected_rows[[tt]] <- transform(selected, fold_id = fold_id)
   learned <- stpd_pub_learn_params(
     spikes, calibration_trains, selected, intervals,
-    dataset_name = paste0("Grechishnikova_2017_LOGO_", heldout_group),
+    dataset_name = paste0("PD_STN_reference_LOGO_", heldout_group),
     bounded_borrowing = TRUE,
     tonic_reference_role = "tonic_like_review"
   )
   validation_pool <- stpd_pub_make_trains(spikes, validation_trains)
   ds <- SpikeTrainPatternDetector:::make_dataset(
-    name = paste0("Grechishnikova_2017_LOGO_", heldout_group),
+    name = paste0("PD_STN_reference_LOGO_", heldout_group),
     source = "heldout_label_blind_tonic_trace",
     trains = validation_pool, unit_in = "s"
   )

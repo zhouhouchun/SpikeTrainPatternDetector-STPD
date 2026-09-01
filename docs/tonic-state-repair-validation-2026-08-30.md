@@ -132,7 +132,7 @@ rules.
 
 Historical diagnostic result root, not valid for final citation:
 
-- `test-results/publication_validation/real_grechishnikova_2017_reference_eligible_tonic_edge_mm_wired_20260830_r2`
+- `test-results/publication_validation/real_PD_STN_reference_eligible_tonic_edge_mm_wired_20260830_r2`
 
 No final real-result root is declared in this document until the new tagged
 LOGO run passes the tonic-like calibration and confirmatory-endpoint gates.

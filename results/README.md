@@ -10,8 +10,9 @@ dependencies, and exploratory reruns are intentionally excluded.
 
 1. automatic detection without manual examples;
 2. partial-known five-fold recording-group holdout calibration;
-3. full-parameter same-data resubstitution, reported only as an adaptation
-   upper bound and not as independent validation.
+3. full-parameter same-data resubstitution, reported only as a sensitivity
+   analysis. It is neither independent validation nor a guaranteed monotone
+   performance upper bound.
 
 Confidence intervals use recording-group cluster bootstrap resampling. The
 scope and eligibility rules are recorded in the accompanying protocol and

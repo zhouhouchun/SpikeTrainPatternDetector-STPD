@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 title: "Spike Train Pattern Detector"
 type: software
-version: 1.2.2
-date-released: 2026-07-02
+version: 1.2.2-rev1
+date-released: 2026-08-31
 license: MIT
 authors:
   - given-names: Houchun

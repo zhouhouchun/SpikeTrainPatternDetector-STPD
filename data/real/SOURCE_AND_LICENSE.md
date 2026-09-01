@@ -1,22 +1,26 @@
-# Real-data source, ethics, and redistribution record
+# Real-data source, ethics, and public-release provenance
 
-The source and ethics statements below are transcribed from the submitted
-manuscript. They distinguish the original clinical recording protocol from the
-present secondary analysis. No new ethics approval is claimed or required for
-the secondary analysis under the stated institutional determination.
+The workbooks in this directory contain de-identified spike timestamps and
+frozen single-expert ISI annotations used for agreement analyses. They did not
+participate in fitting train-specific parameters. The same frozen references
+were used only at the final validation stage. During late software review,
+their aggregate firing-pattern ranges informed coarse inspection of general
+defaults such as contrast settings; no record-specific threshold fitting was
+performed. The reported results must therefore be read as agreement with these
+particular references, not as an independently collected external validation
+cohort.
 
-| Region | Clinical source | Participant grouping | Ethics and consent | Public-repository distribution record |
-|---|---|---|---|---|
-| GPe | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the N. N. Burdenko National Medical Research Center of Neurosurgery, Moscow, Russia | Same pallidal participant/dataset as GPi | Original study protocol approved by the institutional Ethics Committee; written informed consent obtained. Present work is a retrospective analysis of de-identified timestamps and, according to the institutional determination reported in the manuscript, required no separate ethics approval. | Cleared for public repository release by Zhou Houchun on 2026-08-31. Distributed as `PD_GPe_manual_isi_labels.xlsx`. Public availability does not grant a separate licence for unrelated redistribution or commercial reuse. |
-| STN | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the same institution | One STN participant with bilateral recordings; not 23 independent patients | Same statement as above | Cleared for public repository release by Zhou Houchun on 2026-08-31. Distributed as `PD_STN_manual_isi_labels.xlsx`. Public availability does not grant a separate licence for unrelated redistribution or commercial reuse. |
-| GPi | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the same institution | Same pallidal participant/dataset as GPe | Same statement as above | Cleared for public repository release by Zhou Houchun on 2026-08-31. Distributed as `PD_GPi_manual_isi_labels.xlsx`. Public availability does not grant a separate licence for unrelated redistribution or commercial reuse. |
+| Region | Recording source and grouping | Ethics and consent | Public-release provenance |
+|---|---|---|---|
+| GPe | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the N. N. Burdenko National Medical Research Center of Neurosurgery, Moscow, Russia. GPe and GPi derive from the same pallidal participant/dataset. | The original clinical protocol was approved by the institutional Ethics Committee and written informed consent was obtained. The present work is a retrospective software analysis of de-identified timestamps; no research-specific trajectory, recording session, stimulation procedure, or invasive intervention was added. | The source institution is the N. N. Burdenko National Medical Research Center of Neurosurgery. Alexey Sedov led the curation and public dissemination of the source data. Zhou Houchun prepared, audited, and documented the repository copy. |
+| STN | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the same institution. One participant contributed bilateral STN recordings; the 23 trains are not 23 independent patients. | Same statement as above. | Same statement as above. |
+| GPi | Intraoperative microelectrode recording during standard-of-care bilateral DBS implantation at the same institution. GPe and GPi derive from the same pallidal participant/dataset. | Same statement as above. | Same statement as above. |
 
-No research-specific electrode trajectory, recording session, stimulation
-procedure, or other invasive intervention was added for this software study.
-Recordings were obtained for electrophysiological target localization and
-electrode-placement guidance. Direct identifiers were removed before analysis.
-
-The workbooks contain experimental recording identifiers. A structural audit
-found no direct personal-name, date-of-birth, address, telephone, e-mail,
+Direct identifiers were removed before analysis. The workbooks retain
+experimental recording identifiers needed to distinguish trains. A structural
+screen found no personal-name, date-of-birth, address, telephone, e-mail,
 passport, or medical-record-number fields. This technical screen does not
-replace the source, consent, and data-governance statements above.
+replace the institutional, consent, and data-governance statements above.
+
+The repository MIT licence applies to software code, not automatically to the
+human-derived data. See `DATA_USE_TERMS.md` before reusing the workbooks.

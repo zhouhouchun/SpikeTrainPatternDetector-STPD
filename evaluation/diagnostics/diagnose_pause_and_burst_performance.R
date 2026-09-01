@@ -36,7 +36,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 real_dir <- file.path(
   repo, "test-results", "publication_validation",
-  "real_grechishnikova_2017_reference_eligible_interburst_pause_structural_20260824"
+  "real_PD_STN_reference_eligible_interburst_pause_structural_20260824"
 )
 sim_dir <- file.path(repo, "test-results", "simulation_60")
 raw_path <- Sys.getenv("STPD_REAL_SPIKE_CSV", unset = "")

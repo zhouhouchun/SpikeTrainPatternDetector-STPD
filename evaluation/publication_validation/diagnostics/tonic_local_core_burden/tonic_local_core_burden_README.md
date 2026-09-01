@@ -7,7 +7,7 @@ performance result.
 
 Source snapshot:
 
-`real_grechishnikova_2017_reference_eligible_tonicfreeze_samplerfix_20260826`
+`real_PD_STN_reference_eligible_tonicfreeze_samplerfix_20260826`
 
 Reproduce from the repository root:
 

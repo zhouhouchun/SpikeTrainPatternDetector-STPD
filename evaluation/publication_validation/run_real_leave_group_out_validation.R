@@ -41,9 +41,9 @@ if (!bounded_borrowing_variant %in% c("enabled", "disabled_ablation")) {
   )
 }
 out_name <- if (identical(analysis_variant, "reference_eligible")) {
-  "real_grechishnikova_2017_reference_eligible"
+  "real_PD_STN_reference_eligible"
 } else {
-  "real_grechishnikova_2017"
+  "real_PD_STN_all_trains"
 }
 if (nzchar(output_tag)) {
   if (!grepl("^[A-Za-z0-9_-]+$", output_tag)) {
@@ -99,7 +99,7 @@ rows <- lapply(sheet_names, function(sheet) {
 book <- do.call(rbind, rows)
 book$train_id <- as.character(book$train_id)
 book$Group_ID <- sub("_[Ff]on.*$", "", book$train_id)
-book$Patient_ID <- "Grechishnikova_2017_patient_1"
+book$Patient_ID <- "STN_participant_1"
 book$Hemisphere <- ifelse(grepl("^LT", book$train_id), "left_STN",
                           ifelse(grepl("^RT", book$train_id), "right_STN", NA_character_))
 if (anyNA(book$Hemisphere)) {
@@ -249,7 +249,7 @@ run_fold <- function(ii) {
     spikes = spikes, intervals = intervals, episodes = episodes,
     calibration_trains = calibration, validation_trains = validation,
     repeat_id = ii, seed = 910000L + ii,
-    dataset_name = paste0("Grechishnikova_2017_LOGO_", heldout_group),
+    dataset_name = paste0("PD_STN_reference_LOGO_", heldout_group),
     bounded_borrowing = identical(bounded_borrowing_variant, "enabled"),
     reference_eligibility = axis_reference_eligibility,
     tonic_reference_role = "tonic_like_review",

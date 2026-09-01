@@ -7,7 +7,7 @@
 #   partial_known - five-fold group CV; up to 10 training episodes per pattern
 #   full_params   - all reference episodes parameterize the detector; resubstitution
 #
-# The full_params regime is an adaptation upper bound, not independent evidence.
+# The full_params regime is a same-data sensitivity analysis, not independent evidence.
 
 options(stringsAsFactors = FALSE, warn = 1)
 suppressPackageStartupMessages({
@@ -57,23 +57,23 @@ source(file.path(
 specs <- list(
   GPE = list(
     workbook = file.path(
-      repo, "PD_GPe", "Bagdasaryan_PD_GPe_2020_manual_isi_labels_draft_csv.xlsx"
+      repo, "data", "real", "GPe", "PD_GPe_manual_isi_labels.xlsx"
     ),
-    dataset = "Bagdasaryan_PD_GPe_2020",
+    dataset = "PD_GPe_reference",
     tonic_reference_role = "tonic_like_review"
   ),
   STN = list(
     workbook = file.path(
-      repo, "PD_STN", "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+      repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx"
     ),
-    dataset = "Grechishnikova_PD_STN_2017",
+    dataset = "PD_STN_reference",
     tonic_reference_role = "tonic_like_review"
   ),
   GPI = list(
     workbook = file.path(
-      repo, "PD_GPi", "Kurmanaeva_PD_GPi_2017_manual_isi_labels_draft_csv.xlsx"
+      repo, "data", "real", "GPi", "PD_GPi_manual_isi_labels.xlsx"
     ),
-    dataset = "Kurmanaeva_PD_GPi_2017",
+    dataset = "PD_GPi_reference",
     tonic_reference_role = "formal_state"
   )
 )

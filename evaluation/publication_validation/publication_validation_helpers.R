@@ -29,8 +29,8 @@ stpd_pub_resolve_authoritative_workbook <- function(
     repo, configured_path = "",
     expected_sha256 = "42d246192b9051b82fc979e696619d804051503a21ca65183fd59abaa781d30e") {
   canonical <- file.path(
-    normalizePath(repo, mustWork = TRUE), "PD_STN",
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+    normalizePath(repo, mustWork = TRUE), "data", "real", "STN",
+    "PD_STN_manual_isi_labels.xlsx"
   )
   if (!file.exists(canonical)) {
     stop("The authoritative PD_STN workbook is missing.", call. = FALSE)
@@ -44,7 +44,7 @@ stpd_pub_resolve_authoritative_workbook <- function(
   if (!identical(candidate, canonical)) {
     stop(
       "Real publication validation requires the canonical PD_STN path; ",
-      "legacy root-level or alternate workbooks are not accepted.",
+      "alternate workbooks are not accepted.",
       call. = FALSE
     )
   }

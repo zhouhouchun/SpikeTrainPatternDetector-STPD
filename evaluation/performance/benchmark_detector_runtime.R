@@ -19,8 +19,15 @@ repo_default <- file.path(dirname(normalizePath(script_path, mustWork = TRUE)), 
 repo <- normalizePath(Sys.getenv("STPD_REPO", unset = repo_default), mustWork = TRUE)
 
 input_default <- file.path(
-  repo, "data", "real", "STN", "Grechishnikova_STN_2017.csv"
+  repo, "data", "derived", "runtime", "PD_STN_public_runtime_timestamps.csv"
 )
+if (!file.exists(input_default)) {
+  source(file.path(repo, "evaluation", "performance", "prepare_public_runtime_input.R"))
+  stpd_prepare_public_runtime_input(
+    file.path(repo, "data", "real", "STN", "PD_STN_manual_isi_labels.xlsx"),
+    input_default
+  )
+}
 input_path <- normalizePath(
   Sys.getenv("STPD_BENCHMARK_INPUT", unset = input_default),
   mustWork = TRUE

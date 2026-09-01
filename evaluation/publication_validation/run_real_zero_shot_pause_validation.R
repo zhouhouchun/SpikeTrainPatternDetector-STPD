@@ -20,13 +20,14 @@ repo_default <- if (is.character(script_path) && !is.na(script_path)) {
 repo <- normalizePath(Sys.getenv("STPD_REPO", unset = repo_default), mustWork = TRUE)
 raw_path <- normalizePath(Sys.getenv(
   "STPD_REAL_RAW_CSV",
-  unset = file.path(repo, "data", "real", "STN", "Grechishnikova_STN_2017.csv")
+  unset = file.path(repo, "data", "derived", "runtime",
+                    "PD_STN_public_runtime_timestamps.csv")
 ), mustWork = TRUE)
 truth_path <- normalizePath(Sys.getenv(
   "STPD_REAL_TRUTH_XLSX",
   unset = file.path(
     repo, "data", "real", "STN",
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"
+    "PD_STN_manual_isi_labels.xlsx"
   )
 ), mustWork = TRUE)
 out_dir <- Sys.getenv(
@@ -52,7 +53,7 @@ spikes <- lapply(raw, function(x) {
 })
 trains <- stpd_pub_make_trains(spikes, names(spikes))
 ds <- SpikeTrainPatternDetector:::make_dataset(
-  name = "Grechishnikova_2017_zero_shot",
+  name = "PD_STN_reference_zero_shot",
   source = "raw_timestamps_only_label_blind",
   trains = trains,
   unit_in = "s"

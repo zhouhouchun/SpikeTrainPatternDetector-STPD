@@ -48,9 +48,19 @@ STPD_BENCHMARK_OUT=results/performance/repeated_runtime_app_default \
 Rscript evaluation/performance/benchmark_detector_runtime.R
 ```
 
-The default raw input is
-`data/real/STN/Grechishnikova_STN_2017.csv`. It can be replaced with
+The default label-blind input is
+`data/derived/runtime/PD_STN_public_runtime_timestamps.csv`. It is reconstructed
+from the timestamp columns of the public STN workbook by
+`prepare_public_runtime_input.R`; annotation columns are not read into the
+benchmark input. If the derived CSV is absent, the benchmark creates it before
+timing begins. A different wide timestamp CSV can be supplied with
 `STPD_BENCHMARK_INPUT=/path/to/timestamps.csv`.
+
+The frozen August 2026 runtime tables retain the SHA-256 of the original raw
+CSV bytes. The public derived CSV has different serialization bytes but was
+verified to reconstruct the same 23 train names up to column order and all
+16,728 normalized spike timestamps exactly. Its own SHA-256 is recorded in
+`data/derived/runtime/PD_STN_public_runtime_timestamps_metadata.csv`.
 
 `summarize_three_region_runtime.R` consolidates the already frozen GPe, STN and
 GPi full-dataset runs. Those runs have one timing observation per dataset and

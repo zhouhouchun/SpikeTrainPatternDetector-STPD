@@ -31,10 +31,8 @@ selected <- head(stn_trains, 2L)
 stopifnot(length(selected) == 2L)
 
 workbook <- first_existing(c(
-  file.path(repo, "PD_STN",
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx"),
   file.path(repo, "data", "real", "STN",
-    "PD_STN_Grechishnikova_2017_manual_isi_labels_draft_csv.xlsx")
+    "PD_STN_manual_isi_labels.xlsx")
 ))
 sheets <- readxl::excel_sheets(workbook)
 

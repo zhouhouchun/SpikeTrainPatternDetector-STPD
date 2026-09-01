@@ -22,8 +22,8 @@ interpretation where applicable.
 
 This document is a scientific-byte and eligibility freeze; authorization is
 recorded separately. The companion source, ethics, and redistribution record,
-published as `data/real/SOURCE_AND_LICENSE.md`, records repository-owner
-clearance on 2026-08-31 for public release of these exact region-named
-workbooks. Public availability does not grant a separate licence for unrelated
-redistribution or commercial reuse; consult that record for the applicable
-source, consent, ethics, and reuse statements.
+published as `data/real/SOURCE_AND_LICENSE.md`, records the source institution,
+source-data public-dissemination provenance, and repository-preparation role
+for these exact region-named workbooks. Public availability does not grant a
+separate licence for unrelated redistribution or commercial reuse; consult
+that record for the applicable source, consent, ethics, and reuse statements.
