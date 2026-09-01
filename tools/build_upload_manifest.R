@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Build a deterministic SHA-256 manifest for the prepared upload directory.
+# Build a deterministic SHA-256 manifest for the Git-tracked upload contents.
 # Author: Zhou Houchun
 
 if (!requireNamespace("digest", quietly = TRUE)) {
@@ -17,14 +17,29 @@ repo <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 manifest_path <- file.path(repo, "UPLOAD_MANIFEST_SHA256.csv")
 summary_path <- file.path(repo, "UPLOAD_MANIFEST_SUMMARY.txt")
 
-all_paths <- list.files(repo, recursive = TRUE, all.files = TRUE,
-                        full.names = TRUE, include.dirs = FALSE, no.. = TRUE)
-relative <- substring(all_paths, nchar(repo) + 2L)
-excluded <- grepl("(^|/)\\.git(/|$)", relative) |
-  relative %in% c("UPLOAD_MANIFEST_SHA256.csv", "UPLOAD_MANIFEST_SUMMARY.txt") |
-  grepl("(^|/)\\.DS_Store$|(^|/)~\\$|[.]Rhistory$|[.]RData$", relative)
-paths <- all_paths[!excluded]
+relative <- system2(
+  "git",
+  c("-C", shQuote(repo), "ls-files"),
+  stdout = TRUE,
+  stderr = TRUE
+)
+status <- attr(relative, "status")
+if (!is.null(status) && status != 0L) {
+  stop("Unable to enumerate Git-tracked upload files.", call. = FALSE)
+}
+relative <- enc2utf8(relative)
+excluded <- relative %in% c(
+  "UPLOAD_MANIFEST_SHA256.csv",
+  "UPLOAD_MANIFEST_SUMMARY.txt"
+)
 relative <- relative[!excluded]
+paths <- file.path(repo, relative)
+if (any(!file.exists(paths))) {
+  stop(
+    "One or more Git-tracked upload files are absent from the working tree.",
+    call. = FALSE
+  )
+}
 ord <- order(relative, method = "radix")
 paths <- paths[ord]
 relative <- relative[ord]
@@ -44,7 +59,10 @@ summary <- c(
   paste0("file_n=", nrow(manifest)),
   paste0("total_bytes=", sum(manifest$bytes)),
   paste0("manifest_sha256=", manifest_hash),
-  "excluded=.git/, UPLOAD_MANIFEST_SHA256.csv, UPLOAD_MANIFEST_SUMMARY.txt, transient OS/R files"
+  paste0(
+    "scope=Git-tracked regular files; excluded=UPLOAD_MANIFEST_SHA256.csv, ",
+    "UPLOAD_MANIFEST_SUMMARY.txt"
+  )
 )
 writeLines(summary, summary_path, useBytes = TRUE)
 cat(paste(summary, collapse = "\n"), "\n")

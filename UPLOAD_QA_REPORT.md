@@ -31,6 +31,7 @@ Prepared: 2026-09-01
 | Scan for assistant- or platform-specific working traces | PASS: none found |
 | Scan for actual local home-directory, Desktop, temporary-item and attachment paths | PASS, with only deliberate synthetic redaction-test fixtures retained |
 | Scan for `.DS_Store`, editor backups, `.Rhistory`, `.RData`, and files >90 MB | PASS: none found |
+| Verify that the upload manifest is limited to Git-tracked release files | PASS: ignored local compiler outputs (`.o`/`.so`) are excluded |
 
 ## Deliberate test-fixture exceptions
 
@@ -52,6 +53,11 @@ The complete 999-block regression suite was not rerun merely to reorganize the
 public materials because no frozen algorithm file changed. Its successful
 results remain under `results/release_freeze/`. The directly affected
 publication-path test was rerun after anonymizing workbook paths and passed.
+
+The upload manifest is generated from files tracked by Git. Local compiler
+outputs can remain in a developer checkout, but they are ignored by Git, absent
+from GitHub/Zenodo source archives, and intentionally excluded from the public
+SHA-256 manifest.
 
 The data workbooks remain single-expert frozen references. Their inclusion
 supports reproducibility and agreement analysis; it does not convert them into

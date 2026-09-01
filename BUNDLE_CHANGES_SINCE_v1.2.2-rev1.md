@@ -18,6 +18,9 @@ clarifications were made without changing any file in the authoritative
    sensitivity analysis, not a guaranteed performance upper bound.
 6. Updated citation metadata for the reviewer-evidence revision and added
    upload instructions, QA evidence, and a complete upload manifest.
+7. Restricted the upload manifest to Git-tracked release files so ignored local
+   compiler outputs cannot be listed as if they were part of GitHub/Zenodo
+   source archives.
 
 Any future detector-source change requires a new algorithm freeze, regression
 run, and evidence tag. These packaging changes do not make such a change.

@@ -71,8 +71,9 @@ already included.
 `results/release_freeze/FINAL_ALGORITHM_FREEZE.csv` is authoritative for the
 128 frozen algorithm files. `release_manifest_sha256.csv` authenticates the
 original public `v1.2.2-rev1` tree. `UPLOAD_MANIFEST_SHA256.csv` authenticates
-the complete prepared directory after the additional upload materials were
-added.
+the Git-tracked contents of the complete prepared release after the additional
+upload materials were added. Ignored local compiler outputs are not release
+files and are therefore not included in this manifest.
 
 The MIT licence applies to software. Human-derived workbooks have separate
 provenance and use terms in `data/real/SOURCE_AND_LICENSE.md` and
