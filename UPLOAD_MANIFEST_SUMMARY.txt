@@ -1,6 +1,6 @@
 STPD prepared-upload manifest
-generated_utc=2026-09-01 02:45:15 UTC
+generated_utc=2026-09-01 05:11:17 UTC
 file_n=669
-total_bytes=46919667
-manifest_sha256=4990024c9b9146c6f8e79d42a43f5a0c6787b9c735441032a58eeff97e4e220c
+total_bytes=46919723
+manifest_sha256=30b4f3020b530d2076bffc886cae603f1f38d11105a5864e3f8c4f7e511300cb
 scope=Git-tracked regular files; excluded=UPLOAD_MANIFEST_SHA256.csv, UPLOAD_MANIFEST_SUMMARY.txt

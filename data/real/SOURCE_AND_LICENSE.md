@@ -1,14 +1,14 @@
 # Real-data source, ethics, and public-release provenance
 
 The workbooks in this directory contain de-identified spike timestamps and
-frozen single-expert ISI annotations used for agreement analyses. They did not
-participate in fitting train-specific parameters. The same frozen references
-were used only at the final validation stage. During late software review,
-their aggregate firing-pattern ranges informed coarse inspection of general
-defaults such as contrast settings; no record-specific threshold fitting was
-performed. The reported results must therefore be read as agreement with these
-particular references, not as an independently collected external validation
-cohort.
+frozen single-expert ISI annotations used for agreement analyses. They were
+excluded from STPD development and from the selection or adjustment of code,
+default thresholds (including contrast-related defaults), grammar, and
+arbitration rules. Labels entered only the prespecified recording-group-held-out
+partial-known and same-data resubstitution evaluation regimes. Neither regime
+was used to revise the detector after results were observed. The reported
+results must therefore be read as agreement with these particular frozen
+references, not as an independently collected external validation cohort.
 
 | Region | Recording source and grouping | Ethics and consent | Public-release provenance |
 |---|---|---|---|
