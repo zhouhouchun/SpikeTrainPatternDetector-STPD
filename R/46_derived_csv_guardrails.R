@@ -19,7 +19,7 @@ stpd_event_grammar_hard_derived_csv_filename <- function(path) {
     grepl("(^|[_ .-])burst[_ .-]?isi[_ .-]?(threshold|threshould|thresh)([_ .-]|\\.csv$)", nm) ||
     grepl("(^|[_ .-])(threshold|thresholds|threshould|thresh)([_ .-]|\\.csv$)", nm) ||
     grepl("^(candidate[_ .-]?ledger|eventness[_ .-]?audit|final[_ .-]?classification|events[_ .-]?final|event_grammar[_ .-]?candidate|arbitration[_ .-]?candidate)([_ .-]|\\.csv$)", nm) ||
-    grepl("^(misi|logisi|support|qc|validation|manual[_ .-]?vs[_ .-]?detector|stationarity|duplicate|artifact|near[_ .-]?miss)([_ .-]|$)", nm) ||
+    grepl("^(misi|logisi|ps|rgs|poisson[_ .-]?surprise|robust[_ .-]?gaussian[_ .-]?surprise|support|qc|validation|manual[_ .-]?vs[_ .-]?detector|stationarity|duplicate|artifact|near[_ .-]?miss)([_ .-]|$)", nm) ||
     grepl("(^|[_ .-])(summary|summaries|audit|audits|output|outputs|result|results|metrics|features|parameters|params|candidate|candidates)([_ .-]|\\.csv$)", nm)
 }
 

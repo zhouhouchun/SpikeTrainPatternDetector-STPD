@@ -4531,6 +4531,62 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   # ----------------------------------------------------------
+  # Support: classical Poisson Surprise Burst evidence
+  # ----------------------------------------------------------
+  compute_ps_support_now <- function() {
+    ds <- current_dataset()
+    target <- if (isTRUE(input$ps_support_visible_only)) {
+      intersect(displayed_train_names() %||% names(ds$trains), names(ds$trains))
+    } else {
+      names(ds$trains)
+    }
+    stpd_poisson_surprise_support_dataset(
+      ds,
+      selected_trains = target,
+      surprise_threshold = as.numeric(input$ps_surprise_threshold %||% 10),
+      log_base = as.character(input$ps_log_base %||% "e"),
+      min_spikes = as.integer(input$ps_min_spikes %||% 3L),
+      seed_isi_factor = as.numeric(input$ps_seed_isi_factor %||% 0.5),
+      rejection_isi_factor = as.numeric(input$ps_rejection_isi_factor %||% 2),
+      max_failed_additions = as.integer(input$ps_max_failed_additions %||% 10L)
+    )
+  }
+
+  ps_support_result <- eventReactive(input$run_ps_support, {
+    compute_ps_support_now()
+  }, ignoreInit = TRUE)
+
+  # ----------------------------------------------------------
+  # Support: Robust Gaussian Surprise Burst/Pause evidence
+  # ----------------------------------------------------------
+  compute_rgs_support_now <- function() {
+    ds <- current_dataset()
+    target <- if (isTRUE(input$rgs_support_visible_only)) {
+      intersect(displayed_train_names() %||% names(ds$trains), names(ds$trains))
+    } else {
+      names(ds$trains)
+    }
+    params <- rgs_default_parameters()
+    params$alpha <- as.numeric(input$rgs_alpha %||% 0.05)
+    params$window_fraction <- as.numeric(input$rgs_window_fraction %||% 0.20)
+    params$mad_scale <- as.character(input$rgs_mad_scale %||% "normal_consistent")
+    params$min_burst_spikes <- as.integer(input$rgs_min_burst_spikes %||% 3L)
+    params$min_pause_spikes <- as.integer(input$rgs_min_pause_spikes %||% 2L)
+    group <- trimws(as.character(input$rgs_reference_group %||% "current_dataset"))
+    if (!nzchar(group)) group <- "current_dataset"
+    stpd_rgs_support_dataset(
+      ds,
+      selected_trains = target,
+      groups = group,
+      params = params
+    )
+  }
+
+  rgs_support_result <- eventReactive(input$run_rgs_support, {
+    compute_rgs_support_now()
+  }, ignoreInit = TRUE)
+
+  # ----------------------------------------------------------
   # Support: visual overlay of support-method burst candidates
   # ----------------------------------------------------------
   support_burst_overlay_rows <- function() {
@@ -4544,6 +4600,7 @@ server <- function(input, output, session) {
         b$support_method <- "misi"
         b$support_method_label <- "Mean-ISI"
         b$support_threshold_sec <- suppressWarnings(as.numeric(b$ML_sec %||% NA_real_))
+        b$support_threshold_text <- paste0("ML = ", round(1000 * b$support_threshold_sec, 3), " ms")
         pieces[[length(pieces) + 1L]] <- b
       }
     }
@@ -4555,12 +4612,45 @@ server <- function(input, output, session) {
         b$support_method <- "logisi"
         b$support_method_label <- "LogISI / newBD"
         b$support_threshold_sec <- suppressWarnings(as.numeric(b$ISIth_sec %||% b$maxISI2_sec %||% NA_real_))
+        b$support_threshold_text <- paste0("ISIth = ", round(1000 * b$support_threshold_sec, 3), " ms")
+        pieces[[length(pieces) + 1L]] <- b
+      }
+    }
+
+    if ("ps" %in% methods) {
+      res <- tryCatch(ps_support_result(), error = function(e) NULL)
+      b <- if (!is.null(res) && is.data.frame(res$bursts)) res$bursts else data.frame()
+      if (nrow(b) > 0) {
+        b$support_method <- "ps"
+        b$support_method_label <- "Poisson Surprise"
+        b$support_threshold_sec <- NA_real_
+        threshold <- unique(res$thresholds$threshold_value[
+          res$thresholds$threshold_name == "surprise_threshold"
+        ])[1]
+        b$support_threshold_text <- paste0("Surprise >= ", signif(threshold, 5))
+        pieces[[length(pieces) + 1L]] <- b
+      }
+    }
+
+    if ("rgs" %in% methods) {
+      res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+      b <- if (!is.null(res) && is.data.frame(res$bursts)) res$bursts else data.frame()
+      if (nrow(b) > 0) {
+        b$support_method <- "rgs"
+        b$support_method_label <- "Robust Gaussian Surprise"
+        b$support_threshold_sec <- NA_real_
+        b$support_threshold_text <- "fitted normalized-log-ISI lower tail"
         pieces[[length(pieces) + 1L]] <- b
       }
     }
 
     if (length(pieces) == 0L) return(data.frame())
-    dplyr::bind_rows(pieces)
+    out <- dplyr::bind_rows(pieces)
+    for (nm in c("threshold_status", "support_threshold_text")) {
+      if (!(nm %in% names(out))) out[[nm]] <- ""
+      out[[nm]][is.na(out[[nm]])] <- ""
+    }
+    out
   }
 
   output$support_burst_raster_plot <- renderPlotly({
@@ -4622,7 +4712,7 @@ server <- function(input, output, session) {
     validate(need(nrow(dat_view) > 0 || nrow(isi_view) > 0, "No spikes/ISI in the support overlay window."))
 
     support_b <- support_burst_overlay_rows()
-    validate(need(nrow(support_b) > 0, "No support burst ISI strips yet. Click Run Mean-ISI support and/or Run LogISI support in the left panel, then keep the corresponding Overlay support detections checkbox selected."))
+    validate(need(nrow(support_b) > 0, "No support burst ISI strips yet. Run one or more selected support methods in the left panel, then keep the corresponding overlay checkbox selected."))
     support_b <- support_b[as.character(support_b$train) %in% selected, , drop = FALSE]
     validate(need(nrow(support_b) > 0, "No support burst ISI strips for the currently visible spike trains. Either run support on more trains by turning off 'Run on currently visible trains only', or select trains that contain support candidates."))
 
@@ -4650,7 +4740,8 @@ server <- function(input, output, session) {
     }
     validate(need(nrow(support_b) > 0, "No support burst ISI strips in the current time window. Uncheck 'Sync with main raster time-window' or zoom the main raster to a window containing support candidates."))
 
-    support_b$method_offset <- ifelse(as.character(support_b$support_method) == "misi", 0.18 * step, -0.18 * step)
+    support_offsets <- c(misi = 0.30, logisi = 0.10, ps = -0.10, rgs = -0.30)
+    support_b$method_offset <- suppressWarnings(as.numeric(support_offsets[as.character(support_b$support_method)])) * step
     support_b$y_support <- support_b$y_base + support_b$method_offset
     support_b$duration_ms <- suppressWarnings(as.numeric(support_b$duration_sec %||% NA_real_)) * 1000
     support_b$threshold_ms <- suppressWarnings(as.numeric(support_b$support_threshold_sec %||% NA_real_)) * 1000
@@ -4666,7 +4757,7 @@ server <- function(input, output, session) {
       "<br>End ISI index: ", support_b$end_isi,
       "<br>Spikes: ", support_b$n_spikes,
       "<br>Duration: ", round(support_b$duration_ms, 3), " ms",
-      "<br>Support threshold: ", round(support_b$threshold_ms, 3), " ms",
+      "<br>Support criterion: ", support_b$support_threshold_text,
       "<br>Status: ", as.character(support_b$threshold_status %||% "")
     )
 
@@ -4755,7 +4846,7 @@ server <- function(input, output, session) {
         "<br>Parent ISIs: ", support_isi$parent_n_isi,
         "<br>Parent spikes: ", support_isi$parent_n_spikes,
         "<br>Parent duration: ", round(support_isi$parent_duration_ms, 3), " ms",
-        "<br>Support threshold: ", round(support_isi$parent_threshold_ms, 3), " ms",
+        "<br>Support criterion: ", support_b$support_threshold_text[match(support_isi$support_event_id, support_b$support_event_id)],
         "<br>Status: ", support_isi$parent_status
       )
     }
@@ -4822,10 +4913,12 @@ server <- function(input, output, session) {
       }
     }
 
-    method_levels <- c("misi", "logisi")
-    method_names <- c(misi = "Mean-ISI support ISI strip (#8A7FFF)", logisi = "LogISI / newBD support ISI strip (#F58E90)")
-    method_span_names <- c(misi = "Mean-ISI translucent event envelope", logisi = "LogISI / newBD translucent event envelope")
-    method_colors <- c(misi = "#8A7FFF", logisi = "#F58E90")
+    method_levels <- c("misi", "logisi", "ps", "rgs")
+    method_names <- c(misi = "Mean-ISI support", logisi = "LogISI / newBD support",
+                      ps = "Poisson Surprise support", rgs = "RGS Burst support")
+    method_span_names <- c(misi = "Mean-ISI event envelope", logisi = "LogISI / newBD event envelope",
+                           ps = "Poisson Surprise event envelope", rgs = "RGS Burst event envelope")
+    method_colors <- c(misi = "#8A7FFF", logisi = "#F58E90", ps = "#E69F00", rgs = "#009E73")
 
     if (isTRUE(input$support_overlay_show_span_strips)) {
       for (mm in method_levels) {
@@ -4967,6 +5060,100 @@ server <- function(input, output, session) {
         "It estimates ISIth thresholds and support candidates; it does not write AUTO labels or replace the main detector.",
         "Use suggestions only after reviewing eventness/context/regularity diagnostics."
       ), file.path(out_dir, "README_LogISI_support.txt"), useBytes = TRUE)
+      old <- setwd(out_dir); on.exit(setwd(old), add = TRUE)
+      utils::zip(zipfile = file, files = list.files(out_dir, recursive = TRUE))
+    }
+  )
+
+  output$ps_support_summary_table <- DT::renderDT({
+    res <- tryCatch(ps_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$summary %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "Run Poisson Surprise support to generate results.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$ps_burst_table <- DT::renderDT({
+    res <- tryCatch(ps_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$bursts %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "No Poisson Surprise Burst candidates yet.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+  })
+
+  output$ps_threshold_table <- DT::renderDT({
+    res <- tryCatch(ps_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$thresholds %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "No Poisson Surprise threshold table yet.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+  })
+
+  output$download_ps_support_zip <- downloadHandler(
+    filename = function() {
+      ds <- current_dataset()
+      nm <- gsub("[^A-Za-z0-9_\\-\\.]", "_", ds$meta$display_name %||% "dataset")
+      paste0(nm, "_PS_support_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+    },
+    content = function(file) {
+      res <- tryCatch(ps_support_result(), error = function(e) NULL)
+      if (is.null(res)) res <- compute_ps_support_now()
+      out_dir <- file.path(tempdir(), paste0("ps_support_", format(Sys.time(), "%Y%m%d_%H%M%S")))
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      stpd_poisson_surprise_support_export(res, out_dir)
+      writeLines(c(
+        "Classical Poisson Surprise Burst support layer",
+        "Outputs are auxiliary evidence only and do not alter STPD AUTO labels.",
+        "The archive records the event-count convention, surprise scale, thresholds, candidates, event features, inter-Burst timing, and QC."
+      ), file.path(out_dir, "README_PS_support.txt"), useBytes = TRUE)
+      old <- setwd(out_dir); on.exit(setwd(old), add = TRUE)
+      utils::zip(zipfile = file, files = list.files(out_dir, recursive = TRUE))
+    }
+  )
+
+  output$rgs_support_summary_table <- DT::renderDT({
+    res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$summary %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "Run RGS support to generate results.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$rgs_burst_table <- DT::renderDT({
+    res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$bursts %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "No RGS Burst events yet.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+  })
+
+  output$rgs_pause_table <- DT::renderDT({
+    res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$pauses %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "No RGS Pause events yet.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+  })
+
+  output$rgs_reference_diagnostics_table <- DT::renderDT({
+    res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+    df <- if (is.null(res)) data.frame() else res$reference_diagnostics %||% data.frame()
+    if (!nrow(df)) df <- data.frame(message = "No RGS reference diagnostics yet.")
+    DT::datatable(df, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$download_rgs_support_zip <- downloadHandler(
+    filename = function() {
+      ds <- current_dataset()
+      nm <- gsub("[^A-Za-z0-9_\\-\\.]", "_", ds$meta$display_name %||% "dataset")
+      paste0(nm, "_RGS_support_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+    },
+    content = function(file) {
+      res <- tryCatch(rgs_support_result(), error = function(e) NULL)
+      if (is.null(res)) res <- compute_rgs_support_now()
+      out_dir <- file.path(tempdir(), paste0("rgs_support_", format(Sys.time(), "%Y%m%d_%H%M%S")))
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      stpd_rgs_support_export(res, out_dir)
+      writeLines(c(
+        "Ko-style Robust Gaussian Surprise Burst/Pause support layer",
+        "Outputs are auxiliary evidence only and do not alter STPD AUTO labels.",
+        "Inspect RGS_reference_diagnostics.csv before interpreting events.",
+        "The default UI run uses a same-data reference group; use stpd_rgs_fit() plus fit= for frozen-reference prediction."
+      ), file.path(out_dir, "README_RGS_support.txt"), useBytes = TRUE)
       old <- setwd(out_dir); on.exit(setwd(old), add = TRUE)
       utils::zip(zipfile = file, files = list.files(out_dir, recursive = TRUE))
     }

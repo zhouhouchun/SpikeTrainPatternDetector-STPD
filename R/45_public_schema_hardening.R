@@ -177,7 +177,7 @@ stpd_candidate_diagnostic_audit_to_ledger <- function(ds, params, selected_train
 
 stpd_event_grammar_derived_csv_filename <- function(path) {
   nm <- tolower(basename(as.character(path)))
-  pat <- "(^|[_ -])(sliding|summary|threshold|threshould|thresholds|thresh|candidate|candidates|ledger|eventness|event_audit|events_final|audit|feature|features|metric|metrics|isi_base|tonic_summary|misi|logisi|support|output|outputs|result|results|qc|validation|manual_vs_detector|stationarity|duplicate|artifact|parameter|parameters|near_miss|burst_candidate|burst_candidates)([_ .-]|$)"
+  pat <- "(^|[_ -])(sliding|summary|threshold|threshould|thresholds|thresh|candidate|candidates|ledger|eventness|event_audit|events_final|audit|feature|features|metric|metrics|isi_base|tonic_summary|misi|logisi|ps|rgs|poisson_surprise|robust_gaussian_surprise|support|output|outputs|result|results|qc|validation|manual_vs_detector|stationarity|duplicate|artifact|parameter|parameters|near_miss|burst_candidate|burst_candidates)([_ .-]|$)"
   grepl(pat, nm, perl = TRUE)
 }
 

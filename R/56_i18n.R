@@ -125,8 +125,8 @@ stpd_i18n_exact_dictionary <- function() {
       "For routine use, keep the defaults. These controls only affect rendering and local browsing.",
     "\u6240\u6709 spike tick \u5747\u7ED8\u5236\u4E3A\u76F8\u540C\u7684\u9ED1\u8272\u5B9E\u7EBF\uFF1B\u6A21\u5F0F/\u6765\u6E90\u4FE1\u606F\u53EA\u901A\u8FC7\u6C34\u5E73\u6761\u5E26\u548C\u53E0\u52A0\u5C42\u663E\u793A\uFF0C\u4E0D\u901A\u8FC7 spike \u989C\u8272\u6DF1\u6D45\u6216\u7C97\u7EC6\u8868\u793A\u3002" =
       "All spike ticks are drawn as identical solid black lines. Pattern/source information is shown only with horizontal bands and overlays, not by spike color or thickness.",
-    "Mean-ISI \u4E0E Pasquale logISIH/newBD \u652F\u6301\u5C42\u4EC5\u63D0\u4F9B\u9608\u503C\u8BC1\u636E\uFF1BAUTO \u6807\u7B7E\u4ECD\u7531\u4E3B\u68C0\u6D4B\u5668\u548C\u590D\u6838\u6D41\u7A0B\u63A7\u5236\u3002" =
-      "Mean-ISI and Pasquale logISIH/newBD support layers provide threshold evidence only; AUTO labels remain controlled by the main detector and review workflow.",
+    "Mean-ISI\u3001Pasquale logISIH/newBD\u3001Poisson Surprise \u548C RGS \u4EC5\u63D0\u4F9B\u8F85\u52A9\u8BC1\u636E\uFF1BAUTO \u6807\u7B7E\u4ECD\u7531\u4E3B\u68C0\u6D4B\u5668\u548C\u590D\u6838\u6D41\u7A0B\u63A7\u5236\u3002" =
+      "Mean-ISI, Pasquale logISIH/newBD, Poisson Surprise, and RGS provide auxiliary evidence only; AUTO labels remain controlled by the main detector and review workflow.",
     "Raster \u6807\u7B7E\u663E\u793A\uFF1A\u4EC5\u4F7F\u7528\u6A21\u5F0F\u989C\u8272\u6761\u5E26\uFF1B\u5782\u76F4 spike tick \u4FDD\u6301\u7EDF\u4E00\u9ED1\u8272\u5B9E\u7EBF\u3002" =
       "Raster label display uses pattern-colored bands only; vertical spike ticks remain uniform solid black lines.",
     "\u9700\u8981\u534A\u76D1\u7763\u6821\u51C6\u6216\u91D1\u6807\u7B7E\u65F6\u518D\u5C55\u5F00\u3002" =
@@ -170,8 +170,27 @@ stpd_i18n_exact_dictionary <- function() {
       "The export contains the current UI parameter tree, schema version, params_hash, and validation summary. Importing fills both dedicated UI controls and contract-generated UI.",
     "Round-trip" = "Round-trip",
     "logISI phase portrait" = "logISI phase portrait",
-    "Isomap 3D" = "Isomap 3D",
-    "Mean-ISI" = "Mean-ISI",
+	    "Isomap 3D" = "Isomap 3D",
+	    "支持方法面板" = "Support-method panel",
+	    "叠加支持方法检测结果" = "Overlay support-method detections",
+	    "仅在当前可见 trains 上运行" = "Run on currently visible trains only",
+	    "Poisson Surprise 支持" = "Poisson Surprise support",
+	    "运行 Poisson Surprise 支持" = "Run Poisson Surprise support",
+	    "下载 PS 支持 ZIP" = "Download PS support ZIP",
+	    "Surprise 阈值" = "Surprise threshold",
+	    "Surprise 对数底" = "Surprise logarithm base",
+	    "最小 spike 数" = "Minimum spike count",
+	    "最大连续无改善扩展" = "Maximum consecutive non-improving extensions",
+	    "Robust Gaussian Surprise 支持" = "Robust Gaussian Surprise support",
+	    "运行 RGS 支持" = "Run RGS support",
+	    "下载 RGS 支持 ZIP" = "Download RGS support ZIP",
+	    "Reference group 名称" = "Reference-group name",
+	    "Bonferroni 后 alpha" = "Post-Bonferroni alpha",
+	    "局部移动窗比例" = "Local moving-window fraction",
+	    "MAD 定义" = "MAD definition",
+	    "Burst 最小 spike 数" = "Minimum Burst spike count",
+	    "Pause 最小边界 spike 数" = "Minimum Pause boundary-spike count",
+	    "Mean-ISI" = "Mean-ISI",
     "LogISI / newBD" = "LogISI / newBD"
   )
 }

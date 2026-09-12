@@ -62,11 +62,13 @@ ds <- stpd_detect(ds, params)
 stpd_export_results(ds, params, out_dir = "results")
 ```
 
-## Release 1.1 Support 层：Mean-ISI 与 Pasquale LogISI / newBD
+## Support 层：Mean-ISI、LogISI/newBD、PS 与 RGS
 
-本版本在 Support 标签页中提供两类 burst-threshold support 方法：
+本版本在 Support 标签页中提供四类辅助方法：
 
 - Mean-ISI support：按照 Chen 等人 mean inter-spike interval 方法估计 ML 阈值并生成 support burst candidates。
 - Pasquale LogISI / newBD support：按照 Pasquale、Martinoia 与 Chiappalone 的 logISIH / newBD 方法估计 ISIth，并输出支持候选。该方法基于 log10(ISI_ms) 直方图、lowess 平滑、peak/valley 搜索和 void parameter 阈值。若 ISIth > 100 ms，则使用 100 ms 检测 burst cores，并使用 ISIth 扩展 burst boundaries；若 ISIth 无法可靠估计，则可选择 fallback 到 100 ms CH-style detector。
+- Poisson Surprise support：按经典 Poisson-surprise 逻辑估计整段基线放电率，优化短 ISI seed 的边界，并输出 surprise、Burst 内 ISI、边界 ISI 和 inter-Burst interval。
+- Robust Gaussian Surprise support：在预先声明的 reference group 内拟合 normalized log-ISI 参考分布，生成 Burst/Pause 候选、Bonferroni 调整结果和分布诊断。程序接口支持冻结校准 reference 后对 held-out trains 预测。
 
-这些 Support 方法不会写入 AUTO 标签，也不会替代主检测器。它们用于辅助估计每条 spike train 中 burst-ISI 的合理范围，并与 engine eventness / regularity / context audit 一起用于阈值审阅。
+这些 Support 方法不会写入 AUTO 标签，也不会替代主检测器。它们保留各自的阈值、候选、诊断与 QC 记录，用于辅助阈值审阅和方法比较。

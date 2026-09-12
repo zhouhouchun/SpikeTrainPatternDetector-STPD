@@ -2,7 +2,9 @@
 
 Spike Train Pattern Detector is a candidate-event generation and audit-oriented analysis platform for spike-train firing pattern review.
 
-It supports data quality control, interactive annotation, burst/tonic/pause/high-frequency candidate generation, eventness auditing, Mean-ISI and Pasquale logISIH/newBD support analyses, and reproducible export reports.
+It supports data quality control, interactive annotation, burst/tonic/pause/high-frequency candidate generation, eventness auditing, Mean-ISI, Pasquale logISIH/newBD, Poisson Surprise, and Robust Gaussian Surprise support analyses, and reproducible export reports.
+
+The four support methods are auxiliary evidence providers. They return their own candidate, parameter, diagnostic, and QC tables but never overwrite STPD AUTO labels or silently become detector ground truth. RGS can use either a same-data reference group or a fit frozen on separate calibration trains.
 
 Event-level validation can compare detector events against MANUAL labels by IoU, report precision/recall/F1, expose boundary errors and label confusions, and scan Basic-layer parameter perturbations. The sensitivity export writes `Parameter_sensitivity_summary.csv`, `Event_level_validation_metrics.csv`, and `Manual_detector_event_matches.csv` so parameter choices can be documented in methods records.
 
