@@ -42,10 +42,12 @@ convention, input fixture, and expected event geometry.
 
 ## Platform verification
 
-The workflow `.github/workflows/ps-rgs-core-check.yaml` runs package checks and
-the focused PS/RGS and multitrack integration tests on Linux, macOS, and
-Windows. A local successful run is not described as cross-platform evidence;
-the workflow results attached to a pushed commit are the platform evidence.
+The workflow `.github/workflows/ps-rgs-core-check.yaml` runs package structure
+checks without the full historical test suite, followed by the focused PS/RGS
+and multitrack integration tests, on Linux, macOS, and Windows. The full package
+test suite remains a separate final-merge/release gate. A local successful run
+is not described as cross-platform evidence; the workflow results attached to
+a pushed commit are the platform evidence.
 
 ## References
 
