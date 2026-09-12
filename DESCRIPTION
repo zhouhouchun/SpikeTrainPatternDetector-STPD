@@ -5,7 +5,7 @@ Version: 1.2.2
 Authors@R: person(given = "Houchun", family = "Zhou", role = c("aut", "cre"), email = "zhouhouchun@outlook.com", comment = c("Display name" = "Zhou Houchun"))
 Author: Zhou Houchun [aut, cre]
 Maintainer: Zhou Houchun <zhouhouchun@outlook.com>
-Description: Productized Shiny-based spike train pattern detector and semi-supervised review platform. The package provides quality control, rule-based candidate detection, eventness audit, Mean-ISI and Pasquale logISIH/newBD threshold support layers, train-wise threshold suggestions, and reproducible export reports without treating support-layer results as final ground truth.
+Description: Productized Shiny-based spike train pattern detector and semi-supervised review platform. The package provides quality control, rule-based candidate detection, eventness audit, Mean-ISI, Pasquale logISIH/newBD, pCLAMP-style Poisson Surprise, and Robust Gaussian Surprise support layers, train-wise threshold suggestions, and reproducible export reports without treating support-layer results as final ground truth.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: shiny, plotly, dplyr, tidyr, purrr, DT, digest, tibble, yaml, jsonlite, stringi, graphics, grDevices, stats, utils
@@ -24,6 +24,8 @@ Collate: '00_utils.R' '00a_parameter_schema.R' '89_threshold_first_contracts.R' 
     '91k_candidate_lineage_tonic_state.R'
     '91l_candidate_lineage_nested_hfs_review.R'
     '91m_candidate_lineage_complete_universe_release.R'
+    '34a_support_poisson_surprise.R'
+    '34b_support_rgs.R'
     '93_publication_readiness_framework.R'
 URL: https://www.spiketrain.studio
 BugReports: https://www.spiketrain.studio
