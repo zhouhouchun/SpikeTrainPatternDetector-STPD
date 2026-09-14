@@ -6956,6 +6956,188 @@ server <- function(input, output, session) {
   stpd_server_install_export_module(environment())
 
   # ----------------------------------------------------------
+  # Governed UI state for auxiliary PS/RGS support runs
+  # ----------------------------------------------------------
+  ps_support_record <- reactiveVal(stpd_support_run_record())
+  rgs_support_record <- reactiveVal(stpd_support_run_record())
+  rgs_manual_group_state <- reactiveVal(list(key = "", table = data.frame()))
+
+  support_scope_trains <- function(visible_only) {
+    ds <- current_dataset()
+    trains <- if (isTRUE(visible_only)) {
+      intersect(displayed_train_names() %||% names(ds$trains), names(ds$trains))
+    } else {
+      names(ds$trains)
+    }
+    trains <- stpd_support_normalize_trains(trains)
+    if (!length(trains)) stop("No train is available in the selected support scope.", call. = FALSE)
+    trains
+  }
+
+  support_live_state <- function(record) {
+    ds <- tryCatch(current_dataset(), error = function(e) NULL)
+    if (is.null(ds)) {
+      return(list(status = "not_run", current = FALSE, reason = "dataset_missing", result = NULL))
+    }
+    identity <- record$identity %||% list()
+    method <- as.character(identity$support_method %||% "")[1]
+    current_config <- tryCatch({
+      if (identical(method, "poisson_surprise")) {
+        list(
+          selected_trains = support_scope_trains(input$ps_support_visible_only),
+          parameters = ps_parameters_from_input(), reference_definition = list()
+        )
+      } else if (identical(method, "robust_gaussian_surprise")) {
+        plan <- rgs_run_plan()
+        list(
+          selected_trains = plan$target, parameters = rgs_parameters_from_input(),
+          reference_definition = plan$reference_definition
+        )
+      } else {
+        list(selected_trains = NULL, parameters = NULL, reference_definition = NULL)
+      }
+    }, error = identity)
+    if (inherits(current_config, "error")) {
+      return(list(
+        status = "stale", current = FALSE, reason = "support_configuration_invalid",
+        error_message = conditionMessage(current_config), result = NULL, identity = identity
+      ))
+    }
+    stpd_support_run_state(
+      record, ds, as.character(rv$current_id %||% "")[1],
+      selected_trains = current_config$selected_trains,
+      parameters = current_config$parameters,
+      reference_definition = current_config$reference_definition
+    )
+  }
+
+  support_state_message <- function(state, method) {
+    status <- as.character(state$status %||% "not_run")[1]
+    switch(
+      status,
+      not_run = ui_current_copy(
+        paste0("\u5C1A\u672A\u8FD0\u884C ", method, "\u3002"),
+        paste0(method, " has not been run.")
+      ),
+      running = ui_current_copy(
+        paste0(method, " \u6B63\u5728\u8FD0\u884C\u3002"),
+        paste0(method, " is running.")
+      ),
+      success = ui_current_copy("\u7ED3\u679C\u4E3A\u5F53\u524D\u4E14\u5DF2\u68C0\u51FA\u4E8B\u4EF6\u3002", "Result is current and contains events."),
+      zero_events = ui_current_copy("\u8FD0\u884C\u6210\u529F\uFF0C\u4F46\u672A\u68C0\u51FA\u4E8B\u4EF6\u3002", "Run succeeded with zero events."),
+      not_estimable = ui_current_copy("RGS reference \u4E0D\u53EF\u4F30\u8BA1\uFF1B\u8BF7\u67E5\u770B diagnostics\u3002", "The RGS reference is not estimable; inspect diagnostics."),
+      stale = ui_current_copy("\u7ED3\u679C\u5DF2\u8FC7\u671F\uFF1A\u6570\u636E\u96C6\u3001train \u8303\u56F4\u6216 timestamp \u5DF2\u6539\u53D8\u3002", "Result is stale because its dataset, train scope, or timestamps changed."),
+      error = paste0(
+        ui_current_copy("\u8FD0\u884C\u5931\u8D25\uFF1A", "Run failed: "),
+        as.character(state$error_message %||% state$reason %||% "unknown error")[1]
+      ),
+      ui_current_copy("\u672A\u77E5 support \u72B6\u6001\u3002", "Unknown support state.")
+    )
+  }
+
+  support_status_tag <- function(state, method) {
+    status <- as.character(state$status %||% "not_run")[1]
+    color <- switch(status, success = "#16803A", zero_events = "#2166AC",
+                    not_estimable = "#A05A00", error = "#B42318", stale = "#A05A00",
+                    running = "#2166AC", "#5B6573")
+    tags$div(
+      class = "small-note",
+      style = paste0("margin-top:8px;padding:8px;border-left:4px solid ", color, ";"),
+      tags$b(paste0("[", status, "] ")),
+      support_state_message(state, method)
+    )
+  }
+
+  output$ps_support_status <- renderUI({
+    support_status_tag(support_live_state(ps_support_record()), "Poisson Surprise")
+  })
+  output$rgs_support_status <- renderUI({
+    support_status_tag(support_live_state(rgs_support_record()), "RGS")
+  })
+
+  observe({
+    ds <- current_dataset()
+    trains <- stpd_support_normalize_trains(names(ds$trains))
+    selected <- intersect(as.character(input$rgs_calibration_trains %||% character()), trains)
+    updateSelectizeInput(
+      session, "rgs_calibration_trains", choices = trains, selected = selected,
+      server = TRUE
+    )
+  })
+
+  output$rgs_metadata_group_control <- renderUI({
+    ds <- current_dataset()
+    trains <- stpd_support_normalize_trains(names(ds$trains))
+    columns <- stpd_support_groupable_columns(ds, trains)
+    selectInput(
+      "rgs_metadata_group_column", "Metadata group \u5217",
+      choices = columns, selected = if (length(columns)) columns[1] else character()
+    )
+  })
+
+  observe({
+    ds <- current_dataset()
+    trains <- stpd_support_normalize_trains(names(ds$trains))
+    key <- paste(as.character(rv$current_id %||% "")[1], paste(trains, collapse = "\r"), sep = "|")
+    state <- isolate(rgs_manual_group_state())
+    if (!identical(state$key, key)) {
+      rgs_manual_group_state(list(
+        key = key,
+        table = data.frame(
+          train = trains,
+          reference_group = rep("all", length(trains)),
+          stringsAsFactors = FALSE
+        )
+      ))
+    }
+  })
+
+  output$rgs_group_editor <- DT::renderDT({
+    DT::datatable(
+      rgs_manual_group_state()$table,
+      rownames = FALSE, editable = list(target = "cell", disable = list(columns = 0)),
+      options = list(pageLength = 8, scrollX = TRUE, dom = "tip")
+    )
+  })
+
+  observeEvent(input$rgs_group_editor_cell_edit, {
+    info <- input$rgs_group_editor_cell_edit
+    state <- rgs_manual_group_state()
+    table <- state$table
+    if (!is.data.frame(table) || !nrow(table)) return(invisible(NULL))
+    table <- DT::editData(table, info, rownames = FALSE)
+    state$table <- table
+    rgs_manual_group_state(state)
+  }, ignoreInit = TRUE)
+
+  rgs_group_map_for <- function(trains) {
+    ds <- current_dataset()
+    all_trains <- stpd_support_normalize_trains(trains)
+    source <- as.character(input$rgs_group_source %||% "single")[1]
+    if (identical(source, "single")) {
+      return(stats::setNames(rep("all", length(all_trains)), all_trains))
+    }
+    if (identical(source, "metadata")) {
+      return(stpd_support_groups_from_metadata(
+        ds, all_trains, input$rgs_metadata_group_column %||% ""
+      ))
+    }
+    if (identical(source, "upload")) {
+      upload <- input$rgs_group_map_upload
+      if (is.null(upload) || !nzchar(upload$datapath %||% "")) {
+        stop("Upload a train-group CSV before running RGS.", call. = FALSE)
+      }
+      table <- utils::read.csv(upload$datapath, check.names = FALSE, stringsAsFactors = FALSE)
+      train_col <- intersect(c("Spike_train", "spike_train", "train"), names(table))
+      if (length(train_col)) table <- table[as.character(table[[train_col[1L]]]) %in% all_trains, , drop = FALSE]
+      return(stpd_support_validate_group_table(table, all_trains))
+    }
+    table <- rgs_manual_group_state()$table
+    table <- table[as.character(table$train) %in% all_trains, , drop = FALSE]
+    stpd_support_validate_group_table(table, all_trains)
+  }
+
+  # ----------------------------------------------------------
   # Support: article-conformant Mean-ISI burst threshold support
   # ----------------------------------------------------------
   compute_misi_support_now <- function() {
@@ -7080,6 +7262,167 @@ server <- function(input, output, session) {
     compute_logisi_support_now()
   }, ignoreInit = TRUE)
 
+  ps_parameters_from_input <- function() {
+    list(
+      surprise_threshold = as.numeric(input$ps_surprise_threshold %||% 10),
+      log_base = as.character(input$ps_log_base %||% "e"),
+      min_spikes = as.integer(input$ps_min_spikes %||% 3L),
+      seed_isi_factor = as.numeric(input$ps_seed_isi_factor %||% 0.5),
+      rejection_isi_factor = as.numeric(input$ps_rejection_isi_factor %||% 2),
+      max_failed_additions = as.integer(input$ps_max_failed_additions %||% 10L)
+    )
+  }
+
+  compute_ps_support_now <- function(target, parameters) {
+    stpd_poisson_surprise_support_dataset(
+      current_dataset(), selected_trains = target,
+      surprise_threshold = parameters$surprise_threshold,
+      log_base = parameters$log_base,
+      min_spikes = parameters$min_spikes,
+      seed_isi_factor = parameters$seed_isi_factor,
+      rejection_isi_factor = parameters$rejection_isi_factor,
+      max_failed_additions = parameters$max_failed_additions
+    )
+  }
+
+  observeEvent(input$run_ps_support, {
+    ds <- current_dataset()
+    target <- support_scope_trains(input$ps_support_visible_only)
+    parameters <- ps_parameters_from_input()
+    identity <- stpd_support_run_identity(
+      ds, rv$current_id, target, "poisson_surprise", parameters
+    )
+    ps_support_record(stpd_support_run_record("running", identity = identity))
+    withProgress(message = "Poisson Surprise", value = 0.2, {
+      record <- tryCatch({
+        result <- compute_ps_support_now(target, parameters)
+        incProgress(0.7)
+        status <- if (nrow(result$bursts %||% data.frame()) > 0L) "success" else "zero_events"
+        stpd_support_run_record(status, result = result, identity = identity)
+      }, error = function(e) {
+        stpd_support_run_record(
+          "error", identity = identity, error_code = "ps_computation_error",
+          error_message = conditionMessage(e)
+        )
+      })
+      ps_support_record(record)
+    })
+  }, ignoreInit = TRUE)
+
+  ps_support_result <- reactive({
+    state <- support_live_state(ps_support_record())
+    if (isTRUE(state$current)) state$result else NULL
+  })
+
+  rgs_parameters_from_input <- function() {
+    params <- stpd_rgs_default_parameters()
+    params$candidate_count_p <- as.numeric(input$rgs_candidate_count_p %||% 0.05)
+    params$familywise_alpha <- as.numeric(input$rgs_familywise_alpha %||% 0.05)
+    params$window_fraction <- as.numeric(input$rgs_window_fraction %||% 0.20)
+    params$mad_scale <- as.character(input$rgs_mad_scale %||% "normal_consistent")
+    params$min_burst_spikes <- as.integer(input$rgs_min_burst_spikes %||% 3L)
+    params$min_pause_spikes <- as.integer(input$rgs_min_pause_spikes %||% 2L)
+    params$scientific_mode <- as.character(input$rgs_scientific_mode %||% "exploratory")
+    rgs_validate_parameters(params)
+  }
+
+  rgs_run_plan <- function() {
+    ds <- current_dataset()
+    target_base <- support_scope_trains(input$rgs_support_visible_only)
+    mode <- as.character(input$rgs_calibration_mode %||% "same_data")[1]
+    if (identical(mode, "held_out")) {
+      calibration <- intersect(
+        stpd_support_normalize_trains(input$rgs_calibration_trains %||% character()),
+        names(ds$trains)
+      )
+      if (!length(calibration)) stop("Select at least one calibration train.", call. = FALSE)
+      target <- setdiff(target_base, calibration)
+      if (!length(target)) {
+        stop("Held-out RGS requires at least one target train outside calibration.", call. = FALSE)
+      }
+    } else {
+      calibration <- target_base
+      target <- target_base
+    }
+    union_scope <- stpd_support_normalize_trains(c(calibration, target))
+    groups <- rgs_group_map_for(union_scope)
+    calibration_scope <- stpd_ui_state_scope_hashes(ds, calibration)
+    list(
+      mode = mode, calibration = calibration, target = target,
+      groups = groups,
+      reference_definition = list(
+        calibration_mode = mode,
+        calibration_trains = calibration,
+        calibration_data_sha256 = calibration_scope$data_sha256,
+        groups = groups
+      )
+    )
+  }
+
+  observeEvent(input$run_rgs_support, {
+    ds <- current_dataset()
+    setup <- tryCatch(
+      list(parameters = rgs_parameters_from_input(), plan = rgs_run_plan()),
+      error = identity
+    )
+    if (inherits(setup, "error")) {
+      rgs_support_record(stpd_support_run_record(
+        "error", error_code = "rgs_plan_error", error_message = conditionMessage(setup)
+      ))
+      return(invisible(NULL))
+    }
+    parameters <- setup$parameters
+    plan <- setup$plan
+    identity <- stpd_support_run_identity(
+      ds, rv$current_id, plan$target, "robust_gaussian_surprise", parameters,
+      reference_definition = plan$reference_definition
+    )
+    rgs_support_record(stpd_support_run_record("running", identity = identity))
+    withProgress(message = "Robust Gaussian Surprise", value = 0.1, {
+      record <- tryCatch({
+        if (identical(plan$mode, "held_out")) {
+          fit <- stpd_rgs_fit(
+            ds, selected_trains = plan$calibration,
+            groups = plan$groups[plan$calibration], params = parameters
+          )
+          incProgress(0.4)
+          result <- stpd_rgs_support_dataset(
+            ds, selected_trains = plan$target,
+            groups = plan$groups[plan$target], params = parameters, fit = fit
+          )
+        } else {
+          result <- stpd_rgs_support_dataset(
+            ds, selected_trains = plan$target,
+            groups = plan$groups[plan$target], params = parameters
+          )
+        }
+        incProgress(0.4)
+        event_n <- nrow(result$bursts %||% data.frame()) + nrow(result$pauses %||% data.frame())
+        status <- if (identical(result$scientific_status, "not_estimable")) {
+          "not_estimable"
+        } else if (event_n == 0L) {
+          "zero_events"
+        } else {
+          "success"
+        }
+        stpd_support_run_record(status, result = result, identity = identity)
+      }, error = function(e) {
+        message <- conditionMessage(e)
+        status <- if (grepl("not estimable", message, fixed = TRUE)) "not_estimable" else "error"
+        stpd_support_run_record(
+          status, identity = identity, error_code = "rgs_computation_error",
+          error_message = message
+        )
+      })
+      rgs_support_record(record)
+    })
+  }, ignoreInit = TRUE)
+
+  rgs_support_result <- reactive({
+    state <- support_live_state(rgs_support_record())
+    if (isTRUE(state$current)) state$result else NULL
+  })
+
   apply_support_threshold_result <- function(support, method) {
     p <- read_params_from_ui()
     p <- stpd_apply_support_threshold_to_params(
@@ -7191,6 +7534,37 @@ server <- function(input, output, session) {
       }
     }
 
+    if ("ps" %in% methods) {
+      res <- ps_support_result()
+      b <- if (!is.null(res) && is.data.frame(res$bursts)) res$bursts else data.frame()
+      if (nrow(b) > 0L) {
+        threshold_table <- res$thresholds %||% data.frame()
+        threshold <- suppressWarnings(as.numeric(
+          threshold_table$threshold_value[threshold_table$threshold_name == "surprise_threshold"][1]
+        ))
+        if (!is.finite(threshold)) threshold <- as.numeric(input$ps_surprise_threshold %||% 10)
+        b$support_method <- "ps"
+        b$support_method_label <- "Poisson Surprise"
+        b$support_threshold_sec <- NA_real_
+        b$support_threshold_text <- paste0("Surprise >= ", signif(threshold, 5))
+        b$threshold_status <- "accepted"
+        pieces[[length(pieces) + 1L]] <- b
+      }
+    }
+
+    if ("rgs" %in% methods) {
+      res <- rgs_support_result()
+      b <- if (!is.null(res) && is.data.frame(res$bursts)) res$bursts else data.frame()
+      if (nrow(b) > 0L) {
+        b$support_method <- "rgs"
+        b$support_method_label <- "Robust Gaussian Surprise"
+        b$support_threshold_sec <- NA_real_
+        b$support_threshold_text <- "fitted normalized-log-ISI lower tail"
+        b$threshold_status <- as.character(res$scientific_status %||% "")
+        pieces[[length(pieces) + 1L]] <- b
+      }
+    }
+
     if (length(pieces) == 0L) return(data.frame())
     dplyr::bind_rows(pieces)
   }
@@ -7282,12 +7656,21 @@ server <- function(input, output, session) {
     }
     validate(need(nrow(support_b) > 0, ui_text("no_support_time_window")))
 
-    support_b$method_offset <- ifelse(as.character(support_b$support_method) == "misi", 0.18 * step, -0.18 * step)
+    method_offsets <- c(misi = 0.30, logisi = 0.10, ps = -0.10, rgs = -0.30)
+    support_b$method_offset <- unname(method_offsets[as.character(support_b$support_method)]) * step
+    support_b$method_offset[!is.finite(support_b$method_offset)] <- 0
     support_b$y_support <- support_b$y_base + support_b$method_offset
     support_b$duration_ms <- suppressWarnings(as.numeric(support_b$duration_sec %||% NA_real_)) * 1000
     support_b$threshold_ms <- suppressWarnings(as.numeric(support_b$support_threshold_sec %||% NA_real_)) * 1000
     support_b$x0_plot <- if (identical(x_mode, "timestamp")) support_b$start_time_sec else support_b$start_align_sec * f
     support_b$x1_plot <- if (identical(x_mode, "timestamp")) support_b$end_time_sec else support_b$end_align_sec * f
+    if (!("support_threshold_text" %in% names(support_b))) support_b$support_threshold_text <- ""
+    missing_threshold_text <- is.na(support_b$support_threshold_text) | !nzchar(support_b$support_threshold_text)
+    support_b$support_threshold_text[missing_threshold_text] <- ifelse(
+      is.finite(support_b$threshold_ms[missing_threshold_text]),
+      paste0(round(support_b$threshold_ms[missing_threshold_text], 3), " ms"),
+      "not applicable"
+    )
     support_b$hover_text <- paste0(
       ui_current_copy("\u8F85\u52A9 burst \u5019\u9009<br>", "Support burst candidate<br>"),
       ui_current_copy("\u65B9\u6CD5\uFF1A", "Method: "), support_b$support_method_label,
@@ -7298,7 +7681,7 @@ server <- function(input, output, session) {
       ui_current_copy("<br>\u7ED3\u675F ISI \u7D22\u5F15\uFF1A", "<br>End ISI index: "), support_b$end_isi,
       ui_current_copy("<br>Spike \u6570\uFF1A", "<br>Spikes: "), support_b$n_spikes,
       ui_current_copy("<br>\u6301\u7EED\u65F6\u95F4\uFF1A", "<br>Duration: "), round(support_b$duration_ms, 3), " ms",
-      ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), round(support_b$threshold_ms, 3), " ms",
+      ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), support_b$support_threshold_text,
       ui_current_copy("<br>\u72B6\u6001\uFF1A", "<br>Status: "), as.character(support_b$threshold_status %||% "")
     )
 
@@ -7365,6 +7748,7 @@ server <- function(input, output, session) {
         parent_n_spikes = support_b$n_spikes[ii],
         parent_duration_ms = support_b$duration_ms[ii],
         parent_threshold_ms = support_b$threshold_ms[ii],
+        parent_threshold_text = support_b$support_threshold_text[ii],
         parent_status = as.character(support_b$threshold_status[ii] %||% ""),
         stringsAsFactors = FALSE
       )
@@ -7387,7 +7771,7 @@ server <- function(input, output, session) {
         ui_current_copy("<br>\u7236\u5019\u9009 ISI \u6570\uFF1A", "<br>Parent ISIs: "), support_isi$parent_n_isi,
         ui_current_copy("<br>\u7236\u5019\u9009 spike \u6570\uFF1A", "<br>Parent spikes: "), support_isi$parent_n_spikes,
         ui_current_copy("<br>\u7236\u5019\u9009\u6301\u7EED\u65F6\u95F4\uFF1A", "<br>Parent duration: "), round(support_isi$parent_duration_ms, 3), " ms",
-        ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), round(support_isi$parent_threshold_ms, 3), " ms",
+        ui_current_copy("<br>\u8F85\u52A9\u9608\u503C\uFF1A", "<br>Support threshold: "), support_isi$parent_threshold_text,
         ui_current_copy("<br>\u72B6\u6001\uFF1A", "<br>Status: "), support_isi$parent_status
       )
     }
@@ -7459,16 +7843,20 @@ server <- function(input, output, session) {
       }
     }
 
-    method_levels <- c("misi", "logisi")
+    method_levels <- c("misi", "logisi", "ps", "rgs")
     method_names <- c(
       misi = ui_current_copy("Mean-ISI \u8F85\u52A9 ISI \u6761\u5E26 (#8A7FFF)", "Mean-ISI support ISI strip (#8A7FFF)"),
-      logisi = ui_current_copy("LogISI / newBD \u8F85\u52A9 ISI \u6761\u5E26 (#F58E90)", "LogISI / newBD support ISI strip (#F58E90)")
+      logisi = ui_current_copy("LogISI / newBD \u8F85\u52A9 ISI \u6761\u5E26 (#F58E90)", "LogISI / newBD support ISI strip (#F58E90)"),
+      ps = ui_current_copy("Poisson Surprise \u8F85\u52A9 ISI \u6761\u5E26 (#D97706)", "Poisson Surprise support ISI strip (#D97706)"),
+      rgs = ui_current_copy("RGS Burst \u8F85\u52A9 ISI \u6761\u5E26 (#008E8E)", "RGS Burst support ISI strip (#008E8E)")
     )
     method_span_names <- c(
       misi = ui_current_copy("Mean-ISI \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "Mean-ISI translucent event envelope"),
-      logisi = ui_current_copy("LogISI / newBD \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "LogISI / newBD translucent event envelope")
+      logisi = ui_current_copy("LogISI / newBD \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "LogISI / newBD translucent event envelope"),
+      ps = ui_current_copy("Poisson Surprise \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "Poisson Surprise translucent event envelope"),
+      rgs = ui_current_copy("RGS Burst \u534A\u900F\u660E\u4E8B\u4EF6\u5305\u7EDC", "RGS Burst translucent event envelope")
     )
-    method_colors <- c(misi = "#8A7FFF", logisi = "#F58E90")
+    method_colors <- c(misi = "#8A7FFF", logisi = "#F58E90", ps = "#D97706", rgs = "#008E8E")
 
     if (isTRUE(input$support_overlay_show_span_strips)) {
       for (mm in method_levels) {
@@ -7614,5 +8002,254 @@ server <- function(input, output, session) {
       utils::zip(zipfile = file, files = list.files(out_dir, recursive = TRUE))
     }
   )
+
+  support_table_widget <- function(result, component, empty_message) {
+    if (is.null(result)) {
+      return(DT::datatable(
+        data.frame(message = empty_message), rownames = FALSE,
+        options = list(pageLength = 5, scrollX = TRUE)
+      ))
+    }
+    table <- result[[component]] %||% data.frame()
+    if (!is.data.frame(table) || nrow(table) == 0L) {
+      table <- data.frame(message = empty_message)
+    }
+    DT::datatable(table, rownames = FALSE, options = list(pageLength = 12, scrollX = TRUE))
+  }
+
+  output$ps_burst_table <- DT::renderDT({
+    support_table_widget(ps_support_result(), "bursts", "No current PS Burst events.")
+  })
+  output$ps_candidate_table <- DT::renderDT({
+    support_table_widget(ps_support_result(), "candidates", "No current PS candidate audit.")
+  })
+  output$ps_threshold_table <- DT::renderDT({
+    support_table_widget(ps_support_result(), "thresholds", "No current PS threshold table.")
+  })
+  output$rgs_support_summary_table <- DT::renderDT({
+    support_table_widget(rgs_support_result(), "summary", "No current RGS summary.")
+  })
+  output$rgs_burst_table <- DT::renderDT({
+    support_table_widget(rgs_support_result(), "bursts", "No current RGS Burst events.")
+  })
+  output$rgs_pause_table <- DT::renderDT({
+    support_table_widget(rgs_support_result(), "pauses", "No current RGS Pause events.")
+  })
+  output$rgs_reference_diagnostics_table <- DT::renderDT({
+    support_table_widget(
+      rgs_support_result(), "reference_diagnostics", "No current RGS reference diagnostics."
+    )
+  })
+
+  output$download_ps_support_zip <- downloadHandler(
+    filename = function() {
+      ds <- current_dataset()
+      nm <- gsub("[^A-Za-z0-9_\\-\\.]", "_", ds$meta$display_name %||% "dataset")
+      paste0(nm, "_PS_support_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+    },
+    content = function(file) {
+      state <- support_live_state(ps_support_record())
+      if (!isTRUE(state$current) || is.null(state$result)) {
+        stop("A current successful PS run is required before download.", call. = FALSE)
+      }
+      stpd_support_write_validated_zip(
+        file = file, support = state$result,
+        exporter = stpd_poisson_surprise_support_export,
+        prefix = "ps_support", readme_name = "README_PS_support.txt",
+        readme_lines = c(
+          "pCLAMP-style Legendy-Salcman Poisson-surprise support layer",
+          "Outputs are auxiliary evidence only and do not alter STPD AUTO labels.",
+          "The archive records thresholds, candidates, events, memberships, run status, and QC."
+        ),
+        required_files = c(
+          "PS_thresholds.csv", "PS_burst_features.csv", "PS_all_candidates.csv",
+          "PS_spike_support.csv", "PS_ISI_support.csv", "PS_support_summary.csv",
+          "PS_QC.csv", "PS_run_status.csv"
+        ),
+        sentinel_files = c("PS_thresholds.csv", "PS_run_status.csv")
+      )
+    }
+  )
+
+  output$download_rgs_support_zip <- downloadHandler(
+    filename = function() {
+      ds <- current_dataset()
+      nm <- gsub("[^A-Za-z0-9_\\-\\.]", "_", ds$meta$display_name %||% "dataset")
+      paste0(nm, "_RGS_support_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+    },
+    content = function(file) {
+      state <- support_live_state(rgs_support_record())
+      if (!isTRUE(state$current) || is.null(state$result)) {
+        stop("A current RGS result is required before download.", call. = FALSE)
+      }
+      stpd_support_write_validated_zip(
+        file = file, support = state$result,
+        exporter = stpd_rgs_support_export,
+        prefix = "rgs_support", readme_name = "README_RGS_support.txt",
+        readme_lines = c(
+          "Ko-style Robust Gaussian Surprise Burst/Pause support layer",
+          "Outputs are auxiliary evidence only and do not alter STPD AUTO labels.",
+          "Inspect RGS_reference_diagnostics.csv and RGS_run_status.csv before interpretation.",
+          "The default RDS is compact and omits raw spike timestamps."
+        ),
+        required_files = c(
+          "RGS_thresholds.csv", "RGS_burst_features.csv", "RGS_pause_features.csv",
+          "RGS_burst_candidates_audit.csv", "RGS_pause_candidates_audit.csv",
+          "RGS_ISI_support.csv", "RGS_support_summary.csv",
+          "RGS_reference_diagnostics.csv", "RGS_seed_candidate_counts.csv",
+          "RGS_QC.csv", "RGS_run_status.csv", "RGS_analysis.rds"
+        ),
+        sentinel_files = c("RGS_reference_diagnostics.csv", "RGS_run_status.csv")
+      )
+    }
+  )
+
+  integrated_patrol_ready <- reactiveVal(FALSE)
+  integrated_patrol_started <- reactiveVal(FALSE)
+  integrated_patrol_message <- reactiveVal(
+    "\u5C1A\u672A\u542F\u52A8\u3002\u53EF\u4ECE\u5F53\u524D STPD \u6570\u636E\u6784\u5EFA\uFF0C\u6216\u8F7D\u5165\u5DF2\u6709 reviewer bundle\u3002"
+  )
+
+  output$patrol_integrated_status <- renderUI({
+    tags$div(class = "patrol-card",
+      tags$div(class = "patrol-title", "\u7EA0\u5BDF\u89C2\u5BDF\u5668\u72B6\u6001"),
+      tags$div(class = "patrol-note", integrated_patrol_message())
+    )
+  })
+  output$patrol_integrated_panel <- renderUI({
+    if (!isTRUE(integrated_patrol_ready())) {
+      return(tags$div(class = "patrol-card patrol-note",
+        "\u89C2\u5BDF\u5668\u542F\u52A8\u540E\u5C06\u5728\u6B64\u5904\u663E\u793A\u3002"))
+    }
+    stpd_patrol_reviewer_panel_ui()
+  })
+
+  start_integrated_patrol <- function(bundle, bundle_sha256, source_label) {
+    if (isTRUE(integrated_patrol_started())) {
+      integrated_patrol_message(
+        "\u672C\u4F1A\u8BDD\u5DF2\u7ED1\u5B9A\u4E00\u4E2A\u7EA0\u5BDF bundle\u3002\u4E3A\u907F\u514D\u6DF7\u5408\u4E0D\u540C\u6570\u636E\u7684\u5BA1\u8BA1\u94FE\uFF0C\u66F4\u6362 bundle \u65F6\u8BF7\u91CD\u542F STPD\u3002"
+      )
+      return(invisible(FALSE))
+    }
+    bundle <- stpd_patrol_reviewer_validate_bundle(bundle)
+    annotation_dir <- trimws(as.character(input$patrol_annotation_dir %||% ""))
+    if (!nzchar(annotation_dir)) {
+      stop("\u8BF7\u586B\u5199\u4EBA\u5DE5\u6807\u6CE8\u4FDD\u5B58\u76EE\u5F55\u3002", call. = FALSE)
+    }
+    dir.create(annotation_dir, recursive = TRUE, showWarnings = FALSE)
+    history_path <- file.path(annotation_dir, "patrol_annotation_history.csv")
+    existing <- stpd_patrol_annotation_read(history_path)
+    if (nrow(existing) && any(existing$bundle_sha256 != bundle_sha256)) {
+      stop("\u8BE5\u4FDD\u5B58\u76EE\u5F55\u5DF2\u7ED1\u5B9A\u5176\u4ED6 reviewer bundle\uFF0C\u8BF7\u9009\u62E9\u65B0\u76EE\u5F55\u3002",
+           call. = FALSE)
+    }
+    integrated_patrol_ready(TRUE)
+    session$onFlushed(function() {
+      stpd_patrol_reviewer_server(
+        bundle, annotation_dir = annotation_dir,
+        bundle_sha256 = bundle_sha256
+      )(input, output, session)
+      integrated_patrol_started(TRUE)
+      integrated_patrol_message(paste0(
+        "\u5DF2\u542F\u52A8\uFF1A", source_label, "\u3002\u6807\u6CE8\u76EE\u5F55\uFF1A", annotation_dir
+      ))
+    }, once = TRUE)
+    invisible(TRUE)
+  }
+
+  observeEvent(input$patrol_build_current, {
+    if (isTRUE(integrated_patrol_started())) {
+      integrated_patrol_message(
+        "\u7EA0\u5BDF\u89C2\u5BDF\u5668\u5DF2\u542F\u52A8\uFF1B\u672C\u4F1A\u8BDD\u4E0D\u4F1A\u5728\u4E0D\u540C\u6570\u636E\u95F4\u590D\u7528\u5BA1\u8BA1\u94FE\u3002"
+      )
+      return()
+    }
+    result <- tryCatch(
+      withProgress(message = "\u6B63\u5728\u6784\u5EFA\u591A\u7B97\u6CD5\u7EA0\u5BDF\u8BC1\u636E\u2026", value = 0, {
+        ds <- current_dataset()
+        incProgress(0.1, detail = "\u8BFB\u53D6\u5F53\u524D STPD \u7ED3\u679C")
+        bundle <- stpd_patrol_reviewer_bundle_from_dataset(
+          ds, params = read_params_from_ui(),
+          region_label = ds$meta$display_name %||% rv$current_id %||% "CURRENT"
+        )
+        incProgress(0.9, detail = "\u7EC4\u88C5\u53EF\u5BA1\u8BA1\u89C6\u56FE")
+        bundle
+      }), error = identity
+    )
+    if (inherits(result, "error")) {
+      integrated_patrol_message(paste0("\u6784\u5EFA\u5931\u8D25\uFF1A", conditionMessage(result)))
+      return()
+    }
+    sha <- digest::digest(result, algo = "sha256", serialize = TRUE)
+    tryCatch(
+      start_integrated_patrol(result, sha, "\u5F53\u524D STPD \u6570\u636E"),
+      error = function(e) integrated_patrol_message(
+        paste0("\u542F\u52A8\u5931\u8D25\uFF1A", conditionMessage(e)))
+    )
+  })
+
+  observeEvent(input$patrol_bundle_in, {
+    req(input$patrol_bundle_in$datapath)
+    result <- tryCatch({
+      path <- normalizePath(input$patrol_bundle_in$datapath, mustWork = TRUE)
+      bundle <- stpd_patrol_reviewer_validate_bundle(readRDS(path))
+      list(bundle = bundle, sha = digest::digest(path, algo = "sha256", file = TRUE))
+    }, error = identity)
+    if (inherits(result, "error")) {
+      integrated_patrol_message(paste0("bundle \u8F7D\u5165\u5931\u8D25\uFF1A", conditionMessage(result)))
+      return()
+    }
+    tryCatch(
+      start_integrated_patrol(result$bundle, result$sha, "\u5DF2\u8F7D\u5165 reviewer bundle"),
+      error = function(e) integrated_patrol_message(
+        paste0("\u542F\u52A8\u5931\u8D25\uFF1A", conditionMessage(e)))
+    )
+  })
+
+  # Optional session preload for a locally hosted review workflow. This keeps
+  # browser sessions independent while avoiding a repeated multi-megabyte file
+  # upload in every browser. The path must be supplied explicitly by the host
+  # process; ordinary package sessions retain the upload-only behaviour.
+  patrol_preload_path <- trimws(as.character(
+    getOption(
+      "stpd.patrol.preload_bundle",
+      Sys.getenv("STPD_PATROL_PRELOAD_BUNDLE", unset = "")
+    ) %||% ""
+  ))
+  if (nzchar(patrol_preload_path)) {
+    patrol_preload_attempted <- reactiveVal(FALSE)
+    observe({
+      req(input$patrol_annotation_dir)
+      if (isTRUE(patrol_preload_attempted()) || isTRUE(integrated_patrol_started())) {
+        return(invisible(NULL))
+      }
+      patrol_preload_attempted(TRUE)
+      result <- tryCatch({
+        path <- normalizePath(patrol_preload_path, mustWork = TRUE)
+        bundle <- stpd_patrol_reviewer_validate_bundle(readRDS(path))
+        list(bundle = bundle, sha = digest::digest(path, algo = "sha256", file = TRUE))
+      }, error = identity)
+      if (inherits(result, "error")) {
+        integrated_patrol_message(paste0(
+          "reviewer bundle \u9884\u8F7D\u5931\u8D25\uFF1A", conditionMessage(result)
+        ))
+        return(invisible(NULL))
+      }
+      tryCatch({
+        started <- start_integrated_patrol(
+          result$bundle, result$sha, "\u670D\u52A1\u5668\u9884\u8F7D reviewer bundle"
+        )
+        if (isTRUE(started)) {
+          updateTabsetPanel(
+            session, "main_tabs",
+            selected = "\u591A\u7B97\u6CD5\u7EA0\u5BDF\u4E0E\u4EBA\u5DE5\u6807\u6CE8"
+          )
+        }
+      }, error = function(e) integrated_patrol_message(
+        paste0("\u542F\u52A8\u5931\u8D25\uFF1A", conditionMessage(e)))
+      )
+      invisible(NULL)
+    }, priority = 100)
+  }
 
 }

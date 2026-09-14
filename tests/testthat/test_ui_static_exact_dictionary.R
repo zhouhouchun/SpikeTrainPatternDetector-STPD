@@ -40,7 +40,7 @@ stpd_static_ui_contract_sources <- function() {
 
 test_that("the complete static UI has exact, lossless English coverage", {
   source <- stpd_static_ui_contract_sources()
-  expect_length(source, 829L)
+  expect_length(source, 866L)
 
   english <- vapply(
     source,
@@ -67,7 +67,7 @@ test_that("the exact dictionary has unique keys and preserves technical tokens",
   expect_false(any(is.na(names(exact))) || any(!nzchar(trimws(names(exact)))))
   expect_false(any(is.na(exact)) || any(!nzchar(trimws(unname(exact)))))
 
-  expect_length(additions, 235L)
+  expect_length(additions, 259L)
   expect_identical(anyDuplicated(names(additions)), 0L)
   expect_true(all(vapply(names(additions), stpd_i18n_contains_cjk, logical(1))))
   expect_false(any(vapply(unname(additions), stpd_i18n_contains_cjk, logical(1))))

@@ -17,18 +17,25 @@ nested_hfs_review_fixture <- function(with_acceleration = TRUE) {
     end_isi = nrow(dat), final_label = "high_frequency_spiking",
     stringsAsFactors = FALSE
   )
-  raw <- stpd_event_core_detect_nested_hfs_bursts(
+  raw_all <- stpd_event_core_detect_nested_hfs_bursts(
     dat, parent, settings = stpd_nested_hfs_detector_settings(params, vp),
     min_isi_sec = 0.0009
   )
-  standardized <- stpd_nested_hfs_standardize_candidates(
-    dat, raw, params, vp, min_isi_sec = 0.0009, train = "train_1"
+  standardized_all <- stpd_nested_hfs_standardize_candidates(
+    dat, raw_all, params, vp, min_isi_sec = 0.0009, train = "train_1"
   )
+  raw <- raw_all[!raw_all$canonical_eligible, , drop = FALSE]
+  standardized <- if (nrow(standardized_all)) {
+    standardized_all[!standardized_all$canonical_eligible, , drop = FALSE]
+  } else data.frame()
   shadow <- stpd_multitrack_shadow_select(
     standardized, patterns = params$detector$patterns_to_run, params = params
   )
   list(dat = dat, params = params, vp = vp, parent = parent, raw = raw,
-       standardized = standardized, shadow = shadow)
+       standardized = standardized, shadow = shadow,
+       automatic = if (nrow(standardized_all)) {
+         standardized_all[standardized_all$canonical_eligible, , drop = FALSE]
+       } else data.frame())
 }
 
 nested_hfs_review_observe <- function(fixture, run_id = "nested_hfs_review") {
@@ -58,9 +65,11 @@ nested_hfs_review_observe <- function(fixture, run_id = "nested_hfs_review") {
   )
 }
 
-test_that("nested HFS proposals remain local-contrast Review evidence", {
+test_that("accepted nested HFS Bursts do not leak into the Review side channel", {
   fixture <- nested_hfs_review_fixture()
-  expect_identical(nrow(fixture$raw), 1L)
+  expect_identical(nrow(fixture$automatic), 1L)
+  expect_identical(fixture$automatic$final_label, "burst")
+  expect_identical(nrow(fixture$raw), 0L)
   run <- nested_hfs_review_observe(fixture)
   observations <- run$snapshot$observations
   candidates <- observations$nested_hfs_review_candidates_v1
@@ -71,16 +80,8 @@ test_that("nested HFS proposals remain local-contrast Review evidence", {
     names(stpd_candidate_lineage_nested_hfs_review_hooks()) %in%
       names(observations)
   ))
-  expect_identical(candidates$final_label, "possible_burst")
-  expect_identical(candidates$action, "demote_to_possible")
-  expect_true(candidates$review_only)
-  expect_false(candidates$canonical_eligible)
-  expect_identical(candidates$semantic_track, "review")
-  expect_true(candidates$review_promotion_required)
-  expect_true(contrast$local_hfs_background_only)
-  expect_false(contrast$absolute_pattern_threshold_used)
-  expect_true(is.finite(contrast$seed_pair_local_rank))
-  expect_gt(min(contrast$seed_left_ratio, contrast$seed_right_ratio), 1)
+  expect_identical(nrow(candidates), 0L)
+  expect_identical(nrow(contrast), 0L)
   expect_true(invariance$parent_signature_unchanged)
   expect_false(invariance$review_can_veto_state)
   expect_false(invariance$review_can_reshape_state)
@@ -108,7 +109,7 @@ test_that("homogeneous HFS closes with no invented Review event", {
                    "validated_review_not_event")
 })
 
-test_that("nested HFS Review payloads fail closed on mutation", {
+test_that("empty nested HFS Review payloads fail closed on mutation", {
   run <- nested_hfs_review_observe(
     nested_hfs_review_fixture(), "nested_hfs_tamper"
   )
@@ -116,12 +117,6 @@ test_that("nested HFS Review payloads fail closed on mutation", {
   mutations <- list(
     nested_hfs_review_entry_v1 = function(x) {
       x$automatic_event_promotion_allowed <- TRUE; x
-    },
-    nested_hfs_review_candidates_v1 = function(x) {
-      x$canonical_eligible[[1L]] <- TRUE; x
-    },
-    nested_hfs_review_local_contrast_v1 = function(x) {
-      x$absolute_pattern_threshold_used[[1L]] <- TRUE; x
     },
     nested_hfs_review_parent_invariance_v1 = function(x) {
       x$review_can_veto_state <- TRUE; x

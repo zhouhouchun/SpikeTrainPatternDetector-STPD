@@ -78,6 +78,10 @@ specs <- list(
   )
 )
 spec <- specs[[region]]
+reference_override <- Sys.getenv("STPD_REFERENCE_WORKBOOK", unset = "")
+if (nzchar(reference_override)) {
+  spec$workbook <- path.expand(reference_override)
+}
 spec$workbook <- normalizePath(spec$workbook, mustWork = TRUE)
 
 resolve_group <- function(train, region) {
@@ -96,7 +100,18 @@ resolve_group <- function(train, region) {
 
 read_reference <- function(path, region, tonic_reference_role) {
   sheets <- readxl::excel_sheets(path)
-  rows <- lapply(sheets, function(sheet) {
+  required <- c(
+    "train_id", "isi_index", "left_timestamp_us", "right_timestamp_us",
+    "isi_us", "state_pattern", "event_pattern", "review_status"
+  )
+  data_sheets <- sheets[vapply(sheets, function(sheet) {
+    header <- names(readxl::read_excel(path, sheet = sheet, n_max = 0L))
+    all(required %in% header)
+  }, logical(1))]
+  if (!length(data_sheets)) {
+    stop("No worksheet satisfies the frozen reference schema.", call. = FALSE)
+  }
+  rows <- lapply(data_sheets, function(sheet) {
     z <- as.data.frame(
       readxl::read_excel(path, sheet = sheet), stringsAsFactors = FALSE
     )
@@ -104,10 +119,6 @@ read_reference <- function(path, region, tonic_reference_role) {
     z
   })
   book <- do.call(rbind, rows)
-  required <- c(
-    "train_id", "isi_index", "left_timestamp_us", "right_timestamp_us",
-    "isi_us", "state_pattern", "event_pattern", "review_status"
-  )
   if (!all(required %in% names(book))) {
     stop("Reference workbook schema is incomplete.", call. = FALSE)
   }
