@@ -23,6 +23,8 @@ stpd_event_grammar_hard_derived_csv_filename <- function(path) {
     grepl("^multitrack[_ .-]?(review|adjudication)([_ .-]|$)", nm) ||
     grepl("^isi[_ .-]?base([_ .-]|\\.csv$)", nm) ||
     grepl("^tonic[_ .-]?summary([_ .-]|\\.csv$)", nm) ||
+    grepl("^ps[_ .-](burst|all|isi|qc|spike|support|threshold)([_ .-]|$)", nm) ||
+    grepl("^rgs[_ .-](burst|pause|isi|qc|reference|seed|support|threshold|analysis|run)([_ .-]|$)", nm) ||
     grepl("(^|[_ .-])burst[_ .-]?isi[_ .-]?(threshold|threshould|thresh)([_ .-]|\\.csv$)", nm) ||
     grepl("(^|[_ .-])(threshold|thresholds|threshould|thresh)([_ .-]|\\.csv$)", nm) ||
     grepl("^(candidate[_ .-]?ledger|eventness[_ .-]?audit|final[_ .-]?classification|events[_ .-]?final|event_grammar[_ .-]?candidate|arbitration[_ .-]?candidate)([_ .-]|\\.csv$)", nm) ||

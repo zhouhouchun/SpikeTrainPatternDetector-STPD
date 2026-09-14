@@ -1779,9 +1779,10 @@ stpd_event_core_candidate_value <- function(row) {
 }
 
 # Resolve the HFS-local Burst proposal rule from the already frozen Burst
-# parameter contract.  No cross-dataset absolute ISI threshold is introduced:
-# every numerical gate is a ratio, rank, or count.  These candidates remain
-# review-only because calibration did not support automatic promotion.
+# parameter contract. No cross-dataset absolute ISI threshold is introduced:
+# every numerical gate is a ratio, rank, or count. Emitted candidates are
+# canonical Event-track Bursts; failed candidates are omitted rather than
+# downgraded to `possible_burst`.
 stpd_nested_hfs_detector_settings <- function(params, vp = list()) {
   product_burst <- ((params$spiketrainpattern %||% list())$burst %||% list())
   burst <- params$burst %||% list()
@@ -1789,7 +1790,10 @@ stpd_nested_hfs_detector_settings <- function(params, vp = list()) {
     product_burst$structure_first_compactness_quantile %||% 0.80, 0.80
   )
   pair_rank_max <- min(0.35, max(0.05, 1 - compactness_quantile))
-  min_spikes <- max(4L, stpd_event_core_int(vp$min_spikes %||% 4L, 4L))
+  # Nested-HFS Burst is a separate, threshold-supported route.  It may accept
+  # the classical minimum of three spikes (two ISIs); the four-spike floor is
+  # retained only for the initial contrast-only structure-first generator.
+  min_spikes <- max(3L, stpd_event_core_int(vp$min_spikes %||% 3L, 3L))
   max_spikes <- max(
     min_spikes,
     stpd_event_core_int(vp$long_max_spikes %||% 15L, 15L)
@@ -1887,33 +1891,39 @@ stpd_nested_hfs_standardize_candidates <- function(
   rows <- vector("list", nrow(nested_candidates))
   for (i in seq_len(nrow(nested_candidates))) {
     raw <- nested_candidates[i, , drop = FALSE]
+    canonical <- isTRUE(raw$canonical_eligible[[1L]]) &&
+      identical(as.character(raw$final_label[[1L]]), "burst")
+    if (!canonical) next
+    final_label <- "burst"
+    action <- "accept"
+    status <- "nested_hfs_local_rate_auto_pass"
     extra <- as.list(raw)
-    extra$nested_hfs_rule_version <- "nested_hfs_local_rate_contrast_v1"
+    extra$nested_hfs_rule_version <- "nested_hfs_local_rate_contrast_v2"
     extra$nested_hfs_gate_applied <- TRUE
+    extra$priority <- 1080
     extra$nested_hfs_gate_status <- paste0(
-      "review_only__",
+      "auto_event__",
       as.character(raw$review_evidence_strength %||% "local_rate_proposal")
     )
-    extra$strict_boundary_pass <- FALSE
+    extra$strict_boundary_pass <- canonical
     extra$one_sided_boundary_pass <- FALSE
     extra$possible_boundary_pass <- TRUE
-    extra$canonical_eligible <- FALSE
-    extra$review_only <- TRUE
-    extra$candidate_diagnostic_class <-
-      "possible_burst__nested_hfs_local_rate_review_only"
+    extra$canonical_eligible <- canonical
+    extra$review_only <- FALSE
+    extra$candidate_diagnostic_class <- "burst__nested_hfs_local_rate_auto"
     rows[[i]] <- stpd_event_core_candidate_from_run(
       dat,
       stpd_event_core_int(raw$start_isi, NA_integer_),
       stpd_event_core_int(raw$end_isi, NA_integer_),
       params, vp, min_isi_sec, train,
       "nested_hfs_local_rate_contrast",
-      "nested_hfs_local_rate_review_proposal",
-      "possible_burst",
-      "nested_hfs_local_rate_review_only",
+      "nested_hfs_local_rate_auto_event",
+      final_label,
+      status,
       as.character(raw$decision_path),
-      "demote_to_possible",
+      action,
       stpd_event_core_num(raw$score, 0),
-      min(360, stpd_event_core_num(raw$priority, 360)),
+      1080,
       extra
     )
   }
@@ -1983,6 +1993,7 @@ stpd_detect_train_hf_protected_impl <- function(
     attr(dat, "multitrack_shadow") <- empty_multitrack_shadow
     attr(dat, "multitrack_compatibility_shadow") <-
       stpd_multitrack_compatibility_shadow(empty_multitrack_shadow, params = params)
+    attr(dat, "nested_hfs_burst_auto_candidates") <- data.frame()
     attr(dat, "nested_hfs_burst_review_candidates") <- data.frame()
     attr(dat, "tonic_review_candidates") <-
       stpd_tonic_review_empty_candidates()
@@ -2033,6 +2044,8 @@ stpd_detect_train_hf_protected_impl <- function(
   selected_hfs <- data.frame()
   nested_raw <- stpd_nested_hfs_empty_candidates()
   nested_burst_candidates <- data.frame()
+  nested_burst_auto_candidates <- data.frame()
+  nested_burst_review_candidates <- data.frame()
   hft <- data.frame()
   ton <- data.frame()
   burst_candidates <- data.frame()
@@ -2249,6 +2262,17 @@ stpd_detect_train_hf_protected_impl <- function(
       dat, nested_raw, params, vp,
       min_isi_sec = min_isi_sec, train = train
     )
+    if (nrow(nested_burst_candidates) > 0L) {
+      canonical <- as.logical(nested_burst_candidates$canonical_eligible)
+      canonical[is.na(canonical)] <- FALSE
+      nested_burst_auto_candidates <- nested_burst_candidates[
+        canonical & nested_burst_candidates$final_label == "burst",
+        , drop = FALSE
+      ]
+      nested_burst_review_candidates <- nested_burst_candidates[
+        !canonical, , drop = FALSE
+      ]
+    }
   }
 
   if (nrow(b) > 0L) cand_rows[[length(cand_rows) + 1L]] <- b
@@ -2263,11 +2287,15 @@ stpd_detect_train_hf_protected_impl <- function(
   if (nrow(pau) > 0) cand_rows[[length(cand_rows) + 1L]] <- pau
 
   audit <- dplyr::bind_rows(cand_rows)
-  shadow_audit <- dplyr::bind_rows(audit, nested_burst_candidates)
+  shadow_audit <- dplyr::bind_rows(
+    audit, nested_burst_auto_candidates, nested_burst_review_candidates
+  )
   # Phase 1A shadow: select independently by semantic track from the intact
-  # pre-protection pool.  HFS-local possible_burst proposals are visible only
-  # on the Review track.  The legacy audit and AUTO labels continue through the
-  # canonical candidate pool below and therefore cannot be changed by them.
+  # pre-protection pool. HFS-local acceleration is selected on the Event track.
+  # Failed local proposals are omitted rather than downgraded to Review. The
+  # legacy single-label audit and AUTO labels continue through the canonical
+  # pool below and therefore remain unchanged; the multi-track product carries
+  # Event/State coexistence.
   multitrack_shadow <- stpd_multitrack_shadow_select(
     shadow_audit, patterns = patterns, params = params
   )
@@ -2349,7 +2377,8 @@ stpd_detect_train_hf_protected_impl <- function(
   attr(dat, "multitrack_compatibility_shadow") <- multitrack_compatibility_shadow
   attr(dat, "event_grammar_params") <- vp
   attr(dat, "nested_hfs_parent_signature") <- provisional_hfs_signature
-  attr(dat, "nested_hfs_burst_review_candidates") <- nested_burst_candidates
+  attr(dat, "nested_hfs_burst_auto_candidates") <- nested_burst_auto_candidates
+  attr(dat, "nested_hfs_burst_review_candidates") <- nested_burst_review_candidates
   if (!is.null(candidate_lineage_collector)) {
     stpd_candidate_lineage_capture_gap_final(
       candidate_lineage_collector, train, audit, dat$pattern_auto
@@ -2368,8 +2397,12 @@ stpd_detect_train_hf_protected_impl <- function(
       candidate_lineage_collector, train, ton, hft, burst_support_source
     )
     stpd_candidate_lineage_capture_nested_hfs_review(
-      candidate_lineage_collector, train, nested_raw,
-      nested_burst_candidates, multitrack_shadow,
+      candidate_lineage_collector, train,
+      nested_raw[!nested_raw$canonical_eligible, , drop = FALSE],
+      nested_burst_review_candidates,
+      stpd_multitrack_shadow_select(
+        nested_burst_review_candidates, patterns = patterns, params = params
+      ),
       provisional_hfs_signature, final_hfs_signature
     )
     # Gate 1B closes only after every family observer above has completed.
@@ -2379,7 +2412,8 @@ stpd_detect_train_hf_protected_impl <- function(
         candidate_lineage_collector)) {
       stpd_candidate_lineage_begin_complete_universe_release(
         candidate_lineage_collector, train, audit, dat$pattern_auto,
-        multitrack_shadow, nested_burst_candidates, tonic_review_candidates,
+        multitrack_shadow, nested_burst_review_candidates,
+        tonic_review_candidates,
         final_hfs_signature, dat, params, vp
       )
       stpd_candidate_lineage_capture_complete_universe_release(

@@ -1,12 +1,13 @@
-# HFS-local nested Burst review-candidate generator
+# HFS-local nested Burst candidate generator
 #
 # This module mines short, locally accelerated proposals only inside an already
-# accepted Broad-HFS support interval.  The calibration evidence available at
-# implementation time does not separate true nested Bursts from random low-tail
-# HFS fluctuations well enough for automatic promotion.  Every emitted row is
-# therefore `possible_burst` review evidence and is never a canonical Event.
-# All scientific gates are dimensionless ratios, ranks, or counts;
-# `min_isi_sec` is used only by the pre-existing artifact/QC policy.
+# accepted Broad-HFS support interval. A proposal is supported either by a
+# rate increase relative to robust local HFS background or by a compact core
+# bounded immediately on both sides by larger ISIs. Every emitted proposal is
+# materialized as a canonical Burst Event. Failed proposals are omitted; this
+# module never emits `possible_burst`.
+# All scientific gates are dimensionless ratios, ranks, or counts. The only
+# absolute ISI gate is the inclusive 1-ms artifact/QC floor.
 
 stpd_nested_hfs_num <- function(x, default) {
   value <- suppressWarnings(as.numeric(x))[1L]
@@ -42,6 +43,9 @@ stpd_nested_hfs_settings <- function(settings = list()) {
     seed_geom_ratio_min = max(1, stpd_nested_hfs_num(
       settings$seed_geom_ratio_min %||% 1.30, 1.30
     )),
+    adaptive_contrast_multiplier = max(0, stpd_nested_hfs_num(
+      settings$adaptive_contrast_multiplier %||% 3.0, 3.0
+    )),
     direct_expand_factor = max(1, stpd_nested_hfs_num(
       settings$direct_expand_factor %||% 1.50, 1.50
     )),
@@ -63,8 +67,8 @@ stpd_nested_hfs_settings <- function(settings = list()) {
     native_fraction_min = min(1, max(0.5, stpd_nested_hfs_num(
       settings$native_fraction_min %||% 0.55, 0.55
     ))),
-    min_spikes = max(4L, stpd_nested_hfs_int(
-      settings$min_spikes %||% 4L, 4L
+    min_spikes = max(3L, stpd_nested_hfs_int(
+      settings$min_spikes %||% 3L, 3L
     )),
     max_spikes = max(4L, stpd_nested_hfs_int(
       settings$max_spikes %||% 10L, 10L
@@ -92,6 +96,9 @@ stpd_nested_hfs_empty_candidates <- function() {
     seed_pair_local_rank = double(), seed_left_background_sec = double(),
     seed_right_background_sec = double(), seed_left_ratio = double(),
     seed_right_ratio = double(), seed_geom_ratio = double(),
+    local_background_robust_cv = double(),
+    adaptive_contrast_multiplier = double(),
+    dynamic_side_ratio_min = double(), dynamic_geom_ratio_min = double(),
     direct_upper_sec = double(), candidate_upper_sec = double(),
     final_q90_sec = double(), final_left_background_sec = double(),
     final_right_background_sec = double(), final_left_ratio = double(),
@@ -99,6 +106,8 @@ stpd_nested_hfs_empty_candidates <- function() {
     immediate_left_ratio = double(), immediate_right_ratio = double(),
     immediate_geom_ratio = double(), robust_edge_pass = logical(),
     immediate_edge_pass = logical(), review_evidence_strength = character(),
+    detection_route = character(),
+    automatic_promotion_pass = logical(), promotion_reason = character(),
     bridge_isi_count = integer(), bridge_max_to_core_median_ratio = double(),
     native_isi_fraction = double(), rollback_left_to_intrusion_onset = logical(),
     rollback_right_to_intrusion_onset = logical(),
@@ -173,6 +182,17 @@ stpd_nested_hfs_side_background <- function(
   right_values <- isi[right_index][valid[right_index]]
   left_values <- left_values[is.finite(left_values) & left_values > 0]
   right_values <- right_values[is.finite(right_values) & right_values > 0]
+  pooled_values <- c(left_values, right_values)
+  pooled_median <- if (length(pooled_values)) {
+    stats::median(pooled_values)
+  } else NA_real_
+  robust_cv <- if (length(pooled_values) >= settings$min_background_isi_n &&
+      is.finite(pooled_median) && pooled_median > 0) {
+    stats::mad(pooled_values, center = pooled_median, constant = 1.4826) /
+      pooled_median
+  } else {
+    NA_real_
+  }
   list(
     left = if (length(left_values) >= settings$min_background_isi_n) {
       stats::median(left_values)
@@ -181,6 +201,7 @@ stpd_nested_hfs_side_background <- function(
       stats::median(right_values)
     } else NA_real_,
     left_n = length(left_values), right_n = length(right_values),
+    robust_cv = robust_cv,
     left_index = left_index, right_index = right_index
   )
 }
@@ -285,11 +306,14 @@ stpd_nested_hfs_candidate_from_seed <- function(
   background <- stpd_nested_hfs_side_background(
     isi, valid, segment_start, segment_end, seed_start, seed_end, settings
   )
-  if (!all(is.finite(c(background$left, background$right)))) return(NULL)
-
-  left_ratio <- background$left / seed_max
-  right_ratio <- background$right / seed_max
-  geom_ratio <- sqrt(max(0, left_ratio) * max(0, right_ratio))
+  background_available <- all(is.finite(c(background$left, background$right)))
+  left_ratio <- if (background_available) background$left / seed_max else NA_real_
+  right_ratio <- if (background_available) background$right / seed_max else NA_real_
+  geom_ratio <- if (background_available) {
+    sqrt(max(0, left_ratio) * max(0, right_ratio))
+  } else {
+    NA_real_
+  }
   pair_rank <- stpd_nested_hfs_pair_rank(
     isi, valid, segment_start, segment_end, seed_start, settings
   )
@@ -297,13 +321,48 @@ stpd_nested_hfs_candidate_from_seed <- function(
     isi, valid, segment_start, segment_end, seed_start,
     settings$local_min_radius
   )
-  seed_pass <- local_min && is.finite(pair_rank) &&
+  dynamic_side_ratio_min <- max(
+    settings$seed_side_ratio_min,
+    if (is.finite(background$robust_cv)) {
+      1 + settings$adaptive_contrast_multiplier * background$robust_cv
+    } else {
+      settings$seed_side_ratio_min
+    }
+  )
+  dynamic_geom_ratio_min <- max(
+    settings$seed_geom_ratio_min, dynamic_side_ratio_min
+  )
+  local_background_route <- background_available && local_min &&
+    is.finite(pair_rank) &&
     pair_rank <= settings$seed_pair_rank_max &&
-    min(left_ratio, right_ratio) >= settings$seed_side_ratio_min &&
-    geom_ratio >= settings$seed_geom_ratio_min
-  if (!seed_pass) return(NULL)
+    min(left_ratio, right_ratio) >= dynamic_side_ratio_min &&
+    geom_ratio >= dynamic_geom_ratio_min
 
-  background_floor <- min(background$left, background$right)
+  seed_pre <- if (seed_start > segment_start && isTRUE(valid[seed_start - 1L])) {
+    isi[seed_start - 1L]
+  } else NA_real_
+  seed_post <- if (seed_end < segment_end && isTRUE(valid[seed_end + 1L])) {
+    isi[seed_end + 1L]
+  } else NA_real_
+  seed_immediate_left_ratio <- seed_pre / seed_max
+  seed_immediate_right_ratio <- seed_post / seed_max
+  seed_immediate_geom_ratio <- sqrt(
+    max(0, seed_immediate_left_ratio) * max(0, seed_immediate_right_ratio)
+  )
+  boundary_contrast_route <- all(is.finite(c(
+    seed_immediate_left_ratio, seed_immediate_right_ratio,
+    seed_immediate_geom_ratio
+  ))) &&
+    min(seed_immediate_left_ratio, seed_immediate_right_ratio) >=
+      dynamic_side_ratio_min &&
+    seed_immediate_geom_ratio >= dynamic_geom_ratio_min
+  if (!local_background_route && !boundary_contrast_route) return(NULL)
+
+  background_floor <- if (local_background_route) {
+    min(background$left, background$right)
+  } else {
+    min(seed_pre, seed_post)
+  }
   # The stricter final-flank gate is confirmatory evidence, not an automatic
   # acceptance condition.  A proposal-level seed that passes the frozen weak
   # contrast rule remains reviewable even when its weaker flank cannot support
@@ -318,14 +377,26 @@ stpd_nested_hfs_candidate_from_seed <- function(
   ))
   if (!all(is.finite(c(direct_upper, candidate_upper)))) return(NULL)
 
-  left <- stpd_nested_hfs_expand_direction(
-    isi, valid, segment_start, segment_end, seed_start, seed_end,
-    direct_upper, candidate_upper, -1L, settings
-  )
-  right <- stpd_nested_hfs_expand_direction(
-    isi, valid, segment_start, segment_end, left$start, seed_end,
-    direct_upper, candidate_upper, 1L, settings
-  )
+  left <- if (local_background_route) {
+    stpd_nested_hfs_expand_direction(
+      isi, valid, segment_start, segment_end, seed_start, seed_end,
+      direct_upper, candidate_upper, -1L, settings
+    )
+  } else {
+    list(start = seed_start, end = seed_end, rollback = FALSE,
+         borrowed_n = 0L, hit_size_ceiling = FALSE,
+         hit_expand_ceiling = FALSE)
+  }
+  right <- if (local_background_route) {
+    stpd_nested_hfs_expand_direction(
+      isi, valid, segment_start, segment_end, left$start, seed_end,
+      direct_upper, candidate_upper, 1L, settings
+    )
+  } else {
+    list(start = seed_start, end = seed_end, rollback = FALSE,
+         borrowed_n = 0L, hit_size_ceiling = FALSE,
+         hit_expand_ceiling = FALSE)
+  }
   start <- left$start
   end <- right$end
   # A resource or spike-count ceiling is not a biological boundary.  Never
@@ -358,9 +429,9 @@ stpd_nested_hfs_candidate_from_seed <- function(
   final_background <- stpd_nested_hfs_side_background(
     isi, valid, segment_start, segment_end, start, end, settings
   )
-  if (!all(is.finite(c(final_background$left, final_background$right)))) {
-    return(NULL)
-  }
+  final_background_available <- all(is.finite(c(
+    final_background$left, final_background$right
+  )))
   q90 <- as.numeric(stats::quantile(
     values, 0.90, names = FALSE, type = 7
   ))
@@ -372,30 +443,67 @@ stpd_nested_hfs_candidate_from_seed <- function(
   } else NA_real_
   if (!all(is.finite(c(q90, pre, post))) || q90 <= 0) return(NULL)
 
-  robust_left_ratio <- final_background$left / q90
-  robust_right_ratio <- final_background$right / q90
-  robust_geom_ratio <- sqrt(
-    max(0, robust_left_ratio) * max(0, robust_right_ratio)
-  )
+  robust_left_ratio <- if (final_background_available) {
+    final_background$left / q90
+  } else NA_real_
+  robust_right_ratio <- if (final_background_available) {
+    final_background$right / q90
+  } else NA_real_
+  robust_geom_ratio <- if (final_background_available) {
+    sqrt(max(0, robust_left_ratio) * max(0, robust_right_ratio))
+  } else NA_real_
   immediate_left_ratio <- pre / q90
   immediate_right_ratio <- post / q90
   immediate_geom_ratio <- sqrt(
     max(0, immediate_left_ratio) * max(0, immediate_right_ratio)
   )
-  robust_edge_pass <- min(robust_left_ratio, robust_right_ratio) >=
+  robust_edge_pass <- final_background_available &&
+    min(robust_left_ratio, robust_right_ratio) >=
     settings$edge_side_ratio_min &&
     robust_geom_ratio >= settings$edge_geom_ratio_min
   immediate_edge_pass <- min(immediate_left_ratio, immediate_right_ratio) >=
     settings$edge_side_ratio_min &&
     immediate_geom_ratio >= settings$edge_geom_ratio_min
-  evidence_strength <- if (robust_edge_pass) {
+  detection_route <- if (local_background_route && boundary_contrast_route) {
+    "local_rate_and_boundary_contrast"
+  } else if (local_background_route) {
+    "local_rate_increase"
+  } else {
+    "two_sided_boundary_contrast"
+  }
+  evidence_strength <- if (robust_edge_pass && immediate_edge_pass) {
+    "robust_background_and_immediate_boundary"
+  } else if (robust_edge_pass) {
     "robust_two_sided_local_background"
+  } else if (boundary_contrast_route) {
+    "two_sided_local_boundary"
   } else {
     "proposal_seed_only"
   }
+  automatic_promotion_pass <- TRUE
+  final_label <- "burst"
+  action <- "accept"
+  promotion_reason <- paste0(
+    "accepted_hfs_local_acceleration__",
+    if (robust_edge_pass) "robust_context_confirmed" else "seed_contrast_confirmed"
+  )
 
-  score <- log(max(min(robust_left_ratio, robust_right_ratio), 1)) +
-    log(max(1 / max(pair_rank, .Machine$double.eps), 1)) -
+  evidence_ratio <- if (local_background_route &&
+      all(is.finite(c(robust_left_ratio, robust_right_ratio)))) {
+    min(robust_left_ratio, robust_right_ratio)
+  } else if (local_background_route) {
+    # Expansion may end at the accepted HFS boundary, leaving the final robust
+    # context unavailable. The seed-stage robust background remains valid and
+    # provides a finite deterministic score fallback.
+    min(left_ratio, right_ratio)
+  } else {
+    min(immediate_left_ratio, immediate_right_ratio)
+  }
+  rank_score <- if (is.finite(pair_rank)) {
+    1 / max(pair_rank, .Machine$double.eps)
+  } else 1
+  score <- log(max(evidence_ratio, 1)) +
+    log(max(rank_score, 1)) -
     0.25 * bridge_n
   data.frame(
     candidate_id = paste(
@@ -403,11 +511,11 @@ stpd_nested_hfs_candidate_from_seed <- function(
     ),
     candidate_layer = "nested_hfs_local_rate_contrast",
     candidate_source = "accepted_broad_hfs_local_context",
-    final_label = "possible_burst", action = "demote_to_possible",
+    final_label = final_label, action = action,
     decision_path = paste(
       "nested_hfs_two_isi_seed", evidence_strength,
       "frozen_relative_expansion", "rollback_to_intrusion_onset",
-      "review_only_no_automatic_promotion",
+      promotion_reason,
       sep = ";"
     ),
     parent_hfs_candidate_id = as.character(parent_id),
@@ -420,7 +528,12 @@ stpd_nested_hfs_candidate_from_seed <- function(
     seed_left_background_sec = background$left,
     seed_right_background_sec = background$right,
     seed_left_ratio = left_ratio, seed_right_ratio = right_ratio,
-    seed_geom_ratio = geom_ratio, direct_upper_sec = direct_upper,
+    seed_geom_ratio = geom_ratio,
+    local_background_robust_cv = background$robust_cv,
+    adaptive_contrast_multiplier = settings$adaptive_contrast_multiplier,
+    dynamic_side_ratio_min = dynamic_side_ratio_min,
+    dynamic_geom_ratio_min = dynamic_geom_ratio_min,
+    direct_upper_sec = direct_upper,
     candidate_upper_sec = candidate_upper, final_q90_sec = q90,
     final_left_background_sec = final_background$left,
     final_right_background_sec = final_background$right,
@@ -433,13 +546,16 @@ stpd_nested_hfs_candidate_from_seed <- function(
     robust_edge_pass = robust_edge_pass,
     immediate_edge_pass = immediate_edge_pass,
     review_evidence_strength = evidence_strength,
+    detection_route = detection_route,
+    automatic_promotion_pass = automatic_promotion_pass,
+    promotion_reason = promotion_reason,
     bridge_isi_count = as.integer(bridge_n),
     bridge_max_to_core_median_ratio = bridge_ratio,
     native_isi_fraction = native_fraction,
     rollback_left_to_intrusion_onset = isTRUE(left$rollback),
     rollback_right_to_intrusion_onset = isTRUE(right$rollback),
     nested_in_hfs = TRUE, absolute_pattern_threshold_used = FALSE,
-    canonical_eligible = FALSE, review_only = TRUE,
+    canonical_eligible = TRUE, review_only = FALSE,
     stringsAsFactors = FALSE
   )
 }
@@ -453,9 +569,10 @@ stpd_nested_hfs_candidate_from_seed <- function(
 #' @param hard_boundaries Optional Pause/QC boundary intervals.  Rows with a
 #'   false `hard_for_event` value are ignored.
 #' @param settings Dimensionless/count-only nested-Burst settings.
-#' @param min_isi_sec Existing artifact/QC floor; never used as a Burst gate.
-#' @return A deterministic data frame of non-overlapping `possible_burst`
-#'   review candidates.  No returned row is eligible for automatic promotion.
+#' @param min_isi_sec Existing artifact/QC floor. The effective floor is never
+#'   below 0.001 s (1 ms); no absolute upper ISI threshold is used.
+#' @return A deterministic data frame of non-overlapping nested-HFS Burst
+#'   candidates. Every returned row is a canonical Burst Event.
 stpd_event_core_detect_nested_hfs_bursts <- function(
     dat, hfs_candidates, hard_boundaries = NULL, settings = list(),
     min_isi_sec = 0.001) {
@@ -470,7 +587,8 @@ stpd_event_core_detect_nested_hfs_bursts <- function(
   settings <- stpd_nested_hfs_settings(settings)
   isi <- suppressWarnings(as.numeric(dat$ISI_sec))
   n <- length(isi)
-  artifact <- stpd_nested_hfs_is_artifact(isi, min_isi_sec)
+  effective_min_isi_sec <- max(0.001, stpd_nested_hfs_num(min_isi_sec, 0.001))
+  artifact <- stpd_nested_hfs_is_artifact(isi, effective_min_isi_sec)
   valid <- is.finite(isi) & isi > 0 & !artifact
   if (length(valid)) valid[1L] <- FALSE
   hard <- stpd_nested_hfs_hard_mask(n, hard_boundaries)

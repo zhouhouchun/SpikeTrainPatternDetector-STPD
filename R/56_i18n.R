@@ -999,6 +999,38 @@ stpd_i18n_supplemental_exact_dictionary <- function() {
 
 stpd_i18n_static_ui_exact_dictionary <- function() {
   c(
+    "多算法纠察与人工标注" = "Multi-method patrol and manual annotation",
+    "运行辅助方法后，burst 候选标记在相邻 spike 之间的 ISI 区间上。四种方法使用独立颜色和垂直偏移；它们只提供 support evidence，不改写 AUTO 标签。" =
+      "After auxiliary methods run, burst candidates are marked on ISI intervals between adjacent spikes. The four methods use distinct colors and vertical offsets; they provide support evidence only and do not overwrite AUTO labels.",
+    "pCLAMP-style Legendy-Salcman 变体；仅生成 Burst 辅助证据，不改写 STPD AUTO 标签。" =
+      "pCLAMP-style Legendy-Salcman variant; generates Burst support evidence only and does not overwrite STPD AUTO labels.",
+    "Surprise 对数底" = "Surprise logarithm base",
+    "Burst 最小 spike 数" = "Minimum Burst spike count",
+    "停止 ISI / train mean ISI" = "Stopping ISI / train mean ISI",
+    "最大连续无改善扩展" = "Maximum consecutive non-improving extensions",
+    "RGS 在预先声明的 reference group 内拟合 normalized log-ISI，同时生成 Burst/Pause 辅助证据。" =
+      "RGS fits normalized log-ISI within a prespecified reference group and generates Burst/Pause support evidence.",
+    "同数据 reference（exploratory）" = "Same-data reference (exploratory)",
+    "预定 calibration trains -> held-out prediction" =
+      "Prespecified calibration trains -> held-out prediction",
+    "全部为一组" = "All in one group",
+    "Train metadata 列" = "Train metadata column",
+    "手工编辑 train-group 表" = "Manually edit the train-group table",
+    "局部移动窗比例" = "Local moving-window fraction",
+    "MAD 定义" = "MAD definition",
+    "Pause 最小边界 spike 数" = "Minimum Pause boundary spike count",
+    "支持方法检测到的 burst 候选以独立颜色和垂直偏移显示：Mean-ISI (#8A7FFF)、LogISI / newBD (#F58E90)、Poisson Surprise (#D97706) 和 RGS (#008E8E)。黑色竖线表示 spike timestamp。默认关闭半透明事件包络；启用时，中间条带表示当前 AUTO burst-family。" =
+      "Burst candidates detected by support methods use distinct colors and vertical offsets: Mean-ISI (#8A7FFF), LogISI / newBD (#F58E90), Poisson Surprise (#D97706), and RGS (#008E8E). Black vertical lines indicate spike timestamps. The translucent event envelope is hidden by default; when enabled, the middle band indicates the current AUTO burst-family.",
+    "PS 阈值与来源" = "PS thresholds and sources",
+    "多方法证据只用于纠察与人工复核。" =
+      "Multi-method evidence is used only for patrol and manual review.",
+    "人工修订保存在独立、可追溯的记录层，不改写 STPD AUTO 输出或原始人工参考。" =
+      "Manual revisions are stored in a separate traceable record layer and do not overwrite STPD AUTO output or the original manual reference.",
+    "从当前 STPD 数据构建" = "Build from the current STPD dataset",
+    "或载入 reviewer bundle (.rds)" = "Or load a reviewer bundle (.rds)",
+    "人工标注保存目录" = "Manual-annotation storage directory",
+    "当前数据入口会运行 STPD、Mean-ISI、LogISI/newBD、PS 和 RGS 证据整合；大数据集可能需要等待。" =
+      "The current-data route integrates STPD, Mean-ISI, LogISI/newBD, PS, and RGS evidence; large datasets may take time.",
     "扫描范围" = "Scan range",
     "Tonic CV / LV / MM 规则性阈值" = "Tonic CV / LV / MM regularity thresholds",
     "Tonic State episode 数" = "Tonic State episode count",

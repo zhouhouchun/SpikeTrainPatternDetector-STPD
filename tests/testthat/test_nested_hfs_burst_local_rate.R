@@ -37,14 +37,14 @@ nested_hfs_detect <- function(
   )
 }
 
-test_that("the four-spike floor also scopes the HFS-local contrast proposal", {
+test_that("the HFS-local route permits the classical three-spike minimum", {
   settings <- stpd_nested_hfs_detector_settings(
     default_params_sec(),
     list(min_spikes = 3L, long_max_spikes = 15L,
          hf_spiking_min_spikes = 20L)
   )
 
-  expect_identical(settings$min_spikes, 4L)
+  expect_identical(settings$min_spikes, 3L)
   expect_identical(settings$local_min_radius, 3L)
 })
 
@@ -55,7 +55,7 @@ test_that("homogeneous HFS has a mathematical minimum pair but no confirmed Burs
   expect_identical(fixture$candidates, stpd_nested_hfs_empty_candidates())
 })
 
-test_that("a true local rate acceleration becomes review evidence without changing HFS geometry", {
+test_that("a true local rate acceleration becomes a Burst Event without changing HFS geometry", {
   isi <- rep(0.020, 80L)
   event_rows <- 32:35
   isi[event_rows - 1L] <- c(0.004, 0.004, 0.005, 0.004)
@@ -66,12 +66,14 @@ test_that("a true local rate acceleration becomes review evidence without changi
   expect_identical(candidate$start_isi, 32L)
   expect_identical(candidate$end_isi, 35L)
   expect_identical(candidate$n_spikes, 5L)
-  expect_identical(candidate$final_label, "possible_burst")
-  expect_identical(candidate$action, "demote_to_possible")
-  expect_true(candidate$review_only)
-  expect_false(candidate$canonical_eligible)
+  expect_identical(candidate$final_label, "burst")
+  expect_identical(candidate$action, "accept")
+  expect_false(candidate$review_only)
+  expect_true(candidate$canonical_eligible)
   expect_true(candidate$nested_in_hfs)
   expect_false(candidate$absolute_pattern_threshold_used)
+  expect_identical(candidate$detection_route,
+                   "local_rate_and_boundary_contrast")
   expect_gte(min(candidate$final_left_ratio, candidate$final_right_ratio), 1.5)
   expect_identical(
     unname(as.integer(fixture$hfs[c("start_isi", "end_isi")])),
@@ -79,7 +81,7 @@ test_that("a true local rate acceleration becomes review evidence without changi
   )
 })
 
-test_that("immediate edge evidence is audited but is not a hard review gate", {
+test_that("immediate edge evidence is audited but is not a hard Event gate", {
   isi <- rep(0.020, 80L)
   isi[31:36] <- c(0.004, 0.004, 0.004, 0.004, 0.010, 0.010)
   isi[37] <- 0.0139
@@ -101,7 +103,8 @@ test_that("immediate edge evidence is audited but is not a hard review gate", {
     fixture$candidates$review_evidence_strength,
     "robust_two_sided_local_background"
   )
-  expect_identical(fixture$candidates$final_label, "possible_burst")
+  expect_identical(fixture$candidates$final_label, "burst")
+  expect_true(fixture$candidates$canonical_eligible)
 })
 
 test_that("one relative bridge joins two local cores", {
@@ -132,13 +135,69 @@ test_that("sustained borrowed HFS support rolls back to intrusion onset", {
   expect_identical(candidate$bridge_isi_count, 0L)
 })
 
-test_that("a two-ISI Burst3 seed is below the HFS-local contrast floor", {
+test_that("a two-ISI Burst3 passes through two-sided boundary contrast", {
   isi <- rep(0.020, 80L)
   isi[21:30] <- 0.016
   isi[31:32] <- 0.012
   fixture <- nested_hfs_detect(isi)
 
-  expect_equal(nrow(fixture$candidates), 0L)
+  expect_equal(nrow(fixture$candidates), 1L)
+  candidate <- fixture$candidates[1L, , drop = FALSE]
+  expect_identical(candidate$start_isi, 32L)
+  expect_identical(candidate$end_isi, 33L)
+  expect_identical(candidate$n_spikes, 3L)
+  expect_identical(candidate$final_label, "burst")
+  expect_true(candidate$detection_route %in% c(
+    "two_sided_boundary_contrast", "local_rate_and_boundary_contrast"
+  ))
+  expect_true(candidate$canonical_eligible)
+  expect_false(candidate$review_only)
+})
+
+test_that("either HFS-local evidence route is sufficient but neither means no Burst", {
+  # A flat HFS has neither a local rate increase nor two-sided boundary
+  # contrast and must remain free of nested Burst calls.
+  flat <- nested_hfs_detect(rep(0.012, 80L))
+  expect_equal(nrow(flat$candidates), 0L)
+
+  # Put the short packet just inside the accepted HFS boundary. Both immediate
+  # flanks exist, but there are too few robust background observations on the
+  # left; this specifically exercises the boundary-only route.
+  isi <- rep(0.012, 80L)
+  isi[1L] <- 0.008
+  isi[2:3] <- c(0.004, 0.004)
+  isi[4L] <- 0.008
+  boundary <- nested_hfs_detect(isi)
+  expect_equal(nrow(boundary$candidates), 1L)
+  expect_identical(boundary$candidates$detection_route,
+                   "two_sided_boundary_contrast")
+  expect_identical(boundary$candidates$n_spikes, 3L)
+})
+
+test_that("HFS variability raises contrast evidence without an absolute ISI gate", {
+  candidate_for <- function(noisy) {
+    isi <- if (noisy) rep(c(0.006, 0.018), 20L) else rep(0.012, 40L)
+    isi[19L] <- 0.012
+    isi[20:21] <- c(0.008, 0.008)
+    isi[22L] <- 0.012
+    dat <- nested_hfs_test_train(isi)
+    values <- dat$ISI_sec
+    valid <- is.finite(values) & values >= 0.001
+    valid[1L] <- FALSE
+    stpd_nested_hfs_candidate_from_seed(
+      dat, values, valid, 2L, nrow(dat), 21L, "hfs_parent",
+      stpd_nested_hfs_settings()
+    )
+  }
+
+  stable <- candidate_for(FALSE)
+  expect_equal(nrow(stable), 1L)
+  expect_identical(stable$dynamic_side_ratio_min, 1.2)
+  expect_false(stable$absolute_pattern_threshold_used)
+
+  # The same 8-ms core and 12-ms immediate flanks are insufficient in a much
+  # more variable HFS background; the comparison is relative, not absolute.
+  expect_null(candidate_for(TRUE))
 })
 
 test_that("data outside frozen Broad-HFS support cannot change a local proposal", {
@@ -239,7 +298,20 @@ test_that("canonical Pause and artifact ISIs are hard Event boundaries", {
   expect_identical(soft_fixture$candidates$end_isi, 35L)
 })
 
-test_that("pipeline exposes nested HFS proposals only on the Review track", {
+test_that("the nested-HFS detector uses an inclusive 1-ms validity floor", {
+  isi <- rep(0.020, 80L)
+  isi[31:34] <- c(0.001, 0.001, 0.001, 0.001)
+  inclusive <- nested_hfs_detect(isi, min_isi_sec = 0.0009)
+  expect_equal(nrow(inclusive$candidates), 1L)
+  expect_identical(inclusive$candidates$final_label, "burst")
+
+  below <- isi
+  below[32L] <- 0.00099
+  rejected <- nested_hfs_detect(below, min_isi_sec = 0.0009)
+  expect_equal(nrow(rejected$candidates), 0L)
+})
+
+test_that("pipeline exposes nested HFS Bursts on the Event track", {
   isi <- rep(0.006, 300L)
   isi[149:152] <- c(0.0018, 0.0018, 0.0020, 0.0018)
   dat <- nested_hfs_test_train(isi)
@@ -255,22 +327,23 @@ test_that("pipeline exposes nested HFS proposals only on the Review track", {
     train = "nested_hfs_review_isolation", lock_manual = FALSE
   )
   review <- attr(out, "nested_hfs_burst_review_candidates", exact = TRUE)
+  automatic <- attr(out, "nested_hfs_burst_auto_candidates", exact = TRUE)
   audit <- attr(out, "candidate_diagnostic_audit", exact = TRUE)
   shadow <- attr(out, "multitrack_shadow", exact = TRUE)
 
-  expect_gt(nrow(review), 0L)
-  expect_true(all(review$final_label == "possible_burst"))
-  expect_true(all(review$canonical_eligible == FALSE))
+  expect_equal(nrow(review), 0L)
+  expect_gt(nrow(automatic), 0L)
+  expect_true(all(automatic$final_label == "burst"))
+  expect_true(all(automatic$canonical_eligible))
   expect_false(any(audit$candidate_layer == "nested_hfs_local_rate_contrast"))
 
   nested_shadow <- shadow$candidates[
     shadow$candidates$candidate_layer == "nested_hfs_local_rate_contrast",
     , drop = FALSE
   ]
-  expect_equal(nrow(nested_shadow), nrow(review))
-  expect_true(all(nested_shadow$semantic_track == "review"))
-  expect_true(all(nested_shadow$review_promotion_required))
-  expect_false(any(nested_shadow$semantic_track == "event"))
+  expect_equal(nrow(nested_shadow), nrow(automatic))
+  expect_true(all(nested_shadow$semantic_track == "event"))
+  expect_false(any(nested_shadow$review_promotion_required))
 
   canonical_input <- shadow$candidates[
     shadow$candidates$candidate_layer != "nested_hfs_local_rate_contrast",
@@ -300,7 +373,7 @@ test_that("pipeline exposes nested HFS proposals only on the Review track", {
     rownames(rows) <- NULL
     rows
   }
-  expect_identical(stable(shadow, "event"), stable(canonical_shadow, "event"))
+  expect_gte(nrow(stable(shadow, "event")), nrow(stable(canonical_shadow, "event")))
   expect_identical(stable(shadow, "state"), stable(canonical_shadow, "state"))
   expect_identical(stable(shadow, "gap"), stable(canonical_shadow, "gap"))
 })

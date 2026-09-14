@@ -9,8 +9,9 @@ test_that("orientation navigation assigns every agreed tab exactly once", {
       "\u9A8C\u8BC1", "\u5BFC\u51FA", "\u5206\u6790", "\u4E13\u5BB6"
     )
   )
-  expect_length(tabs, 21L)
+  expect_length(tabs, 22L)
   expect_identical(anyDuplicated(tabs), 0L)
+  expect_true("\u591A\u7B97\u6CD5\u7EA0\u5BDF\u4E0E\u4EBA\u5DE5\u6807\u6CE8" %in% groups[["\u590D\u6838"]])
   expect_identical(
     stpd_ui_orientation_tab_group(c(
       "\u6570\u636E QC", "\u539F\u59CB\u65F6\u95F4\u6233\u56FE",
